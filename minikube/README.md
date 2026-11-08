@@ -20,8 +20,8 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, PodDisruptionBudget, NetworkPolicy `jithendar-com` |
 | `45-jithendar-letsencrypt.yaml` | ClusterIssuers `letsencrypt-prod` and `letsencrypt-staging` (cluster-wide; formerly the `roboshop-letsencrypt` Argo CD app) |
 | `50-certificate.yaml` | Certificate `jithendar-com` (apex + www) → Secret `jithendar-com-tls` |
-| `55-tlsstore.yaml` | Traefik `TLSStore default`: `jithendar-com-tls` is the default certificate for every namespace, so `/argocd`, `/grafana`, `/prometheus` and `/roboshop` share it |
-| `60-istio-routing.yaml` | VirtualService `jithendar-com` on the Istio Gateway `istio-ingress/jithendar-com` (miniKube repo, `deploy/minikube/istio/edge`): www → apex and HTTP → HTTPS (308), trace headers stripped, site. Traefik passes these hosts to the gateway until the host forwards to it directly |
+| `55-tlsstore.yaml` | Traefik `TLSStore default`: `jithendar-com-tls`, Traefik's certificate while it still runs. Removed with Traefik ("Leaving Traefik"); the Istio gateway has its own wildcard certificate |
+| `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `www/docs/OBSERVABILITY.md` |
 | `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only restart the site and the executor (`scripts/setup-ci-deployer.sh`) |
 | `85-ci-applier.yaml` | ServiceAccount `github-ci-applier`: `.github/workflows/deploy-minikube.yml` applies the application objects (not RBAC, Secrets or anything cluster-wide; `scripts/setup-ci-applier.sh`) |
@@ -59,36 +59,27 @@ Read [`DB_ACCESS.md`](DB_ACCESS.md) first: the order matters.
 
 | File | Resources |
 |---|---|
-| `db-access-10-allowlist.yaml` | The allowed client addresses: AuthorizationPolicy `istio-ingress/db-allowlist` for /db and MiddlewareTCP for db.jithendar.com (edit both lists together) |
-| `db-access-20-adminer.yaml` | Adminer (`jithendar-db-ui`): Deployment, Service, NetworkPolicy, VirtualService (a delegate of the site's, for /db) |
-| `db-access-30-postgres-tls.yaml` | Certificate, TLSOption and IngressRouteTCP for `db.jithendar.com`, NetworkPolicy `jithendar-postgres-remote` |
+| `db-access-10-allowlist.yaml` | The allowed client addresses: AuthorizationPolicies `istio-ingress/db-allowlist` (/db) and `istio-ingress/db-tcp-allowlist` (db.jithendar.com); edit both lists together |
+| `db-access-20-adminer.yaml` | Adminer (`jithendar-db-ui`): Deployment, Service, NetworkPolicy, delegate VirtualService for /db |
+| `db-access-30-postgres-tls.yaml` | VirtualService `jithendar-db` (TCP) for `db.jithendar.com` on Gateway `istio-ingress/public`, NetworkPolicy `jithendar-postgres-remote` |
 
-## Moving the site from Traefik to Istio (once)
+## Leaving Traefik
 
-The NetworkPolicies of the site and Adminer admit both Traefik and the Istio gateway, and every PeerAuthentication is
-PERMISSIVE, so applying `minikube/` in any order keeps the site up. CI never deletes anything: the old objects go by
-hand. `K="kubectl --context mk4"`.
+The whole order, all repositories, is miniKube's `deploy/minikube/istio/README.md`. This repository's part:
 
-1. miniKube: `terraform apply` in `minikube-infrastructure/` (release `istio-edge`: Gateway, certificate, compression,
-   Traefik hand-off routes at priority 1, so nothing changes yet). Wait for
-   `$K -n istio-ingress get certificate jithendar-com` → `True`.
-2. `$K apply -f minikube/85-ci-applier.yaml`, `$K apply -k minikube`,
-   `scripts/manifests.sh db-access | $K apply -f -` (VirtualService `jithendar-db-ui`, AuthorizationPolicy `istio-ingress/db-allowlist`).
-3. Cut over: delete the Traefik routes, and the hand-off sends the site and /db to the gateway.
-   `$K -n jithendar delete ingress jithendar-com jithendar-com-http jithendar-com-www jithendar-com-www-http jithendar-db-ui`
-   `$K -n jithendar delete middleware compress https-redirect www-redirect strip-trace-headers db-slash db-headers db-allowlist`
-   These objects are no longer in `minikube/`. The MiddlewareTCP `db-allowlist` stays: db.jithendar.com is still on Traefik.
-4. Check: `scripts/smoke.sh`; `curl -sI https://jithendar.com/` shows `server: istio-envoy`; `/db/` opens from an
-   allowed address and answers 403 from any other.
-5. mTLS: set `default` in `75-mesh.yaml` to `STRICT` and `$K apply -f 75-mesh.yaml`. `:9464` (Prometheus) and
-   Postgres `:5432` (db.jithendar.com through Traefik) keep their PERMISSIVE port exceptions. Then remove the
-   `traefik` entries from the `jithendar-com` and `jithendar-db-ui` NetworkPolicies.
-
-Rollback before step 5: re-apply `60-ingress.yaml`, `40-middlewares.yaml` and the Adminer Ingress/middlewares from
-the commit before this change (`git show <commit>~1:minikube/60-ingress.yaml | $K apply -f -`; the Adminer Ingress and
-middlewares are in that commit's `db-access-20-adminer.yaml` and `db-access-10-allowlist.yaml`).
-`50-certificate.yaml` and `55-tlsstore.yaml` stay: Traefik still serves `jithendar-com-tls` as its default certificate
-for the other paths and for the hand-off route.
+- Before the miniKube Terraform step: `$K apply -k minikube` and `scripts/manifests.sh db-access | $K apply -f -`
+  (`K="kubectl --context mk4"`). They add the delegate `jithendar-com-site`, the TCP route `jithendar-db` and both
+  allowlists, and change nothing that serves traffic yet. NetworkPolicies still admit Traefik and every
+  PeerAuthentication is PERMISSIVE, so the order of applies cannot cut the site off.
+- After the host forwards to the gateway and Traefik is uninstalled, delete what Traefik used (CI never deletes):
+  `$K -n jithendar delete virtualservice jithendar-com` (the old root, replaced by miniKube's),
+  `$K -n jithendar delete ingressroutetcp jithendar-db`, `delete tlsoption db-postgres`,
+  `delete middlewaretcp db-allowlist`, `delete certificate db-jithendar-com jithendar-com`, `delete tlsstore default`,
+  `delete peerauthentication jithendar-postgres-remote`, and `$K delete clusterissuer letsencrypt-prod letsencrypt-staging`
+  once no Certificate names them (`$K get certificate -A`).
+- Then the cleanup change: drop `45-`, `50-` and `55-` from the kustomization, the `traefik` entries from the
+  NetworkPolicies `jithendar-com`, `jithendar-db-ui` and `jithendar-postgres-remote`, and set `default` in `75-mesh.yaml`
+  to `STRICT` (`$K apply -f minikube/75-mesh.yaml`). `:9464` keeps its PERMISSIVE exception for Prometheus.
 
 ## Before the first deploy
 

@@ -2,8 +2,8 @@
 
 | What | Where | How it is reached |
 |---|---|---|
-| Adminer web UI | `https://jithendar.com/db/` | Istio ingress gateway (Traefik hands jithendar.com over), IP allowlist (AuthorizationPolicy `istio-ingress/db-allowlist`), then a PostgreSQL login |
-| PostgreSQL | `db.jithendar.com:443` | Traefik TCP route on the TLS server name, IP allowlist, Let's Encrypt certificate, PostgreSQL login |
+| Adminer web UI | `https://jithendar.com/db/` | Istio ingress gateway, IP allowlist (AuthorizationPolicy `istio-ingress/db-allowlist`), then a PostgreSQL login |
+| PostgreSQL | `db.jithendar.com:443` | Istio ingress gateway: TLS server name, IP allowlist (`istio-ingress/db-tcp-allowlist`), wildcard Let's Encrypt certificate, ALPN `postgresql`, then TCP over mTLS; PostgreSQL login |
 
 A path such as `jithendar.com/db` works only for the web UI. Database clients (psql, DBeaver, TablePlus) speak
 PostgreSQL's own protocol, which has no URL path, so they use the hostname `db.jithendar.com` on port 443 instead.
@@ -14,20 +14,22 @@ cannot change the schema or roles. The app's own `jithendar` login is never used
 
 ## Why the order below matters
 
-On 2026-11-04 every request reached Traefik from `192.168.49.2`, a minikube node: the host's HAProxy forwards plain
+On 2026-11-04 every request reached the edge from `192.168.49.2`, a minikube node: the host's HAProxy forwards plain
 TCP and kube-proxy rewrites the source of NodePort traffic. An IP allowlist cannot work like that. The fix is the
-PROXY protocol: HAProxy prepends the real client address, and Traefik trusts it from the minikube network. Until that
-is live, the allowlists refuse everyone (fail closed). It also gives the site real visitor IPs in its logs and
-rate limits, which today all see the same address.
+PROXY protocol: HAProxy prepends the real client address, and the Istio gateway reads it (miniKube
+`deploy/minikube/istio/edge`, EnvoyFilter `proxy-protocol`) and puts exactly that address in X-Forwarded-For. Until
+the host forwards to the gateway, the allowlists refuse everyone (fail closed): the gateway sees a node, or Traefik's
+pod during the move. It also gives the site real visitor IPs in its logs and rate limits.
 
 ## Rollout
 
 Most of it is code that CI runs: `.github/workflows/deploy-minikube.yml` applies the `db-access-*.yaml` files on every push to
 `master` that touches `minikube/`, and creates the DNS record `db.jithendar.com` (DNS only, same address as the apex)
-through `scripts/cloudflare-dns-record.sh` when the secret `CLOUDFLARE_DNS_TOKEN` is set. Until Traefik sees real
-client IPs, the allowlists refuse everyone, so deploying them early is safe.
+through `scripts/cloudflare-dns-record.sh` when the secret `CLOUDFLARE_DNS_TOKEN` is set. The two allowlists live in the
+gateway's namespace, so a person applies them: `scripts/manifests.sh db-access | kubectl --context mk4 apply -f -`.
+Until the gateway sees real client IPs they refuse everyone, so deploying them early is safe.
 
-What CI must not be able to do (change the shared Traefik, the host's HAProxy, create database logins, change its
+What CI must not be able to do (change the shared gateway, the host's HAProxy, create database logins, change its
 own permissions) is one script, run once from the Mac after the code is pushed:
 
 ```bash
@@ -36,7 +38,7 @@ gh secret set CLOUDFLARE_DNS_TOKEN --repo mrjithendar/jithendar.com
 HOST_SSH=root@jithendar.com scripts/enable-db-access.sh   # without HOST_SSH it prints the host command and waits
 ```
 
-It checks that Traefik accepts the PROXY protocol (miniKube's Terraform sets it), runs `miniKube/deploy/minikube/expose-ingress.sh` (from the miniKube repository) on the host, checks that the
+It checks that the Istio gateway reads the PROXY protocol (miniKube's Terraform sets it), runs `miniKube/deploy/minikube/expose-ingress.sh` (from the miniKube repository) on the host, checks that the
 site now logs this Mac's public IP, creates the `jithendar_remote` login (password printed once), re-applies CI's
 Role with the db-access kinds and starts the deploy workflow. Each step is skipped when already done.
 
@@ -44,9 +46,8 @@ Role with the db-access kinds and starts the deploy workflow. Each step is skipp
 
 ```bash
 # From the Mac
-psql "host=db.jithendar.com port=443 dbname=jithendar user=jithendar_remote sslmode=verify-full sslrootcert=system" -c 'select current_user'
-# If psql says the server does not support SSL on this port, try the TLS-first handshake (libpq 17+):
-psql "host=db.jithendar.com port=443 dbname=jithendar user=jithendar_remote sslmode=verify-full sslrootcert=system sslnegotiation=direct" -c 'select 1'
+# TLS first (libpq 17+): port 443 starts with a TLS handshake, not PostgreSQL's SSLRequest.
+psql "host=db.jithendar.com port=443 dbname=jithendar user=jithendar_remote sslmode=verify-full sslrootcert=system sslnegotiation=direct" -c 'select current_user'
 open https://jithendar.com/db/      # System: PostgreSQL, Server: jithendar-postgres
 ```
 
@@ -62,9 +63,10 @@ replace it in both lists in `db-access-10-allowlist.yaml`, then `scripts/manifes
 
 - Remove access: `scripts/manifests.sh db-access | kubectl --context mk4 delete -f -` (the login stays; to drop it:
   `kubectl --context mk4 -n jithendar exec -it jithendar-postgres-0 -c postgres -- psql -U jithendar -c 'DROP ROLE jithendar_remote'`).
-- Undo the PROXY protocol, **in this order**: remove `send-proxy-v2` from `deploy/minikube/expose-ingress.sh` and
-  rerun it on the host, then remove `proxyProtocol` from miniKube's `deploy/minikube/traefik/values.yaml` and apply
-  `minikube-infrastructure/` with Terraform (Traefik is `traefik.tf`).
+- Undo the PROXY protocol, **in this order**: in miniKube set `proxyProtocol.requireHeader: false` in
+  `deploy/minikube/istio/edge/values.yaml` and apply `minikube-infrastructure/` with Terraform (the gateway then also
+  accepts connections without the header), then remove `send-proxy-v2` from `deploy/minikube/expose-ingress.sh` and
+  rerun it on the host. The allowlists then refuse everyone.
 
 ## Limits
 

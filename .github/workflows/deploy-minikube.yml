@@ -12,11 +12,11 @@ name: deploy to minikube
 #          diff, apply, wait for every Deployment and StatefulSet, smoke-test the site.
 #
 # CI applies only Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies,
-# PodDisruptionBudgets, Traefik Middlewares, cert-manager Certificates and Istio VirtualServices in namespace jithendar. The Namespace,
+# PodDisruptionBudgets, cert-manager Certificates and Istio VirtualServices in namespace jithendar. The Namespace,
 # ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass and admission policies stay with a
 # person (./deploy.sh, scripts/manifests.sh practice-executor | kubectl apply -f -), so a commit cannot widen CI's
 # own access. Nothing is ever deleted (no --prune). The db-access group (Adminer at /db/, PostgreSQL at
-# db.jithendar.com) is deployed too; its IP allowlists refuse everyone until Traefik sees real client IPs (scripts/enable-db-access.sh, once).
+# db.jithendar.com) is deployed too; its IP allowlists refuse everyone until the Istio gateway sees real client IPs (scripts/enable-db-access.sh, once).
 #
 # Cluster access: ServiceAccount jithendar/github-ci-applier (minikube/85-ci-applier.yaml), kubeconfig template
 # .github/jithendar-ci-applier.yaml, values MK4_API_SERVER, MK4_CA_DATA (variables, shared with the deployer) and
@@ -127,13 +127,13 @@ jobs:
           trap 'rm -f "$KUBECONFIG"' EXIT
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-applier.yaml > "$KUBECONFIG")
           files=("$RUNNER_TEMP/site.yaml" "$RUNNER_TEMP/practice-executor.yaml")
-          # The db-access group needs the TCP-route kinds in CI's Role, which only a person can grant
+          # The db-access group needs VirtualServices in CI's Role, which only a person can grant
           # (scripts/enable-db-access.sh re-applies minikube/85-ci-applier.yaml). Until then, skip it instead of failing.
-          if [[ "$(kubectl auth can-i create ingressroutetcps.traefik.io)" == yes ]]; then
+          if [[ "$(kubectl auth can-i create virtualservices.networking.istio.io)" == yes ]]; then
             files+=("$RUNNER_TEMP/db-access.yaml")
             cat "$RUNNER_TEMP/db-access.rollouts" >> "$RUNNER_TEMP/rollouts.txt"
           else
-            echo "::notice::db-access manifests skipped: CI's Role cannot manage TCP routes yet (run scripts/enable-db-access.sh)"
+            echo "::notice::db-access manifests skipped: CI's Role cannot manage VirtualServices yet (run scripts/enable-db-access.sh)"
           fi
 
           # Every object must pass the API server's validation and admission before anything changes.

@@ -7,8 +7,8 @@
 #   scripts/enable-db-access.sh                                 # prints the host command instead and waits
 #
 # Steps, each skipped when already done, each checked before the next:
-#   1. Check: Traefik trusts the PROXY protocol from the minikube network (set by miniKube's Terraform, traefik.tf).
-#   2. The host's HAProxy sends it (miniKube deploy/minikube/expose-ingress.sh, on the host).
+#   1. Check: the Istio gateway reads the PROXY protocol (miniKube's Terraform, istio.tf: release istio-edge).
+#   2. The host's HAProxy sends it to the gateway (miniKube deploy/minikube/expose-ingress.sh, on the host).
 #   3. Check: the site now logs this Mac's real IP, not a node's.
 #   4. The PostgreSQL login jithendar_remote (scripts/create-db-remote-user.sh, prints the password once).
 #   5. CI's applier Role gets the db-access kinds (minikube/85-ci-applier.yaml; CI cannot change its own Role).
@@ -24,24 +24,25 @@ cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
 # The mk4 cluster files moved from mrjithendar/tools to mrjithendar/miniKube (same paths) on 2026-11-08.
 MINIKUBE_DIR="${MINIKUBE_DIR:-../miniKube}"
 HOST_MINIKUBE_DIR="${HOST_MINIKUBE_DIR:-miniKube}"
-VALUES="$MINIKUBE_DIR/deploy/minikube/traefik/values.yaml"
+VALUES="$MINIKUBE_DIR/deploy/minikube/istio/edge/values.yaml"
 k() { kubectl --context "$CONTEXT" "$@"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 site_ok() { [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://jithendar.com/api/health)" == 200 ]]; }
 
 [[ -f "$VALUES" ]] || fail "$VALUES not found; set MINIKUBE_DIR to your miniKube checkout."
 grep -q 'proxyProtocol' "$VALUES" || fail "$VALUES has no proxyProtocol settings; pull the miniKube repo."
+# Addresses the site sees when the real one is lost: a minikube node (no PROXY header) or a pod (Traefik's hand-off).
+internal_ip() { [[ -z "$1" || "$1" == 192.168.49.* || "$1" == 10.* ]]; }
 
-echo "→ 1. Traefik accepts the PROXY protocol"
-# Traefik is a Terraform release (miniKube minikube-infrastructure/traefik.tf): a helm upgrade here would leave
-# Terraform's state behind the live release, so this step only checks.
-if k -n traefik get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q 'websecure.proxyProtocol.trustedIPs'; then
+echo "→ 1. The Istio gateway reads the PROXY protocol"
+# The gateway's edge is a Terraform release (miniKube minikube-infrastructure/istio.tf), so this step only checks.
+if k -n istio-ingress get envoyfilter proxy-protocol -o name >/dev/null 2>&1 && k -n istio-ingress get gateway public -o name >/dev/null 2>&1; then
   echo "   already enabled"
 else
-  fail "Traefik does not accept the PROXY protocol yet. Apply it with Terraform, then rerun:
+  fail "The Istio gateway's edge (Gateway public, EnvoyFilter proxy-protocol) is missing. Apply it with Terraform, then rerun:
   terraform -chdir=$MINIKUBE_DIR/minikube-infrastructure apply -var-file=vars/mk4.tfvars"
 fi
-site_ok || fail "https://jithendar.com/api/health is not 200 after the Traefik step."
+site_ok || fail "https://jithendar.com/api/health is not 200 after the gateway step."
 
 echo "→ 2 + 3. HAProxy on the host sends client IPs"
 probe="db-access-probe-$RANDOM$RANDOM"
@@ -52,12 +53,12 @@ seen_ip() {
     | grep -F "\"userAgent\":\"$probe\"" | grep -o '"ip":"[^"]*"' | tail -1 | cut -d'"' -f4
 }
 ip="$(seen_ip)"
-if [[ -z "$ip" || "$ip" == 192.168.49.* ]]; then
+if internal_ip "$ip"; then
   # The host pulls miniKube from GitHub, so the HAProxy change must be pushed, not only committed here.
   git -C "$MINIKUBE_DIR" fetch -q origin master
-  git -C "$MINIKUBE_DIR" show origin/master:deploy/minikube/expose-ingress.sh | grep -q 'send-proxy-v2' \
-    || fail "miniKube on GitHub (origin/master) has no send-proxy-v2 in deploy/minikube/expose-ingress.sh: commit and push miniKube first."
-  host_cmd="cd $HOST_MINIKUBE_DIR && git pull --ff-only && grep -q send-proxy-v2 deploy/minikube/expose-ingress.sh && bash deploy/minikube/expose-ingress.sh"
+  git -C "$MINIKUBE_DIR" show origin/master:deploy/minikube/expose-ingress.sh | grep -q ':31443 send-proxy-v2' \
+    || fail "miniKube on GitHub (origin/master) does not forward to the gateway (:31443 send-proxy-v2) in deploy/minikube/expose-ingress.sh: commit and push miniKube first."
+  host_cmd="cd $HOST_MINIKUBE_DIR && git pull --ff-only && grep -q ':31443 send-proxy-v2' deploy/minikube/expose-ingress.sh && bash deploy/minikube/expose-ingress.sh"
   if [[ -n "${HOST_SSH:-}" ]]; then
     # shellcheck disable=SC2029  # expanded here on purpose: the command is built from local settings
     ssh "$HOST_SSH" "$host_cmd"
@@ -65,13 +66,13 @@ if [[ -z "$ip" || "$ip" == 192.168.49.* ]]; then
     echo "   On the Hetzner host, run:  $host_cmd"
     read -r -p "   Press Enter when it has finished… " _
   fi
-  site_ok || fail "The site is not answering after the HAProxy step. On the host: remove send-proxy-v2 and rerun expose-ingress.sh."
+  site_ok || fail "The site is not answering after the HAProxy step. On the host: docker logs roboshop-ingress-edge-\$(id -u); miniKube deploy/minikube/istio/README.md has the way back."
   ip="$(seen_ip)"
 fi
-[[ -n "$ip" && "$ip" != 192.168.49.* ]] || fail "The site still sees '${ip:-nothing}' instead of a public IP; check HAProxy on the host."
+! internal_ip "$ip" || fail "The site still sees '${ip:-nothing}' instead of a public IP; check HAProxy on the host."
 echo "   the site sees this Mac as $ip"
 grep -q -- "- $ip/32" minikube/db-access-10-allowlist.yaml \
-  || echo "   NOTE: $ip is not in minikube/db-access-10-allowlist.yaml. Add it to both lists and push, or /db stays closed to this Mac."
+  || echo "   NOTE: $ip is not in minikube/db-access-10-allowlist.yaml. Add it to both lists and re-apply the db-access group, or /db stays closed to this Mac."
 
 echo "→ 4. PostgreSQL login"
 if k -n jithendar get secret jithendar-db-remote >/dev/null 2>&1; then
@@ -93,5 +94,5 @@ cat <<OUT
 
 Then, from an allowed IP:
   https://jithendar.com/db/   System PostgreSQL, Server jithendar-postgres, user jithendar_remote, database jithendar
-  psql "host=db.jithendar.com port=443 dbname=jithendar user=jithendar_remote sslmode=verify-full sslrootcert=system"
+  psql "host=db.jithendar.com port=443 dbname=jithendar user=jithendar_remote sslmode=verify-full sslrootcert=system sslnegotiation=direct"
 OUT

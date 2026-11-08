@@ -45,7 +45,7 @@ export function severityOf(action: string): Severity {
 
 export type RequestInfo = { ip: string | null; userAgent: string | null };
 
-/** First address in X-Forwarded-For (set by Traefik), else X-Real-IP. */
+/** First address in X-Forwarded-For (the Istio gateway sets exactly the visitor's), else X-Real-IP. */
 export function requestInfoFrom(h: Headers): RequestInfo {
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || null;
   return { ip: ip ? ip.slice(0, 64) : null, userAgent: h.get("user-agent")?.slice(0, 300) ?? null };

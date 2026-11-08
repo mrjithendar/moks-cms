@@ -26,10 +26,6 @@ APPLY = {
     ("networking.k8s.io", "Ingress"),
     ("networking.k8s.io", "NetworkPolicy"),
     ("policy", "PodDisruptionBudget"),
-    ("traefik.io", "Middleware"),
-    ("traefik.io", "MiddlewareTCP"),
-    ("traefik.io", "IngressRouteTCP"),
-    ("traefik.io", "TLSOption"),
     ("cert-manager.io", "Certificate"),
     ("networking.istio.io", "VirtualService"),
 }
@@ -50,7 +46,7 @@ MANUAL = {
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
     ("security.istio.io", "PeerAuthentication"),  # mTLS posture: a commit must not be able to relax it
-    ("security.istio.io", "AuthorizationPolicy"),  # the /db IP allowlist, in namespace istio-ingress
+    ("security.istio.io", "AuthorizationPolicy"),  # the /db and db.jithendar.com IP allowlists, in namespace istio-ingress
 }
 
 ROLLOUT_KINDS = {"Deployment": "deployment", "StatefulSet": "statefulset"}

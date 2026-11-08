@@ -9,7 +9,7 @@
 | Deploy | Automatic on push to `master`. `./deploy.sh` for manifest changes, run by a person with the `mk4` kubeconfig |
 | Manifests | `minikube/` at the repository root, one file per component (see `minikube/README.md`); the image is `jithendar-com:latest` |
 | Image pulls | Secret `jithendar/harbor-pull` (read-only robot `robot$k8s-pull`, never expires), written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets` |
-| TLS | ClusterIssuers `letsencrypt-prod`/`-staging` (`minikube/45-jithendar-letsencrypt.yaml`) → Certificate `jithendar/jithendar-com` (apex + www, `minikube/50-certificate.yaml`) → Secret `jithendar-com-tls`. `TLSStore default` (`minikube/55-tlsstore.yaml`) makes it Traefik's default certificate, which also serves `/argocd`, `/grafana`, `/prometheus` and `/roboshop`. **Do not delete it.** |
+| TLS | The Istio gateway's wildcard certificate (`jithendar.com`, `*.jithendar.com`, DNS-01), in the miniKube repo (`deploy/minikube/istio/edge`). `minikube/45-`, `50-` and `55-` are Traefik's certificate and TLSStore, kept only until Traefik is uninstalled (`minikube/README.md`, "Leaving Traefik"). |
 
 ## Data services (namespace `jithendar`, deployed by the same `kubectl apply -k`)
 
@@ -43,13 +43,14 @@ R2 bucket setup (CORS, lifecycle) and the S3 → R2 migration: see `docs/MEDIA.m
 
 ## Routing
 
-The site is served through the Istio ingress gateway (`minikube/60-istio-routing.yaml`; the Gateway, its certificate
-and compression are in the miniKube repo, `deploy/minikube/istio/edge`). The host still forwards 80/443 to Traefik,
-which hands `jithendar.com` and `www` to the gateway at the lowest priority.
+The Istio ingress gateway is the edge. The jithendar.com routing table (root VirtualService, Gateway, certificate,
+compression, logins) is in the miniKube repo, `deploy/minikube/istio/edge`; the site is its default route, the
+delegate `jithendar-com-site` in `minikube/60-istio-routing.yaml`.
 
-- `https://jithendar.com/` → site. Paths that still have their own Traefik Ingress (`/argocd`, `/db`, `/grafana`, `/moks`, `/prometheus`, `/roboshop`, ...) stay on Traefik.
-- `http://jithendar.com/*` → 308 to https (VirtualService route `http-to-https`).
-- `http(s)://www.jithendar.com/*` → 308 to `https://jithendar.com/*` in one hop (route `www-to-apex`).
+- `https://jithendar.com/` → site. The other applications' prefixes (`/argocd`, `/db`, `/grafana`, `/moks`, `/prometheus`, `/roboshop`, ...) are delegated before it.
+- `http://…/*` → 301 to https (the Gateway's `httpsRedirect`).
+- `https://www.jithendar.com/*` → 308 to `https://jithendar.com/*`, path and query kept.
+- X-Forwarded-For is exactly the visitor's address (from the host's PROXY protocol); a client cannot set its own.
 - Text responses are compressed by the gateway (zstd/br/gzip; EnvoyFilter `istio-ingress/response-compression`).
 
 ## Release
@@ -66,7 +67,7 @@ It server dry-runs, applies `minikube/`, restarts the site on `:latest`, waits f
 
 A push to `master` that changes `minikube/` (including `minikube/practice-executor-*.yaml`) also applies the **application
 objects** to mk4 from GitHub Actions: Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies,
-PodDisruptionBudgets, Traefik Middlewares and cert-manager Certificates in namespace `jithendar`
+PodDisruptionBudgets, cert-manager Certificates and Istio VirtualServices in namespace `jithendar`
 (`scripts/ci-app-manifests.py` decides). It dry-runs on the server, prints the diff, applies, waits for every
 Deployment and StatefulSet and runs the smoke test. It never deletes anything.
 
