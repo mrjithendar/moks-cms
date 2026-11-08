@@ -31,6 +31,7 @@ APPLY = {
     ("traefik.io", "IngressRouteTCP"),
     ("traefik.io", "TLSOption"),
     ("cert-manager.io", "Certificate"),
+    ("networking.istio.io", "VirtualService"),
 }
 
 # Applied by a person (./deploy.sh; scripts/manifests.sh practice-executor | kubectl apply -f -; setup scripts), never by CI.

@@ -12,7 +12,7 @@ name: deploy to minikube
 #          diff, apply, wait for every Deployment and StatefulSet, smoke-test the site.
 #
 # CI applies only Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies,
-# PodDisruptionBudgets, Traefik Middlewares and cert-manager Certificates in namespace jithendar. The Namespace,
+# PodDisruptionBudgets, Traefik Middlewares, cert-manager Certificates and Istio VirtualServices in namespace jithendar. The Namespace,
 # ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass and admission policies stay with a
 # person (./deploy.sh, scripts/manifests.sh practice-executor | kubectl apply -f -), so a commit cannot widen CI's
 # own access. Nothing is ever deleted (no --prune). The db-access group (Adminer at /db/, PostgreSQL at

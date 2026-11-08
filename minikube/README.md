@@ -18,11 +18,10 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 | `10-postgres.yaml` | StatefulSet, Service, NetworkPolicy `jithendar-postgres` (10 Gi volume, pinned to node `mk4-m03`) |
 | `20-redis.yaml` | Deployment, Service, NetworkPolicy `jithendar-redis` |
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, PodDisruptionBudget, NetworkPolicy `jithendar-com` |
-| `40-middlewares.yaml` | Traefik middlewares `compress`, `https-redirect`, `www-redirect`, `strip-trace-headers` |
 | `45-jithendar-letsencrypt.yaml` | ClusterIssuers `letsencrypt-prod` and `letsencrypt-staging` (cluster-wide; formerly the `roboshop-letsencrypt` Argo CD app) |
 | `50-certificate.yaml` | Certificate `jithendar-com` (apex + www) → Secret `jithendar-com-tls` |
 | `55-tlsstore.yaml` | Traefik `TLSStore default`: `jithendar-com-tls` is the default certificate for every namespace, so `/argocd`, `/grafana`, `/prometheus` and `/roboshop` share it |
-| `60-ingress.yaml` | Ingresses for `jithendar.com` and `www.jithendar.com` (HTTPS + HTTP redirect) |
+| `60-istio-routing.yaml` | VirtualService `jithendar-com` on the Istio Gateway `istio-ingress/jithendar-com` (miniKube repo, `deploy/minikube/istio/edge`): www → apex and HTTP → HTTPS (308), trace headers stripped, site. Traefik passes these hosts to the gateway until the host forwards to it directly |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `www/docs/OBSERVABILITY.md` |
 | `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only restart the site and the executor (`scripts/setup-ci-deployer.sh`) |
 | `85-ci-applier.yaml` | ServiceAccount `github-ci-applier`: `.github/workflows/deploy-minikube.yml` applies the application objects (not RBAC, Secrets or anything cluster-wide; `scripts/setup-ci-applier.sh`) |
@@ -63,6 +62,24 @@ Read [`DB_ACCESS.md`](DB_ACCESS.md) first: the order matters.
 | `db-access-10-allowlist.yaml` | The allowed client addresses (HTTP and TCP middlewares; edit both lists together) |
 | `db-access-20-adminer.yaml` | Adminer (`jithendar-db-ui`): Deployment, Service, NetworkPolicy, middlewares, Ingress |
 | `db-access-30-postgres-tls.yaml` | Certificate, TLSOption and IngressRouteTCP for `db.jithendar.com`, NetworkPolicy `jithendar-postgres-remote` |
+
+## Moving the site from Traefik to Istio (once)
+
+Order matters: the new NetworkPolicy admits only the Istio gateway, so the old Traefik Ingresses stop working the
+moment it is applied. CI never deletes anything, so the old objects go by hand.
+
+1. miniKube: `terraform apply` in `minikube-infrastructure/` (release `istio-edge`: Gateway, certificate, compression,
+   Traefik hand-off routes). Wait for `kubectl --context mk4 -n istio-ingress get certificate jithendar-com` → `True`.
+   The hand-off routes have priority 1, so nothing changes while the old Ingresses exist.
+2. `kubectl --context mk4 apply -f minikube/85-ci-applier.yaml` (CI may now apply VirtualServices).
+3. Cut over (a second or two of errors while Traefik reloads):
+   `kubectl --context mk4 apply -f minikube/60-istio-routing.yaml -f minikube/30-jithendar-com.yaml && kubectl --context mk4 -n jithendar delete ingress jithendar-com jithendar-com-http jithendar-com-www jithendar-com-www-http && kubectl --context mk4 -n jithendar delete middleware compress https-redirect www-redirect strip-trace-headers`
+4. `scripts/smoke.sh`; `curl -sI -H 'Accept-Encoding: zstd, br, gzip' https://jithendar.com/` shows `server: istio-envoy`
+   and a `content-encoding`. Rollback: re-apply `minikube/60-ingress.yaml`, `minikube/40-middlewares.yaml` and `30-jithendar-com.yaml` from the
+   commit before this change (`git show <commit>~1:minikube/60-ingress.yaml | kubectl --context mk4 apply -f -`).
+
+`50-certificate.yaml` and `55-tlsstore.yaml` stay: Traefik still serves `jithendar-com-tls` as its default certificate
+for the other paths and for the hand-off route.
 
 ## Before the first deploy
 

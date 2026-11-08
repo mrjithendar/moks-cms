@@ -153,7 +153,7 @@ Found on mk4 and fixed in code (the site fixes need a deploy; the `tools` ones a
 - **Visitors could steer tracing.** Next.js continues any incoming `traceparent`: a request with
   `traceparent: 00-<id>-…-01` got that trace id (and it became the visitor's error reference); `…-00` would have
   turned off the trace, the request metric and the completion line. The ingress now strips
-  `traceparent`/`tracestate`/`baggage` (`minikube/40-middlewares.yaml`, `strip-trace-headers`), and the sampler ignores
+  `traceparent`/`tracestate`/`baggage` (`minikube/60-istio-routing.yaml`, VirtualService route `site`), and the sampler ignores
   remote sampling flags.
 - **Outgoing span names held full URLs:** `http GET https://<account>.r2.cloudflarestorage.com/<bucket>/<key>?…`,
   and a ~95 kB `fetch GET data:…base64` name from the OG image renderer. Names are now `<kind> <METHOD> <host>`

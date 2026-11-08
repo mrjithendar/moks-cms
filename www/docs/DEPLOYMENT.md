@@ -43,10 +43,14 @@ R2 bucket setup (CORS, lifecycle) and the S3 → R2 migration: see `docs/MEDIA.m
 
 ## Routing
 
-- `https://jithendar.com/` → site. Longer path rules (`/argocd`, `/grafana`, `/prometheus`, `/roboshop`) keep priority in Traefik.
-- `http://jithendar.com/*` → 308 to https (middleware `jithendar-https-redirect`).
-- `http(s)://www.jithendar.com/*` → 308 to `https://jithendar.com/*` in one hop (middleware `jithendar-www-redirect`).
-- Text responses are compressed by Traefik (zstd/br/gzip; middleware `jithendar-compress`).
+The site is served through the Istio ingress gateway (`minikube/60-istio-routing.yaml`; the Gateway, its certificate
+and compression are in the miniKube repo, `deploy/minikube/istio/edge`). The host still forwards 80/443 to Traefik,
+which hands `jithendar.com` and `www` to the gateway at the lowest priority.
+
+- `https://jithendar.com/` → site. Paths that still have their own Traefik Ingress (`/argocd`, `/db`, `/grafana`, `/moks`, `/prometheus`, `/roboshop`, ...) stay on Traefik.
+- `http://jithendar.com/*` → 308 to https (VirtualService route `http-to-https`).
+- `http(s)://www.jithendar.com/*` → 308 to `https://jithendar.com/*` in one hop (route `www-to-apex`).
+- Text responses are compressed by the gateway (zstd/br/gzip; EnvoyFilter `istio-ingress/response-compression`).
 
 ## Release
 

@@ -250,10 +250,14 @@ spec:
         - 100.64.0.0/10
         - 169.254.0.0/16
   ingress:
+  # Public traffic arrives from the Istio ingress gateway over mTLS (60-istio-routing.yaml), no longer from Traefik.
   - from:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: traefik
+          kubernetes.io/metadata.name: istio-ingress
+      podSelector:
+        matchLabels:
+          istio: ingressgateway
     ports:
     - port: 3000
       protocol: TCP

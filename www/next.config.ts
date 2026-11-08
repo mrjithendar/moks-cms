@@ -7,7 +7,8 @@ const siteRoot = import.meta.dirname;
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  // Traefik compresses responses (br/zstd/gzip, text only; see minikube/40-middlewares.yaml).
+  // The Istio ingress gateway compresses responses (zstd/br/gzip, text only; EnvoyFilter response-compression in the
+  // miniKube repo, deploy/minikube/istio/edge).
   compress: false,
   images: {
     // The transformation pipeline: next/image (sharp, inside the site's pods) resizes and re-encodes our

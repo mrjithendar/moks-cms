@@ -12,11 +12,10 @@ resources:
 - 10-postgres.yaml
 - 20-redis.yaml
 - 30-jithendar-com.yaml
-- 40-middlewares.yaml
 - 45-jithendar-letsencrypt.yaml
 - 50-certificate.yaml
 - 55-tlsstore.yaml
-- 60-ingress.yaml
+- 60-istio-routing.yaml
 - 70-observability.yaml
 - 75-mesh.yaml
 - 80-ci-deployer.yaml
