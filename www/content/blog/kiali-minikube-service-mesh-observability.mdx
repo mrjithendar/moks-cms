@@ -1,7 +1,7 @@
 ---
 title: "Kiali on Minikube: How We Implemented Service Mesh Observability (and What to Check)"
 slug: kiali-minikube-service-mesh-observability
-description: "How we added Istio 1.30 and Kiali 2.34 to a self-hosted Minikube cluster, what the traffic graph actually showed, the outage it caused, and the checklist we now run in Kiali."
+description: "Adding Istio 1.30 and Kiali 2.34 to a self-hosted Minikube cluster: what the traffic graph showed, the outage it caused, and our Kiali checklist."
 seoTitle: "Kiali on Minikube: Istio Mesh Observability Checklist"
 seoDescription: "Istio 1.30 and Kiali 2.34 on an 8-node Minikube cluster: Helm values, Prometheus scrape jobs, token auth, sidecar pitfalls and a daily Kiali checklist."
 author: jithendar-dharmapuri
@@ -342,16 +342,16 @@ We installed Istio 1.30.7 and Kiali 2.34.0 with Helm through Terraform, fed Kial
 
 ## References
 
-- Kiali documentation: https://kiali.io/docs/
-- Kiali installation with Helm: https://kiali.io/docs/installation/installation-guide/
-- Kiali authentication strategies: https://kiali.io/docs/configuration/authentication/
-- Kiali Prometheus, Grafana and tracing configuration: https://kiali.io/docs/configuration/p8s-jaeger-grafana/
-- Kiali health configuration: https://kiali.io/docs/configuration/health/
-- Kiali features: https://kiali.io/docs/features/
-- Kiali version compatibility: https://kiali.io/docs/installation/installation-guide/prerequisites/
-- Istio installation with Helm: https://istio.io/latest/docs/setup/install/helm/
-- Istio CNI node agent: https://istio.io/latest/docs/setup/additional-setup/cni/
-- Istio sidecar injection: https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/
-- Istio PeerAuthentication: https://istio.io/latest/docs/reference/config/security/peer_authentication/
-- Istio and Prometheus: https://istio.io/latest/docs/ops/integrations/prometheus/
-- Istio supported releases: https://istio.io/latest/docs/releases/supported-releases/
+- [Kiali documentation](https://kiali.io/docs/)
+- [Kiali installation with Helm](https://kiali.io/docs/installation/installation-guide/)
+- [Kiali authentication strategies](https://kiali.io/docs/configuration/authentication/)
+- [Kiali Prometheus, Grafana and tracing configuration](https://kiali.io/docs/configuration/p8s-jaeger-grafana/)
+- [Kiali health configuration](https://kiali.io/docs/configuration/health/)
+- [Kiali features](https://kiali.io/docs/features/)
+- [Kiali version compatibility](https://kiali.io/docs/installation/installation-guide/prerequisites/)
+- [Istio installation with Helm](https://istio.io/latest/docs/setup/install/helm/)
+- [Istio CNI node agent](https://istio.io/latest/docs/setup/additional-setup/cni/)
+- [Istio sidecar injection](https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/)
+- [Istio PeerAuthentication](https://istio.io/latest/docs/reference/config/security/peer_authentication/)
+- [Istio and Prometheus](https://istio.io/latest/docs/ops/integrations/prometheus/)
+- [Istio supported releases](https://istio.io/latest/docs/releases/supported-releases/)

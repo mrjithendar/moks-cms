@@ -105,7 +105,7 @@ describe("drafts and related posts", () => {
 
   it("accepts related links to posts still waiting in content/, never to itself", async () => {
     const { createPost, publishPost, updatePost } = await import("@/lib/posts");
-    const post = await createPost(admin, { ...valid, related: ["blog/deploy-nextjs-kubernetes-github-actions"] });
+    const post = await createPost(admin, { ...valid, related: ["blog/github-actions-authenticate-minikube"] });
     expect(post.warnings).toEqual([]);
     expect((await publishPost(admin, post.id, {})).status).toBe("published");
     await expect(updatePost(admin, post.id, { related: [`blog/${valid.slug}`] })).rejects.toMatchObject({ issues: [expect.stringMatching(/cannot be related to itself/)] });

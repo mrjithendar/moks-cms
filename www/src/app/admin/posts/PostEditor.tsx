@@ -430,7 +430,7 @@ export function PostEditor({
             <Field label="Sources" htmlFor="sources" hint="One per line: Title | https://url | Publisher. Required for News and Curated summaries.">
               <Textarea id="sources" rows={4} value={sources} onChange={(e) => setSources(e.target.value)} className="font-mono text-xs" />
             </Field>
-            <Field label="Related posts" htmlFor="related" hint="One per line, e.g. blog/deploy-nextjs-kubernetes-github-actions">
+            <Field label="Related posts" htmlFor="related" hint="One per line, e.g. blog/github-actions-authenticate-minikube">
               <Textarea id="related" rows={2} value={v.related.join("\n")} className="font-mono text-xs" onChange={(e) => set("related", e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))} />
             </Field>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.sponsored} onChange={(e) => set("sponsored", e.target.checked)} /> Sponsored content</label>
