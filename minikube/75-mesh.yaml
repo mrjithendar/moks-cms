@@ -68,6 +68,20 @@ spec:
     - port: 15090
       protocol: TCP
   egress:
+  # DNS, to resolve istiod.istio-system.svc. Postgres and Redis have no DNS rule of their own, so without this
+  # their sidecars time out on the lookup and never get ready (outage 2026-11-08).
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
   # Configuration and certificates from istiod. Without them the proxy never gets ready and the application
   # never starts (holdApplicationUntilProxyStarts).
   - to:
