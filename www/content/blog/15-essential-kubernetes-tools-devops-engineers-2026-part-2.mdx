@@ -17,7 +17,7 @@ featuredImage:
   width: 1800
   height: 1560
 related:
-  - blog/15-essential-kubernetes-tools-devops-engineers-2026
+  - blog/15-essential-kubernetes-tools-devops-engineers-2026-part-1
   - blog/roboshop-ai-eks-system-design
   - blog/traefik-minikube-architecture-implementation
   - blog/devops-interview-preparation-guide
@@ -57,7 +57,7 @@ sources:
     publisher: Cloud Native Computing Foundation
 ---
 
-[Part 1](/blog/15-essential-kubernetes-tools-devops-engineers-2026) covered getting software into a cluster and watching it. This part covers keeping it running under load and under attack: **Karpenter and KEDA** for scaling, **Istio, Linkerd and Cilium** for networking, **cert-manager and Kyverno** for security and **Velero** for recovery. Then come a production architecture, troubleshooting, interview questions and recommendations.
+[Part 1](/blog/15-essential-kubernetes-tools-devops-engineers-2026-part-1) covered getting software into a cluster and watching it. This part covers keeping it running under load and under attack: **Karpenter and KEDA** for scaling, **Istio, Linkerd and Cilium** for networking, **cert-manager and Kyverno** for security and **Velero** for recovery. Then come a production architecture, troubleshooting, interview questions and recommendations.
 
 Same rules as Part 1. Versions are the latest stable releases on 8 November 2026, and every YAML block was validated against that project's CRD schema. The Kyverno policies were evaluated against test pods. Lab facts come from my repositories and a read-only look at my cluster, and anything that ran only on the EKS cluster I deleted on 2 November is marked as such.
 
@@ -789,4 +789,4 @@ Mastering Kubernetes is not about installing every CNCF tool. It is about unders
 - **Startups on managed Kubernetes.** Add Karpenter, KEDA for workers, Kyverno enforcing a short list (no privileged pods, approved registries, requests set), Velero with tested restores, and managed Prometheus if nobody wants to run storage. Linkerd if you need mTLS and little else.
 - **Enterprise EKS.** All of the above, plus Cilium for policy and flow visibility, Istio where traffic management or zero-trust identity is required, ApplicationSets with SSO and AppProjects, long-term metrics, image verification, and restore drills audit can see.
 
-At any size, budget for the work after installation: upgrades against compatibility matrices (Karpenter, Istio and Kyverno all have them), CRD migrations such as Kyverno's move to CEL, and alerts someone actually receives. Start with [Part 1](/blog/15-essential-kubernetes-tools-devops-engineers-2026) if you skipped it, see how RoboShop AI used several of these tools in [its EKS system design](/blog/roboshop-ai-eks-system-design), and practise with the [DevOps interview preparation guide](/blog/devops-interview-preparation-guide).
+At any size, budget for the work after installation: upgrades against compatibility matrices (Karpenter, Istio and Kyverno all have them), CRD migrations such as Kyverno's move to CEL, and alerts someone actually receives. Start with [Part 1](/blog/15-essential-kubernetes-tools-devops-engineers-2026-part-1) if you skipped it, see how RoboShop AI used several of these tools in [its EKS system design](/blog/roboshop-ai-eks-system-design), and practise with the [DevOps interview preparation guide](/blog/devops-interview-preparation-guide).
