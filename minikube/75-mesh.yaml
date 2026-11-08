@@ -1,0 +1,79 @@
+# Istio service mesh for namespace jithendar (label istio-injection=enabled, 00-namespace.yaml). Istio itself, its CNI
+# plugin and Traefik's sidecar are in the tools repo (minikube-infrastructure). Traefik is in the mesh, so its
+# requests arrive over mTLS; Prometheus is not, and keeps scraping :9464 in plain text.
+# - PeerAuthentication default: STRICT, so only pods with a sidecar can connect.
+# - PeerAuthentication jithendar-com-metrics: the site's :9464 stays PERMISSIVE for Prometheus.
+# - NetworkPolicy istio-sidecars: what the sidecars themselves need, added to the pods the other policies isolate.
+# Practice sandbox pods get no sidecar (label sidecar.istio.io/inject=false, and istiod's neverInjectSelector).
+# PeerAuthentications are applied by a person (./deploy.sh), never by CI (scripts/ci-app-manifests.py).
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: jithendar
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: jithendar-com-metrics
+  namespace: jithendar
+spec:
+  selector:
+    matchLabels:
+      app: jithendar-com
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "9464":
+      mode: PERMISSIVE
+---
+# Only the pods other NetworkPolicies here already isolate, in both directions. Selecting a pod without a policy
+# would cut off everything else it does. Sandbox pods are not listed: they have no sidecar.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: istio-sidecars
+  namespace: jithendar
+  labels:
+    app.kubernetes.io/part-of: jithendar-com
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - jithendar-com
+      - jithendar-db-ui
+      - jithendar-postgres
+      - jithendar-redis
+      - practice-dispatcher
+      - practice-executor-api
+      - practice-redis
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # 15020: merged metrics and health; 15090: Envoy's own (Prometheus job envoy-stats).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - port: 15020
+      protocol: TCP
+    - port: 15090
+      protocol: TCP
+  egress:
+  # Configuration and certificates from istiod. Without them the proxy never gets ready and the application
+  # never starts (holdApplicationUntilProxyStarts).
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+    ports:
+    - port: 15012
+      protocol: TCP

@@ -96,7 +96,13 @@ def pod_spec(name: str, job_id: str, image: str, payload: str, deadline: int, s:
         "metadata": {
             "name": name,
             "namespace": s.sandbox_namespace,
-            "labels": {"app.kubernetes.io/name": "practice-sandbox", "practice.jithendar.com/job": job_id},
+            # No Istio sidecar: it would be an init container, which policy practice-sandbox-pods rejects, and the
+            # gVisor no-network runtime gives the pod nothing to proxy. (istiod's neverInjectSelector says so too.)
+            "labels": {
+                "app.kubernetes.io/name": "practice-sandbox",
+                "practice.jithendar.com/job": job_id,
+                "sidecar.istio.io/inject": "false",
+            },
         },
         "spec": spec,
     }

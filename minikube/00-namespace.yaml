@@ -5,4 +5,5 @@ kind: Namespace
 metadata:
   labels:
     kubernetes.io/metadata.name: jithendar
+    istio-injection: enabled # Istio sidecars, STRICT mTLS (75-mesh.yaml); practice sandbox pods opt out
   name: jithendar

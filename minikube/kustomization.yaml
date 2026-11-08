@@ -18,6 +18,7 @@ resources:
 - 55-tlsstore.yaml
 - 60-ingress.yaml
 - 70-observability.yaml
+- 75-mesh.yaml
 - 80-ci-deployer.yaml
 - 85-ci-applier.yaml
 
