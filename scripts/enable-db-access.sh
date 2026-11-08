@@ -7,14 +7,14 @@
 #   scripts/enable-db-access.sh                                 # prints the host command instead and waits
 #
 # Steps, each skipped when already done, each checked before the next:
-#   1. Traefik trusts the PROXY protocol from the minikube network (helm upgrade with tools' values file).
-#   2. The host's HAProxy sends it (tools deploy/minikube/expose-ingress.sh, on the host).
+#   1. Check: Traefik trusts the PROXY protocol from the minikube network (set by miniKube's Terraform, traefik.tf).
+#   2. The host's HAProxy sends it (miniKube deploy/minikube/expose-ingress.sh, on the host).
 #   3. Check: the site now logs this Mac's real IP, not a node's.
 #   4. The PostgreSQL login jithendar_remote (scripts/create-db-remote-user.sh, prints the password once).
 #   5. CI's applier Role gets the db-access kinds (minikube/85-ci-applier.yaml; CI cannot change its own Role).
 #   6. Run the deploy workflow (gh), unless NO_DEPLOY=1.
 #
-# Needs: kubectl and helm with admin on context mk4, a miniKube checkout (MINIKUBE_DIR, default ../miniKube), gh signed in.
+# Needs: kubectl with admin on context mk4, a miniKube checkout (MINIKUBE_DIR, default ../miniKube), gh signed in.
 # Undo: minikube/DB_ACCESS.md → Rollback.
 set -euo pipefail
 
@@ -33,16 +33,15 @@ site_ok() { [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://j
 grep -q 'proxyProtocol' "$VALUES" || fail "$VALUES has no proxyProtocol settings; pull the miniKube repo."
 
 echo "→ 1. Traefik accepts the PROXY protocol"
+# Traefik is a Terraform release (miniKube minikube-infrastructure/traefik.tf): a helm upgrade here would leave
+# Terraform's state behind the live release, so this step only checks.
 if k -n traefik get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q 'websecure.proxyProtocol.trustedIPs'; then
   echo "   already enabled"
 else
-  version="$(helm --kube-context "$CONTEXT" -n traefik list -f '^traefik$' -o json | jq -r '.[0].chart' | sed 's/^traefik-//')"
-  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Could not read the installed Traefik chart version."
-  helm --kube-context "$CONTEXT" upgrade traefik traefik --repo https://traefik.github.io/charts --version "$version" \
-    --namespace traefik -f "$VALUES" --wait --timeout 5m
-  k -n traefik rollout status deploy/traefik --timeout=3m
+  fail "Traefik does not accept the PROXY protocol yet. Apply it with Terraform, then rerun:
+  terraform -chdir=$MINIKUBE_DIR/minikube-infrastructure apply -var-file=vars/mk4.tfvars"
 fi
-site_ok || fail "https://jithendar.com/api/health is not 200 after the Traefik step; roll back with: helm --kube-context $CONTEXT -n traefik rollback traefik"
+site_ok || fail "https://jithendar.com/api/health is not 200 after the Traefik step."
 
 echo "→ 2 + 3. HAProxy on the host sends client IPs"
 probe="db-access-probe-$RANDOM$RANDOM"

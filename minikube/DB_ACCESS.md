@@ -36,7 +36,7 @@ gh secret set CLOUDFLARE_DNS_TOKEN --repo mrjithendar/jithendar.com
 HOST_SSH=root@jithendar.com scripts/enable-db-access.sh   # without HOST_SSH it prints the host command and waits
 ```
 
-It upgrades Traefik (PROXY protocol), runs `miniKube/deploy/minikube/expose-ingress.sh` (from the miniKube repository) on the host, checks that the
+It checks that Traefik accepts the PROXY protocol (miniKube's Terraform sets it), runs `miniKube/deploy/minikube/expose-ingress.sh` (from the miniKube repository) on the host, checks that the
 site now logs this Mac's public IP, creates the `jithendar_remote` login (password printed once), re-applies CI's
 Role with the db-access kinds and starts the deploy workflow. Each step is skipped when already done.
 
@@ -63,8 +63,8 @@ replace it in both lists in `db-access-10-allowlist.yaml`, then `scripts/manifes
 - Remove access: `scripts/manifests.sh db-access | kubectl --context mk4 delete -f -` (the login stays; to drop it:
   `kubectl --context mk4 -n jithendar exec -it jithendar-postgres-0 -c postgres -- psql -U jithendar -c 'DROP ROLE jithendar_remote'`).
 - Undo the PROXY protocol, **in this order**: remove `send-proxy-v2` from `deploy/minikube/expose-ingress.sh` and
-  rerun it on the host, then remove `proxyProtocol` from `deploy/minikube/traefik/values.yaml` and rerun
-  `deploy-traefik.sh`.
+  rerun it on the host, then remove `proxyProtocol` from miniKube's `deploy/minikube/traefik/values.yaml` and apply
+  `minikube-infrastructure/` with Terraform (Traefik is `traefik.tf`).
 
 ## Limits
 
