@@ -50,6 +50,7 @@ MANUAL = {
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
     ("security.istio.io", "PeerAuthentication"),  # mTLS posture: a commit must not be able to relax it
+    ("security.istio.io", "AuthorizationPolicy"),  # the /db IP allowlist, in namespace istio-ingress
 }
 
 ROLLOUT_KINDS = {"Deployment": "deployment", "StatefulSet": "statefulset"}

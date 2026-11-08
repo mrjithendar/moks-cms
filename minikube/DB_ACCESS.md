@@ -2,7 +2,7 @@
 
 | What | Where | How it is reached |
 |---|---|---|
-| Adminer web UI | `https://jithendar.com/db/` | Traefik HTTP route, IP allowlist, then a PostgreSQL login |
+| Adminer web UI | `https://jithendar.com/db/` | Istio ingress gateway (Traefik hands jithendar.com over), IP allowlist (AuthorizationPolicy `istio-ingress/db-allowlist`), then a PostgreSQL login |
 | PostgreSQL | `db.jithendar.com:443` | Traefik TCP route on the TLS server name, IP allowlist, Let's Encrypt certificate, PostgreSQL login |
 
 A path such as `jithendar.com/db` works only for the web UI. Database clients (psql, DBeaver, TablePlus) speak

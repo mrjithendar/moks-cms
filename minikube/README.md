@@ -59,25 +59,34 @@ Read [`DB_ACCESS.md`](DB_ACCESS.md) first: the order matters.
 
 | File | Resources |
 |---|---|
-| `db-access-10-allowlist.yaml` | The allowed client addresses (HTTP and TCP middlewares; edit both lists together) |
-| `db-access-20-adminer.yaml` | Adminer (`jithendar-db-ui`): Deployment, Service, NetworkPolicy, middlewares, Ingress |
+| `db-access-10-allowlist.yaml` | The allowed client addresses: AuthorizationPolicy `istio-ingress/db-allowlist` for /db and MiddlewareTCP for db.jithendar.com (edit both lists together) |
+| `db-access-20-adminer.yaml` | Adminer (`jithendar-db-ui`): Deployment, Service, NetworkPolicy, VirtualService (a delegate of the site's, for /db) |
 | `db-access-30-postgres-tls.yaml` | Certificate, TLSOption and IngressRouteTCP for `db.jithendar.com`, NetworkPolicy `jithendar-postgres-remote` |
 
 ## Moving the site from Traefik to Istio (once)
 
-Order matters: the new NetworkPolicy admits only the Istio gateway, so the old Traefik Ingresses stop working the
-moment it is applied. CI never deletes anything, so the old objects go by hand.
+The NetworkPolicies of the site and Adminer admit both Traefik and the Istio gateway, and every PeerAuthentication is
+PERMISSIVE, so applying `minikube/` in any order keeps the site up. CI never deletes anything: the old objects go by
+hand. `K="kubectl --context mk4"`.
 
 1. miniKube: `terraform apply` in `minikube-infrastructure/` (release `istio-edge`: Gateway, certificate, compression,
-   Traefik hand-off routes). Wait for `kubectl --context mk4 -n istio-ingress get certificate jithendar-com` → `True`.
-   The hand-off routes have priority 1, so nothing changes while the old Ingresses exist.
-2. `kubectl --context mk4 apply -f minikube/85-ci-applier.yaml` (CI may now apply VirtualServices).
-3. Cut over (a second or two of errors while Traefik reloads):
-   `kubectl --context mk4 apply -f minikube/60-istio-routing.yaml -f minikube/30-jithendar-com.yaml && kubectl --context mk4 -n jithendar delete ingress jithendar-com jithendar-com-http jithendar-com-www jithendar-com-www-http && kubectl --context mk4 -n jithendar delete middleware compress https-redirect www-redirect strip-trace-headers`
-4. `scripts/smoke.sh`; `curl -sI -H 'Accept-Encoding: zstd, br, gzip' https://jithendar.com/` shows `server: istio-envoy`
-   and a `content-encoding`. Rollback: re-apply `minikube/60-ingress.yaml`, `minikube/40-middlewares.yaml` and `30-jithendar-com.yaml` from the
-   commit before this change (`git show <commit>~1:minikube/60-ingress.yaml | kubectl --context mk4 apply -f -`).
+   Traefik hand-off routes at priority 1, so nothing changes yet). Wait for
+   `$K -n istio-ingress get certificate jithendar-com` → `True`.
+2. `$K apply -f minikube/85-ci-applier.yaml`, `$K apply -k minikube`,
+   `scripts/manifests.sh db-access | $K apply -f -` (VirtualService `jithendar-db-ui`, AuthorizationPolicy `istio-ingress/db-allowlist`).
+3. Cut over: delete the Traefik routes, and the hand-off sends the site and /db to the gateway.
+   `$K -n jithendar delete ingress jithendar-com jithendar-com-http jithendar-com-www jithendar-com-www-http jithendar-db-ui`
+   `$K -n jithendar delete middleware compress https-redirect www-redirect strip-trace-headers db-slash db-headers db-allowlist`
+   These objects are no longer in `minikube/`. The MiddlewareTCP `db-allowlist` stays: db.jithendar.com is still on Traefik.
+4. Check: `scripts/smoke.sh`; `curl -sI https://jithendar.com/` shows `server: istio-envoy`; `/db/` opens from an
+   allowed address and answers 403 from any other.
+5. mTLS: set `default` in `75-mesh.yaml` to `STRICT` and `$K apply -f 75-mesh.yaml`. `:9464` (Prometheus) and
+   Postgres `:5432` (db.jithendar.com through Traefik) keep their PERMISSIVE port exceptions. Then remove the
+   `traefik` entries from the `jithendar-com` and `jithendar-db-ui` NetworkPolicies.
 
+Rollback before step 5: re-apply `60-ingress.yaml`, `40-middlewares.yaml` and the Adminer Ingress/middlewares from
+the commit before this change (`git show <commit>~1:minikube/60-ingress.yaml | $K apply -f -`; the Adminer Ingress and
+middlewares are in that commit's `db-access-20-adminer.yaml` and `db-access-10-allowlist.yaml`).
 `50-certificate.yaml` and `55-tlsstore.yaml` stay: Traefik still serves `jithendar-com-tls` as its default certificate
 for the other paths and for the hand-off route.
 

@@ -100,7 +100,15 @@ spec:
       app: jithendar-db-ui
   policyTypes: [Ingress, Egress]
   ingress:
+  # The Istio gateway serves /db (60-istio-routing.yaml). Traefik stays allowed until its jithendar-db-ui Ingress is
+  # deleted on mk4 (README.md, "Moving the site from Traefik to Istio").
   - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-ingress
+      podSelector:
+        matchLabels:
+          istio: ingressgateway
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: traefik
@@ -128,56 +136,39 @@ spec:
     - port: 5432
       protocol: TCP
 ---
-# /db → /db/ (Adminer's links are relative to the folder), then the IP allowlist decides.
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: db-slash
-  namespace: jithendar
-spec:
-  redirectRegex:
-    regex: "^https://jithendar\\.com/db$"
-    replacement: https://jithendar.com/db/
-    permanent: false
----
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: db-headers
-  namespace: jithendar
-spec:
-  headers:
-    customResponseHeaders:
-      X-Robots-Tag: "noindex, nofollow"
-      Cache-Control: "no-store"
-    frameDeny: true
-    contentTypeNosniff: true
-    referrerPolicy: no-referrer
----
-# Longer than the site's "/" rule, so Traefik routes /db here first. The allowlist runs before anything else.
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# Routes for /db on the Istio ingress gateway. A delegate: no hosts or gateways of its own, it only receives the
+# requests the site's VirtualService hands over (60-istio-routing.yaml, route "db"), so /db always comes before the
+# site's "/". The IP allowlist (AuthorizationPolicy istio-ingress/db-allowlist, db-access-10-allowlist.yaml) runs on the
+# gateway before any route.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
 metadata:
   name: jithendar-db-ui
   namespace: jithendar
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: 'true'
-    traefik.ingress.kubernetes.io/router.middlewares: jithendar-db-allowlist@kubernetescrd,jithendar-db-slash@kubernetescrd,jithendar-db-headers@kubernetescrd
 spec:
-  ingressClassName: traefik
-  rules:
-  - host: jithendar.com
-    http:
-      paths:
-      - path: /db
-        pathType: Prefix
-        backend:
-          service:
-            name: jithendar-db-ui
-            port:
-              name: http
-  tls:
-  - hosts:
-    - jithendar.com
-    secretName: jithendar-com-tls
+  http:
+  # /db → /db/ (Adminer's links are relative to the folder).
+  - name: db-slash
+    match:
+    - uri:
+        exact: /db
+    redirect:
+      uri: /db/
+      redirectCode: 302
+  - name: db
+    match:
+    - uri:
+        prefix: /db/
+    headers:
+      response:
+        set:
+          X-Robots-Tag: noindex, nofollow
+          Cache-Control: no-store
+          X-Frame-Options: DENY
+          X-Content-Type-Options: nosniff
+          Referrer-Policy: no-referrer
+    route:
+    - destination:
+        host: jithendar-db-ui.jithendar.svc.cluster.local
+        port:
+          number: 80

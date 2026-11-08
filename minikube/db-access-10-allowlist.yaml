@@ -1,19 +1,10 @@
 # The only client addresses allowed to reach /db and db.jithendar.com. Edit both lists together.
 #   122.177.247.138  the owner's Mac (public IP on 2026-11-04; home connections can change it: update and re-apply)
 #   46.224.38.14     the Hetzner host itself (connections it makes to jithendar.com)
-# Traefik sees real addresses only with the PROXY protocol on (DB_ACCESS.md). Without it every client looks like a
-# minikube node (192.168.49.x), which is not listed, so everything is refused: the lists fail closed.
----
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: db-allowlist
-  namespace: jithendar
-spec:
-  ipAllowList:
-    sourceRange:
-    - 122.177.247.138/32
-    - 46.224.38.14/32
+# db.jithendar.com (MiddlewareTCP, Traefik): Traefik sees real addresses only with the PROXY protocol on (DB_ACCESS.md).
+# Without it every client looks like a minikube node (192.168.49.x), which is not listed, so everything is refused.
+# /db (AuthorizationPolicy, Istio ingress gateway): the gateway takes the client address from Traefik's
+# X-Forwarded-For (numTrustedProxies 1, miniKube deploy/minikube/istio/ingressgateway.yaml). Both lists fail closed.
 ---
 apiVersion: traefik.io/v1alpha1
 kind: MiddlewareTCP
@@ -25,3 +16,27 @@ spec:
     sourceRange:
     - 122.177.247.138/32
     - 46.224.38.14/32
+---
+# /db on the Istio ingress gateway: refuse every address not listed. Lives in the gateway's namespace, so a person
+# applies it (scripts/manifests.sh db-access | kubectl --context mk4 apply -f -), never CI.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: db-allowlist
+  namespace: istio-ingress
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+  action: DENY
+  rules:
+  - to:
+    - operation:
+        # The gateway's HTTP listeners only: a DENY rule with HTTP fields would otherwise refuse any TCP listener.
+        ports: ["80", "443"]
+        paths: ["/db", "/db/*"]
+    from:
+    - source:
+        notRemoteIpBlocks:
+        - 122.177.247.138/32
+        - 46.224.38.14/32

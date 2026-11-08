@@ -2,7 +2,7 @@
 # The Gateway istio-ingress/jithendar-com, its certificate (Secret jithendar-com-gateway-tls, DNS-01) and response
 # compression (zstd/br/gzip, text types, at least 1 KiB) are in the miniKube repo: deploy/minikube/istio/edge.
 # The host's HAProxy still sends everything to Traefik, which passes these hosts to the gateway at the lowest priority,
-# so the other paths on jithendar.com (/argocd, /db, /grafana, /moks, /roboshop, ...) stay on Traefik for now.
+# so the other paths on jithendar.com (/argocd, /grafana, /moks, /roboshop, ...) stay on Traefik for now.
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -31,6 +31,17 @@ spec:
     redirect:
       scheme: https
       redirectCode: 308
+  # Adminer: everything under /db goes to its own VirtualService (db-access-20-adminer.yaml, a delegate). Without
+  # the db-access group deployed, /db answers 404. Its IP allowlist runs on the gateway before any route.
+  - name: db
+    match:
+    - uri:
+        exact: /db
+    - uri:
+        prefix: /db/
+    delegate:
+      name: jithendar-db-ui
+      namespace: jithendar
   - name: site
     # Tracing headers from the internet are dropped: Next.js continues any incoming W3C trace context, so a visitor
     # could pick the trace id that becomes their error reference, or send "-00" to switch off the trace, request

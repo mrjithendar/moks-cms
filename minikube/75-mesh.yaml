@@ -1,8 +1,13 @@
 # Istio service mesh for namespace jithendar (label istio-injection=enabled, 00-namespace.yaml). Istio itself, its CNI
-# plugin and Traefik's sidecar are in the tools repo (minikube-infrastructure). Traefik is in the mesh, so its
-# requests arrive over mTLS; Prometheus is not, and keeps scraping :9464 in plain text.
-# - PeerAuthentication default: STRICT, so only pods with a sidecar can connect.
+# plugin, Traefik's sidecar and the ingress gateway are in the miniKube repo (minikube-infrastructure). Prometheus is
+# not in the mesh, and keeps scraping :9464 in plain text.
+# - PeerAuthentication default: PERMISSIVE while anything on Traefik still routes into this namespace. Traefik has a
+#   sidecar, but it sends to pod IPs with Host jithendar.com, so its sidecar passes requests through in plain text and
+#   STRICT rejects them (/ and /db answered 502 on 2026-11-08). The Istio gateway sends mTLS; set both back to STRICT
+#   once every public route here goes through it.
 # - PeerAuthentication jithendar-com-metrics: the site's :9464 stays PERMISSIVE for Prometheus.
+# - PeerAuthentication jithendar-postgres-remote: :5432 stays PERMISSIVE for db.jithendar.com, which Traefik still
+#   forwards as plain TCP (db-access-30-postgres-tls.yaml); its NetworkPolicies decide who may connect.
 # - NetworkPolicy istio-sidecars: what the sidecars themselves need, added to the pods the other policies isolate.
 # Practice sandbox pods get no sidecar (label sidecar.istio.io/inject=false, and istiod's neverInjectSelector).
 # PeerAuthentications are applied by a person (./deploy.sh), never by CI (scripts/ci-app-manifests.py).
@@ -14,7 +19,7 @@ metadata:
   namespace: jithendar
 spec:
   mtls:
-    mode: STRICT
+    mode: PERMISSIVE
 ---
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
@@ -25,10 +30,22 @@ spec:
   selector:
     matchLabels:
       app: jithendar-com
-  mtls:
-    mode: STRICT
+  # No mode of its own: the rest of the pod follows `default`.
   portLevelMtls:
     "9464":
+      mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: jithendar-postgres-remote
+  namespace: jithendar
+spec:
+  selector:
+    matchLabels:
+      app: jithendar-postgres
+  portLevelMtls:
+    "5432":
       mode: PERMISSIVE
 ---
 # Only the pods other NetworkPolicies here already isolate, in both directions. Selecting a pod without a policy
