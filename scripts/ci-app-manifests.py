@@ -48,6 +48,7 @@ MANUAL = {
     ("node.k8s.io", "RuntimeClass"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
+    ("security.istio.io", "PeerAuthentication"),  # mTLS posture: a commit must not be able to relax it
 }
 
 ROLLOUT_KINDS = {"Deployment": "deployment", "StatefulSet": "statefulset"}
