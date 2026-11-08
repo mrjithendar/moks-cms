@@ -14,22 +14,23 @@
 #   5. CI's applier Role gets the db-access kinds (minikube/85-ci-applier.yaml; CI cannot change its own Role).
 #   6. Run the deploy workflow (gh), unless NO_DEPLOY=1.
 #
-# Needs: kubectl and helm with admin on context mk4, a tools checkout (TOOLS_DIR, default ../tools), gh signed in.
+# Needs: kubectl and helm with admin on context mk4, a miniKube checkout (MINIKUBE_DIR, default ../miniKube), gh signed in.
 # Undo: minikube/DB_ACCESS.md → Rollback.
 set -euo pipefail
 
 CONTEXT="${KUBE_CONTEXT:-mk4}"
 REPO="${GITHUB_REPO:-mrjithendar/jithendar.com}"
 cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
-TOOLS_DIR="${TOOLS_DIR:-../tools}"
-HOST_TOOLS_DIR="${HOST_TOOLS_DIR:-tools}"
-VALUES="$TOOLS_DIR/deploy/minikube/traefik/values.yaml"
+# The mk4 cluster files moved from mrjithendar/tools to mrjithendar/miniKube (same paths) on 2026-11-08.
+MINIKUBE_DIR="${MINIKUBE_DIR:-../miniKube}"
+HOST_MINIKUBE_DIR="${HOST_MINIKUBE_DIR:-miniKube}"
+VALUES="$MINIKUBE_DIR/deploy/minikube/traefik/values.yaml"
 k() { kubectl --context "$CONTEXT" "$@"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 site_ok() { [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://jithendar.com/api/health)" == 200 ]]; }
 
-[[ -f "$VALUES" ]] || fail "$VALUES not found; set TOOLS_DIR to your tools checkout."
-grep -q 'proxyProtocol' "$VALUES" || fail "$VALUES has no proxyProtocol settings; pull the tools repo."
+[[ -f "$VALUES" ]] || fail "$VALUES not found; set MINIKUBE_DIR to your miniKube checkout."
+grep -q 'proxyProtocol' "$VALUES" || fail "$VALUES has no proxyProtocol settings; pull the miniKube repo."
 
 echo "→ 1. Traefik accepts the PROXY protocol"
 if k -n traefik get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | grep -q 'websecure.proxyProtocol.trustedIPs'; then
@@ -53,11 +54,11 @@ seen_ip() {
 }
 ip="$(seen_ip)"
 if [[ -z "$ip" || "$ip" == 192.168.49.* ]]; then
-  # The host pulls tools from GitHub, so the HAProxy change must be pushed, not only committed here.
-  git -C "$TOOLS_DIR" fetch -q origin master
-  git -C "$TOOLS_DIR" show origin/master:deploy/minikube/expose-ingress.sh | grep -q 'send-proxy-v2' \
-    || fail "tools on GitHub (origin/master) has no send-proxy-v2 in deploy/minikube/expose-ingress.sh: commit and push tools first."
-  host_cmd="cd $HOST_TOOLS_DIR && git pull --ff-only && grep -q send-proxy-v2 deploy/minikube/expose-ingress.sh && bash deploy/minikube/expose-ingress.sh"
+  # The host pulls miniKube from GitHub, so the HAProxy change must be pushed, not only committed here.
+  git -C "$MINIKUBE_DIR" fetch -q origin master
+  git -C "$MINIKUBE_DIR" show origin/master:deploy/minikube/expose-ingress.sh | grep -q 'send-proxy-v2' \
+    || fail "miniKube on GitHub (origin/master) has no send-proxy-v2 in deploy/minikube/expose-ingress.sh: commit and push miniKube first."
+  host_cmd="cd $HOST_MINIKUBE_DIR && git pull --ff-only && grep -q send-proxy-v2 deploy/minikube/expose-ingress.sh && bash deploy/minikube/expose-ingress.sh"
   if [[ -n "${HOST_SSH:-}" ]]; then
     # shellcheck disable=SC2029  # expanded here on purpose: the command is built from local settings
     ssh "$HOST_SSH" "$host_cmd"

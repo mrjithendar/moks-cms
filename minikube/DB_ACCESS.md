@@ -36,7 +36,7 @@ gh secret set CLOUDFLARE_DNS_TOKEN --repo mrjithendar/jithendar.com
 HOST_SSH=root@jithendar.com scripts/enable-db-access.sh   # without HOST_SSH it prints the host command and waits
 ```
 
-It upgrades Traefik (PROXY protocol), runs `tools/deploy/minikube/expose-ingress.sh` on the host, checks that the
+It upgrades Traefik (PROXY protocol), runs `miniKube/deploy/minikube/expose-ingress.sh` (from the miniKube repository) on the host, checks that the
 site now logs this Mac's public IP, creates the `jithendar_remote` login (password printed once), re-applies CI's
 Role with the db-access kinds and starts the deploy workflow. Each step is skipped when already done.
 
