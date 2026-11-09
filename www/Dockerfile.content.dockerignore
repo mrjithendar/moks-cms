@@ -1,0 +1,4 @@
+# Build context for Dockerfile.content: content and site images only.
+*
+!content
+!public/images

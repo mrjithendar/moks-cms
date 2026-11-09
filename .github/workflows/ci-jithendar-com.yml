@@ -21,11 +21,18 @@ on:
   pull_request:
     paths:
       - 'www/**'
+      # Content and images ship in their own image (ci-content.yml); they never rebuild this one.
+      - '!www/content/**'
+      - '!www/public/images/**'
+      - '!www/Dockerfile.content*'
       - 'minikube/**'
       - '.github/workflows/ci-jithendar-com.yml'
   push:
     paths:
       - 'www/**'
+      - '!www/content/**'
+      - '!www/public/images/**'
+      - '!www/Dockerfile.content*'
       - '.github/workflows/ci-jithendar-com.yml'
 
 permissions:
