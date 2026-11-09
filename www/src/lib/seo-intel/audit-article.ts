@@ -58,7 +58,7 @@ const stripCode = (body: string) => body.replace(/(```|~~~)[\s\S]*?\1/g, "");
 export function linksOf(body: string): { internal: string[]; external: string[] } {
   const internal: string[] = [];
   const external: string[] = [];
-  for (const m of stripCode(body).matchAll(/\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<a\s[^>]*href="([^"]+)"/g)) {
+  for (const m of stripCode(body).matchAll(/(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<a\s[^>]*href="([^"]+)"/g)) {
     const href = (m[1] ?? m[2] ?? "").trim();
     if (!href || href.startsWith("#") || href.startsWith("mailto:")) continue;
     if (href.startsWith("/") || /^https?:\/\/(www\.)?jithendar\.com(\/|$)/i.test(href)) internal.push(href.replace(/^https?:\/\/(www\.)?jithendar\.com/i, "").split(/[?#]/)[0] || "/");
