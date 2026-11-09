@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb, schema } from "@/db";
 import { actorOf } from "@/lib/admin";
@@ -29,15 +30,22 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
     db.select({ name: schema.user.name }).from(schema.user).where(eq(schema.user.id, row.authorId)),
   ]);
   return (
-    <PostEditor
-      id={row.id}
-      initial={rowToForm(row)}
-      version={row.version}
-      autosaved={autosave ? { value: rowToForm(autosave.payload), savedAt: autosave.savedAt.toISOString(), baseVersion: autosave.baseVersion } : null}
-      userId={user.id}
-      authorName={author?.name ?? "Unknown"}
-      categories={categories}
-      imageGeneration={imageGeneration}
-    />
+    <>
+      {user.role === "admin" && (
+        <p className="mb-3 text-right text-sm">
+          <Link className="underline" href={`/admin/seo/articles/${row.id}`}>SEO insights and proposals</Link>
+        </p>
+      )}
+      <PostEditor
+        id={row.id}
+        initial={rowToForm(row)}
+        version={row.version}
+        autosaved={autosave ? { value: rowToForm(autosave.payload), savedAt: autosave.savedAt.toISOString(), baseVersion: autosave.baseVersion } : null}
+        userId={user.id}
+        authorName={author?.name ?? "Unknown"}
+        categories={categories}
+          imageGeneration={imageGeneration}
+      />
+    </>
   );
 }

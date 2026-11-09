@@ -19,6 +19,12 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 Push to `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/jithendar-com:latest` (Harbor) and
 restarts the site, which always runs `:latest` with `imagePullPolicy: Always`. That is the whole release.
 
+**Content-only changes** (`www/content/**`, `www/public/images/**`) do not rebuild the site. `ci-content.yml`
+validates the MDX (schema and internal links), packages both folders into the small
+`registry.jithendar.com/jithendar/jithendar-content:latest` image (`www/Dockerfile.content`), pushes it and restarts
+the site. The pods' init container `content` copies it over `/app/content` and `/app/public/images`. This takes about a
+minute, not a full build. A push that changes both code and content runs both workflows.
+
 Run `./deploy.sh` only after changing `minikube/` (it applies the manifests and restarts the site). It needs
 `kubectl` with the `mk4` context. First-time setup,
 Secrets, routing and rollback: [www/docs/DEPLOYMENT.md](www/docs/DEPLOYMENT.md).

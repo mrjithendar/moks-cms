@@ -10,6 +10,7 @@ configMapGenerator:
   - jithendar-com-observability.json
   - jithendar-com-overview.json
   - jithendar-com-logs.json
+  - jithendar-com-seo.json
   options:
     disableNameSuffixHash: true
     annotations:

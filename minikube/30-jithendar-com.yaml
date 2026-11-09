@@ -29,6 +29,33 @@ spec:
         app.kubernetes.io/part-of: jithendar-com
     spec:
       automountServiceAccountToken: false
+      # Content (MDX and /images) ships in its own image, jithendar-content (www/Dockerfile.content,
+      # .github/workflows/ci-content.yml), so writing a post never rebuilds jithendar-com. This init container copies
+      # it into the emptyDirs that the web container mounts over /app/content and /app/public/images; a rollout
+      # restart (done by both workflows) pulls the newest :latest of each image.
+      initContainers:
+      - name: content
+        image: registry.jithendar.com/jithendar/jithendar-content:latest
+        imagePullPolicy: Always
+        command: ["sh", "-c", "cp -a /content/. /mnt/content/ && cp -a /images/. /mnt/images/"]
+        resources:
+          limits:
+            cpu: 200m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 16Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: "/mnt/content"
+          name: content
+        - mountPath: "/mnt/images"
+          name: images
       containers:
       - env:
         - name: APP_ENV
@@ -131,6 +158,13 @@ spec:
           name: tmp
         - mountPath: "/app/.next/cache"
           name: next-cache
+        # Filled by init container "content"; they shadow the copies baked into jithendar-com.
+        - mountPath: "/app/content"
+          name: content
+          readOnly: true
+        - mountPath: "/app/public/images"
+          name: images
+          readOnly: true
       dnsPolicy: ClusterFirst
       enableServiceLinks: false
       imagePullSecrets:
@@ -158,6 +192,12 @@ spec:
       - emptyDir:
           sizeLimit: 256Mi
         name: next-cache
+      - emptyDir:
+          sizeLimit: 64Mi
+        name: content
+      - emptyDir:
+          sizeLimit: 256Mi
+        name: images
 ---
 apiVersion: v1
 kind: Service

@@ -22,6 +22,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const isAdmin = user.role === "admin";
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", section: "Overview" },
+    ...(isAdmin ? [{ href: "/admin/seo", label: "SEO intelligence", section: "Overview" }] : []),
     { href: "/admin/posts", label: "Posts", section: "Content" },
     { href: "/admin/pages", label: "Pages", section: "Content" },
     { href: "/admin/media", label: "Media", section: "Content" },
