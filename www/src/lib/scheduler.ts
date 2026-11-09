@@ -13,9 +13,27 @@ import { publishDuePosts } from "./posts";
 export async function workerTick(now = new Date()) {
   const published = await publishDuePosts(now);
   if (published.length) log.info("scheduled posts published", { count: published.length, ids: published });
-  const jobs = await runDueJobs({ indexnow: indexNowHandler }, now);
+  const { seoJobHandler } = await import("./seo-intel/handlers");
+  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler }, now);
   if (jobs.done || jobs.retried || jobs.failed) log.info("jobs processed", jobs);
   await practiceTick(now);
+  await seoScheduleTick(now);
+}
+
+const seoState = globalThis as unknown as { __seoTickAt?: number };
+
+/** SEO intelligence schedules (docs/seo): enqueue due runs; at most every 5 minutes per replica. */
+async function seoScheduleTick(now: Date) {
+  if (seoState.__seoTickAt && now.getTime() - seoState.__seoTickAt < 5 * 60_000) return;
+  seoState.__seoTickAt = now.getTime();
+  try {
+    const { seoTick } = await import("./seo-intel/jobs");
+    const queued = await seoTick(now);
+    if (queued) log.info("seo jobs scheduled", { count: queued });
+  } catch (error) {
+    // Never let SEO scheduling break publishing or other jobs.
+    log.warn("seo schedule tick failed", { operation: "seo_tick", err: error });
+  }
 }
 
 const practiceState = globalThis as unknown as { __practiceRetentionDay?: string };

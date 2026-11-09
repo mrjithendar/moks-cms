@@ -127,6 +127,71 @@ export function recordComment(status: "approved" | "pending") {
   registry().comments.inc({ status });
 }
 
+// --- SEO intelligence platform (docs/seo) ---------------------------------------------------------------
+// Labels are low-cardinality only: job type, provider, outcome, category. Never URLs, queries or property ids.
+
+type SeoRegistry = {
+  syncSuccess: Counter;
+  syncFailure: Counter;
+  syncDuration: Histogram;
+  apiRequests: Counter;
+  apiErrors: Counter;
+  recommendations: Counter;
+  llmRequests: Counter;
+  llmErrors: Counter;
+  contentAudits: Counter;
+};
+const gs = globalThis as unknown as { __seoMetrics?: SeoRegistry };
+function seoRegistry(): SeoRegistry {
+  gs.__seoMetrics ??= {
+    syncSuccess: new Counter("seo_sync_success_total", "SEO sync/analysis runs that succeeded, by job type."),
+    syncFailure: new Counter("seo_sync_failure_total", "SEO sync/analysis runs that failed, by job type and error code."),
+    syncDuration: new Histogram("seo_sync_duration_seconds", "Duration of SEO sync/analysis runs, by job type.", [1, 5, 15, 30, 60, 120, 300, 600, 1200]),
+    apiRequests: new Counter("seo_api_requests_total", "Requests to Google APIs, by provider and outcome."),
+    apiErrors: new Counter("seo_api_errors_total", "Failed requests to Google APIs, by provider and outcome."),
+    recommendations: new Counter("seo_recommendations_generated_total", "SEO recommendations created or refreshed, by category."),
+    llmRequests: new Counter("seo_llm_requests_total", "LLM enrichment requests, by provider and outcome."),
+    llmErrors: new Counter("seo_llm_errors_total", "Failed LLM enrichment requests, by provider and error code."),
+    contentAudits: new Counter("seo_content_audits_total", "Article content audits run."),
+  };
+  return gs.__seoMetrics;
+}
+
+const SAFE_LABEL = /^[a-z0-9_]{1,40}$/;
+const safe = (v: string) => (SAFE_LABEL.test(v) ? v : "other");
+
+export function recordSeoSync(jobType: string, outcome: "success" | "failure" | "skipped", seconds: number, errorCode?: string) {
+  const r = seoRegistry();
+  if (outcome === "success") r.syncSuccess.inc({ job_type: safe(jobType) });
+  if (outcome === "failure") r.syncFailure.inc({ job_type: safe(jobType), error_code: safe(errorCode ?? "unknown") });
+  if (outcome !== "skipped") r.syncDuration.observe({ job_type: safe(jobType) }, seconds);
+}
+
+export function recordSeoApiRequest(provider: string, outcome: string) {
+  const r = seoRegistry();
+  r.apiRequests.inc({ provider: safe(provider), outcome: safe(outcome) });
+  if (outcome !== "ok") r.apiErrors.inc({ provider: safe(provider), outcome: safe(outcome) });
+}
+
+export function recordSeoRecommendations(category: string, n = 1) {
+  if (n > 0) seoRegistry().recommendations.inc({ category: safe(category) }, n);
+}
+
+export function recordSeoLlm(provider: string, outcome: "ok" | "invalid" | "error" | "cached", errorCode?: string) {
+  const r = seoRegistry();
+  r.llmRequests.inc({ provider: safe(provider), outcome });
+  if (outcome === "invalid" || outcome === "error") r.llmErrors.inc({ provider: safe(provider), error_code: safe(errorCode ?? outcome) });
+}
+
+export function recordSeoContentAudit() {
+  seoRegistry().contentAudits.inc();
+}
+
+function renderSeo(): string[] {
+  const r = seoRegistry();
+  return [r.syncSuccess, r.syncFailure, r.syncDuration, r.apiRequests, r.apiErrors, r.recommendations, r.llmRequests, r.llmErrors, r.contentAudits].map((m) => m.render());
+}
+
 /** The minimal SpanProcessor shape (avoids depending on @opentelemetry/sdk-trace-base directly). */
 type EndedSpan = { attributes: Record<string, unknown>; duration: [number, number] };
 export const metricsSpanProcessor = {
@@ -166,10 +231,35 @@ async function databaseGauges(): Promise<string> {
       gauge("jithendar_jobs", "Background jobs by status.", jobs.map((j) => ({ labels: { status: j.status }, value: Number(j.n) }))),
       gauge("jithendar_database_up", "1 when the database answered the last metrics query.", [{ value: 1 }]),
     ].join("\n");
-    dbCache = { at: Date.now(), text };
-    return text;
+    const full = `${text}\n${await seoGauges(db, sql, rowsOf)}`;
+    dbCache = { at: Date.now(), text: full };
+    return full;
   } catch {
     return gauge("jithendar_database_up", "1 when the database answered the last metrics query.", [{ value: 0 }]);
+  }
+}
+
+/**
+ * SEO sync health from the database (survives restarts and is the same on every replica, unlike the counters):
+ * consecutive failed runs since the last success and the last success time, per data job type. Separate try, so a
+ * database without the SEO tables does not mark the whole database as down.
+ */
+async function seoGauges(db: Awaited<ReturnType<typeof import("@/db").getDb>>, sql: typeof import("drizzle-orm").sql, rowsOf: typeof import("@/db/rows").rowsOf): Promise<string> {
+  try {
+    const rows = rowsOf<{ job_type: string; failures: number; last_success: number | null }>(
+      await db.execute(sql`
+        select t.job_type,
+          (select count(*)::int from seo_sync_jobs j where j.job_type = t.job_type and j.status = 'failed'
+             and j.started_at > coalesce((select max(started_at) from seo_sync_jobs s where s.job_type = t.job_type and s.status in ('succeeded', 'partial')), 'epoch'::timestamptz)) as failures,
+          (select extract(epoch from max(finished_at))::float8 from seo_sync_jobs s where s.job_type = t.job_type and s.status in ('succeeded', 'partial')) as last_success
+        from (values ('gsc_sync'), ('ga4_sync'), ('technical_scan'), ('recommendations')) as t(job_type)`),
+    );
+    return [
+      gauge("seo_sync_consecutive_failures", "Failed SEO runs since the last successful one, by job type (from the database).", rows.map((r) => ({ labels: { job_type: r.job_type }, value: Number(r.failures) }))),
+      gauge("seo_sync_last_success_timestamp_seconds", "Unix time of the last successful SEO run, by job type (0 = never).", rows.map((r) => ({ labels: { job_type: r.job_type }, value: Number(r.last_success ?? 0) }))),
+    ].join("\n");
+  } catch {
+    return "";
   }
 }
 
@@ -192,6 +282,7 @@ export async function renderMetrics(): Promise<string> {
     r.duration.render(),
     r.mail.render(),
     r.comments.render(),
+    ...renderSeo(),
     await databaseGauges(),
   ];
   r.loop.reset();
