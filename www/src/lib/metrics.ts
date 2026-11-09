@@ -127,6 +127,71 @@ export function recordComment(status: "approved" | "pending") {
   registry().comments.inc({ status });
 }
 
+// --- SEO intelligence platform (docs/seo) ---------------------------------------------------------------
+// Labels are low-cardinality only: job type, provider, outcome, category. Never URLs, queries or property ids.
+
+type SeoRegistry = {
+  syncSuccess: Counter;
+  syncFailure: Counter;
+  syncDuration: Histogram;
+  apiRequests: Counter;
+  apiErrors: Counter;
+  recommendations: Counter;
+  llmRequests: Counter;
+  llmErrors: Counter;
+  contentAudits: Counter;
+};
+const gs = globalThis as unknown as { __seoMetrics?: SeoRegistry };
+function seoRegistry(): SeoRegistry {
+  gs.__seoMetrics ??= {
+    syncSuccess: new Counter("seo_sync_success_total", "SEO sync/analysis runs that succeeded, by job type."),
+    syncFailure: new Counter("seo_sync_failure_total", "SEO sync/analysis runs that failed, by job type and error code."),
+    syncDuration: new Histogram("seo_sync_duration_seconds", "Duration of SEO sync/analysis runs, by job type.", [1, 5, 15, 30, 60, 120, 300, 600, 1200]),
+    apiRequests: new Counter("seo_api_requests_total", "Requests to Google APIs, by provider and outcome."),
+    apiErrors: new Counter("seo_api_errors_total", "Failed requests to Google APIs, by provider and outcome."),
+    recommendations: new Counter("seo_recommendations_generated_total", "SEO recommendations created or refreshed, by category."),
+    llmRequests: new Counter("seo_llm_requests_total", "LLM enrichment requests, by provider and outcome."),
+    llmErrors: new Counter("seo_llm_errors_total", "Failed LLM enrichment requests, by provider and error code."),
+    contentAudits: new Counter("seo_content_audits_total", "Article content audits run."),
+  };
+  return gs.__seoMetrics;
+}
+
+const SAFE_LABEL = /^[a-z0-9_]{1,40}$/;
+const safe = (v: string) => (SAFE_LABEL.test(v) ? v : "other");
+
+export function recordSeoSync(jobType: string, outcome: "success" | "failure" | "skipped", seconds: number, errorCode?: string) {
+  const r = seoRegistry();
+  if (outcome === "success") r.syncSuccess.inc({ job_type: safe(jobType) });
+  if (outcome === "failure") r.syncFailure.inc({ job_type: safe(jobType), error_code: safe(errorCode ?? "unknown") });
+  if (outcome !== "skipped") r.syncDuration.observe({ job_type: safe(jobType) }, seconds);
+}
+
+export function recordSeoApiRequest(provider: string, outcome: string) {
+  const r = seoRegistry();
+  r.apiRequests.inc({ provider: safe(provider), outcome: safe(outcome) });
+  if (outcome !== "ok") r.apiErrors.inc({ provider: safe(provider), outcome: safe(outcome) });
+}
+
+export function recordSeoRecommendations(category: string, n = 1) {
+  if (n > 0) seoRegistry().recommendations.inc({ category: safe(category) }, n);
+}
+
+export function recordSeoLlm(provider: string, outcome: "ok" | "invalid" | "error" | "cached", errorCode?: string) {
+  const r = seoRegistry();
+  r.llmRequests.inc({ provider: safe(provider), outcome });
+  if (outcome === "invalid" || outcome === "error") r.llmErrors.inc({ provider: safe(provider), error_code: safe(errorCode ?? outcome) });
+}
+
+export function recordSeoContentAudit() {
+  seoRegistry().contentAudits.inc();
+}
+
+function renderSeo(): string[] {
+  const r = seoRegistry();
+  return [r.syncSuccess, r.syncFailure, r.syncDuration, r.apiRequests, r.apiErrors, r.recommendations, r.llmRequests, r.llmErrors, r.contentAudits].map((m) => m.render());
+}
+
 /** The minimal SpanProcessor shape (avoids depending on @opentelemetry/sdk-trace-base directly). */
 type EndedSpan = { attributes: Record<string, unknown>; duration: [number, number] };
 export const metricsSpanProcessor = {
@@ -192,6 +257,7 @@ export async function renderMetrics(): Promise<string> {
     r.duration.render(),
     r.mail.render(),
     r.comments.render(),
+    ...renderSeo(),
     await databaseGauges(),
   ];
   r.loop.reset();

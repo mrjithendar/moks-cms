@@ -12,10 +12,17 @@ instruction, so commits are made **only on the feature branch**. Nothing is merg
 The repo has a Postgres job queue (`src/lib/jobs.ts`) and a 30-second worker in every replica
 (`src/lib/scheduler.ts`), and no CronJobs. Adding CronJobs would mean a second scheduler, a second container
 entrypoint and new RBAC. Instead, `seoTick()` runs inside the existing worker: it checks the schedules stored in
-the SEO settings, **enqueues** due jobs into the existing `job` table with a per-window `dedupe_key`, and each
-SEO job takes a **Postgres advisory lock per job type** (`pg_try_advisory_lock`) before running. That gives the
-same guarantee as `concurrencyPolicy: Forbid` (one run per type across both replicas) with no new workload.
-PgBouncer runs in session mode, so session-level advisory locks are safe (same reason the migrator's lock works).
+the SEO settings, **enqueues** due jobs into the existing `job` table with a per-slot `dedupe_key`, and each
+SEO job takes a **per-job-type lease** in Postgres before running. That gives the same guarantee as
+`concurrencyPolicy: Forbid` (one run per type across both replicas) with no new workload.
+
+Why a lease row (`seo_job_locks`) rather than `pg_try_advisory_lock`: the app talks to Postgres through a
+postgres.js pool (up to 5 connections) behind PgBouncer. A session-level advisory lock is held by whichever pooled
+connection ran the `SELECT`, and the matching unlock may run on a different connection, where it silently does
+nothing, leaking the lock until that connection closes. A transaction-level lock would have to hold a transaction
+open for the whole sync, which deadlocks PGlite (tests, local dev). The lease is acquired with one atomic
+`INSERT … ON CONFLICT DO UPDATE … WHERE locked_until < now()`, released by holder id, renewed while a long run
+progresses, and expires on its own if a pod dies mid-run.
 
 ## D-03 Docs live in `www/docs/seo/`, not `docs/seo/`
 All project docs are in `www/docs/`; there is no root `docs/` folder.
