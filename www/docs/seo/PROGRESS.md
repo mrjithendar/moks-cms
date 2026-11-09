@@ -16,8 +16,8 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 | 2 Data foundation | done (mock-tested) |
 | 3 APIs and dashboard | done (mock-tested) |
 | 4 Recommendation engine | done (mock-tested) |
-| 5 CMS integration and calendar | in progress |
-| 6 Technical SEO audit | not started |
+| 5 CMS integration and calendar | done (mock-tested) |
+| 6 Technical SEO audit | in progress |
 | 7 Reports and notifications | not started |
 | 8 Deployment, observability, CI | not started |
 | 9 Validate, document, PR | not started |
@@ -60,7 +60,21 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 - Bug found by tests and fixed: Markdown images were counted as internal links.
 - `tests/seo-intel-recs.test.ts`: 14 tests.
 
+## Phase 5 notes
+
+- Article panel `/admin/seo/articles/[id]` (linked from the post editor for admins): GSC + GA4 performance, queries,
+  metadata, structured-data inputs, audit findings, heading outline, link suggestions, recommendations, proposals
+  with side-by-side diff (`components/seo/Diff.tsx`).
+- `optimize.ts`: rule (+ optional LLM) proposals; accept → the admin's editor `autosave` working copy (never the
+  post); reject; rollback restores the previous working copy or reverts the field; stale proposals refused (409).
+- `calendar.ts` + `/admin/seo/calendar` (month/week): flow-checked statuses, "published" only follows the linked
+  post, create draft via the CMS's `createPost` (status draft), link existing post, owner, clicks since publish.
+- `tests/seo-intel-cms.test.ts` (9): accept → working copy → rollback; post rows and revisions untouched; static
+  scan that no SEO file references publish/update/delete functions or writes `post`.
+- Owner commit `d16f13c "seo platform"` (22:02) on this branch also contains the owner's CI/Dockerfile changes plus
+  in-progress Phase 4 files; left as is.
+
 ## Next steps
 
-- Phase 5: article panel (performance, queries, audit, proposals), side-by-side diff, accept → editor working copy,
-  rollback, calendar UI/API.
+- Phase 6: technical audit (robots, sitemaps, canonicals, titles/meta, headings, broken links, redirects, orphans,
+  alt, JSON-LD, OG, viewport, indexability, status codes), SSRF-safe crawler, optional URL Inspection / PSI.

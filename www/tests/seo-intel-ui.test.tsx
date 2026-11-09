@@ -22,6 +22,10 @@ const PAGES: [string, () => Promise<{ default: unknown }>][] = [
   ["integrations", () => import("@/app/admin/seo/integrations/page")],
   ["sync", () => import("@/app/admin/seo/sync/page")],
   ["settings", () => import("@/app/admin/seo/settings/page")],
+  ["recommendations", () => import("@/app/admin/seo/recommendations/page")],
+  ["content", () => import("@/app/admin/seo/content/page")],
+  ["links", () => import("@/app/admin/seo/links/page")],
+  ["calendar", () => import("@/app/admin/seo/calendar/page")],
 ];
 async function render(load: () => Promise<{ default: unknown }>, sp: Record<string, string> = {}) {
   const Page = (await load()).default as PageFn;
@@ -60,6 +64,12 @@ describe("/admin/seo pages", () => {
     const sync = await render(PAGES[6]![1]);
     expect(sync).toContain("gsc_backfill");
     for (const [, load] of PAGES) expect(await render(load, { range: "28" })).not.toMatch(/PRIVATE KEY|fixture-token/);
+    // Article panel against a real post row.
+    const [post] = await db.insert(schema.post).values({ collection: "blog", slug: "argo-cd-gitops", title: "Argo CD GitOps", description: "A description that is comfortably long for the meta description check in tests.", body: "## A\n\ntext", category: "kubernetes", contentType: "tutorial", status: "published", publishedAt: new Date("2026-05-01T00:00:00Z"), authorId: "admin" }).returning();
+    const Panel = (await import("@/app/admin/seo/articles/[id]/page")).default as (p: { params: Promise<{ id: string }> }) => Promise<React.ReactElement>;
+    const html = renderToStaticMarkup(await Panel({ params: Promise.resolve({ id: post!.id }) }));
+    expect(html).toContain("Open in editor");
+    expect(html).toContain("Ranking queries");
   });
 });
 
