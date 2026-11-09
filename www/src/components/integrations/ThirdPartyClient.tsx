@@ -46,15 +46,19 @@ export function GoogleAnalytics({ measurementId }: { measurementId: string }) {
   );
 }
 
-/** The AdSense tag, once per page load, on public pages only. It also shows Google's consent message where required. */
+/**
+ * The AdSense tag (Auto ads + ad units), on public pages only. It also shows Google's consent message where required.
+ * A plain async <script>, not next/script: React 19 hoists it into <head> of the server-rendered HTML, which is
+ * where AdSense site verification and Auto ads expect it (next/script afterInteractive only injects it after
+ * hydration, so crawlers never see it). Async, so it never blocks rendering; React de-duplicates it by src.
+ */
 export function AdSenseLoader({ client }: { client: string }) {
   const pathname = usePathname();
   if (!isTrackablePath(pathname)) return null;
   return (
-    <Script
-      id="adsense"
+    <script
+      async
       src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`}
-      strategy="afterInteractive"
       crossOrigin="anonymous"
     />
   );

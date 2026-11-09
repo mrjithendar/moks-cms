@@ -51,7 +51,7 @@ export const GROUPS: Group[] = [
     description: "Google Analytics 4 and AdSense load only in production, only on public pages, and only after consent where the law requires it.",
     fields: [
       { env: "GA4_MEASUREMENT_ID", label: "GA4 measurement ID", type: "text", pattern: /^$|^G-[A-Z0-9]{4,16}$/, placeholder: "G-XXXXXXXXXX" },
-      { env: "ADSENSE_CLIENT_ID", label: "AdSense publisher ID", type: "text", pattern: /^$|^ca-pub-\d{10,20}$/, placeholder: "ca-pub-0000000000000000" },
+      { env: "ADSENSE_CLIENT_ID", label: "AdSense publisher ID", type: "text", pattern: /^$|^off$|^ca-pub-\d{10,20}$/, placeholder: "ca-pub-2479369059565142", hint: "Empty: ca-pub-2479369059565142 (jithendar.com's account). \"off\" disables ads." },
       { env: "ADSENSE_SLOT_ARTICLE_END", label: "Ad slot: end of article", type: "text", pattern: /^$|^\d{6,20}$/ },
       { env: "ADSENSE_SLOT_LISTING", label: "Ad slot: listings", type: "text", pattern: /^$|^\d{6,20}$/ },
       { env: "ADSENSE_TEST_MODE", label: "Show Google test ads outside production", type: "boolean" },

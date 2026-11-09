@@ -65,7 +65,9 @@ No newsletter exists, so no newsletter events.
 
 ## Google AdSense
 
-- `ADSENSE_CLIENT_ID` loads the official tag once per page view on public pages only, after hydration. Ad units come
+- The official tag (`<script async src="…/adsbygoogle.js?client=ca-pub-…" crossorigin="anonymous">`) is server-rendered
+  into `<head>` on public pages only, so AdSense site verification and **Auto ads** find it in the raw HTML. Publisher
+  ID: `ADSENSE_CLIENT_ID`, defaulting to `ca-pub-2479369059565142` (jithendar.com's account); `off` disables ads. Ad units come
   from `ADSENSE_SLOT_ARTICLE_END` (one responsive unit after the article body, labelled "Advertisement", 280 px reserved
   to avoid layout shift). Never on admin, login, editor, drafts, previews, 404 or empty pages; no refresh, no prompts.
 - Outside production nothing loads unless `ADSENSE_TEST_MODE=true`, which requests Google test ads (`data-adtest="on"`).

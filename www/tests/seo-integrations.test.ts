@@ -54,6 +54,11 @@ describe("integration configuration", () => {
 
     const bad = integrations({ GA4_MEASUREMENT_ID: "G-<script>", ADSENSE_CLIENT_ID: "pub-123\"><script>", INDEXNOW_KEY: "../../etc" }, true);
     expect([bad.ga4, bad.adsense, bad.indexNowKey]).toEqual([null, null, null]);
+
+    // Unset → the site's own publisher ID (Auto ads); "off" disables ads.
+    expect(integrations({}, true).adsense?.client).toBe("ca-pub-2479369059565142");
+    expect(integrations({}, false).adsense).toBeNull();
+    expect(integrations({ ADSENSE_CLIENT_ID: "off" }, true).adsense).toBeNull();
   });
 
   it("serves ads.txt only with the account-provided text, verbatim", async () => {
