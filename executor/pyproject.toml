@@ -8,7 +8,7 @@ dependencies = [
   "uvicorn==0.54.0",
   "redis==8.1.0",
   "httpx==0.28.1",
-  "pydantic==2.14.2",
+  "pydantic==2.14.3",
 ]
 
 [build-system]
