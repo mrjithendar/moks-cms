@@ -45,7 +45,7 @@ MANUAL = {
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
     ("security.istio.io", "PeerAuthentication"),  # mTLS posture: a commit must not be able to relax it
-    ("security.istio.io", "AuthorizationPolicy"),  # the /db and db.jithendar.com IP allowlists, in namespace istio-ingress
+    ("security.istio.io", "AuthorizationPolicy"),  # 75-mesh.yaml allow-known-callers: a commit must not be able to widen it
 }
 
 ROLLOUT_KINDS = {"Deployment": "deployment", "StatefulSet": "statefulset"}

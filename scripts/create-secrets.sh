@@ -2,8 +2,9 @@
 # One-time creation of the jithendar.com Secrets in namespace jithendar (run by an admin, never by CI).
 #   scripts/create-secrets.sh [kube-context]
 # Generates every password/key randomly. Prompts only for Cloudflare Turnstile keys and optional SMTP.
-# Refuses to overwrite existing Secrets: the Postgres password is baked into the database on first
-# start, so changing it here would lock the site out.
+# Refuses to overwrite an existing Secret (SETTINGS_ENCRYPTION_KEY decrypts stored credentials).
+# DATABASE_URL is not here: Terraform in the miniKube repo writes postgres-db-credentials, which
+# minikube/30-jithendar-com.yaml reads. The site runs without Redis (no REDIS_URL).
 set -euo pipefail
 
 CONTEXT="${1:-mk4}"
@@ -11,12 +12,10 @@ NS="jithendar"
 k() { kubectl --context "$CONTEXT" -n "$NS" "$@"; }
 rand() { openssl rand -base64 48 | tr -d '/+=\n' | cut -c1-"${1:-40}"; }
 
-for s in jithendar-postgres jithendar-com-env; do
-  if k get secret "$s" >/dev/null 2>&1; then
-    echo "Secret $s already exists. Nothing changed. (Delete it deliberately first if you really mean to recreate it.)" >&2
-    exit 1
-  fi
-done
+if k get secret jithendar-com-env >/dev/null 2>&1; then
+  echo "Secret jithendar-com-env already exists. Nothing changed. (Delete it deliberately first if you really mean to recreate it.)" >&2
+  exit 1
+fi
 
 read -r -p "Cloudflare Turnstile site key: " TURNSTILE_SITE_KEY
 read -r -s -p "Cloudflare Turnstile secret key: " TURNSTILE_SECRET_KEY; echo
@@ -25,12 +24,9 @@ read -r -p "SMTP URL (optional, e.g. smtps://user:pass@smtp.example.com:465; Ent
 MAIL_FROM=""
 [[ -n "$SMTP_URL" ]] && read -r -p "Mail From (e.g. Jithendar.com <no-reply@jithendar.com>): " MAIL_FROM
 
-PG_PASSWORD="$(rand 40)"
 BOOTSTRAP="$(rand 48)"
 
-k create secret generic jithendar-postgres --from-literal=password="$PG_PASSWORD"
 args=(
-  --from-literal=DATABASE_URL="postgres://jithendar:${PG_PASSWORD}@jithendar-postgres:5432/jithendar"
   --from-literal=BETTER_AUTH_SECRET="$(rand 64)"
   --from-literal=SETTINGS_ENCRYPTION_KEY="$(rand 64)"
   --from-literal=ADMIN_BOOTSTRAP_TOKEN="$BOOTSTRAP"
@@ -43,8 +39,9 @@ k create secret generic jithendar-com-env "${args[@]}"
 
 cat <<MSG
 
-Secrets created in namespace $NS: jithendar-postgres, jithendar-com-env.
-REDIS_URL is not here: the site reads it from redis-jithendar-credentials (shared Valkey, Terraform in miniKube).
+Secret created in namespace $NS: jithendar-com-env.
+DATABASE_URL is not here: the site reads it from postgres-db-credentials (shared CloudNativePG cluster,
+Terraform in miniKube). The site runs without Redis.
 
 One-time admin setup token (shown once; also stored in jithendar-com-env/ADMIN_BOOTSTRAP_TOKEN):
 

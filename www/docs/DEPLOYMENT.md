@@ -11,20 +11,19 @@
 | Image pulls | Secret `jithendar/harbor-pull` (read-only robot `robot$k8s-pull`, never expires), written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets` |
 | TLS | The Istio gateway's wildcard certificate (`jithendar.com`, `*.jithendar.com`, DNS-01), in the miniKube repo (`deploy/minikube/istio/edge`). `minikube/45-`, `50-` and `55-` are Traefik's certificate and TLSStore, kept only until Traefik is uninstalled (`minikube/README.md`, "Leaving Traefik"). |
 
-## Data services (namespace `jithendar`, deployed by the same `kubectl apply -k`)
+## Data services (shared, in the miniKube repo)
 
 | Service | Manifest | Notes |
 |---|---|---|
-| PostgreSQL 18 | `minikube/10-postgres.yaml` | StatefulSet `jithendar-postgres`, 10 GiB volume, **pinned to node `mk4-m03`** (Minikube hostpath data lives on that node; moving the pod means moving `/tmp/hostpath-provisioner/jithendar/data-jithendar-postgres-0` too). Runs as uid 70; a one-shot init container fixes volume ownership. Reachable only from the site's pods. |
-| Redis (shared Valkey) | miniKube repo, `minikube-infrastructure/redis.tf` | mk4's one Valkey in namespace `redis` (3 pods, Sentinel failover, `valkey-master.redis.svc:6379`). The site is ACL user `jithendar` on database 0; `REDIS_URL` comes from Secret `redis-jithendar-credentials` (key `uri`), written by Terraform. Keys the site sets with a TTL are evicted under memory pressure (`volatile-lru`). Losing it is harmless: the site falls back to Postgres. |
+| PostgreSQL 18 (shared CloudNativePG) | miniKube repo, `minikube-infrastructure/postgres.tf` | Database and role `jithendar` on `postgres-db/postgres-cluster` (3 instances, PgBouncer pooler in session mode). `DATABASE_URL` comes from Secret `postgres-db-credentials` (key `uri`), written by Terraform. Moved from the old `jithendar-postgres` StatefulSet on 2026-11-09. |
+| Redis | none | The site runs without Redis since 2026-11-09 (no `REDIS_URL`): Better Auth sessions and rate limits are in Postgres, caches are per process, so a change can take up to the cache TTL to show on the other replica. The practice executor still uses the shared Valkey (`redis-practice-credentials`). |
 
 Secrets (never in Git), created once by `scripts/create-secrets.sh`:
 
 | Secret | Keys |
 |---|---|
-| `jithendar-postgres` | `password` |
-| `redis-jithendar-credentials` | `uri` (and `host`, `port`, `username`, `password`, `db`): written by Terraform in the miniKube repo, not by this script |
-| `jithendar-com-env` | `DATABASE_URL`, `BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `ADMIN_BOOTSTRAP_TOKEN`, `METRICS_TOKEN`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, optional `SMTP_URL`, `MAIL_FROM` (fallback until email is configured in the admin, see `docs/EMAIL.md`); media: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, optional `R2_PUBLIC_BASE_URL`; optional `GEMINI_API_KEY`, `GEMINI_IMAGE_MODEL` (added with `scripts/set-media-config.sh`) |
+| `postgres-db-credentials` | `uri` (and `host`, `port`, `dbname`, `username`, `password`, `direct-host`, `direct-uri`): written by Terraform in the miniKube repo, not by this script |
+| `jithendar-com-env` | `BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `ADMIN_BOOTSTRAP_TOKEN`, `METRICS_TOKEN`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, optional `SMTP_URL`, `MAIL_FROM` (fallback until email is configured in the admin, see `docs/EMAIL.md`); media: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, optional `R2_PUBLIC_BASE_URL`; optional `GEMINI_API_KEY`, `GEMINI_IMAGE_MODEL` (added with `scripts/set-media-config.sh`) |
 
 Back up `SETTINGS_ENCRYPTION_KEY` with your database backups: it decrypts the stored storage, email, social sign-in and Gemini credentials.
 Gemini limits (`GEMINI_IMAGE_*`) are plain env values in `minikube/30-jithendar-com.yaml`.
@@ -72,8 +71,7 @@ PodDisruptionBudgets, cert-manager Certificates and Istio VirtualServices in nam
 Deployment and StatefulSet and runs the smoke test. It never deletes anything.
 
 Not applied by CI, still `./deploy.sh` (or `scripts/manifests.sh practice-executor | kubectl apply -f -`): the Namespace,
-ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, the RuntimeClass and admission policies, and
-`minikube/db-access-*.yaml`. CI signs in as `jithendar/github-ci-applier` (`minikube/85-ci-applier.yaml`), which can only create and
+ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, the RuntimeClass and admission policies. CI signs in as `jithendar/github-ci-applier` (`minikube/85-ci-applier.yaml`), which can only create and
 update those application kinds, so a commit cannot widen its access. Pull requests get the same selection as a
 plan, without cluster access.
 

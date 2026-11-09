@@ -1,7 +1,7 @@
 # The site on the Istio ingress gateway: the default route of the jithendar.com routing table in the miniKube repo
 # (deploy/minikube/istio/edge, root VirtualService istio-ingress/jithendar-com). That table owns the Gateway, the
 # wildcard certificate, www → apex and HTTP → HTTPS, compression (zstd/br/gzip) and the other applications' prefixes
-# (/argocd, /grafana, /moks, /roboshop, ...); /db goes to db-access-20-adminer.yaml. This is a delegate: no hosts or
+# (/argocd, /grafana, /moks, /roboshop, /postgres, ...). This is a delegate: no hosts or
 # gateways of its own.
 ---
 apiVersion: networking.istio.io/v1

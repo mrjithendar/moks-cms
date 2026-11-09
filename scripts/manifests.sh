@@ -2,15 +2,13 @@
 # Print one group of the mk4 manifests in minikube/ as multi-document YAML, for kubectl apply/diff/delete -f -.
 # minikube/ is one flat folder; the file name says which group a manifest belongs to:
 #
-#   site               kustomization.yaml (00-… to 85-…): the site, Postgres, TLS, ingress, CI accounts
+#   site               kustomization.yaml (00-… to 85-…): the site, routing, mesh, CI accounts
 #   practice-executor  practice-executor-*.yaml: Python practice runner (applied by hand once gVisor is verified)
-#   db-access          db-access-*.yaml: Adminer at /db/ and PostgreSQL at db.jithendar.com (minikube/DB_ACCESS.md)
 #
 #   scripts/manifests.sh site | kubectl --context mk4 apply -f -
 #   scripts/manifests.sh practice-executor | kubectl --context mk4 diff -f -
-#   scripts/manifests.sh db-access | kubectl --context mk4 delete -f -
 #
-# Only the site uses kustomize (Kustomize allows one kustomization per folder). The other two groups are plain
+# Only the site uses kustomize (Kustomize allows one kustomization per folder). The other group is plain
 # files, printed in name order, which is the order they must be applied in.
 set -euo pipefail
 
@@ -21,7 +19,7 @@ case "$group" in
   site)
     kubectl kustomize "$dir"
     ;;
-  practice-executor|db-access)
+  practice-executor)
     shopt -s nullglob
     files=("$dir/$group"-*.yaml)
     [[ ${#files[@]} -gt 0 ]] || { echo "No minikube/$group-*.yaml files" >&2; exit 1; }
@@ -32,7 +30,7 @@ case "$group" in
     done
     ;;
   *)
-    echo "usage: $0 site|practice-executor|db-access" >&2
+    echo "usage: $0 site|practice-executor" >&2
     exit 2
     ;;
 esac

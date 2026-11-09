@@ -1,21 +1,19 @@
 # jithendar.com manifests for the mk4 minikube cluster
 
 Everything jithendar.com runs on the mk4 cluster, in one flat folder. Exported from the live cluster on 2026-10-29
-with cluster-generated fields removed, not deployed by Argo CD. The file name says which of three groups a manifest
+with cluster-generated fields removed, not deployed by Argo CD. The file name says which of two groups a manifest
 belongs to; each group is applied on its own, and `scripts/manifests.sh <group>` prints it for `kubectl … -f -`.
 
 | Group | Files | Applied by |
 |---|---|---|
 | `site` | `00-…` to `85-…`, listed in `kustomization.yaml` | `./deploy.sh` (all of it); CI applies the application objects |
 | `practice-executor` | `practice-executor-*.yaml` | a person, once, after gVisor is verified; then CI (application objects) |
-| `db-access` | `db-access-*.yaml` | CI, once its Role allows TCP routes (`DB_ACCESS.md`) |
 
 ## Site (`kustomization.yaml`)
 
 | File | Resources |
 |---|---|
 | `00-namespace.yaml` | Namespace `jithendar` |
-| `10-postgres.yaml` | StatefulSet, Service, NetworkPolicy `jithendar-postgres` (10 Gi volume, pinned to node `mk4-m03`) |
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, PodDisruptionBudget, NetworkPolicy `jithendar-com` |
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `www/docs/OBSERVABILITY.md` |
@@ -47,16 +45,14 @@ scripts/manifests.sh practice-executor | kubectl --context mk4 apply -f -
 Images are always `:latest`. CI (`ci-practice-executor.yml`, job `deploy`) pushes `:latest` and restarts both
 Deployments on every release once repository variable `PRACTICE_EXECUTOR_DEPLOY` is `true`.
 
-## Database access (`db-access-*.yaml`)
+## Database (shared CloudNativePG cluster)
 
-Adminer at `https://jithendar.com/db/` and PostgreSQL at `db.jithendar.com:443`, both limited to two client IPs.
-Read [`DB_ACCESS.md`](DB_ACCESS.md) first: the order matters.
-
-| File | Resources |
-|---|---|
-| `db-access-10-allowlist.yaml` | The allowed client addresses: AuthorizationPolicies `istio-ingress/db-allowlist` (/db) and `istio-ingress/db-tcp-allowlist` (db.jithendar.com); edit both lists together |
-| `db-access-20-adminer.yaml` | Adminer (`jithendar-db-ui`): Deployment, Service, NetworkPolicy, delegate VirtualService for /db |
-| `db-access-30-postgres-tls.yaml` | VirtualService `jithendar-db` (TCP) for `db.jithendar.com` on Gateway `istio-ingress/public`, NetworkPolicy `jithendar-postgres-remote` |
+The site's database is `jithendar` on the shared cluster `postgres-db/postgres-cluster` (miniKube repo,
+`minikube-infrastructure/postgres.tf`, `postgres_databases.jithendar`). Terraform writes Secret
+`jithendar/postgres-db-credentials`; the site reads its `uri` (PgBouncer pooler, session mode) as `DATABASE_URL`.
+It was copied there from the old `jithendar-postgres` StatefulSet on 2026-11-09 (`dbMigration.sh` in the workspace,
+row counts verified). The site's own Adminer (`/db`) and `db.jithendar.com` are gone with it: use the cluster's
+`/postgres` UI and `postgres.jithendar.com` (miniKube repo, `deploy/minikube/postgres/access`).
 
 ## Traefik (gone)
 
@@ -69,13 +65,14 @@ mTLS with no plain-text port: Prometheus scrapes `:9464` over mTLS through its o
 ## Before the first deploy
 
 These Secrets must exist in `jithendar`; they are never committed. `scripts/create-secrets.sh mk4`
-creates the first two; Terraform in the miniKube repository writes the Redis ones.
+creates `jithendar-com-env`; Terraform in the miniKube repository writes the database and Redis ones.
 
-- `jithendar-postgres` (key `password`)
-- `jithendar-com-env` (site configuration; its `DATABASE_URL` password matches the one above)
-- `redis-jithendar-credentials` and `redis-practice-credentials` (key `uri`, read as `REDIS_URL` and
-  `EXECUTOR_REDIS_URL`): the shared Valkey in namespace `redis`, written by Terraform in the miniKube repository
-  (`minikube-infrastructure/redis.tf`, `redis_tenants`). Neither the site nor the executor runs a Redis of its own
+- `jithendar-com-env` (site configuration)
+- `postgres-db-credentials` (key `uri`, read as `DATABASE_URL`): the shared CloudNativePG cluster in namespace
+  `postgres-db`, written by Terraform in the miniKube repository (`minikube-infrastructure/postgres.tf`)
+- `redis-practice-credentials` (key `uri`, read as `EXECUTOR_REDIS_URL` by the practice executor): the shared Valkey
+  in namespace `redis`, written by Terraform in the miniKube repository (`minikube-infrastructure/redis.tf`,
+  `redis_tenants.practice`). The site itself uses no Redis (removed 2026-11-09)
 - `harbor-pull` (pull secret for `registry.jithendar.com`, used by the site, the practice executor and sandbox pods;
   written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets`)
 

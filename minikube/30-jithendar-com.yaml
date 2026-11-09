@@ -1,4 +1,5 @@
-# Site: Deployment, Service, PodDisruptionBudget, NetworkPolicy (needs Secrets jithendar-com-env and harbor-pull)
+# Site: Deployment, Service, PodDisruptionBudget, NetworkPolicy (needs Secrets jithendar-com-env, harbor-pull and
+# postgres-db-credentials; the last is written by Terraform in the miniKube repo)
 # Exported from the live mk4 cluster (namespace jithendar) on 2026-10-29; cluster-generated fields removed.
 ---
 apiVersion: apps/v1
@@ -50,12 +51,16 @@ spec:
           value: '1'
         - name: GEMINI_IMAGE_DAILY_LIMIT
           value: '50'
-        # Shared Valkey (namespace redis, ACL user jithendar, database 0). Secret written by Terraform in the miniKube
-        # repo (minikube-infrastructure/redis.tf); env wins over the same key in jithendar-com-env.
-        - name: REDIS_URL
+        # No REDIS_URL (removed 2026-11-09): sessions and rate limits live in Postgres, caches are per process
+        # (src/lib/redis.ts). Do not add it back to jithendar-com-env either: envFrom would pick it up.
+        # Shared CloudNativePG cluster (namespace postgres-db, role and database jithendar), through its PgBouncer
+        # pooler (session mode, so the migrations' advisory lock works). Secret written by Terraform in the miniKube
+        # repo (minikube-infrastructure/postgres.tf, postgres_databases.jithendar); env wins over the stale
+        # DATABASE_URL still in jithendar-com-env.
+        - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: redis-jithendar-credentials
+              name: postgres-db-credentials
               key: uri
         envFrom:
         - secretRef:
@@ -206,27 +211,18 @@ spec:
       podSelector:
         matchLabels:
           k8s-app: kube-dns
+  # Shared CloudNativePG cluster (namespace postgres-db): the PgBouncer pooler (Secret postgres-db-credentials, uri) and
+  # the instances (direct-uri). Both carry cnpg.io/cluster. Not meshed there, so the sidecar sends plain TCP.
   - ports:
     - port: 5432
       protocol: TCP
     to:
-    - podSelector:
-        matchLabels:
-          app: jithendar-postgres
-  # Shared Valkey (namespace redis): Service valkey-master:6379 targets the HAProxy master proxy on pod port 6380, in
-  # every pod (it forwards to the current primary); 6379 is Valkey itself.
-  - ports:
-    - port: 6379
-      protocol: TCP
-    - port: 6380
-      protocol: TCP
-    to:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: redis
+          kubernetes.io/metadata.name: postgres-db
       podSelector:
         matchLabels:
-          app.kubernetes.io/name: valkey
+          cnpg.io/cluster: postgres-cluster
   # Python practice executor API (minikube/practice-executor-*.yaml; PRACTICE_EXECUTOR_URL=http://practice-executor.jithendar).
   - ports:
     - port: 8080

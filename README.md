@@ -6,7 +6,7 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 | Path | Contents |
 |---|---|
 | [`www/`](www/README.md) | The Next.js site: source, content, tests, Dockerfiles and [docs](www/docs/) |
-| [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), the Python practice executor (`practice-executor-*.yaml`) and database access (`db-access-*.yaml`); `scripts/manifests.sh <group>` prints one group |
+| [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), and the Python practice executor (`practice-executor-*.yaml`); `scripts/manifests.sh <group>` prints one group |
 | [`grafana/`](grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app |
 | `deploy.sh` | Apply the site manifests and restart the site on `jithendar-com:latest` |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |

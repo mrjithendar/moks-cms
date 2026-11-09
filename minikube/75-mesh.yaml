@@ -2,7 +2,7 @@
 # plugin, the ingress gateway and the mesh-wide STRICT default are in the miniKube repo (minikube-infrastructure,
 # deploy/minikube/istio/mesh).
 # - PeerAuthentication default: STRICT, no plain-text port (live since 2026-11-09). Every client is meshed: the Istio
-#   gateway (public routes and the db.jithendar.com TCP route), Prometheus (scrapes :9464 through its own sidecar) and
+#   gateway (public routes), Prometheus (scrapes :9464 through its own sidecar) and
 #   the pods here. Practice sandboxes have no sidecar and no network.
 # - AuthorizationPolicy allow-known-callers: only the gateway, Prometheus/Grafana (monitoring) and this namespace's own
 #   pods may call anything here. Dry run first (annotation istio.io/dry-run): it only counts what it would refuse;
@@ -55,8 +55,6 @@ spec:
       operator: In
       values:
       - jithendar-com
-      - jithendar-db-ui
-      - jithendar-postgres
       - practice-dispatcher
       - practice-executor-api
   policyTypes:
@@ -74,8 +72,8 @@ spec:
     - port: 15090
       protocol: TCP
   egress:
-  # DNS, to resolve istiod.istio-system.svc. Postgres has no DNS rule of its own, so without this
-  # its sidecar times out on the lookup and never get ready (outage 2026-11-08).
+  # DNS, to resolve istiod.istio-system.svc. A pod with no DNS rule of its own would otherwise time out on the
+  # lookup and its sidecar never get ready (outage 2026-11-08).
   - to:
     - namespaceSelector:
         matchLabels:

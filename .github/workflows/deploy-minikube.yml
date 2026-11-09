@@ -4,19 +4,17 @@ name: deploy to minikube
 # images and restart Deployments on :latest (ci-jithendar-com.yml, ci-practice-executor.yml); this one handles
 # changes to the manifests themselves.
 #
-# plan   → pull requests and pushes touching the manifests: render the three groups of minikube/ (site,
-#          practice-executor, db-access; scripts/manifests.sh), keep the objects CI may apply
+# plan   → pull requests and pushes touching the manifests: render the two groups of minikube/ (site,
+#          practice-executor; scripts/manifests.sh), keep the objects CI may apply
 #          (scripts/ci-app-manifests.py), list the rest. No cluster access.
 # deploy → default branch (push or manual run), only when repository variable MINIKUBE_DEPLOY is "true":
-#          DNS record db.jithendar.com (Cloudflare, when secret CLOUDFLARE_DNS_TOKEN is set), server-side dry run,
-#          diff, apply, wait for every Deployment and StatefulSet, smoke-test the site.
+#          server-side dry run, diff, apply, wait for every Deployment and StatefulSet, smoke-test the site.
 #
 # CI applies only Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies,
 # PodDisruptionBudgets, cert-manager Certificates and Istio VirtualServices in namespace jithendar. The Namespace,
 # ClusterIssuers, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass and admission policies stay with a
 # person (./deploy.sh, scripts/manifests.sh practice-executor | kubectl apply -f -), so a commit cannot widen CI's
-# own access. Nothing is ever deleted (no --prune). The db-access group (Adminer at /db/, PostgreSQL at
-# db.jithendar.com) is deployed too; its IP allowlists refuse everyone until the Istio gateway sees real client IPs (scripts/enable-db-access.sh, once).
+# own access. Nothing is ever deleted (no --prune).
 #
 # Cluster access: ServiceAccount jithendar/github-ci-applier (minikube/85-ci-applier.yaml), kubeconfig template
 # .github/jithendar-ci-applier.yaml, values MK4_API_SERVER, MK4_CA_DATA (variables, shared with the deployer) and
@@ -29,7 +27,6 @@ on:
       - 'minikube/**'
       - 'scripts/manifests.sh'
       - 'scripts/ci-app-manifests.py'
-      - 'scripts/cloudflare-dns-record.sh'
       - '.github/jithendar-ci-applier.yaml'
       - '.github/workflows/deploy-minikube.yml'
   push:
@@ -37,7 +34,6 @@ on:
       - 'minikube/**'
       - 'scripts/manifests.sh'
       - 'scripts/ci-app-manifests.py'
-      - 'scripts/cloudflare-dns-record.sh'
       - '.github/jithendar-ci-applier.yaml'
       - '.github/workflows/deploy-minikube.yml'
 
@@ -68,7 +64,7 @@ jobs:
       - name: Render and select application objects
         run: |
           set -euo pipefail
-          for group in site practice-executor db-access; do
+          for group in site practice-executor; do
             echo "::group::$group"
             scripts/manifests.sh "$group" | python scripts/ci-app-manifests.py > /dev/null
             echo "::endgroup::"
@@ -99,20 +95,10 @@ jobs:
         run: |
           set -euo pipefail
           : > "$RUNNER_TEMP/rollouts.txt"
-          for group in site practice-executor db-access; do
+          for group in site practice-executor; do
             scripts/manifests.sh "$group" | python scripts/ci-app-manifests.py --rollouts "$RUNNER_TEMP/$group.rollouts" > "$RUNNER_TEMP/$group.yaml"
-            [[ "$group" == db-access ]] || cat "$RUNNER_TEMP/$group.rollouts" >> "$RUNNER_TEMP/rollouts.txt"
+            cat "$RUNNER_TEMP/$group.rollouts" >> "$RUNNER_TEMP/rollouts.txt"
           done
-      # Before the apply, so cert-manager's HTTP-01 check for db.jithendar.com can resolve the name.
-      - name: DNS record db.jithendar.com
-        env:
-          CLOUDFLARE_DNS_TOKEN: ${{ secrets.CLOUDFLARE_DNS_TOKEN }}
-        run: |
-          if [[ -z "$CLOUDFLARE_DNS_TOKEN" ]]; then
-            echo "::notice::Secret CLOUDFLARE_DNS_TOKEN is not set; db.jithendar.com is not managed by CI (scripts/cloudflare-dns-record.sh)"
-            exit 0
-          fi
-          scripts/cloudflare-dns-record.sh db.jithendar.com
       - name: Apply to mk4
         env:
           MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
@@ -127,14 +113,6 @@ jobs:
           trap 'rm -f "$KUBECONFIG"' EXIT
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-applier.yaml > "$KUBECONFIG")
           files=("$RUNNER_TEMP/site.yaml" "$RUNNER_TEMP/practice-executor.yaml")
-          # The db-access group needs VirtualServices in CI's Role, which only a person can grant
-          # (scripts/enable-db-access.sh re-applies minikube/85-ci-applier.yaml). Until then, skip it instead of failing.
-          if [[ "$(kubectl auth can-i create virtualservices.networking.istio.io)" == yes ]]; then
-            files+=("$RUNNER_TEMP/db-access.yaml")
-            cat "$RUNNER_TEMP/db-access.rollouts" >> "$RUNNER_TEMP/rollouts.txt"
-          else
-            echo "::notice::db-access manifests skipped: CI's Role cannot manage VirtualServices yet (run scripts/enable-db-access.sh)"
-          fi
 
           # Every object must pass the API server's validation and admission before anything changes.
           for f in "${files[@]}"; do kubectl apply --dry-run=server -f "$f" > /dev/null; done
