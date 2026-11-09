@@ -18,8 +18,8 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 | 4 Recommendation engine | done (mock-tested) |
 | 5 CMS integration and calendar | done (mock-tested) |
 | 6 Technical SEO audit | done (mock-tested) |
-| 7 Reports and notifications | in progress |
-| 8 Deployment, observability, CI | not started |
+| 7 Reports and notifications | done (mock-tested) |
+| 8 Deployment, observability, CI | in progress |
 | 9 Validate, document, PR | not started |
 
 ## Open issues
@@ -84,6 +84,15 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
   and PageSpeed/CrUX (off by default, key from env). Scan + issues stored; `/admin/seo/technical`.
 - `tests/seo-intel-technical.test.ts` (22).
 
+## Phase 7 notes
+
+- `reports.ts`: weekly (last full Mon–Sun) / monthly (last full month) vs previous period: organic GSC + GA4,
+  best/growing/declining pages, new opportunities, decay alerts, technical summary, recommendation counts,
+  completed optimisations with baseline and +28/+56, next actions. Upsert per period; scheduled + manual.
+- CSV export (injection-safe) and printable page (`/admin/seo/reports/[id]`, Save as PDF). No PDF library (D-09).
+- Email via the existing `sendMail` only when enabled + recipients set + email service configured; once per report.
+- `tests/seo-intel-reports.test.ts` (4).
+
 ## Next steps
 
-- Phase 7: weekly/monthly reports, CSV + printable HTML, email via sendMail only when recipients configured.
+- Phase 8: metrics (done in Phase 2), alerts snippet, Grafana panels?, config script, manifests check, CI.

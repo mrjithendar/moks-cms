@@ -27,6 +27,7 @@ const PAGES: [string, () => Promise<{ default: unknown }>][] = [
   ["links", () => import("@/app/admin/seo/links/page")],
   ["calendar", () => import("@/app/admin/seo/calendar/page")],
   ["technical", () => import("@/app/admin/seo/technical/page")],
+  ["reports", () => import("@/app/admin/seo/reports/page")],
 ];
 async function render(load: () => Promise<{ default: unknown }>, sp: Record<string, string> = {}) {
   const Page = (await load()).default as PageFn;
@@ -71,6 +72,10 @@ describe("/admin/seo pages", () => {
     const html = renderToStaticMarkup(await Panel({ params: Promise.resolve({ id: post!.id }) }));
     expect(html).toContain("Open in editor");
     expect(html).toContain("Ranking queries");
+    const { generateReport } = await import("@/lib/seo-intel/reports");
+    const rep = await generateReport("weekly", "manual", NOW);
+    const ReportPage = (await import("@/app/admin/seo/reports/[id]/page")).default as (p: { params: Promise<{ id: string }> }) => Promise<React.ReactElement>;
+    expect(renderToStaticMarkup(await ReportPage({ params: Promise.resolve({ id: rep.id }) }))).toContain("Organic performance");
   });
 });
 
