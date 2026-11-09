@@ -19,8 +19,8 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 | 5 CMS integration and calendar | done (mock-tested) |
 | 6 Technical SEO audit | done (mock-tested) |
 | 7 Reports and notifications | done (mock-tested) |
-| 8 Deployment, observability, CI | in progress |
-| 9 Validate, document, PR | not started |
+| 8 Deployment, observability, CI | done |
+| 9 Validate, document, PR | in progress |
 
 ## Open issues
 
@@ -93,6 +93,17 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 - Email via the existing `sendMail` only when enabled + recipients set + email service configured; once per report.
 - `tests/seo-intel-reports.test.ts` (4).
 
+## Phase 8 notes
+
+- No new workloads/CronJobs (D-02), no manifest change needed: secrets via existing `envFrom` Secret
+  `jithendar-com-env`, property ids via ConfigMap `jithendar-com-public`; `scripts/set-seo-config.sh` (human-run, merges keys).
+- Metrics: 9 counters/histogram (Phase 2) + DB-backed gauges for consecutive failures / last success (D-18).
+- Alerts: `www/docs/seo/prometheus-alerts.yml` (4 rules) for the miniKube repo (D-12).
+- Grafana: `grafana/jithendar-com-seo.json` (owner request), `check-dashboards.py` OK.
+- Validation: `kubectl kustomize minikube` (20 objects) and `kubectl kustomize grafana` OK; shellcheck OK;
+  kubeconform / promtool not installed (not run).
+- Owner commit `d16f13c` also changed `minikube/30-jithendar-com.yaml` (content init container) — not SEO work.
+
 ## Next steps
 
-- Phase 8: metrics (done in Phase 2), alerts snippet, Grafana panels?, config script, manifests check, CI.
+- Phase 9: full lint/typecheck/test/build/audit, docs (architecture, schema, API, env, ops, security, MANUAL_SETUP), PR.

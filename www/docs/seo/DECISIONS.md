@@ -95,3 +95,26 @@ permanently deleted from the trash.
 ## D-16 LLM settings are separate from the practice tutor's
 The SEO platform reuses `callModel()` but has its own provider/model/key (sealed) in the `seo` settings,
 **disabled by default**, so turning on SEO enrichment never changes the tutor's behaviour or budget.
+
+## D-17 No CI workflow change
+New tests live in `www/tests/` and run in the existing `npm test` step of `ci-jithendar-com.yml` (PR `check` job).
+Dependency scanning already exists: Dependabot version and security updates for npm, Terraform and Actions
+(`.github/dependabot.yml`). The project adds **no npm dependency**, so nothing new needs scanning. `npm audit` was run
+locally in Phase 9 and its result is reported, but it is not added as a blocking CI step (it would fail on
+pre-existing advisories unrelated to this work).
+
+## D-18 Restart-safe alert inputs
+Process counters reset on restart and are per replica, so "N consecutive failures" cannot be computed from them.
+`seo_sync_consecutive_failures` and `seo_sync_last_success_timestamp_seconds` are gauges computed from
+`seo_sync_jobs` at scrape time (cached 30 s with the other database gauges); alerts use them.
+
+## D-19 Log correlation
+The cluster's log collector keeps only allowlisted fields (`event`, `operation`, `outcome`, `errorCode`, `traceId`, …),
+so a `correlationId` field would be dropped before Loki. Runs log `operation=seo_<job>` and `outcome`, and every job run
+is inside a trace (`job seo` span); the run's `correlation_id` and `traceId` are stored on its `seo_sync_jobs` row,
+which links the dashboard's Sync history to Loki/Jaeger.
+
+## D-20 Grafana dashboard
+`grafana/jithendar-com-seo.json` (uid `jithendar-com-seo`) is added to the existing folder synced by the shared
+`grafana` Argo CD app. It only reads metrics/logs this site already exports. Like the other dashboards, it is loaded
+after merge and an Argo CD sync of the `grafana` app (a person does that).

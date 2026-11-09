@@ -5,6 +5,7 @@ import { rowsOf } from "@/db/rows";
 import { enqueue } from "../jobs";
 import { log } from "../log";
 import { recordSeoSync } from "../metrics";
+import { currentTraceId } from "../trace";
 import { CredentialsError, readServiceAccount, SCOPES, type ServiceAccount } from "./google/auth";
 import { GSC_TIME_ZONE } from "./google/gsc";
 import { GoogleApiError, type ApiContext, type RunStats } from "./google/http";
@@ -116,7 +117,7 @@ export async function runSeoJob(payload: JobPayload, deps: RunDeps = {}): Promis
   const [row] = rowsOf<{ id: string }>(
     await db.execute(sql`
       insert into seo_sync_jobs (job_type, trigger, window_start, window_end, status, correlation_id, actor, detail)
-      values (${payload.type}, ${payload.trigger}, ${payload.start ?? null}, ${payload.end ?? null}, 'running', ${correlationId}, ${payload.actor ?? null}, ${JSON.stringify(payload.slot ? { slot: payload.slot } : {})}::jsonb)
+      values (${payload.type}, ${payload.trigger}, ${payload.start ?? null}, ${payload.end ?? null}, 'running', ${correlationId}, ${payload.actor ?? null}, ${JSON.stringify({ ...(payload.slot ? { slot: payload.slot } : {}), ...(currentTraceId() ? { traceId: currentTraceId() } : {}) })}::jsonb)
       returning id`),
   );
   const id = row!.id;

@@ -231,10 +231,35 @@ async function databaseGauges(): Promise<string> {
       gauge("jithendar_jobs", "Background jobs by status.", jobs.map((j) => ({ labels: { status: j.status }, value: Number(j.n) }))),
       gauge("jithendar_database_up", "1 when the database answered the last metrics query.", [{ value: 1 }]),
     ].join("\n");
-    dbCache = { at: Date.now(), text };
-    return text;
+    const full = `${text}\n${await seoGauges(db, sql, rowsOf)}`;
+    dbCache = { at: Date.now(), text: full };
+    return full;
   } catch {
     return gauge("jithendar_database_up", "1 when the database answered the last metrics query.", [{ value: 0 }]);
+  }
+}
+
+/**
+ * SEO sync health from the database (survives restarts and is the same on every replica, unlike the counters):
+ * consecutive failed runs since the last success and the last success time, per data job type. Separate try, so a
+ * database without the SEO tables does not mark the whole database as down.
+ */
+async function seoGauges(db: Awaited<ReturnType<typeof import("@/db").getDb>>, sql: typeof import("drizzle-orm").sql, rowsOf: typeof import("@/db/rows").rowsOf): Promise<string> {
+  try {
+    const rows = rowsOf<{ job_type: string; failures: number; last_success: number | null }>(
+      await db.execute(sql`
+        select t.job_type,
+          (select count(*)::int from seo_sync_jobs j where j.job_type = t.job_type and j.status = 'failed'
+             and j.started_at > coalesce((select max(started_at) from seo_sync_jobs s where s.job_type = t.job_type and s.status in ('succeeded', 'partial')), 'epoch'::timestamptz)) as failures,
+          (select extract(epoch from max(finished_at))::float8 from seo_sync_jobs s where s.job_type = t.job_type and s.status in ('succeeded', 'partial')) as last_success
+        from (values ('gsc_sync'), ('ga4_sync'), ('technical_scan'), ('recommendations')) as t(job_type)`),
+    );
+    return [
+      gauge("seo_sync_consecutive_failures", "Failed SEO runs since the last successful one, by job type (from the database).", rows.map((r) => ({ labels: { job_type: r.job_type }, value: Number(r.failures) }))),
+      gauge("seo_sync_last_success_timestamp_seconds", "Unix time of the last successful SEO run, by job type (0 = never).", rows.map((r) => ({ labels: { job_type: r.job_type }, value: Number(r.last_success ?? 0) }))),
+    ].join("\n");
+  } catch {
+    return "";
   }
 }
 

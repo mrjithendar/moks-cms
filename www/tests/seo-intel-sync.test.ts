@@ -193,6 +193,7 @@ describe("Search Console sync", () => {
     const integ = rowsOf<{ status: string; last_error: string }>(await db.execute(sql`select status, last_error from seo_integrations where provider = 'gsc'`))[0]!;
     expect(integ.status).toBe("auth_error");
     expect(integ.last_error).not.toMatch(/fixture-token|PRIVATE KEY/);
+
   });
 
   it("backfills a manual range in 7-day windows; schedules never backfill", async () => {
@@ -286,9 +287,14 @@ describe("scheduling and locking", () => {
   it("exports SEO metrics with low-cardinality labels only", async () => {
     await configure();
     await runSeoJob({ type: "gsc_sync", trigger: "manual" }, deps());
+    await configure({ google: { ...settingsInput().google, ga4PropertyId: "123" } });
+    for (let i = 0; i < 3; i++) await runSeoJob({ type: "ga4_sync", trigger: "schedule" }, deps(fakeGoogle({ failures: [403] })));
     const text = await renderMetrics();
+    expect(text).toMatch(/seo_sync_consecutive_failures\{job_type="ga4_sync"\} 3/);
     expect(text).toMatch(/seo_sync_success_total\{job_type="gsc_sync"\} \d+/);
     expect(text).toMatch(/seo_api_requests_total\{provider="gsc",outcome="ok"\} \d+/);
+    expect(text).toMatch(/seo_sync_consecutive_failures\{job_type="gsc_sync"\} 0/);
+    expect(text).toMatch(/seo_sync_last_success_timestamp_seconds\{job_type="gsc_sync"\} [1-9]/);
     const seoLines = text.split("\n").filter((l) => l.startsWith("seo_"));
     expect(seoLines.some((l) => /jithendar\.com|sc-domain|argo/.test(l))).toBe(false);
   });
