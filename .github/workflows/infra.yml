@@ -1,4 +1,4 @@
-name: infra
+name: aws-infra
 
 # AWS resources of jithendar.com (infra/, Terraform): ECR repositories jithendar-com, practice-executor,
 # practice-sandbox, and role github-jithendar-com-ci that the image workflows assume.
