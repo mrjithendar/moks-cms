@@ -20,7 +20,7 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 | 6 Technical SEO audit | done (mock-tested) |
 | 7 Reports and notifications | done (mock-tested) |
 | 8 Deployment, observability, CI | done |
-| 9 Validate, document, PR | in progress |
+| 9 Validate, document, PR | done |
 
 ## Open issues
 
@@ -104,6 +104,24 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
   kubeconform / promtool not installed (not run).
 - Owner commit `d16f13c` also changed `minikube/30-jithendar-com.yaml` (content init container) — not SEO work.
 
-## Next steps
+## Phase 9: validation (2026-11-09, this machine, Node 26)
 
-- Phase 9: full lint/typecheck/test/build/audit, docs (architecture, schema, API, env, ops, security, MANUAL_SETUP), PR.
+| Command | Result |
+|---|---|
+| `npm run lint` | pass (0 problems) |
+| `npm run typecheck` | pass |
+| `npm test` | pass: 52 files, 591 tests (baseline 45 / 474; all existing tests still pass) |
+| `APP_ENV=production npm run build` | pass; 1 pre-existing warning (`src/lib/request-log.ts`, Edge runtime `process.on`), unrelated |
+| `npm audit --omit=dev` | 0 vulnerabilities; no dependencies added |
+| `kubectl kustomize minikube` / `grafana` | pass (manifests unchanged by this work) |
+| `python3 scripts/check-dashboards.py` | pass (4 dashboards) |
+| `shellcheck scripts/set-seo-config.sh` | pass |
+| kubeconform, promtool | not run (not installed); alert YAML structure checked with a parser |
+
+Docs: README, ARCHITECTURE (Mermaid), OPERATIONS, SECURITY, MANUAL_SETUP, SCORING, DECISIONS.
+
+## Open issues / needs a person
+
+- Google credentials and property access (MANUAL_SETUP.md); live Google behaviour is **not verified** here.
+- Alert rules must be copied into the miniKube repo; Grafana app sync after merge.
+- Branch also contains the owner's commit `d16f13c` (content image, CI workflow, init container) — review separately.
