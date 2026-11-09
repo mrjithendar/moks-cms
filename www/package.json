@@ -40,7 +40,7 @@
     "@tiptap/pm": "3.33.0",
     "@tiptap/react": "3.33.0",
     "@tiptap/starter-kit": "3.33.0",
-    "@vercel/otel": "2.2.0",
+    "@vercel/otel": "2.3.0",
     "better-auth": "1.7.18",
     "codemirror": "6.0.2",
     "drizzle-orm": "0.45.4",
