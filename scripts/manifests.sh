@@ -2,7 +2,7 @@
 # Print one group of the mk4 manifests in minikube/ as multi-document YAML, for kubectl apply/diff/delete -f -.
 # minikube/ is one flat folder; the file name says which group a manifest belongs to:
 #
-#   site               kustomization.yaml (00-… to 85-…): the site, Postgres, Redis, TLS, ingress, CI accounts
+#   site               kustomization.yaml (00-… to 85-…): the site, Postgres, TLS, ingress, CI accounts
 #   practice-executor  practice-executor-*.yaml: Python practice runner (applied by hand once gVisor is verified)
 #   db-access          db-access-*.yaml: Adminer at /db/ and PostgreSQL at db.jithendar.com (minikube/DB_ACCESS.md)
 #

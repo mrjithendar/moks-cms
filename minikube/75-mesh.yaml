@@ -57,10 +57,8 @@ spec:
       - jithendar-com
       - jithendar-db-ui
       - jithendar-postgres
-      - jithendar-redis
       - practice-dispatcher
       - practice-executor-api
-      - practice-redis
   policyTypes:
   - Ingress
   - Egress
@@ -76,8 +74,8 @@ spec:
     - port: 15090
       protocol: TCP
   egress:
-  # DNS, to resolve istiod.istio-system.svc. Postgres and Redis have no DNS rule of their own, so without this
-  # their sidecars time out on the lookup and never get ready (outage 2026-11-08).
+  # DNS, to resolve istiod.istio-system.svc. Postgres has no DNS rule of its own, so without this
+  # its sidecar times out on the lookup and never get ready (outage 2026-11-08).
   - to:
     - namespaceSelector:
         matchLabels:

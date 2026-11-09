@@ -11,7 +11,7 @@ NS="jithendar"
 k() { kubectl --context "$CONTEXT" -n "$NS" "$@"; }
 rand() { openssl rand -base64 48 | tr -d '/+=\n' | cut -c1-"${1:-40}"; }
 
-for s in jithendar-postgres jithendar-redis jithendar-com-env; do
+for s in jithendar-postgres jithendar-com-env; do
   if k get secret "$s" >/dev/null 2>&1; then
     echo "Secret $s already exists. Nothing changed. (Delete it deliberately first if you really mean to recreate it.)" >&2
     exit 1
@@ -26,14 +26,11 @@ MAIL_FROM=""
 [[ -n "$SMTP_URL" ]] && read -r -p "Mail From (e.g. Jithendar.com <no-reply@jithendar.com>): " MAIL_FROM
 
 PG_PASSWORD="$(rand 40)"
-REDIS_PASSWORD="$(rand 40)"
 BOOTSTRAP="$(rand 48)"
 
 k create secret generic jithendar-postgres --from-literal=password="$PG_PASSWORD"
-k create secret generic jithendar-redis --from-literal=password="$REDIS_PASSWORD"
 args=(
   --from-literal=DATABASE_URL="postgres://jithendar:${PG_PASSWORD}@jithendar-postgres:5432/jithendar"
-  --from-literal=REDIS_URL="redis://:${REDIS_PASSWORD}@jithendar-redis:6379"
   --from-literal=BETTER_AUTH_SECRET="$(rand 64)"
   --from-literal=SETTINGS_ENCRYPTION_KEY="$(rand 64)"
   --from-literal=ADMIN_BOOTSTRAP_TOKEN="$BOOTSTRAP"
@@ -46,7 +43,8 @@ k create secret generic jithendar-com-env "${args[@]}"
 
 cat <<MSG
 
-Secrets created in namespace $NS: jithendar-postgres, jithendar-redis, jithendar-com-env.
+Secrets created in namespace $NS: jithendar-postgres, jithendar-com-env.
+REDIS_URL is not here: the site reads it from redis-jithendar-credentials (shared Valkey, Terraform in miniKube).
 
 One-time admin setup token (shown once; also stored in jithendar-com-env/ADMIN_BOOTSTRAP_TOKEN):
 

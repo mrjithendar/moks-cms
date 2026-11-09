@@ -1,6 +1,6 @@
 # API (no Kubernetes credentials, never runs code) and dispatcher (starts sandbox pods). Same image, two commands.
 # Secret practice-executor-env (created by scripts/create-practice-executor-secrets.sh, never committed):
-#   EXECUTOR_API_TOKEN, REDIS_PASSWORD, EXECUTOR_REDIS_URL
+#   EXECUTOR_API_TOKEN. The queue is the shared Valkey: EXECUTOR_REDIS_URL from redis-practice-credentials (Terraform).
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -44,6 +44,10 @@ spec:
         - name: api
           image: registry.jithendar.com/jithendar/practice-executor:latest
           command: ["python", "-m", "app.main"]
+          env:
+            # Shared Valkey (namespace redis, ACL user practice, database 1; Terraform in the miniKube repo).
+            - name: EXECUTOR_REDIS_URL
+              valueFrom: { secretKeyRef: { name: redis-practice-credentials, key: uri } }
           envFrom:
             - configMapRef: { name: practice-executor-config }
             - secretRef: { name: practice-executor-env }
@@ -76,6 +80,10 @@ spec:
         - name: dispatcher
           image: registry.jithendar.com/jithendar/practice-executor:latest
           command: ["python", "-m", "app.dispatcher"]
+          env:
+            # Shared Valkey (namespace redis, ACL user practice, database 1; Terraform in the miniKube repo).
+            - name: EXECUTOR_REDIS_URL
+              valueFrom: { secretKeyRef: { name: redis-practice-credentials, key: uri } }
           envFrom:
             - configMapRef: { name: practice-executor-config }
             - secretRef: { name: practice-executor-env }

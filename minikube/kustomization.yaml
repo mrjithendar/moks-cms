@@ -1,6 +1,7 @@
 # jithendar.com site on mk4: kubectl --context mk4 apply -k minikube (or ./deploy.sh). Only the 00-…85- files are
 # listed; practice-executor-*.yaml and db-access-*.yaml are separate groups (README.md, scripts/manifests.sh).
-# Secrets (jithendar-com-env, jithendar-postgres, jithendar-redis, harbor-pull) are created separately and never committed.
+# Secrets (jithendar-com-env, jithendar-postgres, harbor-pull) are created separately and never committed; Redis is the
+# shared Valkey in namespace redis (miniKube repo), whose Secret redis-jithendar-credentials Terraform writes here.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # No `namespace:` here: every namespaced manifest sets namespace jithendar itself.
@@ -9,7 +10,6 @@ kind: Kustomization
 resources:
 - 00-namespace.yaml
 - 10-postgres.yaml
-- 20-redis.yaml
 - 30-jithendar-com.yaml
 - 60-istio-routing.yaml
 - 70-observability.yaml

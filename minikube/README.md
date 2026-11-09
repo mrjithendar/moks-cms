@@ -16,7 +16,6 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 |---|---|
 | `00-namespace.yaml` | Namespace `jithendar` |
 | `10-postgres.yaml` | StatefulSet, Service, NetworkPolicy `jithendar-postgres` (10 Gi volume, pinned to node `mk4-m03`) |
-| `20-redis.yaml` | Deployment, Service, NetworkPolicy `jithendar-redis` |
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, PodDisruptionBudget, NetworkPolicy `jithendar-com` |
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `www/docs/OBSERVABILITY.md` |
@@ -42,7 +41,6 @@ scripts/manifests.sh practice-executor | kubectl --context mk4 apply -f -
 | `practice-executor-10-rbac.yaml` | ServiceAccounts `practice-dispatcher`, `practice-api`, `practice-sandbox`; Role/RoleBinding for the dispatcher |
 | `practice-executor-15-admission.yaml` | ValidatingAdmissionPolicies that pin down sandbox pods |
 | `practice-executor-20-quota.yaml` | ResourceQuota for all sandboxes together |
-| `practice-executor-30-redis.yaml` | The executor's own Redis queue |
 | `practice-executor-40-executor.yaml` | ConfigMap, API and dispatcher Deployments, Service `practice-executor` |
 | `practice-executor-50-networkpolicies.yaml` | Allowed traffic |
 
@@ -71,10 +69,13 @@ mTLS with no plain-text port: Prometheus scrapes `:9464` over mTLS through its o
 ## Before the first deploy
 
 These Secrets must exist in `jithendar`; they are never committed. `scripts/create-secrets.sh mk4`
-creates the first three.
+creates the first two; Terraform in the miniKube repository writes the Redis ones.
 
-- `jithendar-postgres` (key `password`), `jithendar-redis` (key `password`)
-- `jithendar-com-env` (site configuration; its `DATABASE_URL`/`REDIS_URL` passwords match the two above)
+- `jithendar-postgres` (key `password`)
+- `jithendar-com-env` (site configuration; its `DATABASE_URL` password matches the one above)
+- `redis-jithendar-credentials` and `redis-practice-credentials` (key `uri`, read as `REDIS_URL` and
+  `EXECUTOR_REDIS_URL`): the shared Valkey in namespace `redis`, written by Terraform in the miniKube repository
+  (`minikube-infrastructure/redis.tf`, `redis_tenants`). Neither the site nor the executor runs a Redis of its own
 - `harbor-pull` (pull secret for `registry.jithendar.com`, used by the site, the practice executor and sandbox pods;
   written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets`)
 

@@ -50,6 +50,13 @@ spec:
           value: '1'
         - name: GEMINI_IMAGE_DAILY_LIMIT
           value: '50'
+        # Shared Valkey (namespace redis, ACL user jithendar, database 0). Secret written by Terraform in the miniKube
+        # repo (minikube-infrastructure/redis.tf); env wins over the same key in jithendar-com-env.
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-jithendar-credentials
+              key: uri
         envFrom:
         - secretRef:
             name: jithendar-com-env
@@ -206,13 +213,20 @@ spec:
     - podSelector:
         matchLabels:
           app: jithendar-postgres
+  # Shared Valkey (namespace redis): Service valkey-master:6379 targets the HAProxy master proxy on pod port 6380, in
+  # every pod (it forwards to the current primary); 6379 is Valkey itself.
   - ports:
     - port: 6379
       protocol: TCP
+    - port: 6380
+      protocol: TCP
     to:
-    - podSelector:
+    - namespaceSelector:
         matchLabels:
-          app: jithendar-redis
+          kubernetes.io/metadata.name: redis
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: valkey
   # Python practice executor API (minikube/practice-executor-*.yaml; PRACTICE_EXECUTOR_URL=http://practice-executor.jithendar).
   - ports:
     - port: 8080

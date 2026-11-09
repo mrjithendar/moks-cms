@@ -17,12 +17,16 @@ k() { kubectl --context "$CONTEXT" "$@"; }
 cd "$(dirname -- "${BASH_SOURCE[0]}")"
 
 echo "→ Checking Secrets"
-for s in jithendar-postgres jithendar-redis jithendar-com-env; do
+for s in jithendar-postgres jithendar-com-env; do
   k -n jithendar get secret "$s" >/dev/null 2>&1 || {
     echo "Secret jithendar/$s is missing. Run scripts/create-secrets.sh once first." >&2
     exit 1
   }
 done
+k -n jithendar get secret redis-jithendar-credentials >/dev/null 2>&1 || {
+  echo "Secret jithendar/redis-jithendar-credentials is missing. It is written by Terraform in the miniKube repository (minikube-infrastructure/redis.tf, redis_tenants.jithendar)." >&2
+  exit 1
+}
 k -n jithendar get secret harbor-pull >/dev/null 2>&1 || {
   echo "Secret jithendar/harbor-pull is missing. Create it with the tools repository's deploy/minikube/harbor/registry.py pull-secrets first." >&2
   exit 1
@@ -34,9 +38,8 @@ k apply -k minikube --dry-run=server >/dev/null
 echo "→ Applying"
 k apply -k minikube
 
-echo "→ Waiting for Postgres and Redis"
+echo "→ Waiting for Postgres"
 k -n jithendar rollout status statefulset/jithendar-postgres --timeout=5m
-k -n jithendar rollout status deployment/jithendar-redis --timeout=3m
 
 echo "→ Restarting the site on jithendar-com:latest"
 k -n jithendar rollout restart deployment/jithendar-com
