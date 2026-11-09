@@ -3,8 +3,7 @@
 # Secrets (jithendar-com-env, jithendar-postgres, jithendar-redis, harbor-pull) are created separately and never committed.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# No `namespace:` here: every namespaced manifest sets namespace jithendar itself, and a kustomization-wide
-# namespace would also be stamped onto the cluster-scoped ClusterIssuers (kustomize does not know that CRD).
+# No `namespace:` here: every namespaced manifest sets namespace jithendar itself.
 
 
 resources:
@@ -12,9 +11,6 @@ resources:
 - 10-postgres.yaml
 - 20-redis.yaml
 - 30-jithendar-com.yaml
-- 45-jithendar-letsencrypt.yaml
-- 50-certificate.yaml
-- 55-tlsstore.yaml
 - 60-istio-routing.yaml
 - 70-observability.yaml
 - 75-mesh.yaml

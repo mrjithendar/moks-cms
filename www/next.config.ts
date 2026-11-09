@@ -60,7 +60,7 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          // HTTPS only (Traefik redirects http → https). No includeSubDomains/preload: other hosts are not ours to commit.
+          // HTTPS only (the Istio gateway redirects http → https). No includeSubDomains/preload: other hosts are not ours to commit.
           { key: "Strict-Transport-Security", value: "max-age=31536000" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
         ],

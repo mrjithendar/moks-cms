@@ -31,7 +31,7 @@ site_ok() { [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://j
 
 [[ -f "$VALUES" ]] || fail "$VALUES not found; set MINIKUBE_DIR to your miniKube checkout."
 grep -q 'proxyProtocol' "$VALUES" || fail "$VALUES has no proxyProtocol settings; pull the miniKube repo."
-# Addresses the site sees when the real one is lost: a minikube node (no PROXY header) or a pod (Traefik's hand-off).
+# Addresses the site sees when the real one is lost: a minikube node (no PROXY header).
 internal_ip() { [[ -z "$1" || "$1" == 192.168.49.* || "$1" == 10.* ]]; }
 
 echo "→ 1. The Istio gateway reads the PROXY protocol"

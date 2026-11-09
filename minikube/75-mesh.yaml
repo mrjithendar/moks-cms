@@ -1,11 +1,12 @@
 # Istio service mesh for namespace jithendar (label istio-injection=enabled, 00-namespace.yaml). Istio itself, its CNI
-# plugin and the ingress gateway are in the miniKube repo (minikube-infrastructure). Prometheus is
-# not in the mesh, and keeps scraping :9464 in plain text.
-# - PeerAuthentication default: PERMISSIVE while Traefik still runs. Traefik has a sidecar, but it sends to pod IPs
-#   with Host jithendar.com, so its sidecar passes requests through in plain text and STRICT rejects them (/ and /db
-#   answered 502 on 2026-11-08). The Istio gateway sends mTLS for every public route here, the db.jithendar.com TCP
-#   route included; set STRICT once Traefik is uninstalled (README.md, "Leaving Traefik").
-# - PeerAuthentication jithendar-com-metrics: the site's :9464 stays PERMISSIVE for Prometheus.
+# plugin, the ingress gateway and the mesh-wide STRICT default are in the miniKube repo (minikube-infrastructure,
+# deploy/minikube/istio/mesh).
+# - PeerAuthentication default: STRICT, no plain-text port (live since 2026-11-09). Every client is meshed: the Istio
+#   gateway (public routes and the db.jithendar.com TCP route), Prometheus (scrapes :9464 through its own sidecar) and
+#   the pods here. Practice sandboxes have no sidecar and no network.
+# - AuthorizationPolicy allow-known-callers: only the gateway, Prometheus/Grafana (monitoring) and this namespace's own
+#   pods may call anything here. Dry run first (annotation istio.io/dry-run): it only counts what it would refuse;
+#   miniKube scripts/istio/authz-dry-run-report.py reads the counts. Delete the annotation once they stay at 0.
 # - NetworkPolicy istio-sidecars: what the sidecars themselves need, added to the pods the other policies isolate.
 # Practice sandbox pods get no sidecar (label sidecar.istio.io/inject=false, and istiod's neverInjectSelector).
 # PeerAuthentications are applied by a person (./deploy.sh), never by CI (scripts/ci-app-manifests.py).
@@ -17,21 +18,26 @@ metadata:
   namespace: jithendar
 spec:
   mtls:
-    mode: PERMISSIVE
+    mode: STRICT
 ---
 apiVersion: security.istio.io/v1
-kind: PeerAuthentication
+kind: AuthorizationPolicy
 metadata:
-  name: jithendar-com-metrics
+  name: allow-known-callers
   namespace: jithendar
+  labels:
+    app.kubernetes.io/part-of: jithendar-com
+  annotations:
+    istio.io/dry-run: "true"
 spec:
-  selector:
-    matchLabels:
-      app: jithendar-com
-  # No mode of its own: the rest of the pod follows `default`.
-  portLevelMtls:
-    "9464":
-      mode: PERMISSIVE
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces:
+        - jithendar
+        - istio-ingress
+        - monitoring
 ---
 # Only the pods other NetworkPolicies here already isolate, in both directions. Selecting a pod without a policy
 # would cut off everything else it does. Sandbox pods are not listed: they have no sidecar.

@@ -66,7 +66,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               ))}
             </ul>
             <p className="mt-3 text-xs text-fg-subtle">
-              Heuristics, not verdicts. To block an address, add it to Traefik&apos;s IP deny list or Cloudflare WAF; to protect an account, ban it in Users or ask the owner to change the password.
+              Heuristics, not verdicts. To block an address, add it to the Istio gateway&apos;s deny list or Cloudflare WAF; to protect an account, ban it in Users or ask the owner to change the password.
             </p>
           </Card>
         ) : (

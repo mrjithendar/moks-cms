@@ -63,6 +63,52 @@ updates:
       # (2026-10-30). Remove once typescript-eslint supports TS 7.
       - dependency-name: typescript
         versions: [">=6.1.0"]
+    # www/package.json "overrides" force patched transitive dev packages that their parents still pin
+    # (2026-11-09; alerts 1-3): esbuild under drizzle-kit's @esbuild-kit/core-utils (~0.18), postcss-selector-parser
+    # under @tailwindcss/typography (6.0.10), minimatch 10 under eslint and typescript-eslint (^10). Drop each
+    # override once its parent ships the fix (`npm ls <name>` without the override shows when).
+
+  # Practice executor: executor/pyproject.toml (exact pins, including the [test] extra). Its Dockerfiles are not
+  # covered: they use floating python:3.13-slim tags, so the only update would be a Python minor, which is
+  # bumped by hand together with the sandbox's PYTHON_VERSION build-arg in ci-practice-executor.yml.
+  - package-ecosystem: pip
+    directory: /executor
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "deps(executor)"
+    labels:
+      - dependencies
+      - python
+    groups:
+      executor-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # AWS provider in infra/ (versions.tf) and infra/bootstrap (main.tf), with their .terraform.lock.hcl files.
+  # Pull requests get fmt + validate from infra.yml; merging one runs infra.yml's apply job on master.
+  - package-ecosystem: terraform
+    directories:
+      - /infra
+      - /infra/bootstrap
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "deps(terraform)"
+    labels:
+      - dependencies
+      - terraform
 
   # Base images in www/Dockerfile and www/Dockerfile.ci
   - package-ecosystem: docker

@@ -26,8 +26,7 @@ spec:
           number: 5432
 ---
 # Adds to the jithendar-postgres policy in 10-postgres.yaml (policies are additive): the Istio gateway (the TCP route)
-# and Adminer may connect too. Traefik until it is uninstalled: while the host still forwards to it, its TCP route
-# serves db.jithendar.com.
+# and Adminer may connect too.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -46,9 +45,6 @@ spec:
       podSelector:
         matchLabels:
           istio: ingressgateway
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: traefik
     - podSelector:
         matchLabels:
           app: jithendar-db-ui

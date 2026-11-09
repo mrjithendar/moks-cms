@@ -13,7 +13,7 @@ name: deploy to minikube
 #
 # CI applies only Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies,
 # PodDisruptionBudgets, cert-manager Certificates and Istio VirtualServices in namespace jithendar. The Namespace,
-# ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass and admission policies stay with a
+# ClusterIssuers, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass and admission policies stay with a
 # person (./deploy.sh, scripts/manifests.sh practice-executor | kubectl apply -f -), so a commit cannot widen CI's
 # own access. Nothing is ever deleted (no --prune). The db-access group (Adminer at /db/, PostgreSQL at
 # db.jithendar.com) is deployed too; its IP allowlists refuse everyone until the Istio gateway sees real client IPs (scripts/enable-db-access.sh, once).
@@ -164,7 +164,7 @@ jobs:
             echo '### Applied to mk4'
             if [[ $changed -eq 1 ]]; then echo '- Changes applied (see the "Changes" group in the log).'; else echo '- No changes: the cluster already matched.'; fi
             echo "- Ready: $(paste -sd ' ' "$RUNNER_TEMP/rollouts.txt")"
-            echo '- Not applied by CI: Namespace, ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass, admission policies.'
+            echo '- Not applied by CI: Namespace, ClusterIssuers, RBAC, ServiceAccounts, Secrets, quotas, RuntimeClass, admission policies.'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Smoke test
         run: scripts/smoke.sh https://jithendar.com

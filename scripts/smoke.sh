@@ -24,7 +24,7 @@ location() { curl -sS -o /dev/null -w '%{redirect_url}' --max-time 15 "$1"; }
 health="$(curl -sS --max-time 15 "$ORIGIN/api/health")"
 check "health status" '"ok"' "$(sed -nE 's/.*"status":("[^"]*").*/\1/p' <<<"$health")"
 if [[ -n "$EXPECTED_VERSION" ]]; then
-  # Right after `rollout status` returns, old pods are still draining (preStop sleep) and Traefik may route a
+  # Right after `rollout status` returns, old pods are still draining (preStop sleep) and the Istio gateway may route a
   # few requests to them. Wait up to 90 s until 5 consecutive answers report the new version.
   version="" streak=0
   for _ in $(seq 1 45); do

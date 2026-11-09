@@ -250,9 +250,7 @@ spec:
         - 100.64.0.0/10
         - 169.254.0.0/16
   ingress:
-  # Public traffic arrives from the Istio ingress gateway over mTLS (60-istio-routing.yaml). Traefik stays allowed
-  # until it is uninstalled (README.md, "Leaving Traefik"): dropping it before the gateway served the site took
-  # jithendar.com down with 502s on 2026-11-08.
+  # Public traffic arrives from the Istio ingress gateway over mTLS (60-istio-routing.yaml).
   - from:
     - namespaceSelector:
         matchLabels:
@@ -260,9 +258,6 @@ spec:
       podSelector:
         matchLabels:
           istio: ingressgateway
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: traefik
     ports:
     - port: 3000
       protocol: TCP

@@ -100,8 +100,7 @@ spec:
       app: jithendar-db-ui
   policyTypes: [Ingress, Egress]
   ingress:
-  # The Istio gateway serves /db (the miniKube routing table delegates it to the VirtualService below). Traefik stays
-  # allowed until it is uninstalled (README.md, "Leaving Traefik").
+  # The Istio gateway serves /db (the miniKube routing table delegates it to the VirtualService below).
   - from:
     - namespaceSelector:
         matchLabels:
@@ -109,9 +108,6 @@ spec:
       podSelector:
         matchLabels:
           istio: ingressgateway
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: traefik
     ports:
     - port: 8080
       protocol: TCP

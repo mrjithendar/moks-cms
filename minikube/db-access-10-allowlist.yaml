@@ -3,7 +3,7 @@
 #   46.224.38.14     the Hetzner host itself (connections it makes to jithendar.com)
 # Both are DENY policies on the Istio ingress gateway, which learns each visitor's address from the PROXY protocol the
 # host's HAProxy sends (miniKube deploy/minikube/istio/edge, EnvoyFilter proxy-protocol; DB_ACCESS.md). Without it every
-# client looks like a minikube node or Traefik's pod, neither of which is listed, so everything is refused: the lists
+# client looks like a minikube node, which is not listed, so everything is refused: the lists
 # fail closed. They live in the gateway's namespace, so a person applies them
 # (scripts/manifests.sh db-access | kubectl --context mk4 apply -f -), never CI.
 ---

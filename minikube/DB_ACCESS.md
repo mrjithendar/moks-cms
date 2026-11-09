@@ -17,9 +17,9 @@ cannot change the schema or roles. The app's own `jithendar` login is never used
 On 2026-11-04 every request reached the edge from `192.168.49.2`, a minikube node: the host's HAProxy forwards plain
 TCP and kube-proxy rewrites the source of NodePort traffic. An IP allowlist cannot work like that. The fix is the
 PROXY protocol: HAProxy prepends the real client address, and the Istio gateway reads it (miniKube
-`deploy/minikube/istio/edge`, EnvoyFilter `proxy-protocol`) and puts exactly that address in X-Forwarded-For. Until
-the host forwards to the gateway, the allowlists refuse everyone (fail closed): the gateway sees a node, or Traefik's
-pod during the move. It also gives the site real visitor IPs in its logs and rate limits.
+`deploy/minikube/istio/edge`, EnvoyFilter `proxy-protocol`) and puts exactly that address in X-Forwarded-For. The
+gateway refuses connections without the header, and a client address that is not listed is refused (fail closed). It
+also gives the site real visitor IPs in its logs and rate limits.
 
 ## Rollout
 

@@ -5,7 +5,7 @@
 
 CI (.github/workflows/deploy-minikube.yml) applies only workloads and their routing in namespace jithendar. Anything
 cluster-wide, or that grants identity or permissions, stays with a person (./deploy.sh and friends): the Namespace,
-ClusterIssuers, Traefik's TLSStore, RBAC (including CI's own Roles), ServiceAccounts, Secrets, quotas, the gVisor
+ClusterIssuers, RBAC (including CI's own Roles), ServiceAccounts, Secrets, quotas, the gVisor
 RuntimeClass and the admission policies. That way a change in Git can never widen what CI itself may do.
 
 A kind in neither list stops the run (exit 2), so a new kind gets a deliberate decision. Needs PyYAML.
@@ -41,7 +41,6 @@ MANUAL = {
     ("rbac.authorization.k8s.io", "ClusterRole"),
     ("rbac.authorization.k8s.io", "ClusterRoleBinding"),
     ("cert-manager.io", "ClusterIssuer"),
-    ("traefik.io", "TLSStore"),
     ("node.k8s.io", "RuntimeClass"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicy"),
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
