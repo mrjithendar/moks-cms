@@ -26,6 +26,7 @@ const PAGES: [string, () => Promise<{ default: unknown }>][] = [
   ["content", () => import("@/app/admin/seo/content/page")],
   ["links", () => import("@/app/admin/seo/links/page")],
   ["calendar", () => import("@/app/admin/seo/calendar/page")],
+  ["technical", () => import("@/app/admin/seo/technical/page")],
 ];
 async function render(load: () => Promise<{ default: unknown }>, sp: Record<string, string> = {}) {
   const Page = (await load()).default as PageFn;

@@ -17,8 +17,8 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 | 3 APIs and dashboard | done (mock-tested) |
 | 4 Recommendation engine | done (mock-tested) |
 | 5 CMS integration and calendar | done (mock-tested) |
-| 6 Technical SEO audit | in progress |
-| 7 Reports and notifications | not started |
+| 6 Technical SEO audit | done (mock-tested) |
+| 7 Reports and notifications | in progress |
 | 8 Deployment, observability, CI | not started |
 | 9 Validate, document, PR | not started |
 
@@ -74,7 +74,16 @@ Branch: `feature/ai-seo-intelligence-platform` (from `master` @ `91954b5`).
 - Owner commit `d16f13c "seo platform"` (22:02) on this branch also contains the owner's CI/Dockerfile changes plus
   in-progress Phase 4 files; left as is.
 
+## Phase 6 notes
+
+- `crawler.ts`: host allowlist, DNS checked inside the socket's own lookup (no rebinding window), private/reserved
+  v4/v6 ranges refused, manual redirects re-validated, timeout, size cap, UA, robots.txt parser (longest match).
+- `technical.ts`: robots, sitemaps (+ index), BFS crawl (private paths and disallowed paths skipped, paced), checks
+  for status, redirect chains, canonicals, titles/meta (missing, duplicate), headings, alt, JSON-LD, OG, viewport,
+  indexability conflicts, broken links, orphans; optional URL Inspection (quota-capped, "Google's last-known state")
+  and PageSpeed/CrUX (off by default, key from env). Scan + issues stored; `/admin/seo/technical`.
+- `tests/seo-intel-technical.test.ts` (22).
+
 ## Next steps
 
-- Phase 6: technical audit (robots, sitemaps, canonicals, titles/meta, headings, broken links, redirects, orphans,
-  alt, JSON-LD, OG, viewport, indexability, status codes), SSRF-safe crawler, optional URL Inspection / PSI.
+- Phase 7: weekly/monthly reports, CSV + printable HTML, email via sendMail only when recipients configured.
