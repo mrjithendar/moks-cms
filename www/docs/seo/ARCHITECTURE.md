@@ -157,3 +157,95 @@ npx vitest run tests/seo-intel-*       # the platform's tests (fake Google, PGli
 
 Without `GOOGLE_SEO_SERVICE_ACCOUNT_JSON`, every view shows the **Disconnected** state over whatever (fixture) data
 exists. The fixture key and numbers in `tests/seo-fixtures.ts` are invented; never use them as real data.
+
+---
+
+# v2: drafts, review, submission, linking, keywords
+
+## Architecture (v2 additions)
+
+```mermaid
+flowchart LR
+  subgraph App["jithendar-com pods (existing worker, no new workloads)"]
+    REC["Recommendations (v1)"] --> DR["drafts.ts<br/>eligibility · prompt · merge/regenerate"]
+    DR -->|"structured JSON (output_config.format)<br/>cached system: rules + style guide"| LLM["callModel provider 'anthropic'<br/>+ claude.ts (usage, budget, batches)"]
+    LLM --> VAL["changeset.ts validators<br/>(code untouched, no invented URLs,<br/>lengths, duplicates, rewrite %)"]
+    LINKS["internal-links.ts<br/>(rule-based, hard limits)"] --> VAL
+    VAL --> Q[("seo_drafts<br/>ready_for_review")]
+    Q --> UI["/admin/seo/review<br/>diff view (jsdiff)"]
+    UI -->|"Approve (one article, admin)"| PUB["publish.ts → updatePost()<br/>(CMS update path, base-version guard)"]
+    PUB --> VER["seo_verify job<br/>200 · canonical · noindex · title · JSON-LD"]
+    VER -->|pass| SUB["submission.ts"]
+    VER -->|fail| ALERT["alert + one-click rollback"]
+    KW["keywords.ts<br/>site CTR curve · views · clusters"] -->|"intent (Haiku, cached)"| LLM
+    KW -->|"Draft optimization"| DR
+  end
+  LLM -->|"Messages / Message Batches"| ANT["Anthropic API"]
+  SUB -->|"batched POST"| IDX["IndexNow (Bing, Yandex, …)"]
+  SUB -->|"sitemaps.submit (write scope)"| GSC["Search Console API"]
+  SUB -->|"+60 h URL Inspection"| GSC
+```
+
+## Data flow: from recommendation to live page
+
+```mermaid
+sequenceDiagram
+  participant W as Worker (30 s tick)
+  participant D as drafts.ts
+  participant C as Claude
+  participant A as Admin (phone)
+  participant P as publish.ts
+  participant S as Search engines
+  W->>D: drafts_weekly (batch) / seo_draft job (on demand)
+  D->>C: change set request (data blocks, no tools)
+  C-->>D: JSON change set
+  D->>D: validate (retry once with feedback) → seo_drafts ready_for_review
+  W-->>A: weekly digest (if recipients set)
+  A->>A: accept / reject / edit each change
+  A->>P: Approve & publish (confirm)
+  P->>P: updatePost (revision "seo-draft"), revalidate, baseline metrics
+  W->>P: seo_verify (+40 s): fetch live page, check
+  P->>S: IndexNow batch, sitemap resubmit, URL Inspection +60 h
+  Note over P,S: verification fails → nothing submitted, alert, rollback offered
+  W->>P: outcomes job: metrics at +28 / +56 days
+```
+
+## v2 modules (`www/src/lib/seo-intel/`)
+
+| Module | Purpose |
+|---|---|
+| `../practice/ai/anthropic.ts` | Claude provider for `callModel` (SDK, structured output, prompt caching, refusal fallback) |
+| `claude.ts` | prices, `seo_llm_usage`, monthly budget (+ batch reservations), `claudeJson` (validated, one retry), Message Batches |
+| `changeset.ts` | Markdown blocks with ids, atomic changes, apply, validators, substantive-change rule |
+| `diff-model.ts` | rendered-token word diffs, line diffs, counts, SERP truncation (isomorphic) |
+| `drafts.ts` | eligibility, prompt, generate / merge / regenerate, weekly batch + results, queue, decisions, reject |
+| `publish.ts` | approve, schedule, publish via `updatePost`, verification, rollback, draft outcomes (only module that writes posts) |
+| `submission.ts` | IndexNow batches, sitemap resubmission, URL Inspection, submission log + timeline |
+| `internal-links.ts` | link planner (limits in INTERNAL_LINKING.md), link graph, report |
+| `issue-details.ts` | located issues + score breakdown behind Content optimization numbers |
+| `keywords.ts` | site CTR curve, click gap, opportunity views (SQL), cannibalization, gaps, clusters, intent, tracked keywords |
+| `overview-v2.ts` | daily series, top movers, health score, annotations, onboarding checklist |
+| `notify.ts` | digest and alerts through `sendMail` (only with recipients) |
+| `style-guide.ts` | generated from the articles (`scripts/seo-style-guide.ts`) |
+
+## v2 schema (additive)
+
+| Migration | Tables |
+|---|---|
+| `0012_seo_drafts.sql` | `seo_drafts` (one open per article: partial unique index), `seo_llm_usage`, `seo_llm_batches` |
+| `0013_seo_submissions.sql` | `seo_search_submissions` |
+| `0014_seo_keywords.sql` | `seo_query_intents`, `seo_query_clusters`, `seo_tracked_keywords`, `seo_keyword_ignores`, `seo_saved_views`; index on `seo_gsc_query_daily (search_type, date, query)` |
+
+Rollbacks in `src/db/rollback/` — run **newest first** (0014 → 0013 → 0012).
+
+## v2 API (`/api/admin/seo/…`, admin only, same guard as v1)
+
+`POST drafts` · `GET drafts/{id}` · `PATCH drafts/{id}/changes/{changeId}` · `POST drafts/{id}/approve|reject|rollback|regenerate`
+· `POST review/bulk-reject` · `GET content/{id}/details` · `POST keywords/actions` · `GET keywords/export` ·
+`GET|POST|DELETE views` · `GET palette`. No bulk-approve endpoint exists.
+
+## v2 configuration
+
+Env: `ANTHROPIC_API_KEY` (Secret), `SEO_DRAFT_MODEL`, `SEO_CLASSIFY_MODEL`, `SEO_LLM_MONTHLY_BUDGET_USD`,
+`SEO_LLM_PRICES_JSON`, `SEO_SUBMISSION_ENABLED`, `SEO_SUBMIT_DEBOUNCE_MS`; E2E only (ignored in production):
+`SEO_VERIFY_FETCH_ORIGIN`. Settings sections: `drafts`, `links`, `submission`, `keywords`.

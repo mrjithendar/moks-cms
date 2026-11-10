@@ -33,7 +33,7 @@ export default async function ArticleSeoPage({ params, searchParams }: { params:
       <AdminHeader
         title={a.title}
         description={<>SEO panel for <code>{a.path}</code> ({a.status}). Proposals never change the article: accepting one puts it into your editor working copy, and you save or publish from the editor as usual.</>}
-        actions={<><Link href={`/admin/posts/${a.id}`} className={buttonClass("secondary", "sm")}>Open in editor</Link><ApiButton url={`/api/admin/seo/articles/${a.id}/optimize`} label="Generate proposals" variant="primary" /></>}
+        actions={<><Link href={`/admin/posts/${a.id}`} className={buttonClass("secondary", "sm")}>Open in editor</Link><ApiButton url={`/api/admin/seo/articles/${a.id}/optimize`} label="Generate proposals" variant="secondary" />{a.status === "published" && <ApiButton url="/api/admin/seo/drafts" body={{ articleId: a.id }} label="Draft with Claude" variant="primary" />}</>}
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="!p-4"><p className="text-sm text-fg-subtle">Clicks (GSC, 28 d)</p><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtInt(p.gsc?.clicks ?? null)}</p><p className="text-xs text-fg-subtle">{p.period.start} – {p.period.end}</p></Card>

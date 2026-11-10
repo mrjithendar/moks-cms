@@ -28,7 +28,8 @@ import { getSeoSettings, submissionEnabled } from "./settings";
 export const SUBMIT_JOB_KIND = "seo_submit";
 const INDEXNOW_ENDPOINT = "https://api.indexnow.org/indexnow";
 const INDEXNOW_MAX_URLS = 10_000;
-const DEBOUNCE_MS = 60_000;
+/** Batching window for IndexNow / sitemap jobs (SEO_SUBMIT_DEBOUNCE_MS, 1 s – 10 min; default 60 s). */
+const DEBOUNCE_MS = Math.min(600_000, Math.max(1000, Number(process.env.SEO_SUBMIT_DEBOUNCE_MS) || 60_000));
 const SITEMAP_MIN_INTERVAL_MS = 60 * 60_000;
 
 export type SubmitTarget = { draftId: string | null; articleId: string | null; path: string; reason: "publish" | "rollback" | "edit" };

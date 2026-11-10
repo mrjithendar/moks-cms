@@ -133,3 +133,51 @@ the database (survive restarts).
   row, so a later deploy re-creates empty tables. Also delete the `setting` row `seo` if wanted.
 - **Content changes**: proposals only ever land in editor working copies; anything published went through the editor
   and can be restored from its revision history.
+
+---
+
+# v2 operations
+
+## Daily/weekly jobs added by v2 (same worker, same queue)
+| Job | When | What |
+|---|---|---|
+| `drafts_weekly` | Settings → Drafts → weekly (default Tue 04:00 UTC) | Message Batch for the top articles; reserves its estimated cost |
+| `drafts_poll` | hourly | applies ended batches; invalid results get one synchronous retry |
+| `drafts_digest` | Settings → Drafts → digest (only with recipients) | email of drafts waiting |
+| `keywords_refresh` | daily, an hour after the GSC sync | clusters, intents (Haiku, budget-capped), tracked-keyword alerts |
+| `seo_draft` / `seo_verify` / `seo_submit` | on demand | generation, post-publish verification, IndexNow/sitemap/inspection |
+| scheduled drafts | every 30-s tick | "Publish later" approvals whose time has come |
+
+Budget paused? `/admin/seo` shows a red banner; Settings shows month-to-date spend per model. Raise
+`SEO_LLM_MONTHLY_BUDGET_USD` or wait for the next UTC month. Stop submissions: `SEO_SUBMISSION_ENABLED=false`.
+
+## Rollback of an approved change
+On the draft's page: **Roll back this change** (new revision; history kept), or the editor's revision history if the
+article was edited afterwards. Code rollback: revert the merge; the migrations are additive and can stay. Removing
+the v2 tables (data loss, owner-approved only): run `src/db/rollback/0014…`, `0013…`, `0012…` in that order.
+
+## E2E (Playwright, local)
+Production build + seeded local PGlite + fakes for Claude and IndexNow (Google calls are recorded as "needs
+credentials"). Uses the installed Google Chrome; no browser download.
+```bash
+cd www && npm run build
+export E2E_ADMIN_PASSWORD="e2e-$(openssl rand -hex 12)"
+NODE_OPTIONS=--conditions=react-server PGLITE_DIR=/tmp/seo-e2e SITE_URL=http://localhost:3100 \
+  SETTINGS_ENCRYPTION_KEY=<64 hex> npx tsx scripts/e2e-seed.ts
+node e2e/fake-services.mjs &                                  # :3199
+PGLITE_DIR=/tmp/seo-e2e SITE_URL=http://localhost:3100 BETTER_AUTH_SECRET=<32+ chars> SETTINGS_ENCRYPTION_KEY=<same> \
+  ANTHROPIC_API_KEY=sk-ant-fake ANTHROPIC_BASE_URL=http://localhost:3199 INDEXNOW_ENDPOINT=http://localhost:3199/indexnow \
+  INDEXNOW_KEY=0123456789abcdef0123456789abcdef SEO_SUBMISSION_ENABLED=true SEO_SUBMIT_DEBOUNCE_MS=2000 \
+  SEO_VERIFY_FETCH_ORIGIN=http://localhost:3100 npx next start -p 3100 &
+npx playwright test e2e/review-flow.spec.ts e2e/popover.spec.ts
+```
+`SEO_VERIFY_FETCH_ORIGIN` exists only for this: the SSRF-safe fetcher refuses loopback, so verification would always
+fail locally. It is ignored when `APP_ENV=production`.
+
+## Performance and SEO snapshot
+Baseline (before Phase 7) and after: `docs/seo/ui-review/lighthouse-*.txt`, screenshots in `docs/seo/ui-review/`.
+Both runs use the bundled MDX content with `status: published` in a scratch copy (`CONTENT_DIR`), a production build
+and `next start`, Lighthouse 13.5.0 mobile (simulated throttling), median of 3; summary via
+`scripts/lighthouse-summary.py`. SEO snapshot: `npx tsx scripts/seo-snapshot.ts --check tests/fixtures/seo-snapshot.json`
+or `SEO_SNAPSHOT_CHECK=1 npx playwright test e2e/seo-snapshot.spec.ts` against the same configuration. To snapshot the
+real top-20 URLs, set `SEO_SNAPSHOT_URLS` from Search Console and capture against production before a release.

@@ -1,0 +1,9 @@
+/* Utilities used only by the SEO admin (components/seo, app/admin/seo), loaded by app/admin/seo/layout.tsx only, so
+   public pages never download them (globals.css excludes these folders with `@source not`).
+   The default theme and the site tokens are imported (not referenced) so the theme variables these utilities use are
+   defined here too; Tailwind emits only the variables a stylesheet actually uses. */
+@import "tailwindcss/theme" layer(theme);
+@import "../../theme-tokens.css";
+@tailwind utilities source(none);
+@source "../../../components/seo";
+@source "./";

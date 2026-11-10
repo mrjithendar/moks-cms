@@ -154,16 +154,30 @@ const relatedPairs = new Set(relatedCategories.flatMap(([a, b]) => [`${a}|${b}`,
  * Deterministic related list: explicit `related` refs first, then a score of
  * shared category (3), related category (1) and shared tags (2 each). Ties: newest, then slug.
  */
+/** Internal links in a Markdown body, as canonical paths ("/blog/x"). */
+function linkedPaths(body: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of body.matchAll(/(?<!!)\[[^\]]*\]\((\/(?:blog|news|projects)\/[^)\s#?]+)/g)) out.add(m[1]!.replace(/\/+$/, ""));
+  return out;
+}
+
+/**
+ * Related reading: explicit `related` first, then the internal-link graph (articles this one links to or that link
+ * here — what the editor and the SEO link planner judged relevant), then shared category and tags.
+ */
 export async function relatedArticles(article: Article, limit = 3, query: PublishedQuery = {}): Promise<Article[]> {
   const fm = article.frontmatter;
   const candidates = (await getPublishedContent(query)).filter((a) => a.path !== article.path);
   const explicit = fm.related.flatMap((ref) => candidates.filter((a) => `${a.collection}/${a.slug}` === ref));
   const tags = new Set(fm.tags);
+  const outbound = linkedPaths(article.body);
 
   const scored = candidates
     .filter((a) => !explicit.includes(a))
     .map((a) => {
       let score = 0;
+      if (outbound.has(a.path)) score += 4;
+      if (linkedPaths(a.body).has(article.path)) score += 4;
       if (a.frontmatter.category === fm.category) score += 3;
       else if (relatedPairs.has(`${fm.category}|${a.frontmatter.category}`)) score += 1;
       score += 2 * a.frontmatter.tags.filter((t) => tags.has(t)).length;
@@ -192,4 +206,24 @@ export function readingTimeMinutes(body: string): number {
     .replace(/[#>*_`[\]()!-]/g, " ");
   const words = prose.split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words / 220));
+}
+
+/**
+ * Previous / next for the article footer: within a series (slugs ending in -part-N, same stem) when there is one,
+ * otherwise the neighbouring articles of the same category by publication date.
+ */
+export async function seriesNeighbours(article: Article, query: PublishedQuery = {}): Promise<{ kind: "series" | "topic"; prev: Article | null; next: Article | null }> {
+  const all = (await getPublishedContent(query)).filter((a) => a.collection === article.collection);
+  const stem = /^(.*)-part-?(\d+)$/.exec(article.slug);
+  if (stem) {
+    const parts = all
+      .map((a) => ({ a, m: /^(.*)-part-?(\d+)$/.exec(a.slug) }))
+      .filter((x) => x.m && x.m[1] === stem[1])
+      .sort((x, y) => Number(x.m![2]) - Number(y.m![2]));
+    const i = parts.findIndex((x) => x.a.path === article.path);
+    if (parts.length > 1 && i >= 0) return { kind: "series", prev: parts[i - 1]?.a ?? null, next: parts[i + 1]?.a ?? null };
+  }
+  const topic = all.filter((a) => a.frontmatter.category === article.frontmatter.category).sort((x, y) => Date.parse(x.frontmatter.publishedAt!) - Date.parse(y.frontmatter.publishedAt!) || x.slug.localeCompare(y.slug));
+  const i = topic.findIndex((a) => a.path === article.path);
+  return { kind: "topic", prev: i > 0 ? topic[i - 1]! : null, next: i >= 0 && i < topic.length - 1 ? topic[i + 1]! : null };
 }

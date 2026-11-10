@@ -1,157 +1,12 @@
 @import "tailwindcss";
+@import "./theme-tokens.css";
 @plugin "@tailwindcss/typography";
 
-/* Dark mode: an explicit choice (data-theme on <html>, set before paint by the script in layout.tsx)
-   wins; without one (or without JavaScript) the system preference applies. */
-@custom-variant dark {
-  &:where([data-theme="dark"], [data-theme="dark"] *) {
-    @slot;
-  }
-  @media (prefers-color-scheme: dark) {
-    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
-      @slot;
-    }
-  }
-}
+/* The SEO admin (/admin/seo) has its own stylesheet (src/app/admin/seo/seo.css), loaded only there, so its utility
+   classes never add weight to the render-blocking CSS of public pages. */
+@source not "../components/seo";
+@source not "./admin/seo";
 
-/* ============================================================================================
-   Design tokens. Everything visual derives from here; components use the semantic names
-   (text-fg, bg-surface, border-line, text-accent …) or the retuned scales below.
-   ============================================================================================ */
-@theme {
-  /* Type families: self-hosted by next/font in layout.tsx; no third-party font requests. */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: var(--font-sans);
-
-  /* Type scale. Fixed steps are Tailwind's (xs 12 · sm 14 · base 16 · lg 18 · xl 20 · 2xl 24);
-     page-level headings are fluid between the phone and desktop sizes. */
-  --text-display: clamp(2rem, 1.55rem + 1.9vw, 3rem); /* homepage intro: 32 → 48px */
-  --text-display--line-height: 1.1;
-  --text-display--letter-spacing: -0.025em;
-  --text-title: clamp(1.75rem, 1.5rem + 1.05vw, 2.5rem); /* page and article titles: 28 → 40px */
-  --text-title--line-height: 1.15;
-  --text-title--letter-spacing: -0.022em;
-  --text-heading: clamp(1.375rem, 1.25rem + 0.5vw, 1.75rem); /* section headings: 22 → 28px */
-  --text-heading--line-height: 1.25;
-  --text-heading--letter-spacing: -0.015em;
-
-  /* Neutral scale (replaces Tailwind's bluish slate everywhere it is used): near-achromatic,
-     500 is 4.8:1 on white, 400 is 7:1 on the dark canvas. */
-  --color-slate-50: oklch(0.985 0.002 255);
-  --color-slate-100: oklch(0.966 0.003 255);
-  --color-slate-200: oklch(0.925 0.005 255);
-  --color-slate-300: oklch(0.869 0.007 255);
-  --color-slate-400: oklch(0.711 0.011 255);
-  --color-slate-500: oklch(0.552 0.013 255);
-  --color-slate-600: oklch(0.446 0.014 255);
-  --color-slate-700: oklch(0.373 0.014 255);
-  --color-slate-800: oklch(0.279 0.012 255);
-  --color-slate-900: oklch(0.21 0.01 255);
-  --color-slate-950: oklch(0.145 0.008 255);
-
-  /* The one accent: a deep, slightly muted blue. 600/700 pass AA on white; 300/400 on dark. */
-  --color-brand-50: oklch(0.97 0.014 255);
-  --color-brand-100: oklch(0.935 0.03 255);
-  --color-brand-200: oklch(0.88 0.06 255);
-  --color-brand-300: oklch(0.79 0.1 255);
-  --color-brand-400: oklch(0.7 0.14 257);
-  --color-brand-500: oklch(0.6 0.17 258);
-  --color-brand-600: oklch(0.52 0.17 259);
-  --color-brand-700: oklch(0.46 0.15 259);
-  --color-brand-800: oklch(0.39 0.12 259);
-  --color-brand-900: oklch(0.31 0.09 259);
-  /* Kept as aliases so older markup cannot reintroduce a second hue. */
-  --color-accent-400: var(--color-brand-400);
-  --color-accent-500: var(--color-brand-500);
-
-  --color-ink: oklch(0.2 0.01 255);
-  --color-surface-dark: oklch(0.165 0.006 255);
-  --color-surface-dark-raised: oklch(0.205 0.008 255);
-
-  /* Radii: controls 8px (lg), cards and panels 12px (xl/2xl/3xl collapse to one value). */
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
-  --radius-2xl: 0.75rem;
-  --radius-3xl: 0.75rem;
-
-  /* Shadows: hairline elevation only; borders carry most of the separation. */
-  --shadow-xs: 0 1px 0 0 oklch(0.2 0.01 255 / 0.04);
-  --shadow-sm: 0 1px 2px 0 oklch(0.2 0.01 255 / 0.06);
-  --shadow-md: 0 2px 8px -2px oklch(0.2 0.01 255 / 0.1), 0 1px 2px 0 oklch(0.2 0.01 255 / 0.06);
-  --shadow-lg: 0 12px 32px -8px oklch(0.2 0.01 255 / 0.18), 0 2px 6px 0 oklch(0.2 0.01 255 / 0.06);
-  --shadow-xl: var(--shadow-lg);
-
-  /* Layout widths: page shell (1216px content + gutters ≈ 1280) and the reading column (~70ch at 18px). */
-  --container-page: 76rem;
-  --container-reading: 43rem;
-
-  /* Vertical rhythm between page sections. */
-  --spacing-section: clamp(3rem, 2.25rem + 3vw, 5rem);
-  --spacing-header: 4rem;
-
-  /* Admin-configurable presentation (overridden by the site theme, see lib/site-config/css.ts). */
-  --radius-control: 0.5rem;
-
-  /* Breakpoints are Tailwind's: sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536. */
-}
-
-/* Semantic colours. Light values on :root, dark values under the dark variant. */
-:root {
-  --canvas: #fff;
-  --surface: #fff;
-  --surface-muted: var(--color-slate-50);
-  --surface-sunken: var(--color-slate-100);
-  --fg: var(--color-ink);
-  --fg-muted: var(--color-slate-600);
-  --fg-subtle: var(--color-slate-500);
-  --line: var(--color-slate-200);
-  --line-strong: var(--color-slate-300);
-  --accent: var(--color-brand-600);
-  --accent-hover: var(--color-brand-700);
-  --accent-text: var(--color-brand-700);
-  --accent-soft: var(--color-brand-50);
-  --on-accent: #fff;
-  color-scheme: light;
-}
-
-@variant dark {
-  :root& {
-    --canvas: var(--color-surface-dark);
-    --surface: var(--color-surface-dark-raised);
-    --surface-muted: oklch(0.19 0.007 255);
-    --surface-sunken: oklch(0.14 0.006 255);
-    --fg: oklch(0.96 0.003 255);
-    --fg-muted: var(--color-slate-300);
-    --fg-subtle: var(--color-slate-400);
-    --line: oklch(1 0 0 / 0.1);
-    --line-strong: oklch(1 0 0 / 0.18);
-    --accent: var(--color-brand-400);
-    --accent-hover: var(--color-brand-300);
-    --accent-text: var(--color-brand-300);
-    --accent-soft: oklch(0.6 0.17 258 / 0.14);
-    --on-accent: var(--color-ink);
-    color-scheme: dark;
-  }
-}
-
-@theme inline {
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-surface-muted: var(--surface-muted);
-  --color-surface-sunken: var(--surface-sunken);
-  --color-fg: var(--fg);
-  --color-fg-muted: var(--fg-muted);
-  --color-fg-subtle: var(--fg-subtle);
-  --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-text: var(--accent-text);
-  --color-accent-soft: var(--accent-soft);
-  --color-on-accent: var(--on-accent);
-}
 
 /* --- Base ---------------------------------------------------------------------------------- */
 
@@ -386,6 +241,15 @@ body:has([data-admin-shell]) .site-header-inner {
 .code-block pre.shiki code {
   @apply bg-transparent p-0 text-[inherit];
 }
+/* Highlighted lines from fence meta ({2,4-6}): a tinted band plus an accent edge (not colour alone). */
+.code-block pre.shiki .line.highlighted {
+  @apply -mx-5 inline-block w-[calc(100%+2.5rem)] border-l-2 border-accent bg-accent-soft/60 px-5;
+}
+@variant dark {
+  .code-block pre.shiki .line.highlighted {
+    @apply bg-accent-soft/25;
+  }
+}
 /* ```mermaid fences drawn by MermaidBlock.tsx: centred, scroll sideways on phones rather than shrink. */
 .mermaid-diagram {
   @apply flex justify-center overflow-x-auto px-5 py-6;
@@ -400,6 +264,11 @@ body:has([data-admin-shell]) .site-header-inner {
   .shiki span {
     color: var(--shiki-dark) !important;
   }
+}
+
+/* Table of contents scroll-spy (ScrollSpy.tsx): the section being read. */
+nav a[aria-current="location"] {
+  @apply border-accent font-medium text-fg;
 }
 
 /* Long URLs, identifiers and hashes wrap instead of widening the page on phones. */

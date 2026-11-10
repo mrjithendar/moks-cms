@@ -194,7 +194,7 @@ export async function verifyDraft(draftId: string, attempt: number, reason: "pub
   const origin = siteOrigin();
   const url = `${origin.origin}${path}`;
   const s = await getSeoSettings();
-  const fetcher = deps.fetcher ?? safeFetcher(origin, { timeoutMs: s.crawler.timeoutMs, maxBytes: s.crawler.maxBytes, maxRedirects: 0 });
+  const fetcher = deps.fetcher ?? loopbackFetcher() ?? safeFetcher(origin, { timeoutMs: s.crawler.timeoutMs, maxBytes: s.crawler.maxBytes, maxRedirects: 0 });
   let checks: Check[];
   try {
     const res = await fetcher(url);
@@ -218,6 +218,21 @@ export async function verifyDraft(draftId: string, attempt: number, reason: "pub
   log.warn("seo post-publish verification failed", { operation: "seo_verify", outcome: "failed" });
   await sendSeoAlert(`SEO: verification failed for ${path}`, `The page published from an SEO draft did not pass verification, so nothing was submitted to search engines.\n\n${checks.map((c) => `${c.ok ? "✓" : "✗"} ${c.key}: ${c.detail}`).join("\n")}\n\nRoll back in one click: ${origin.origin}/admin/seo/review/${draftId}`).catch(() => false);
   return verification;
+}
+
+/**
+ * Local E2E only: the SSRF-safe fetcher (rightly) refuses loopback addresses, so a local run could never verify. With
+ * SEO_VERIFY_FETCH_ORIGIN=http://localhost:3100 the check fetches the same path from that origin instead. Ignored in
+ * production (APP_ENV=production).
+ */
+function loopbackFetcher(): PageFetcher | null {
+  const o = process.env.SEO_VERIFY_FETCH_ORIGIN?.trim();
+  if (!o || isProductionEnv() || !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)) return null;
+  return async (url: string) => {
+    const local = `${o}${new URL(url).pathname}`;
+    const res = await fetch(local, { redirect: "manual", signal: AbortSignal.timeout(15_000) });
+    return { url, finalUrl: local, status: res.status, headers: Object.fromEntries(res.headers), body: await res.text(), redirects: [], truncated: false };
+  };
 }
 
 export const verifyJobHandler = async (payload: Record<string, unknown>) => {

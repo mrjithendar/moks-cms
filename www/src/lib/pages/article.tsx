@@ -19,7 +19,8 @@ import { absoluteUrl, site } from "@/config/site";
 import { collectionLabels, type Collection } from "@/config/taxonomy";
 import { getCategoryMap, labelOf } from "@/lib/categories";
 import { findRedirect } from "@/lib/redirects";
-import { getAuthor, getPublishedArticle, readingTimeMinutes, relatedArticles, type Article, type Author } from "@/lib/content";
+import { getAuthor, getPublishedArticle, readingTimeMinutes, relatedArticles, seriesNeighbours, type Article, type Author } from "@/lib/content";
+import { ScrollSpy } from "@/components/ScrollSpy";
 import { formatDateTime } from "@/lib/dates";
 import { compileMdx } from "@/lib/mdx/compile";
 import { canonicalFor } from "@/lib/seo/canonical";
@@ -103,6 +104,7 @@ export async function ArticleView({
   // Presentation options (Admin → Appearance → Blog). Structured data below never depends on them.
   const a = config.blog.article;
   const related = a.related.enabled ? await relatedArticles(article, a.related.count) : [];
+  const neighbours = article.preview ? null : await seriesNeighbours(article);
   const cats = await getCategoryMap();
   const category = cats.get(fm.category);
   const crumbs = [
@@ -255,6 +257,23 @@ export async function ArticleView({
               </section>
             )}
 
+            {neighbours && (neighbours.prev || neighbours.next) && (
+              <nav aria-label={neighbours.kind === "series" ? "More in this series" : `More in ${labelOf(cats, fm.category)}`} className="mt-12 grid gap-3 sm:grid-cols-2">
+                {neighbours.prev ? (
+                  <Link href={neighbours.prev.path} className="group rounded-xl border border-line p-4 hover:border-line-strong hover:bg-surface-muted">
+                    <span className="text-xs font-medium text-fg-subtle"><span aria-hidden="true">← </span>{neighbours.kind === "series" ? "Previous part" : "Previous in this topic"}</span>
+                    <span className="mt-1 block font-semibold text-fg group-hover:underline [overflow-wrap:anywhere]">{neighbours.prev.frontmatter.title}</span>
+                  </Link>
+                ) : <span className="hidden sm:block" />}
+                {neighbours.next && (
+                  <Link href={neighbours.next.path} className="group rounded-xl border border-line p-4 text-right hover:border-line-strong hover:bg-surface-muted">
+                    <span className="text-xs font-medium text-fg-subtle">{neighbours.kind === "series" ? "Next part" : "Next in this topic"}<span aria-hidden="true"> →</span></span>
+                    <span className="mt-1 block font-semibold text-fg group-hover:underline [overflow-wrap:anywhere]">{neighbours.next.frontmatter.title}</span>
+                  </Link>
+                )}
+              </nav>
+            )}
+
             <footer className="mt-12 space-y-8 border-t border-line pt-8">
               <TagList tags={fm.tags} />
               {a.showAuthorCard && <AuthorCard author={author} />}
@@ -263,7 +282,8 @@ export async function ArticleView({
             {article.id && !article.preview && <Comments postId={article.id} path={article.path} />}
           </div>
 
-          {sidebarToc && (
+          {hasToc && <ScrollSpy />}
+      {sidebarToc && (
             <aside className="hidden pt-10 xl:col-start-3 xl:row-start-2 xl:block">
               <div className="sticky top-[calc(var(--spacing-header)+2rem)] max-h-[calc(100dvh-var(--spacing-header)-4rem)] overflow-y-auto pb-4">
                 <TableOfContents headings={headings} />

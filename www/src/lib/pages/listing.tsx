@@ -24,6 +24,8 @@ export type Listing = {
   emptyText?: string;
   /** Items per page (configured; out-of-range pages 404). */
   pageSize?: number;
+  /** Topic hubs (category pages): the most-referenced articles, shown above the latest on page 1. */
+  featured?: Article[];
 };
 
 export type PageParams = { params: Promise<{ n: string }> };
@@ -76,6 +78,14 @@ export function ListingPage({ listing, paged }: { listing: Listing; paged: Paged
         </Container>
       </div>
       <Container className="pt-10 sm:pt-12">
+        {paged.page === 1 && listing.featured && listing.featured.length > 0 && (
+          <section aria-labelledby="hub-featured" className="mb-12">
+            <h2 id="hub-featured" className="text-heading font-semibold text-fg">Start here</h2>
+            <p className="mt-1 text-sm text-fg-muted">The articles other articles on this topic point to most.</p>
+            <div className="mt-6"><ArticleList articles={listing.featured} emptyText="" /></div>
+          </section>
+        )}
+        {paged.page === 1 && listing.featured && listing.featured.length > 0 && <h2 className="mb-6 text-heading font-semibold text-fg">Latest</h2>}
         <ArticleList articles={paged.items} emptyText={listing.emptyText ?? "Nothing published here yet"} />
         <Pagination basePath={listing.basePath} page={paged.page} totalPages={paged.totalPages} />
       </Container>

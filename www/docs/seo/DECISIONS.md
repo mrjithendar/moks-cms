@@ -181,3 +181,50 @@ Every v2 action (generate, decide change, approve, schedule, publish, verify, su
 ## D-30 News articles
 News drafts are generated like blog drafts but with their own category set (default: title/meta, alt text, internal
 links — no body rewrites of reported facts) and appear in a separate News tab of the queue and recommendations.
+
+## D-31 Submission only after verification; the editor's IndexNow ping only on visible changes
+`updatePost` gained `notifySearchEngines: false` so an approved draft is submitted only after the live page passed
+verification (the existing hook would otherwise ping IndexNow before the check). Independently, the existing
+editor hook now skips saves that change no visible field, and goes through the batched submission log instead of one
+job per URL. Legacy queued `indexnow` jobs still drain through the old handler.
+
+## D-32 No Google Indexing API; sitemap resubmission needs Full permission
+See SUBMISSION.md. The write scope is requested only for `sitemaps.submit`; syncs stay read-only.
+
+## D-33 IndexNow key generated automatically, unless turned off
+The first SEO submission generates a key (via the existing Admin → Integrations code path, audit-logged) when none
+exists. If an admin turned IndexNow off, it stays off.
+
+## D-34 Link relevance uses TF-IDF, not embeddings
+There is no embedding store (v1 D-13). TF-IDF over title/headings/body plus shared GSC queries, category and tags.
+
+## D-35 Popover built in-repo
+The brief asks for the existing UI library's Popover/HoverCard; the repo has none (only a modal Dialog). A small
+accessible Popover (`components/seo/Popover.tsx`) implements hover (mouse only) / focus as tooltip with
+`aria-describedby`, click/tap as non-modal dialog with focus trap, Esc everywhere.
+
+## D-36 Keyword data is Search Console only
+No search volume or keyword difficulty columns: no licensed third-party source is configured. Expected CTR comes from
+the site's own curve (positions with < 200 impressions in 90 days use the v1 yardstick, and the page says how many).
+
+## D-37 Admin CSS split from public CSS
+The new admin UI added ~20 KB of utilities to the single render-blocking stylesheet that public pages load, and the
+first "after" Lighthouse run showed it (article LCP +2 %, consistent across runs). `globals.css` now excludes
+`components/seo` and `app/admin/seo` with `@source not`; those get `app/admin/seo/seo.css`, loaded only by the SEO admin
+layout. The theme moved verbatim to `theme-tokens.css` so both stylesheets share it.
+
+## D-38 E2E-only verification origin
+`SEO_VERIFY_FETCH_ORIGIN` lets a local E2E run verify against `http://localhost:…` (the SSRF-safe fetcher refuses
+loopback by design). Ignored when `APP_ENV=production`; only `localhost` / `127.0.0.1` accepted.
+
+## D-39 The SEO snapshot URLs
+The brief asks for the 20 most-trafficked URLs; there is no traffic data locally. The committed snapshot covers the home
+page, the indexable category pages and the newest articles of the bundled content (20). `SEO_SNAPSHOT_URLS` takes the
+real top 20 from Search Console for a production check.
+
+## D-40 Public-site additions that were already there
+Reading width (~70ch), skip link, reading time, "Updated" date, author box, breadcrumbs + BreadcrumbList, copy button and
+language label, mobile TOC, instant search and self-hosted fonts with `font-display: swap` already existed and were left
+as they were. Added: fence-meta filenames and line highlighting (opt-in; existing articles render unchanged),
+TOC scroll-spy (~1 KB), related reading from the internal-link graph, series/topic previous-next, category "Start here"
+hub row. Nothing in metadata, JSON-LD, canonicals, sitemap or robots changed (snapshot test).

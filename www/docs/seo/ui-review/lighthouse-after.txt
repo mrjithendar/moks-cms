@@ -1,0 +1,7 @@
+# Lighthouse after Phase 7 (final), 2026-11-10T03:36Z. Same method as lighthouse-before.txt.
+page                perf  a11y  seo  LCP ms    CLS  TBT ms  JS KB
+article-eks           69   100   69    7568  0.001       6    588  (n=3)
+article-four-ai       55    97   69    7418  0.001     343   2891  (n=3)
+article-istio         66    97   69    8249  0.001       8    588  (n=3)
+category              75   100   69    6219  0.001       6    550  (n=3)
+home                  74   100   66    6374  0.001       6    550  (n=3)

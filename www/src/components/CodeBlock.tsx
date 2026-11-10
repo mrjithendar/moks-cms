@@ -5,7 +5,7 @@ import { LANGUAGE_LABELS } from "@/lib/code-languages";
 import { CheckIcon, CopyIcon } from "./icons";
 import { MermaidBlock } from "./MermaidBlock";
 
-type PreProps = ComponentProps<"pre"> & { "data-language"?: string };
+type PreProps = ComponentProps<"pre"> & { "data-language"?: string; "data-title"?: string };
 
 /** Highlighted <pre> in a frame with its language and a copy button; ```mermaid fences become diagrams. */
 export function CodeBlock(props: PreProps) {
@@ -14,7 +14,7 @@ export function CodeBlock(props: PreProps) {
 }
 
 /** Highlighted <pre> in a frame with its language and a keyboard-accessible, announced copy button. */
-function HighlightedCode({ "data-language": language, ...props }: PreProps) {
+function HighlightedCode({ "data-language": language, "data-title": title, ...props }: PreProps) {
   const pre = useRef<HTMLPreElement>(null);
   const [status, setStatus] = useState("");
   const label = language && language !== "text" ? (LANGUAGE_LABELS[language] ?? language) : "";
@@ -33,7 +33,10 @@ function HighlightedCode({ "data-language": language, ...props }: PreProps) {
   return (
     <div className="code-block not-prose">
       <div className="flex h-10 items-center justify-between gap-3 border-b border-line pl-4 pr-1.5">
-        <span className="font-mono text-xs text-fg-subtle">{label}</span>
+        <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-fg-subtle">
+          {title && <span className="truncate font-medium text-fg-muted" title={title}>{title}</span>}
+          {label && <span className={title ? "shrink-0 rounded bg-surface-sunken px-1.5 py-0.5" : ""}>{label}</span>}
+        </span>
         <button
           type="button"
           onClick={copy}
@@ -41,7 +44,7 @@ function HighlightedCode({ "data-language": language, ...props }: PreProps) {
         >
           {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <CopyIcon className="h-3.5 w-3.5" />}
           {copied ? "Copied" : "Copy"}
-          <span className="sr-only"> code{label ? ` (${label})` : ""}</span>
+          <span className="sr-only"> code{title ? ` from ${title}` : label ? ` (${label})` : ""}</span>
         </button>
       </div>
       <pre ref={pre} {...props} tabIndex={0} />

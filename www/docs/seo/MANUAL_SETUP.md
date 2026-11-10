@@ -59,3 +59,49 @@ Admin → SEO intelligence → Settings (which then win).
 - **Report emails**: Admin → Storage & email must be configured; then Settings → Reports: enable and add recipients.
 - **Alerts**: copy `www/docs/seo/prometheus-alerts.yml` into the miniKube repo (OPERATIONS.md#alerts).
 - **Dashboard**: sync the `grafana` Argo CD app after merge.
+
+---
+
+# v2 additions (drafts, submission)
+
+## 8. Anthropic API key and the monthly budget
+1. https://console.anthropic.com → (optionally a dedicated workspace `jithendar-seo`) → **API keys** → Create key
+   `jithendar-seo-drafts`. In the workspace's **Limits**, set a spend limit a little above the budget below (a second,
+   provider-side cap).
+2. Store it as a secret reference only — it is never saved in the database:
+   ```bash
+   cd jithendar.com
+   read -rs KEY && kubectl --context mk4 -n jithendar patch secret jithendar-com-env --type merge \
+     -p "{\"stringData\":{\"ANTHROPIC_API_KEY\":\"$KEY\"}}" && unset KEY
+   ```
+3. Budget and models (non-secret) in ConfigMap `jithendar-com-public`:
+   ```bash
+   kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge \
+     -p '{"data":{"SEO_LLM_MONTHLY_BUDGET_USD":"10","SEO_DRAFT_MODEL":"claude-sonnet-5-5","SEO_CLASSIFY_MODEL":"claude-haiku-5-5"}}'
+   kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com
+   ```
+   The budget is a hard cap on month-to-date spend (UTC month) across all SEO Claude calls; Settings can lower it but
+   not raise it. When reached, jobs pause and every `/admin/seo` page shows a banner.
+4. Verify: Admin → SEO → Settings → **Claude usage this month** says "Key: configured". On an article's SEO panel,
+   **Draft with Claude** → the draft appears in the Review queue within a minute; the usage card shows the call and
+   its cost.
+
+## 9. Search Console permission for sitemap resubmission
+`sitemaps.submit` needs the **write** scope (`https://www.googleapis.com/auth/webmasters`) and a user with **Full** (or
+Owner) permission. In Search Console → Settings → Users and permissions, change the service account from *Restricted*
+to **Full**. The app requests the write scope only for that call; syncing stays read-only. Without it, submissions show
+"error … needs Full or Owner permission"; IndexNow is unaffected.
+
+## 10. IndexNow
+Nothing to do: the key is generated automatically on the first SEO submission and served at
+`https://jithendar.com/{key}.txt` (or set `INDEXNOW_KEY` yourself). If you turned IndexNow off in Admin → Integrations,
+it stays off. Optional: verify the site in **Bing Webmaster Tools** (https://www.bing.com/webmasters, import from Search
+Console) to see IndexNow submissions and crawl reports there — the app does not need it.
+
+## 11. Submission kill switch
+`SEO_SUBMISSION_ENABLED` is on by default only when `APP_ENV=production`. Set it to `false` in the ConfigMap to stop all
+submissions (each event is still logged as `skipped`).
+
+## 12. Digest recipients
+Settings → Drafts → digest → recipients (requires email in Admin → Storage & email). Until a recipient is set, nothing
+is emailed.

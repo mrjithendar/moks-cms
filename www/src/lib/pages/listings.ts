@@ -2,7 +2,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { findRedirect } from "@/lib/redirects";
 import { getCategoryMap } from "@/lib/categories";
 import { collectionLabels, type Collection } from "@/config/taxonomy";
-import { articlesInCategory, articlesWithTag, getAuthor, getPublishedContent, isCategoryIndexable, publishedTags } from "@/lib/content";
+import { articlesInCategory, articlesWithTag, getAuthor, getPublishedContent, isCategoryIndexable, publishedTags, type Article } from "@/lib/content";
 import { getSiteConfig } from "@/lib/site-config";
 import type { Listing } from "./listing";
 
@@ -60,16 +60,43 @@ export async function categoryListing(slug: string): Promise<Listing> {
     if (moved) permanentRedirect(moved);
     notFound();
   }
+  const articles = await articlesInCategory(slug);
   return {
     pageSize: await listingPageSize(),
     title: category.label,
     description: category.intro,
     basePath: `/category/${slug}`,
     crumbs: [home, { name: category.label, path: `/category/${slug}` }],
-    articles: await articlesInCategory(slug),
+    articles,
+    featured: hubFeatured(articles, await getPublishedContent()),
     indexable: await isCategoryIndexable(slug),
     feedHref: `/category/${slug}/feed.xml`,
   };
+}
+
+/**
+ * Topic hub: up to 3 articles of the category that the most published articles link to (internal-link graph).
+ * Only for categories with ≥ 6 articles, and only articles with ≥ 2 inbound links; otherwise no featured row.
+ */
+export function hubFeatured(inCategory: Article[], all: Article[]): Article[] {
+  if (inCategory.length < 6) return [];
+  const inbound = new Map<string, number>();
+  for (const a of all) {
+    const seen = new Set<string>();
+    for (const m of a.body.matchAll(/(?<!!)\[[^\]]*\]\((\/(?:blog|news|projects)\/[^)\s#?]+)/g)) {
+      const p = m[1]!.replace(/\/+$/, "");
+      if (p !== a.path && !seen.has(p)) {
+        seen.add(p);
+        inbound.set(p, (inbound.get(p) ?? 0) + 1);
+      }
+    }
+  }
+  return inCategory
+    .map((a) => ({ a, n: inbound.get(a.path) ?? 0 }))
+    .filter((x) => x.n >= 2)
+    .sort((x, y) => y.n - x.n || Date.parse(y.a.frontmatter.publishedAt!) - Date.parse(x.a.frontmatter.publishedAt!))
+    .slice(0, 3)
+    .map((x) => x.a);
 }
 
 /** Tag pages have no editorial intro, so they are always noindex, follow. */
