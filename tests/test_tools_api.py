@@ -159,3 +159,20 @@ async def test_unknown_flows_and_bad_inputs_are_refused(llm, web) -> None:
         assert (await h.post("/flows/shell_flow/kickoff", json={}, headers=AUTH)).status_code == 404
         assert (await h.post("/flows/optimize_article_flow/kickoff", json={"inputs": {"draft_id": "../../etc"}}, headers=AUTH)).status_code == 422
         assert (await h.post(f"/review/{DRAFT}/decision", json={"decision": "publish"}, headers=AUTH)).status_code == 422
+
+
+def test_cronjob_trigger_posts_one_kickoff_and_stops_the_sidecar(monkeypatch) -> None:
+    from app import trigger
+
+    calls: list[tuple[str, object]] = []
+
+    def post(url: str, json: object = None, headers: object = None, timeout: float = 0) -> httpx.Response:
+        calls.append((url, json))
+        return httpx.Response(202 if "kickoff" in url else 200, json={"run_id": "r", "status": "queued"} if "kickoff" in url else None, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(trigger.httpx, "post", post)
+    monkeypatch.setenv("SEO_AGENT_TOKEN", "t")
+    assert trigger.main(["report_flow", '{"period": "monthly"}']) == 0
+    assert calls[0] == ("http://seo-agent.jithendar:8080/flows/report_flow/kickoff", {"inputs": {"period": "monthly"}, "triggered_by": "cron"})
+    assert calls[1][0].endswith("/quitquitquit")
+    assert trigger.main(["rm -rf /"]) == 2 and trigger.main([]) == 2  # only flow names
