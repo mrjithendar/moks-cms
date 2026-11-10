@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { log } from "../log";
 import { DraftError } from "../seo-intel/drafts";
 import * as cb from "./callbacks";
+import * as v4 from "./callbacks-v4";
 import { callbackPort, callbackToken } from "./config";
 
 /**
@@ -14,6 +15,22 @@ import { callbackPort, callbackToken } from "./config";
 export type CallbackResponse = { status: number; body: unknown };
 
 const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, body: unknown, q: URLSearchParams) => Promise<unknown>][] = [
+  // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns
+  ["POST", /^\/jobs\/run$/, (_m, b) => v4.runJob(b)],
+  ["GET", /^\/drafts\/open-articles$/, (_m, _b, q) => v4.openDraftArticles(q)],
+  ["GET", /^\/review\/queue$/, (_m, _b, q) => v4.reviewQueueCb(q)],
+  ["GET", /^\/drafts\/([^/]+)$/, (m) => v4.draftSummary(m[1]!)],
+  ["GET", /^\/drafts\/([^/]+)\/diff$/, (m) => v4.draftDiff(m[1]!)],
+  ["POST", /^\/drafts\/([^/]+)\/reject$/, (m, b) => v4.rejectDraftCb(m[1]!, b)],
+  ["POST", /^\/drafts\/([^/]+)\/notes$/, (m, b) => v4.addNote(m[1]!, b)],
+  ["GET", /^\/data\/([a-z-]+)$/, (m, _b, q) => v4.data(m[1]!, q)],
+  ["GET", /^\/articles\/topics$/, () => v4.topics()],
+  ["POST", /^\/reports\/generate$/, (_m, b) => v4.reportGenerate(b)],
+  ["POST", /^\/reports\/([^/]+)\/narrative$/, (m, b) => v4.reportNarrative(m[1]!, b)],
+  ["POST", /^\/reports\/([^/]+)\/pdf$/, (m, b) => v4.reportPdf(m[1]!, b)],
+  ["POST", /^\/reports\/([^/]+)\/notify$/, (m) => v4.reportNotify(m[1]!)],
+  ["POST", /^\/ask-gaps\/cluster$/, () => v4.clusterGaps()],
+  // v3
   ["POST", /^\/articles\/([^/]+)\/context$/, (m, b) => cb.articleContext(m[1]!, b)],
   ["POST", /^\/articles\/([^/]+)\/validate$/, (m, b) => cb.validate(m[1]!, b)],
   ["POST", /^\/articles\/([^/]+)\/links$/, (m, b) => cb.planArticleLinks(m[1]!, b)],
@@ -63,6 +80,8 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
 }
 
 const MAX_BODY = 1_000_000;
+/** Report PDFs (base64) are the one large body: up to ~10 MB of PDF. */
+const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/reports\/[^/]+\/pdf$/.test((url ?? "").split("?")[0]!) ? 14_000_000 : MAX_BODY);
 
 /** Start the listener once per process (instrumentation.ts). Returns the port, or null when off. */
 export async function startCallbackServer(env: Record<string, string | undefined> = process.env): Promise<number | null> {
@@ -82,7 +101,7 @@ export async function startCallbackServer(env: Record<string, string | undefined
     let size = 0;
     req.on("data", (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > maxBody(req.url)) {
         send({ status: 413, body: { error: "too large" } });
         req.destroy();
         return;

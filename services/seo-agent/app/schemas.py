@@ -1,4 +1,4 @@
-"""Pydantic models shared by the graphs, the crew and the API.
+"""Pydantic models shared by the flows, the crews and the API.
 
 `ModelChangeSet` mirrors MODEL_OUTPUT_JSON_SCHEMA in services/www/src/lib/seo-intel/changeset.ts exactly: Claude's
 structured output is converted into v2 `Change` objects and validated by the web app's own validators
@@ -99,24 +99,7 @@ class AskAnswer(BaseModel):
 
 # --- API ----------------------------------------------------------------------------------------------------------
 
-GraphName = Literal["optimize_article", "weekly_recommendations", "internal_linking", "new_article"]
 
-
-class StartRun(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    graph: GraphName
-    input: dict = Field(default_factory=dict)
-    thread_id: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9:_-]+$")
-
-
-class ResumeRun(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    decision: Literal["approve", "reject", "edit"]
-    accepted_change_ids: list[str] = Field(default_factory=list, max_length=200)
-    edits: dict[str, str] = Field(default_factory=dict)
-    approval_id: str | None = Field(default=None, max_length=80)
-    actor: str | None = Field(default=None, max_length=200)
-    feedback: str | None = Field(default=None, max_length=2000)
 
 
 class AskRequest(BaseModel):
@@ -125,8 +108,3 @@ class AskRequest(BaseModel):
     ip_hash: str | None = Field(default=None, max_length=128)
     stream: bool = False
 
-
-class ReindexRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    article_ids: list[str] | None = None
-    full: bool = False

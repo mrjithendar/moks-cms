@@ -308,12 +308,19 @@ export function dueSlots(s: SeoSettings, now: Date): { type: JobType; slot: stri
   return out;
 }
 
-/** Called from the worker tick: enqueue each due slot once (a slot that already has a run is never re-enqueued). */
-export async function seoTick(now = new Date()): Promise<number> {
+/**
+ * Called from the worker tick: enqueue each due slot once (a slot that already has a run is never re-enqueued).
+ * With SEO_ORCHESTRATOR=crewai the job types the CrewAI flows own (FLOW_OWNED_JOBS) are triggered by their Kubernetes
+ * CronJobs instead and are skipped here, so every job runs once, through one scheduler (v4 D-63).
+ */
+export async function seoTick(now = new Date(), env: Record<string, string | undefined> = process.env): Promise<number> {
   const db = await getDb();
   const settings = await getSeoSettings();
+  const { orchestrator, FLOW_OWNED_JOBS } = await import("../seo-agent/config");
+  const owned = new Set<string>(orchestrator(env) === "crewai" ? FLOW_OWNED_JOBS : []);
   let queued = 0;
   for (const { type, slot } of dueSlots(settings, now)) {
+    if (owned.has(type)) continue;
     const seen = rowsOf<{ n: number }>(
       await db.execute(sql`select count(*)::int as n from seo_sync_jobs where job_type = ${type} and trigger = 'schedule' and detail->>'slot' = ${slot}`),
     );

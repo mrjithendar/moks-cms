@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
@@ -31,6 +32,13 @@ export function reportPeriod(type: PeriodType, now = new Date()): { start: strin
 
 const q = async <T>(db: Db, query: ReturnType<typeof sql>) => rowsOf<T>(await db.execute(query));
 
+async function gscDaily(db: Db, start: string, end: string) {
+  const rows = await q<{ date: string; clicks: number; impressions: number }>(db, sql`
+    select date::text as date, sum(clicks)::float8 as clicks, sum(impressions)::float8 as impressions
+    from seo_gsc_daily_totals where search_type = 'web' and date between ${start} and ${end} group by date order by date`);
+  return rows.map((r) => ({ date: String(r.date).slice(0, 10), clicks: Number(r.clicks), impressions: Number(r.impressions) }));
+}
+
 async function gsc(db: Db, start: string, end: string) {
   const [r] = await q<Record<string, unknown>>(db, sql`
     select sum(clicks)::float8 as clicks, sum(impressions)::float8 as impressions,
@@ -53,7 +61,7 @@ async function ga4(db: Db, start: string, end: string) {
 export async function buildReport(type: PeriodType, now = new Date()) {
   const db = await getDb();
   const p = reportPeriod(type, now);
-  const [cur, prev, gaCur, gaPrev] = await Promise.all([gsc(db, p.start, p.end), gsc(db, p.prevStart, p.prevEnd), ga4(db, p.start, p.end), ga4(db, p.prevStart, p.prevEnd)]);
+  const [cur, prev, gaCur, gaPrev, daily, dailyPrevious] = await Promise.all([gsc(db, p.start, p.end), gsc(db, p.prevStart, p.prevEnd), ga4(db, p.start, p.end), ga4(db, p.prevStart, p.prevEnd), gscDaily(db, p.start, p.end), gscDaily(db, p.prevStart, p.prevEnd)]);
   const pages = await q<Record<string, unknown>>(db, sql`
     with c as (select page, sum(clicks)::float8 as clicks from seo_gsc_page_daily where search_type = 'web' and date between ${p.start} and ${p.end} group by page),
     pr as (select page, sum(clicks)::float8 as clicks from seo_gsc_page_daily where search_type = 'web' and date between ${p.prevStart} and ${p.prevEnd} group by page)
@@ -76,6 +84,9 @@ export async function buildReport(type: PeriodType, now = new Date()) {
       ga4: { current: gaCur, previous: gaPrev, change: { organicSessions: change(gaCur.organicSessions, gaPrev.organicSessions) } },
       dataComplete: cur.daysWithData >= (type === "weekly" ? 7 : 28),
     },
+    // Daily clicks/impressions for the PDF chart (v4); the same table the totals come from.
+    daily,
+    dailyPrevious,
     bestArticles: [...rows].sort((a, b) => b.clicks - a.clicks).slice(0, 10),
     growing: rows.filter((r) => r.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10),
     declining: rows.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10),
@@ -96,26 +107,75 @@ export async function buildReport(type: PeriodType, now = new Date()) {
 
 export type Report = Awaited<ReturnType<typeof buildReport>>;
 
-export async function generateReport(type: PeriodType, trigger: "schedule" | "manual", now = new Date(), deps: { send?: (to: string, subject: string, text: string) => Promise<boolean>; mailReady?: () => Promise<boolean> } = {}) {
+export type MailDeps = { send?: (to: string, subject: string, text: string) => Promise<boolean>; mailReady?: () => Promise<boolean> };
+
+/**
+ * Build and store the report. `notify: false` (v4 report_flow) stores it without email: the flow first adds the
+ * checked narrative and the PDF, then calls notifyReport. The legacy scheduler keeps v1 behaviour (notify at once).
+ */
+export async function generateReport(type: PeriodType, trigger: "schedule" | "manual", now = new Date(), deps: MailDeps & { notify?: boolean } = {}) {
   const db = await getDb();
   const report = await buildReport(type, now);
   const [row] = await q<{ id: string; emailed_at: string | null }>(db, sql`
     insert into seo_reports (period_type, period_start, period_end, payload, trigger) values (${type}, ${report.period.start}, ${report.period.end}, ${JSON.stringify(report)}::jsonb, ${trigger})
     on conflict (period_type, period_start) do update set payload = excluded.payload, generated_at = now(), trigger = excluded.trigger
     returning id, emailed_at`);
+  if (deps.notify === false) return { id: row!.id, emailed: 0, report };
+  const n = await notifyReport(row!.id, deps);
+  return { id: row!.id, emailed: n.emailed, report };
+}
+
+/** Email the report (once) through the existing sendMail path, only when enabled AND recipients are configured. */
+export async function notifyReport(id: string, deps: MailDeps = {}): Promise<{ emailed: number; reason?: string }> {
+  const db = await getDb();
+  const [row] = await q<{ payload: Report | string; emailed_at: string | null }>(db, sql`select payload, emailed_at from seo_reports where id = ${id}`);
+  if (!row) return { emailed: 0, reason: "not_found" };
   const s = await getSeoSettings();
-  let emailed = 0;
-  if (s.reports.emailEnabled && s.reports.recipients.length && !row!.emailed_at) {
-    const mail = await import("../mail");
-    const ready = await (deps.mailReady ?? mail.mailConfigured)();
-    if (ready) {
-      const send = deps.send ?? mail.sendMail;
-      const text = reportText(report, `${siteOrigin().origin}/admin/seo/reports/${row!.id}`);
-      for (const to of s.reports.recipients) if (await send(to, `SEO ${type} report ${report.period.start} – ${report.period.end}`, text)) emailed++;
-      if (emailed) await db.execute(sql`update seo_reports set emailed_at = now() where id = ${row!.id}`);
-    } else log.warn("seo report email skipped: email is not configured", { operation: "seo_report_email", outcome: "skipped" });
+  if (!s.reports.emailEnabled || !s.reports.recipients.length) return { emailed: 0, reason: "no recipients configured" };
+  if (row.emailed_at) return { emailed: 0, reason: "already sent" };
+  const mail = await import("../mail");
+  if (!(await (deps.mailReady ?? mail.mailConfigured)())) {
+    log.warn("seo report email skipped: email is not configured", { operation: "seo_report_email", outcome: "skipped" });
+    return { emailed: 0, reason: "email not configured" };
   }
-  return { id: row!.id, emailed };
+  const report = (typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload) as Report & { narrative?: string; pdf?: { key: string } };
+  const send = deps.send ?? mail.sendMail;
+  const base = `${siteOrigin().origin}/admin/seo/reports/${id}`;
+  let text = reportText(report, base);
+  if (report.narrative) text = `${report.narrative}\n\n${text}`;
+  if (report.pdf?.key) text += `\nPDF: ${base}/pdf (admin sign-in required)`;
+  let emailed = 0;
+  for (const to of s.reports.recipients) if (await send(to, `SEO ${report.type} report ${report.period.start} – ${report.period.end}`, text)) emailed++;
+  if (emailed) await db.execute(sql`update seo_reports set emailed_at = now() where id = ${id}`);
+  return { emailed };
+}
+
+/** The narrative the Report Crew wrote, after report_flow's number check passed (stored in the payload). */
+export async function storeReportNarrative(id: string, narrative: string, check: Record<string, unknown>) {
+  const db = await getDb();
+  const r = await q<{ id: string }>(db, sql`update seo_reports set payload = payload || ${JSON.stringify({ narrative: narrative.slice(0, 5000), narrativeCheck: check })}::jsonb where id = ${id} returning id`);
+  return { ok: r.length === 1 };
+}
+
+/**
+ * Store the report PDF in Cloudflare R2 with the site's existing storage client (src/lib/storage.ts). The key is private
+ * (never under the media prefix) and unguessable; admins download it through a short-lived presigned link
+ * (GET /api/admin/seo/reports/{id}/pdf). A regenerated report replaces the pointer; old objects stay (audit trail).
+ */
+export const REPORTS_ROOT = "jithendar/www/reports/seo";
+
+export async function storeReportPdf(id: string, pdf: Buffer, now = new Date()) {
+  if (pdf.length < 100 || pdf.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("not a PDF");
+  if (pdf.length > 10 * 1024 * 1024) throw new Error("PDF too large");
+  const db = await getDb();
+  const [row] = await q<{ period_type: string; period_start: string; period_end: string }>(db, sql`select period_type, period_start::text, period_end::text from seo_reports where id = ${id}`);
+  if (!row) throw new Error("report not found");
+  const key = `${REPORTS_ROOT}/${row.period_type}/${String(row.period_start).slice(0, 4)}/${String(row.period_start).slice(0, 10)}_${String(row.period_end).slice(0, 10)}-${randomUUID()}.pdf`;
+  const { putObject } = await import("../storage");
+  await putObject(key, pdf, { contentType: "application/pdf", cacheControl: "private, no-store", contentMd5: createHash("md5").update(pdf).digest("base64") });
+  const meta = { key, bytes: pdf.length, generatedAt: now.toISOString(), filename: `seo-${row.period_type}-report-${String(row.period_start).slice(0, 10)}.pdf` };
+  await db.execute(sql`update seo_reports set payload = payload || ${JSON.stringify({ pdf: meta })}::jsonb where id = ${id}`);
+  return meta;
 }
 
 const pct = (v: number | null) => (v === null ? "n/a" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);

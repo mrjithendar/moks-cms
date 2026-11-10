@@ -1,11 +1,13 @@
 name: seo-agent
 
 # check   → pull requests and pushes touching the agent: ruff, mypy, pytest (with a pgvector PostgreSQL service, so the
-#           checkpointer resume and retrieval tests run), pip-audit of the locked production dependencies, and a
-#           Docker build of the image (model checksums verified inside the build).
+#           flow-run, persistence, advisory-lock and retrieval tests run), pip-audit of the locked production
+#           dependencies, and a Docker build of the image (model checksums verified inside the build) with a smoke test
+#           of both ports (internal API 8080, MCP edge 8090).
 # release → default branch: build arm64, push registry.jithendar.com/jithendar/seo-agent:latest (the only tag).
 # deploy  → default branch, only when repository variable SEO_AGENT_DEPLOY is "true": restart deploy/seo-agent and wait.
-#           Manifests and Secrets are applied once by a person (docs/seo/MANUAL_SETUP.md "v3"); CI never applies them.
+#           Manifests, CronJobs, Secrets and the Kong entities are applied by a person (docs/seo/MANUAL_SETUP.md "v4");
+#           CI never applies them.
 
 on:
   workflow_dispatch:
@@ -82,12 +84,19 @@ jobs:
       - name: Image smoke test
         run: |
           set -euo pipefail
-          docker run -d --name agent -e SEO_AGENT_TOKEN=ci -e DATABASE_URL="postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test" --add-host host.docker.internal:host-gateway -p 8080:8080 seo-agent:ci
+          docker run -d --name agent -e SEO_AGENT_TOKEN=ci -e DATABASE_URL="postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test" --add-host host.docker.internal:host-gateway -p 8080:8080 -p 8090:8090 seo-agent:ci
           # A fresh database without the web app's tables: the service must still start and say so on /readyz.
           for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 2; done
           curl -sS http://127.0.0.1:8080/readyz | tee /dev/stderr | grep -q '"status"' 
-          curl -fsS http://127.0.0.1:8080/metrics | grep -q seo_graph_runs_total
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/runs -H 'Content-Type: application/json' -d '{}')" = 401
+          curl -fsS http://127.0.0.1:8080/metrics | grep -q seo_flow_runs_total
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/flows/gsc_sync_flow/kickoff -H 'Content-Type: application/json' -d '{}')" = 401
+          # MCP edge: up, and both servers switched off by default (404) until PUBLIC_/ADMIN_MCP_ENABLED.
+          curl -fsS http://127.0.0.1:8090/healthz | grep -q '"public":false'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8090/mcp/public -H 'Host: jithendar.com' -H 'Content-Type: application/json' -d '{}')" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8090/mcp/admin -H 'Host: jithendar.com' -H 'Content-Type: application/json' -d '{}')" = 404
+          # The publish path is not reachable by the generic kickoff, even with the service token.
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/flows/publish_flow/kickoff -H 'Authorization: Bearer ci' -H 'Content-Type: application/json' -d '{"inputs":{"draft_id":"00000000-0000-4000-8000-000000000000","approval_id":"x","accepted_change_ids":["c1"]}}')" = 403
+          docker exec agent python -c "from app.reports_pdf import render; assert render({'type':'weekly','period':{'start':'2026-11-02','end':'2026-11-08'}}).startswith(b'%PDF-')"
           docker exec agent python -c "from app.embeddings import OnnxEmbeddings; import asyncio; e=OnnxEmbeddings('/models/bge-small-en-v1.5'); print(len(asyncio.run(e.embed(['ok']))[0]))" | grep -qx 384
           docker rm -f agent
       - name: Render manifests

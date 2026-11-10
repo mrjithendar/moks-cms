@@ -394,3 +394,92 @@ branch from the latest SEO branch: both SEO branches are merged into master, so 
     `services/www/src/components/ScrollSpy (1).tsx` (an older, different copy) appeared. It was left untouched and
     uncommitted.
   - Node 20 in `/usr/local/bin` shadows Homebrew's Node 26 in the default PATH; the project needs ≥ 24.
+
+
+---
+
+# v4: CrewAI as the only engine, MCP servers, report PDFs (branch `feature/seo-v4-crewai-mcp`)
+
+Branched 2026-11-10 from master `7ac533f` (#29: v3 merged; it is the latest SEO state, and the v3 feature branch is
+behind it). Decisions D-54 to D-65.
+
+## v4 phase status
+
+| Phase | Status | Commit |
+|---|---|---|
+| 1 Service skeleton (internal API, ports, auth) | done | `9b55362` |
+| 2 Flows (11), state, persistence, locks, scheduling | done (in-memory + PostgreSQL 17 tests) | `9b55362`, `5c851ea` |
+| 3 Crews (optimization, editorial, report) | done (real CrewAI, deterministic model) | `9b55362` |
+| 4 Embeddings + pgvector | unchanged from v3 (still needs `CREATE EXTENSION vector`, §13) | v3 |
+| 5 Ask the Blog | pipeline (no graph); shared with public MCP | `9b55362` |
+| 5b MCP servers + OAuth | done (in-process, HTTP and Inspector CLI verified locally) | `9b55362` |
+| 6 Deployment, Kong, CronJobs, CI, observability | done (rendered, client-validated; not applied) | `5c851ea` |
+| 7 Tests, docs, PR | done | this commit |
+| Owner requests during the work | admin menu layout `4502ae7`; sync-history error popover `4507a8b`; Redis status `4125db4`; report PDFs in R2 (in `9b55362`) | |
+
+## Validation (2026-11-10, this Mac, Node 26, Python 3.13.17)
+
+| Check | Result |
+|---|---|
+| seo-agent `ruff check` / `mypy app` | pass / pass (40 files) |
+| seo-agent `pytest` | **124 passed, 6 skipped** (the 6 need PostgreSQL; see next row) |
+| seo-agent Postgres tests on a local PostgreSQL 17 (no pgvector) | **5 passed, 1 skipped** (pgvector index test; CI runs `pgvector/pgvector:0.8.1-pg18`) |
+| web `npm run lint` / `typecheck` | pass / pass |
+| web `npm test` | **740 passed** in 64 files (v3: 720 in 60; the v3 agent tests ported to the v4 API, plus v4 OAuth/callbacks/migration, Redis status, admin CSS and sync-error popover tests) |
+| web `APP_ENV=production npm run build` | pass; 9 new routes; only the pre-existing Edge-runtime warning |
+| Real service, both ports (`python -m app.main`) | `/readyz`, 17 metric families, 401 without token, `publish_flow` kickoff 403 with token, MCP 404 while off |
+| MCP Inspector CLI 2.12.0 against the real service | public tools/prompts/templates; admin 401 + resource metadata; DB-issued token → 13 tools; publish_flow refused; scope enforced; revoke 200 → 401 |
+| `kubectl create --dry-run=client` seo-agent group (16 objects), `kubectl kustomize minikube`, `ci-app-manifests.py` | pass; CronJobs classified as manual |
+| decK file | parses (Service, 2 Routes, 4 plugins) |
+| `check-dashboards.py` (5) · `actionlint` · alert YAML | pass |
+| Report PDF | rendered and reviewed visually (2 pages for a typical week) |
+| `pip-audit` (production lock) | **not completed here**: PyPI timed out from this machine; CI runs it on every PR |
+| Docker image build / size | **not run** (no container runtime here); CI builds it and reports the size |
+| Live Claude, live cluster, Kong, Claude custom connector | **not run** (credentials / production) |
+
+## Status by area
+
+| Area | Verified | Mock-tested | Needs credentials / production validation |
+|---|---|---|---|
+| Flow routing: happy paths, retry once, fail, budget pause, skip, cancel, rerun, locks, orphan sweep, no SQLite | ✓ (real CrewAI Flow engine) | fake web app, fake crews | |
+| CrewAI Postgres persistence, partial unique index, advisory locks across connections | ✓ PostgreSQL 17 | | |
+| Split-flow approval: approve → publish_flow → publish → verify → submit → reindex; reject; regenerate; forged/reused approval; edits must match | ✓ web side on PGlite (real CMS path), agent side with fake web | | live publish |
+| No code path from drafting to publish (static + runtime, 4 triggers) | ✓ | | |
+| Crews (schema, real tool calls, caps, timeout, budget, per-agent models, injection) | | ✓ deterministic model | live Claude quality and cost |
+| Anthropic SDK request shape (caching, fallback, effort, usage, refusal) | | ✓ mock transport | live API |
+| Report number check, PDF render, R2 storage | ✓ check + PDF | R2 client mocked | R2 + email in production |
+| MCP public/admin tools, scopes, limits, Origin/Host, kill switches, audit | ✓ in-process + HTTP + Inspector | web callbacks mocked in tests | Kong path |
+| OAuth AS (PKCE, rotation, reuse detection, revocation, demoted admin) | ✓ PGlite + Postgres + Inspector token | | Claude custom connector |
+| CronJobs → kickoff; seoTick hands off flow-owned jobs; slot idempotency | ✓ trigger unit test, seoTick test, callback test | | cluster |
+| Manifests, NetworkPolicies, mesh sidecar list | rendered / client-validated | | apply; Kong meshing (MANUAL_SETUP §27) |
+
+E2E: the two halves are each tested end to end (agent: CronJob trigger → weekly flow → drafts → decision → publish_flow
+with a fake web app; web: kickoff → callbacks → approval → publish → verify → submission records with the agent mocked),
+and the contract test binds every agent call to a real route of the web callback server. A single cross-process run was
+not built: the web side runs on PGlite in tests and has no long-running callback server in CI.
+
+## Replaced / retired jobs
+
+| Before (v1–v3) | v4 (SEO_ORCHESTRATOR=crewai) |
+|---|---|
+| web `seoTick`: gsc_sync daily | CronJob `seo-flow-gsc-sync` → `gsc_sync_flow` |
+| web `seoTick`: ga4_sync daily | `seo-flow-ga4-sync` → `ga4_sync_flow` |
+| web `seoTick`: technical_scan weekly | `seo-flow-tech-audit` → `tech_audit_flow` |
+| web `seoTick`: recommendations weekly + drafts_weekly (v2 batch or v3 graph) + drafts_poll hourly | `seo-flow-weekly-recommendations` → `weekly_recommendations_flow` (synchronous crew runs; no batches to poll) |
+| web drafts_weekly's ask-gap clustering | `seo-flow-ask-gaps` → `ask_gaps_flow` |
+| web `seoTick`: report_weekly / report_monthly | `seo-flow-report-weekly` / `-monthly` → `report_flow` (+ narrative, PDF in R2) |
+| v3 CronJob `seo-agent-reindex` (removed from the manifests; delete it in the cluster, MANUAL_SETUP §20) | `seo-flow-reindex` → `reindex_flow` |
+| (new) weekly internal linking into open drafts | `seo-flow-internal-linking` → `internal_linking_flow` |
+| kept in the web worker | keywords_refresh, retention, outcomes, drafts_digest, verify/submit job queue for legacy drafts |
+
+## Notes
+
+- **Bugs found by the new tests/checks and fixed before commit:** CrewAI auto-creating LanceDB memory and a SQLite store;
+  router labels colliding with method names; inherited flow methods not registered (job flows silently did nothing);
+  a flow method shadowing pydantic `validate`; the Optimization Crew passing article text without re-wrapping it as data;
+  the contract test not covering new client calls; MCP paths 307-redirecting without a trailing slash; the audit insert
+  using wrong column names.
+- **Cost:** the crews cost 3–4× v3's single-call drafting; at default settings the admin month is ≈ $8–10.5 against the
+  $10 cap (COSTS.md has the levers).
+- **Environment:** no stray cloud-sync copies appeared this time. The scratch PostgreSQL and the local agent were
+  stopped after the checks.

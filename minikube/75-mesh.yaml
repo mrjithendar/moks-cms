@@ -58,7 +58,7 @@ spec:
       - practice-dispatcher
       - practice-executor-api
       - seo-agent
-      - seo-agent-reindex
+      - seo-agent-trigger
   policyTypes:
   - Ingress
   - Egress

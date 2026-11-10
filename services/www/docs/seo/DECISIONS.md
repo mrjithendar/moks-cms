@@ -330,3 +330,117 @@ separate commits.
   tenant/RBAC checks). This service never starts or connects to one: crewai memory and knowledge are off, and
   NetworkPolicy allows no inbound traffic except from the site, the reindex job and Prometheus. **Accepted risk**,
   ignored by those exact IDs in CI. Revisit when crewai allows a fixed chromadb.
+
+---
+
+# v4 (branch `feature/seo-v4-crewai-mcp`, from master `7ac533f`)
+
+## D-54 Versions and the APIs checked
+The brief asks for the latest stable releases; the v1–v3 rule is the newest stable release at least two weeks old
+(cut-off 2026-10-27). Checked on PyPI/npm on 2026-11-10:
+- **crewai 1.15.30** (kept; 1.15.39 is one day old). APIs read from the installed package, not from memory:
+  `Flow[State]`, `@start`/`@listen`/`@router`/`or_`, `kickoff_async(inputs=…)`, state restored by `inputs["id"]`,
+  `FlowPersistence` (`init_db`, `save_state`, `load_state`; sync), `@persist(backend)` at class level with an instance
+  `persistence=` that overrides it, `suppress_flow_events`, `BaseLLM.call`, `Crew(max_rpm=…)`, `Agent(max_rpm, max_iter,
+  max_execution_time, allow_code_execution)`. Differences found and handled: (1) a Flow auto-creates CrewAI's unified
+  `Memory` (LanceDB, which v3 excluded) unless the class sets `_skip_auto_memory`; (2) `@persist()` without a backend
+  creates a SQLite `flow_states.db` even when an instance backend is passed (hence `INSTANCE_ONLY`, D-57); (3) a router
+  label equal to a method name is refused (labels carry a `to_` prefix); (4) `@start`/`@listen` methods inherited from a
+  base class are not registered (each job flow is built by a factory); (5) a flow method named `validate` shadows
+  pydantic's `BaseModel.validate` (renamed `validate_draft`; mypy found it).
+- **anthropic 2.3.0** (newest ≥ 2 weeks; 2.7.0 is one day old). LangChain's `ChatAnthropic` is gone; the official SDK is
+  called directly: `messages.parse(output_format=Model)`, `messages.create`, `messages.stream`, and the beta namespace
+  for Sonnet/Opus with `betas=["server-side-fallback-2026-07-01"], fallbacks="default"`. 2.x sends API version
+  2026-10-21: no `temperature`/`top_p`/`top_k` are sent (none were), credentials as `Authorization: Bearer`. Usage:
+  `input_tokens` is already the uncached part; cache reads/writes come separately. A test checks the exact request body.
+- **mcp 1.30.0** (newest 1.x). mcp 2.3.0 is the newest stable, but crewai 1.15.30 requires `mcp<2`. FastMCP: Streamable
+  HTTP (`streamable_http_app`, `stateless_http`), `TransportSecuritySettings` (Host/Origin), `token_verifier` +
+  `AuthSettings(resource_server_url, required_scopes, validate_token_resource=True)` (401 + `WWW-Authenticate
+  resource_metadata`, 403 `insufficient_scope`), `ToolAnnotations`.
+- **reportlab 5.1.0** (report PDFs, D-61). **MCP Inspector 2.12.0** for manual verification.
+- Removed: langgraph, langgraph-checkpoint-postgres, langchain-core, langchain-anthropic, langchain-text-splitters
+  (177 → 161 locked packages).
+
+## D-55 Claude for the crews: a CrewAI `BaseLLM` over the Anthropic SDK
+"Use CrewAI's LLM layer with Claude": CrewAI's extension point for models is `BaseLLM`, and `ClaudeCrewLLM` implements it
+on top of this service's `AnthropicLlm`, so every crew call shares the budget guard, usage rows, prices, refusal fallback
+and caching with everything else. CrewAI's built-in Anthropic provider (`crewai[anthropic]`) would also stamp
+`cache_control`, but pins `anthropic~=0.73`, which conflicts with 2.3.0, and would bypass the budget guard.
+**Prompt caching:** supported; the stable prefix (untrusted-data rule + the agent's system prompt) is a cached system
+block. Per-agent models: `SEO_CREW_MODELS` (`"<crew>.<agent>"` → model).
+
+## D-56 Split-flow approval instead of CrewAI human feedback
+As the brief requires. Drafting flows end at `ready_for_review` with their state in `seo_flow_runs`; the web review UI
+records the approval (v3 D-43 unchanged) and `POST /review/{id}/decision` starts `publish_flow`. CrewAI 1.15 has
+`@human_feedback` / async pending feedback, which persists a paused flow; it isn't used because the approval must be
+recorded and re-checked by the web app, and nothing should depend on a paused run surviving deploys. `publish_flow` is
+refused for every trigger but `approval` (run-manager policy), and the decision endpoint is the only code that sets it.
+
+## D-57 Flow persistence and locks in the one Postgres
+`PgFlowPersistence` (a CrewAI `FlowPersistence`) writes each step's state into the run's `seo_flow_runs` row through a
+2-connection sync pool (CrewAI calls `save_state` synchronously). Never SQLite: classes use `@persist(INSTANCE_ONLY)`, a
+backend that raises, and each instance gets the Postgres one; a test asserts no `.db` file appears. One active run per
+flow + target: partial unique index + a session advisory lock on a dedicated connection for the run's lifetime (v1 D-02
+avoided advisory locks because a *shared* pool may unlock on another connection; a dedicated connection doesn't have that
+problem, and PgBouncer session mode keeps one server connection per client connection). Runs are not resumed after a
+crash: they're failed on start-up and rerun from the beginning (idempotent steps), as the brief specifies.
+
+## D-58 Ask the Blog stays a pipeline; v3's graph code became plain functions
+Not a Crew or a Flow (brief). The v3 graph's node functions were kept verbatim as one async pipeline
+(`app/services/ask_pipeline.py`), so its guards and tests carry over; the public MCP `ask_blog` uses it.
+
+## D-59 Report numbers are checked mechanically
+The Report Crew gets labelled, pre-formatted facts; `check_numbers` requires every number in the narrative to equal a
+fact at the precision written, and ISO dates to be period dates. A mismatch fails the run (`report_mismatch`): the
+narrative is neither stored nor emailed. The numbers-only PDF is still saved, since its figures come straight from the
+data. The web callback refuses to store a narrative whose check didn't pass (second gate).
+
+## D-60 The admin MCP authorization server is a minimal one inside the site
+Better Auth 1.7.18 here has no OAuth-provider/MCP plugin; it moved to `@better-auth/oauth-provider`, whose matching
+versions (1.7.16–1.7.19) are all under two weeks old, and which adds five tables, its own consent flow and JWT key
+management. A heavyweight identity server (Keycloak, Authentik) would cost more memory than the agent itself on
+Minikube. So the web app implements the minimum compliant set: RFC 8414 + RFC 9728 metadata, RFC 7591 registration (public
+PKCE clients only), an admin-only consent page on the existing session, `authorization_code` + PKCE S256, rotating refresh
+tokens with reuse detection, RFC 7009 revocation, RFC 8707 resource binding. Tokens are opaque and stored as SHA-256
+hashes in the shared Postgres; the resource server verifies them with one lookup (and that the grant's user is still an
+admin), so there are no signing keys and revocation is immediate. Trade-off: ~400 lines of security code to maintain
+instead of a library; covered by 6 web tests and the end-to-end Inspector check. Revisit when the Better Auth plugin
+matures (it would replace `src/lib/mcp-oauth` and the 0016 OAuth tables).
+
+## D-61 Report PDFs: ReportLab in the agent, stored in R2 by the web app (owner request, 2026-11-10)
+The owner asked for weekly/monthly reports as rich PDFs saved in R2 (v1 D-09 had chosen print-to-PDF). ReportLab is pure
+Python (no Cairo/Pango system libraries, unlike WeasyPrint), so the CPU-only slim image stays slim. `report_flow`
+renders the PDF (cover, KPI cards with direction-aware deltas, daily-clicks chart vs. the previous period, top-articles
+chart, the checked summary, styled tables) and hands it to the web callback, which stores it with the site's existing R2
+client under a private, unguessable key; admins get a 5-minute presigned link. The legacy path (SEO_ORCHESTRATOR=legacy)
+still produces CSV + printable HTML only.
+
+## D-62 MCP on its own port; Kong entities as a decK file
+The brief mounts both servers in the seo-agent app. They run in the same process, but on a second listener (8090), so the
+NetworkPolicy can admit the gateway to MCP only: a public request can never reach `/flows/*` or `/review/*` on 8080, even
+if a route were misconfigured. Kong on mk4 runs in DB mode with entities in the tools repository (branch
+`feat/kong-db-migration`); there are no Kong CRDs here. The additive entities are delivered as
+`minikube/kong/seo-agent-mcp.deck.yaml` (tagged, for `deck --select-tag`), outside the kubectl glob, unapplied. Master
+currently routes through the Istio gateway and the namespace is STRICT mTLS, which the Kong branch predates; the exact
+mesh steps for either gateway are in MANUAL_SETUP §27. No existing route, plugin or certificate was changed.
+
+## D-63 Each job runs once: CronJobs own the flow jobs, the web scheduler skips them
+With `SEO_ORCHESTRATOR=crewai`, `seoTick` skips gsc_sync, ga4_sync, technical_scan, recommendations, drafts_weekly,
+drafts_poll, report_weekly and report_monthly; one `seo-flow-*` CronJob per flow triggers them. A scheduled job flow
+passes a dated slot, and the web runner skips a type whose scheduled run for that slot already exists, so even an overlap
+during the switch can't run a job twice. Keywords refresh, retention, outcomes and the digest stay in the web worker
+(not AI workflows; no flow in the brief). Schedules live in the CronJob manifests (the brief's "Helm values"; there is
+no Helm chart here, v1 D-08). The v3 `seo-agent-reindex` CronJob is replaced by `seo-flow-reindex`.
+
+## D-64 Shared service functions
+`app/services/{content,review,seo_data}.py` are the single implementation behind the internal API, the crews' tools
+(`vector_search` calls `content.search`) and both MCP servers. The admin read tools wrap the web app's own TypeScript read
+models (`overview`, `keywordTable`, `articlePanel`, `reviewQueue`, `getDraft`, `latestScan`) through new callback routes,
+so MCP shows exactly what the dashboard shows. `explain_traffic_change` is the one new query (period-over-period by
+query/page, device and country from `seo_gsc_query_daily`).
+
+## D-65 Phases 1–5b in one commit
+As in v3 (D-52): the Python flows, the web callbacks they call and the contract test that ties them together only build
+and pass together. Phase 6 (deployment) and Phase 7 (docs, tests) are separate commits. Two owner requests made during
+the work (the admin menu layout and the sync-history error popover) were committed separately so they can ship to master
+on their own.

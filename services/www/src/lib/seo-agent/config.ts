@@ -1,14 +1,17 @@
 /**
- * SEO v3 switches (docs/seo/AGENTS.md, DECISIONS.md D-41 …).
+ * SEO switches (docs/seo/FLOWS.md, DECISIONS.md D-54 …).
  *
- * SEO_ORCHESTRATOR: "legacy" (default) keeps v2's direct Claude path (job queue + Message Batches); "langgraph" sends
- * draft generation, approval, rejection and regeneration through the seo-agent service. Rollback = set it back to
- * legacy: every v2 code path is still there and drafts created by either path stay reviewable.
+ * SEO_ORCHESTRATOR: "legacy" (default) keeps v2's direct Claude path (job queue + Message Batches) and the in-process
+ * scheduler; "crewai" (v4) sends every AI workflow and scheduled SEO job through the seo-agent's CrewAI Flows: drafting,
+ * approval → publish_flow, rejection, regeneration, and the sync/audit/recommendations/report jobs (triggered by
+ * Kubernetes CronJobs; the in-process scheduler then skips those job types). Rollback = set it back to legacy.
+ * "langgraph" (v3) is accepted as an alias of "crewai": the LangGraph runtime no longer exists.
  */
-export type Orchestrator = "legacy" | "langgraph";
+export type Orchestrator = "legacy" | "crewai";
 
 export function orchestrator(env: Record<string, string | undefined> = process.env): Orchestrator {
-  return env.SEO_ORCHESTRATOR?.trim().toLowerCase() === "langgraph" ? "langgraph" : "legacy";
+  const v = env.SEO_ORCHESTRATOR?.trim().toLowerCase();
+  return v === "crewai" || v === "langgraph" ? "crewai" : "legacy";
 }
 
 /** seo-agent base URL (ClusterIP service; never public). */
@@ -21,9 +24,9 @@ export const agentToken = (env: Record<string, string | undefined> = process.env
 /** seo-agent → web app callback bearer token (a different secret). */
 export const callbackToken = (env: Record<string, string | undefined> = process.env) => env.SEO_AGENT_CALLBACK_TOKEN?.trim() || null;
 
-/** Port of the cluster-internal callback listener on the web pods (0 = off). Off unless the orchestrator is langgraph. */
+/** Port of the cluster-internal callback listener on the web pods (0 = off). Off unless the orchestrator is crewai. */
 export function callbackPort(env: Record<string, string | undefined> = process.env): number {
-  if (orchestrator(env) !== "langgraph") return 0;
+  if (orchestrator(env) !== "crewai") return 0;
   const n = Number(env.SEO_AGENT_CALLBACK_PORT ?? 9465);
   return Number.isInteger(n) && n > 0 && n < 65536 ? n : 0;
 }
@@ -32,7 +35,18 @@ export function callbackPort(env: Record<string, string | undefined> = process.e
 export const askEnabled = (env: Record<string, string | undefined> = process.env) => env.ASK_BLOG_ENABLED?.trim().toLowerCase() === "true";
 
 /** Documentation domains the editorial crew may read (through the SSRF-safe fetcher). Same default as seo-agent. */
-export const DEFAULT_DOCS_ALLOWLIST = ["kubernetes.io", "docs.aws.amazon.com", "developer.hashicorp.com", "docs.python.org", "langchain-ai.github.io", "docs.crewai.com", "modelcontextprotocol.io"];
+export const DEFAULT_DOCS_ALLOWLIST = ["kubernetes.io", "docs.aws.amazon.com", "developer.hashicorp.com", "docs.python.org", "docs.crewai.com", "modelcontextprotocol.io"];
+
+/** Public read-only MCP server switch (mirrors seo-agent's PUBLIC_MCP_ENABLED; the site shows how to connect only then). */
+export const publicMcpEnabled = (env: Record<string, string | undefined> = process.env) => env.PUBLIC_MCP_ENABLED?.trim().toLowerCase() === "true";
+/** Admin MCP switch (mirrors seo-agent's ADMIN_MCP_ENABLED): the OAuth endpoints refuse new authorizations while off. */
+export const adminMcpEnabled = (env: Record<string, string | undefined> = process.env) => env.ADMIN_MCP_ENABLED?.trim().toLowerCase() === "true";
+
+/**
+ * Job types the CrewAI flows own in crewai mode (each runs once, through a flow triggered by its CronJob); the
+ * in-process scheduler (seoTick) skips them then. The rest (keywords refresh, retention, outcomes, digest) stay there.
+ */
+export const FLOW_OWNED_JOBS = ["gsc_sync", "ga4_sync", "technical_scan", "recommendations", "drafts_weekly", "drafts_poll", "report_weekly", "report_monthly"] as const;
 
 export function docsAllowlist(env: Record<string, string | undefined> = process.env): string[] {
   const v = (env.SEO_AGENT_DOCS_ALLOWLIST ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);

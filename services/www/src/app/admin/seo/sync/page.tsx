@@ -1,5 +1,6 @@
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
+import { SyncErrorCell } from "@/components/seo/SyncErrorCell";
 import { Empty, fmtWhen, Pager, Section } from "@/components/seo/ui";
 import { syncHistory } from "@/lib/seo-intel/queries";
 
@@ -36,7 +37,10 @@ export default async function SyncHistoryPage({ searchParams }: { searchParams: 
                 <td className={`${td} tabular-nums`}>{r.rows}</td>
                 <td className={`${td} tabular-nums`}>{r.apiRequests}</td>
                 <td className={`${td} tabular-nums`}>{r.retries}</td>
-                <td className={`${td} max-w-xs text-xs [overflow-wrap:anywhere]`}>{r.error ? `${r.errorCode ?? ""} ${r.error}` : "—"}<span className="block text-fg-subtle">id {r.correlationId.slice(0, 8)}</span></td>
+                <td className={`${td} text-xs`}>
+                  <SyncErrorCell error={r.error} errorCode={r.errorCode} correlationId={r.correlationId} job={r.jobType} />
+                  <span className="block text-fg-subtle">id {r.correlationId.slice(0, 8)}</span>
+                </td>
               </tr>
             ))}
           </Table>

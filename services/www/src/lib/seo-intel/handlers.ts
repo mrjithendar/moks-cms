@@ -29,9 +29,10 @@ registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: (awa
 registerSeoHandler("drafts_weekly", async () => {
   // Ask the Blog gaps are re-clustered weekly, whatever the orchestrator.
   await (await import("../seo-agent/gaps")).clusterAskGaps().catch(() => 0);
-  // v3: one weekly_recommendations graph run per ISO week when SEO_ORCHESTRATOR=langgraph.
-  const viaGraph = await (await import("../seo-agent/orchestrate")).weekly();
-  if (viaGraph) return { status: "succeeded", rows: 0, detail: { orchestrator: "langgraph", threadId: viaGraph.thread_id, existing: viaGraph.existing } };
+  // v4: in crewai mode this job type is never scheduled here (the weekly_recommendations_flow CronJob owns it); a
+  // manual "Run now" starts that flow instead of the v2 batch.
+  const viaFlow = await (await import("../seo-agent/orchestrate")).weekly("sync page");
+  if (viaFlow) return { status: "succeeded", rows: 0, detail: { orchestrator: "crewai", runId: viaFlow.run_id, existing: viaFlow.existing } };
   const r = await weeklyBatch();
   return { status: r.skipped && r.skipped !== "nothing_to_do" ? "skipped" : "succeeded", rows: r.submitted, detail: r, ...(r.skipped === "budget" ? { error: "Monthly LLM budget reached; weekly drafting paused.", errorCode: "budget" } : {}) };
 });

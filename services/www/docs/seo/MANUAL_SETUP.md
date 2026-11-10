@@ -157,7 +157,10 @@ Rotate by running the script again and restarting both Deployments.
 - Dashboard: `services/grafana/jithendar-com-seo-agent.json` (Argo CD `grafana` app). **Since the `services/` move, the
   app's path must be `services/grafana`** (tools repo, `deploy/minikube/applications/grafana.yaml`).
 
-## 17. Switch drafting to LangGraph
+## 17. Switch drafting to LangGraph (v3; superseded by §22)
+
+> v4 removed LangGraph. `SEO_ORCHESTRATOR=langgraph` is now an alias of `crewai`; follow §20–§28 instead.
+
 ```bash
 kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"langgraph"}}'
 kubectl --context mk4 -n jithendar rollout restart deploy/jithendar-com
@@ -185,3 +188,109 @@ cluster: set `EMBEDDINGS_PROVIDER=ollama`, `OLLAMA_URL`, `OLLAMA_EMBED_MODEL` in
 in the `seo-agent` NetworkPolicy, restart, then run a full reindex (the table is rebuilt for the new dimension). A
 third-party API (`EMBEDDINGS_PROVIDER=api`) needs `EMBEDDINGS_API_URL`/`EMBEDDINGS_API_KEY` in `seo-agent-env`, and
 it sends article text to that provider.
+
+---
+
+# v4: CrewAI flows, MCP, report PDFs
+
+Everything below is off or inert until a person does it. Order matters: §20 → §21 → §22 (switch), then §23–§28 as
+needed. Status of each item: PROGRESS.md "v4".
+
+## 20. Migration 0016 and the image
+1. Merge → CI builds `registry.jithendar.com/jithendar/seo-agent:latest` and the site image. Migration
+   `0016_seo_v4.sql` (flow runs, review notes, MCP OAuth tables; additive) runs when the site starts.
+2. Apply the site group (`./deploy.sh`): it renames `seo-agent-reindex` to `seo-agent-trigger` in the `istio-sidecars`
+   NetworkPolicy (the trigger pods' sidecars need istiod and DNS). CI applies that NetworkPolicy too.
+3. Apply the agent group and remove the v3 CronJob (it is no longer in the manifests):
+   ```bash
+   kubectl --context mk4 -n jithendar delete cronjob seo-agent-reindex --ignore-not-found
+   kubectl --context mk4 -n jithendar delete networkpolicy seo-agent-reindex --ignore-not-found
+   scripts/manifests.sh seo-agent | kubectl --context mk4 apply -f -
+   kubectl --context mk4 -n jithendar rollout status deploy/seo-agent
+   kubectl --context mk4 -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode()); print(u.urlopen('http://127.0.0.1:8090/healthz').read().decode())"
+   ```
+   The CronJobs (`seo-flow-*`) are created by this apply. They only call the agent; until §22 the agent's callbacks are
+   off (the web app's callback listener starts only with `SEO_ORCHESTRATOR=crewai`), so a trigger before the switch
+   fails harmlessly. To keep them quiet until then, suspend them:
+   ```bash
+   for c in $(kubectl --context mk4 -n jithendar get cronjob -l app=seo-agent-trigger -o name); do
+     kubectl --context mk4 -n jithendar patch "$c" -p '{"spec":{"suspend":true}}'
+   done
+   ```
+
+## 21. Secrets
+No new secret: v4 uses `seo-agent-env` (ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN) as in §14. The
+admin MCP's OAuth tokens are opaque and stored as SHA-256 hashes in Postgres, so **no OAuth signing keys** exist to
+create or rotate. R2 credentials are the site's existing ones (Admin → Storage, or `R2_*` in `jithendar-com-env`).
+
+## 22. Switch to the CrewAI flows
+```bash
+kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"crewai"}}'
+kubectl --context mk4 -n jithendar rollout restart deploy/jithendar-com
+# if the CronJobs were suspended in §20: set "suspend": false again
+```
+From now on the web app's in-process scheduler skips gsc/ga4 sync, technical scan, recommendations, weekly drafts,
+batch polling and reports; the `seo-flow-*` CronJobs run them through the flows. Check:
+- SEO › Sync history → **Sync now**: a `gsc_sync_flow` run appears (MCP `list_flow_runs`, or `GET /flows/runs` on the agent).
+- An article's SEO panel → **Draft with Claude**: the review page shows "CrewAI flow · Agent working…", then
+  "Waiting for your review". Approve one change: `publish_flow` publishes, verifies, submits and reindexes.
+- SEO › Reports → **Generate weekly**: a report with a "Summary" and **Download PDF** (R2) appears.
+Keep `SEO_LLM_MONTHLY_BUDGET_USD` equal in `jithendar-com-public` and `seo-agent-config` (COSTS.md: v4 crews cost more;
+consider $15).
+
+## 23. Schedules
+Edit `schedule:` in `minikube/seo-agent-60-flow-triggers.yaml` and re-apply, or patch one CronJob:
+`kubectl -n jithendar patch cronjob seo-flow-gsc-sync -p '{"spec":{"schedule":"30 5 * * *"}}'`. The Settings page's
+schedule fields only apply to the legacy path.
+
+## 24. Report PDFs in R2
+They use the site's existing R2 bucket and client (Admin → Storage must be configured; check Admin → System status).
+Objects go to the private prefix `jithendar/www/reports/seo/{weekly|monthly}/{yyyy}/…-{uuid}.pdf` with
+`Cache-Control: private, no-store`; admins download them via a 5-minute presigned link. If the bucket has a public
+delivery domain, the random UUID makes keys unguessable, but consider an R2 rule that blocks public access to
+`jithendar/www/reports/` for defence in depth. Email (if enabled with recipients) includes the PDF link, not the file.
+
+## 25. The public MCP server (optional)
+```bash
+kubectl --context mk4 -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
+kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
+kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+```
+The site then shows `/ai-assistants` and a footer link. Needs the gateway route (§27) and a reindex (§18).
+
+## 26. The admin MCP server and OAuth (after verifying it)
+```bash
+kubectl --context mk4 -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
+kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
+kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+```
+No client registration is needed: Claude and MCP Inspector register themselves (RFC 7591). Verify, in order:
+1. `curl -s https://jithendar.com/.well-known/oauth-protected-resource/mcp/admin` and `…/.well-known/oauth-authorization-server`.
+2. `curl -si -X POST https://jithendar.com/mcp/admin -H 'Content-Type: application/json' -d '{}'` → 401 with `WWW-Authenticate … resource_metadata=…`.
+3. MCP Inspector UI (`npx @modelcontextprotocol/inspector@2.12.0`, Streamable HTTP, URL `https://jithendar.com/mcp/admin`,
+   Auth → OAuth flow): consent page as admin → tools listed → `get_overview` works.
+4. Claude: Settings › Connectors › Add custom connector → `https://jithendar.com/mcp/admin`; allow; ask "triage my SEO
+   review queue". Mark "Claude custom connector" as verified in PROGRESS.md.
+5. SEO › Settings › MCP access lists both clients; **Revoke** one and confirm its next call fails.
+
+## 27. Gateway routes for /mcp/* (Kong; additive)
+The entities are in `minikube/kong/seo-agent-mcp.deck.yaml` (one Service, two Routes, rate-limiting and
+request-size-limiting, no buffering, 5-minute read timeout, `preserve_host`). They are **not applied** by anything:
+1. Copy them into the tools repo's Kong config (`kong-config/seed/kong.yaml`, docs/kong) or sync just these:
+   `deck gateway diff minikube/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp` then `… sync …`.
+2. **Mesh:** namespace `jithendar` is STRICT mTLS. Kong must call `seo-agent-mcp:8090` with a mesh identity (a sidecar
+   in the `kong` namespace), or the call is refused before the NetworkPolicy matters. Once Kong is meshed and the
+   `allow-known-callers` AuthorizationPolicy leaves dry-run, add `kong` to its `namespaces`.
+3. **Before the Kong cutover** (master today routes through the Istio gateway): the equivalent is a match for
+   `/mcp/public` and `/mcp/admin` (prefix, exact and with `/`) → `seo-agent-mcp.jithendar.svc.cluster.local:8090` in the
+   root VirtualService of the miniKube repo (`deploy/minikube/istio/edge`), placed before the site's default route, with
+   the gateway's rate limiting. This was not changed here (existing routes stay untouched); it is a person's decision.
+
+## 28. Rollback
+1. `SEO_ORCHESTRATOR=legacy` in `jithendar-com-public`, restart the site: v2's scheduler and direct Claude path resume.
+2. Suspend the CronJobs (§20 loop with `"suspend": true`), set `ADMIN_MCP_ENABLED=false` / `PUBLIC_MCP_ENABLED=false`.
+3. Or redeploy the previous image/manifests (`git checkout <previous> -- minikube/seo-agent-*.yaml`, apply; restore
+   `seo-agent-60-reindex.yaml` from git history if you also go back to v3's agent).
+4. Data: migration 0016 is additive; its manual rollback is `src/db/rollback/0016_seo_v4.down.sql` (deletes flow-run
+   history, notes and every MCP client/grant/token). Report PDFs stay in R2.
+

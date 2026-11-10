@@ -1,10 +1,14 @@
-# Ask the Blog and retrieval (SEO v3)
+# Ask the Blog and retrieval (SEO v3, updated for v4)
 
 A public assistant that answers **only from this site's articles**, with a citation for every statement, plus the
 pgvector index the agents also use for related articles and internal links. It's **off by default**
 (`ASK_BLOG_ENABLED=false`).
 
-## Graph: ask_blog
+## Answer path (v4: a plain async pipeline)
+
+v3 ran this as a LangGraph graph. In v4 it is a plain async pipeline (`app/services/ask_pipeline.py`), deliberately
+**not a Crew or a Flow**: a multi-agent run per visitor question would be too slow and too expensive. The same pipeline
+answers the public MCP tool `ask_blog` ([MCP.md](MCP.md)), with the same guards, cache and daily budget.
 
 ```mermaid
 flowchart LR
@@ -87,10 +91,10 @@ data only), and the next reindex rebuilds it.
   by `seo-agent` at start-up when the `vector` extension exists, because its column type depends on the model.
 - **Incremental:** a chunk is embedded again only when its `(content_hash, model)` changed. Chunks beyond the new count
   and chunks of articles that are no longer published are deleted.
-- **When:** after every publish (from `submit_search`, for that article), the weekly CronJob `seo-agent-reindex`
+- **When:** after every publish (publish_flow's `reindex` step, for that article), the weekly CronJob `seo-flow-reindex` (reindex_flow)
   (Sundays 03:17 UTC, `concurrencyPolicy: Forbid`, incremental), and on demand
   (`POST /api/admin/seo/agent/reindex {full}`, admin only, 6 per hour; a full reindex at most every 5 minutes).
-- **Without pgvector**, retrieval reports unavailable. Ask the Blog returns the fallback, and the graphs skip related
+- **Without pgvector**, retrieval reports unavailable. Ask the Blog returns the fallback, and the flows skip related
   articles. Nothing else breaks.
 - **Direct SQL, not `langchain-postgres`:** its vector store owns its table layout, while this table needs the article
   foreign key, heading path, anchor and content hash (D-45).

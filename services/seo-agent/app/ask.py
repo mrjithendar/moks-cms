@@ -1,4 +1,4 @@
-"""Ask the Blog service: kill switch, answer cache, budget, logging and gap capture around the ask_blog graph.
+"""Ask the Blog service: kill switch, answer cache, budget, logging and gap capture around the answer pipeline.
 
 Privacy: the question text is stored without the IP. The web app may pass a salted HMAC of the IP (rotating salt)
 for abuse analysis; it is kept ASK_BLOG_RETENTION_DAYS (default 30) and pruned with the questions. Rate limiting per IP
@@ -16,8 +16,8 @@ from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from . import metrics
-from .graphs.ask_blog import REFUSALS, normalize_question
 from .llm import BudgetExceeded
+from .services.ask_pipeline import REFUSALS, normalize_question
 
 
 class AskLog(Protocol):

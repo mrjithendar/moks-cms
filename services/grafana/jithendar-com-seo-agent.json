@@ -1,8 +1,8 @@
 {
   "id": null,
   "uid": "jithendar-com-seo-agent",
-  "title": "Jithendar.com \u00b7 SEO agents",
-  "description": "SEO v3 (services/seo-agent): LangGraph runs, the editorial crew, embeddings and Ask the Blog. Source: jithendar.com repository, services/grafana/.",
+  "title": "Jithendar.com · SEO agents (CrewAI flows, MCP)",
+  "description": "SEO v4 (services/seo-agent): CrewAI flow runs and steps, the three crews, LLM cost, embeddings, Ask the Blog and the MCP servers. Source: jithendar.com repository, services/grafana/.",
   "tags": [
     "jithendar-com",
     "prometheus",
@@ -10,7 +10,7 @@
   ],
   "timezone": "utc",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "time": {
     "from": "now-7d",
@@ -45,7 +45,7 @@
             "type": "prometheus",
             "uid": "roboshop-prometheus"
           },
-          "expr": "max(seo_graph_interrupts_pending{job=\"seo-agent\"})"
+          "expr": "max(seo_drafts_awaiting_review{job=\"seo-agent\"})"
         }
       ],
       "fieldConfig": {
@@ -183,7 +183,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Graph runs by status",
+      "title": "Flow runs by status",
       "datasource": {
         "type": "prometheus",
         "uid": "roboshop-prometheus"
@@ -201,8 +201,8 @@
             "type": "prometheus",
             "uid": "roboshop-prometheus"
           },
-          "expr": "sum by (graph, status) (increase(seo_graph_runs_total{job=\"seo-agent\"}[$__interval]))",
-          "legendFormat": "{{graph}} {{status}}"
+          "expr": "sum by (flow, status) (increase(seo_flow_runs_total{job=\"seo-agent\"}[$__interval]))",
+          "legendFormat": "{{flow}} {{status}}"
         }
       ],
       "fieldConfig": {
@@ -223,7 +223,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Node duration p95",
+      "title": "Flow step duration p95",
       "datasource": {
         "type": "prometheus",
         "uid": "roboshop-prometheus"
@@ -241,8 +241,8 @@
             "type": "prometheus",
             "uid": "roboshop-prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, graph, node) (rate(seo_graph_node_duration_seconds_bucket{job=\"seo-agent\"}[$__rate_interval])))",
-          "legendFormat": "{{graph}}/{{node}}"
+          "expr": "histogram_quantile(0.95, sum by (le, flow, step) (rate(seo_flow_step_duration_seconds_bucket{job=\"seo-agent\"}[$__rate_interval])))",
+          "legendFormat": "{{flow}}/{{step}}"
         }
       ],
       "fieldConfig": {
@@ -397,7 +397,7 @@
             "type": "prometheus",
             "uid": "roboshop-prometheus"
           },
-          "expr": "sum by (status) (increase(seo_crew_runs_total{job=\"seo-agent\"}[$__interval]))",
+          "expr": "sum by (crew, status) (increase(seo_crew_runs_total{job=\"seo-agent\"}[$__interval]))",
           "legendFormat": "crew {{status}}"
         },
         {
@@ -496,6 +496,139 @@
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "MCP",
+      "collapsed": false,
+      "id": 22,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "MCP calls by server, tool and status",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 37
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum by (server, tool, status) (increase(seo_mcp_requests_total{job=\"seo-agent\"}[$__rate_interval]))",
+          "legendFormat": "{{server}} {{tool}} {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "MCP call duration p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 37
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, server, tool) (rate(seo_mcp_request_duration_seconds_bucket{job=\"seo-agent\"}[$__rate_interval])))",
+          "legendFormat": "{{server}} {{tool}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "MCP auth failures",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 37
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum by (server) (increase(seo_mcp_auth_failures_total{job=\"seo-agent\"}[$__rate_interval]))",
+          "legendFormat": "{{server}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "normal"
+            },
+            "drawStyle": "bars"
           }
         },
         "overrides": []
