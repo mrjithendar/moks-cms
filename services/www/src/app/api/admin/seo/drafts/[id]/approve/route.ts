@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { json, parse, SeoApiError, seoRoute, UUID } from "@/lib/seo-intel/http";
+import { approve } from "@/lib/seo-agent/orchestrate";
 import { approveDraft } from "@/lib/seo-intel/publish";
 
 export const dynamic = "force-dynamic";
@@ -13,5 +14,9 @@ const body = z.object({ publishAt: z.string().datetime({ offset: true }).nullabl
 export const POST = seoRoute<{ id: string }>("drafts-approve", { mutating: true, rate: { max: 20, windowSeconds: 600 } }, async (_req, ctx, { id }) => {
   if (!UUID.test(id)) throw new SeoApiError("Draft not found.", 404, "not_found");
   const b = parse(body, ctx.body ?? {});
+  // A draft owned by a LangGraph run: record the approval, then resume the graph (it publishes, verifies, submits).
+  // Legacy drafts: v2's approveDraft, unchanged.
+  const viaGraph = await approve(id, ctx.actor, b.publishAt ?? null);
+  if (viaGraph) return json(viaGraph, viaGraph.status === "publishing" ? 202 : 200);
   return json(await approveDraft(id, ctx.actor, { publishAt: b.publishAt ?? null }));
 });

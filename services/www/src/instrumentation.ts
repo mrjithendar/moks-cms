@@ -57,6 +57,14 @@ export async function register() {
   const { startWorker } = await import("./lib/scheduler");
   startWorker();
 
+  // SEO v3: cluster-internal callback API for the seo-agent service (only with SEO_ORCHESTRATOR=langgraph).
+  const { startCallbackServer } = await import("./lib/seo-agent/internal-server");
+  const cbPort = await startCallbackServer().catch((err) => {
+    log.warn("seo agent callback listener unavailable", { err });
+    return null;
+  });
+  if (cbPort) log.info("seo agent callbacks listening", { event: "seo_agent_callbacks_listening", port: cbPort });
+
   // Warm the caches so the first visitor gets a fast page, not a cold one.
   const { warmCaches } = await import("./lib/warm");
   void warmCaches().catch((err) => log.warn("cache warm-up failed", { err }));

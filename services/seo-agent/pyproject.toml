@@ -42,15 +42,16 @@ package = false
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore::DeprecationWarning:crewai.*", "ignore::DeprecationWarning:crewai_core.*"]
 markers = ["postgres: needs a PostgreSQL with pgvector (testcontainers or SEO_AGENT_TEST_DATABASE_URL)"]
 
 [tool.ruff]
-line-length = 120
+line-length = 160
 target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
-ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+ignore = ["S101", "E501", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S108", "S311"]

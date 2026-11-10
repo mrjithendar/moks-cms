@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { createDraftFromItem, createItem } from "@/lib/seo-intel/calendar";
-import { queueDraft } from "@/lib/seo-intel/drafts";
+import { requestDraft } from "@/lib/seo-agent/orchestrate";
 import { json, parse, SeoApiError, seoRoute } from "@/lib/seo-intel/http";
 import { getSeoSettings } from "@/lib/seo-intel/settings";
 
@@ -33,7 +33,7 @@ export const POST = seoRoute("keywords-action", { mutating: true, rate: { max: 6
   else if (b.action === "draft_optimization") {
     if (!b.articleId) throw new SeoApiError("No article ranks for this query in the CMS.", 400, "invalid");
     const category = b.kind === "low_ctr" ? "title_meta" : b.kind === "lost" ? "freshness" : "striking_expansion";
-    const queued = await queueDraft(b.articleId, { extra: [{ id: `kw:${b.query}`.slice(0, 80), category, problem: `Search query “${b.query}”: ${b.evidence ?? "opportunity from Keyword opportunities"}`.slice(0, 500) }], trigger: "fix", actor: ctx.actor.label });
+    const { queued } = await requestDraft(b.articleId, { extra: [{ id: `kw:${b.query}`.slice(0, 80), category, problem: `Search query “${b.query}”: ${b.evidence ?? "opportunity from Keyword opportunities"}`.slice(0, 500) }], trigger: "fix", actor: ctx.actor.label });
     await ctx.audit("keywords.draft_optimization", b.articleId, { query: b.query, category, queued });
     return json({ ok: true, queued }, 202);
   } else if (b.action === "draft_new_article") {

@@ -148,7 +148,7 @@ describe("editorial calendar", () => {
 });
 
 describe("no automatic publishing", () => {
-  const roots = ["src/lib/seo-intel", "src/app/api/admin/seo", "src/app/admin/seo", "src/components/seo"].map((p) => path.resolve(import.meta.dirname, "..", p));
+  const roots = ["src/lib/seo-intel", "src/lib/seo-agent", "src/app/api/admin/seo", "src/app/admin/seo", "src/components/seo", "src/app/api/ask", "src/components/ask"].map((p) => path.resolve(import.meta.dirname, "..", p));
   const files = roots.flatMap(function walk(dir: string): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : []));
   });
@@ -171,12 +171,20 @@ describe("no automatic publishing", () => {
     expect(src).not.toMatch(/\b(publishPost|publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost|createPost)\b/);
     expect(src).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);
     const callers = [...src.matchAll(/^(?:export )?async function (\w+)[\s\S]*?^}/gm)].filter((m) => /\bupdatePost\(/.test(m[0])).map((m) => m[1]);
-    expect(callers.sort()).toEqual(["publishDraft", "rollbackDraft"]);
+    // v3 (D-43): publishNewArticle publishes a crew-written CMS draft post; like publishDraft it is reached only through
+    // an explicit approval (approveDraft / publishWithApproval, which checks a recorded admin approval).
+    expect(callers.sort()).toEqual(["publishDraft", "publishNewArticle", "rollbackDraft"]);
+    expect(src).toMatch(/export async function publishWithApproval[\s\S]*?seo_draft_approvals[\s\S]*?used_at[\s\S]*?role !== "admin"[\s\S]*?publishNewArticle\(/);
+    expect([...src.matchAll(/publishNewArticle\(/g)].length).toBe(2); // its definition and the one call in publishWithApproval
     expect(src).toMatch(/export async function approveDraft[\s\S]*?publishDraft\(/);
     expect(src).toMatch(/export async function publishDueDrafts[\s\S]*?role !== "admin"/);
     // nothing else in the SEO code imports the publisher's write paths except the routes and the scheduler hook
-    const importers = files.filter((f) => f !== PUBLISHER && /from "(@\/lib\/seo-intel|\.)\/publish"/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(path.resolve(import.meta.dirname, ".."), f)).sort();
-    expect(importers).toEqual(["src/app/api/admin/seo/drafts/[id]/approve/route.ts", "src/app/api/admin/seo/drafts/[id]/rollback/route.ts", "src/lib/seo-intel/handlers.ts"]);
+    const importers = files.filter((f) => f !== PUBLISHER && /from "(@\/lib\/seo-intel|\.|\.\.\/seo-intel)\/publish"/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(path.resolve(import.meta.dirname, ".."), f)).sort();
+    // v3: the agent's callback API (publish only via publishWithApproval) and the orchestrator (recordApproval only).
+    expect(importers).toEqual(["src/app/api/admin/seo/drafts/[id]/approve/route.ts", "src/app/api/admin/seo/drafts/[id]/rollback/route.ts", "src/lib/seo-agent/callbacks.ts", "src/lib/seo-agent/orchestrate.ts", "src/lib/seo-intel/handlers.ts"]);
+    const agentUses = (f: string) => [...fs.readFileSync(path.resolve(import.meta.dirname, "..", f), "utf8").matchAll(/import \{([^}]*)\} from "\.\.\/seo-intel\/publish"/g)].flatMap((m) => m[1]!.split(",").map((x) => x.trim()));
+    expect(agentUses("src/lib/seo-agent/callbacks.ts").sort()).toEqual(["publishWithApproval", "verifyOnce"]);
+    expect(agentUses("src/lib/seo-agent/orchestrate.ts")).toEqual(["recordApproval"]);
   });
 
   it("the only post-creating call is createPost with a hard-coded draft status", () => {

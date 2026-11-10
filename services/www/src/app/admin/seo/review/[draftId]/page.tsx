@@ -2,7 +2,10 @@ import { sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
+import { AgentRunStatus } from "@/components/seo/AgentRunStatus";
 import { DiffReview, type SubmissionRow } from "@/components/seo/DiffReview";
+import { NewArticleReview, type NewArticleDoc } from "@/components/seo/NewArticleReview";
+import { markdownToHtml } from "@/lib/mdx/html";
 import { getDraft } from "@/lib/seo-intel/drafts";
 import { UUID } from "@/lib/seo-intel/http";
 import { listSubmissions } from "@/lib/seo-intel/submission";
@@ -26,7 +29,21 @@ export default async function DraftPage({ params }: { params: Promise<{ draftId:
   }
   const submissions: SubmissionRow[] = await listSubmissions(db, { articleId: d.article_id, draftId: d.id });
   const iso = (v: unknown) => (v ? new Date(String(v)).toISOString() : null);
+  // v3: the run summary the seo-agent keeps for this thread (thread id = draft id). Absent for legacy drafts.
+  const [run] = d.thread_id ? rowsOf<{ status: string; outcome: string | null; current_node: string | null; error: string | null; cost_usd: number }>(await db.execute(sql`select status, outcome, current_node, error, cost_usd from seo_agent_runs where thread_id = ${d.id}`)) : [];
+  const runStrip = run ? <AgentRunStatus threadId={d.id} initial={{ status: run.status, outcome: run.outcome, currentNode: run.current_node, error: run.error, costUsd: Number(run.cost_usd) }} /> : null;
+  if (d.kind === "new_article") {
+    const doc = (typeof d.document === "string" ? JSON.parse(d.document) : d.document) as NewArticleDoc | null;
+    return (
+      <>
+        {runStrip}
+        <NewArticleReview draft={{ id: d.id, status: d.status, flags: d.flags, failureReason: (d.failure_reason as string | null) ?? null }} doc={doc} html={doc?.body_mdx ? await markdownToHtml(doc.body_mdx.slice(0, 200_000)) : ""} editorUrl={`/admin/posts/${d.article_id}`} />
+      </>
+    );
+  }
   return (
+    <>
+    {runStrip}
     <DiffReview
       draft={{ id: d.id, status: d.status, changes: d.changes, flags: d.flags, summary: (d.summary as string | null) ?? null, failureReason: (d.failure_reason as string | null) ?? null, verification: (d.verification as never) ?? null, scheduledFor: iso(d.scheduled_for), decidedBy: (d.decided_by as string | null) ?? null, decidedAt: iso(d.decided_at), substantive: (d.substantive as boolean | null) ?? null, categories: (d.categories as string[]) ?? [] }}
       article={{ id: d.article_id, title: d.article.title, path: d.article.path, collection: d.article.collection, liveUrl: `${siteOrigin().origin}${d.article.path}` }}
@@ -34,5 +51,6 @@ export default async function DraftPage({ params }: { params: Promise<{ draftId:
       evidence={evidence}
       submissions={submissions}
     />
+    </>
   );
 }
