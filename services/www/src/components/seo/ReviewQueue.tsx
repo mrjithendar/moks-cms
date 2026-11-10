@@ -28,7 +28,7 @@ export type QueueItem = {
   inBatch: boolean;
   /** v3: "new_article" drafts come from the editorial crew. */
   kind?: string;
-  /** v3: the LangGraph run that owns this draft (status + current node), from seo_agent_runs. */
+  /** The latest CrewAI flow run for this draft (status + current step), from seo_flow_runs. */
   agent?: { status: string; node: string | null; outcome: string | null } | null;
 };
 
@@ -98,8 +98,8 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
                   {i.status === "generation_failed" && i.failureReason && <p className="mt-1 text-sm text-red-700 dark:text-red-300">{i.failureReason}</p>}
                   {(i.kind === "new_article" || i.agent) && (
                     <p className="mt-1 text-xs text-fg-subtle">
-                      {i.kind === "new_article" ? "New article (editorial crew)" : "LangGraph run"}
-                      {i.agent ? ` · ${i.agent.status === "interrupted" ? "waiting for your review" : i.agent.status === "running" ? `working${i.agent.node ? ` (${i.agent.node.replace(/_/g, " ")})` : ""}` : (i.agent.outcome ?? i.agent.status).replace(/_/g, " ")}` : ""}
+                      {i.kind === "new_article" ? "New article (editorial crew)" : "Optimization crew"}
+                      {i.agent ? ` · ${i.agent.outcome === "draft_ready" ? "waiting for your review" : i.agent.status === "running" || i.agent.status === "queued" ? `working${i.agent.node ? ` (${i.agent.node.replace(/_/g, " ")})` : ""}` : (i.agent.outcome ?? i.agent.status).replace(/_/g, " ")}` : ""}
                     </p>
                   )}
                 </div>

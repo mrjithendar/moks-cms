@@ -27,8 +27,8 @@ import { docsAllowlist } from "./config";
  *
  * Every handler reuses a v2 function: prompts (buildPrompt, DRAFT_RULES, STYLE_GUIDE), validators (validateChangeSet),
  * the link planner, publishing, verification, submission, the SSRF-safe fetcher. The agent can write exactly one
- * thing here — its own drafts (save/status, only for drafts a graph run owns) — and can publish only with an approval
- * an admin recorded (publishWithApproval).
+ * thing here — its own drafts (save/status, only for drafts the agent owns) — and can publish only with an approval
+ * an admin recorded (publishWithApproval). v4 additions are in callbacks-v4.ts.
  */
 export class CallbackError extends Error {
   constructor(
@@ -227,7 +227,15 @@ export async function setDraftStatus(draftId: string, body: unknown) {
 
 export async function publish(draftId: string, body: unknown) {
   uuid(draftId, "draft id");
-  const b = parse(z.object({ approvalId: z.string().max(80), acceptedChangeIds: z.array(z.string().max(12)).max(200) }), body);
+  const b = parse(z.object({ approvalId: z.string().max(80), acceptedChangeIds: z.array(z.string().max(12)).max(200), edits: z.record(z.string().max(12), z.string().max(20_000)).default({}) }), body);
+  // v4: the reviewer's edits travel with the decision; they must be exactly what the review UI stored on the draft
+  // (the approval covers the stored draft, so a different edit would publish something the admin never saw).
+  if (Object.keys(b.edits).length) {
+    const d = await getDraft(draftId);
+    const stored = new Map((d?.changes ?? []).map((c) => [c.id, c.edited ?? null]));
+    const bad = Object.entries(b.edits).filter(([id, text]) => stored.get(id) !== text).map(([id]) => id);
+    if (bad.length) throw new CallbackError(`Edits differ from the reviewed draft: ${bad.slice(0, 5).join(", ")}.`, 409, "approval_mismatch");
+  }
   return publishWithApproval(draftId, b.approvalId, b.acceptedChangeIds);
 }
 

@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 
 from app.embeddings import HashEmbeddings, chunk_markdown, github_slug
-from app.graphs.ask_blog import check_input, guard_answer, normalize_question
 from app.index import MemoryRetriever
 from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
 from app.main import memory_container
 from app.schemas import Relevance
+from app.services.ask_pipeline import check_input, guard_answer, normalize_question
 from tests.conftest import FakeWebApp, hits, settings
 
 

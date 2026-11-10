@@ -30,7 +30,7 @@ export default async function DraftPage({ params }: { params: Promise<{ draftId:
   const submissions: SubmissionRow[] = await listSubmissions(db, { articleId: d.article_id, draftId: d.id });
   const iso = (v: unknown) => (v ? new Date(String(v)).toISOString() : null);
   // v3: the run summary the seo-agent keeps for this thread (thread id = draft id). Absent for legacy drafts.
-  const [run] = d.thread_id ? rowsOf<{ status: string; outcome: string | null; current_node: string | null; error: string | null; cost_usd: number }>(await db.execute(sql`select status, outcome, current_node, error, cost_usd from seo_agent_runs where thread_id = ${d.id}`)) : [];
+  const [run] = d.thread_id ? rowsOf<{ status: string; outcome: string | null; current_node: string | null; error: string | null; cost_usd: number }>(await db.execute(sql`select status, outputs->>'outcome' as outcome, current_step as current_node, error, cost_usd from seo_flow_runs where draft_id = ${d.id} order by started_at desc limit 1`)) : [];
   const runStrip = run ? <AgentRunStatus threadId={d.id} initial={{ status: run.status, outcome: run.outcome, currentNode: run.current_node, error: run.error, costUsd: Number(run.cost_usd) }} /> : null;
   if (d.kind === "new_article") {
     const doc = (typeof d.document === "string" ? JSON.parse(d.document) : d.document) as NewArticleDoc | null;

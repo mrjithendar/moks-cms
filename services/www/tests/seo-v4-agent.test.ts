@@ -23,7 +23,7 @@ const { docsFetcher } = await import("@/lib/seo-intel/crawler");
 /**
  * SEO v3 on the web-app side, with the seo-agent mocked: the orchestrator switch, the callback API (auth, ownership,
  * the one write, validators reuse), the approval gate, and the end-to-end flow
- * approve in the admin API → graph resumes (mock) → publish callback → verify → submit → submission records.
+ * approve in the admin API → review decision starts publish_flow (mock) → publish callback → verify → submit → submission records.
  * The agent's own graphs are tested in services/seo-agent/tests (fake LLM, fake web app).
  */
 const admin: Actor = { id: "admin", role: "admin", label: "admin@example.com" };
@@ -41,15 +41,15 @@ let liveTitle = "x";
 let agentCalls: { path: string; body: Record<string, unknown> }[] = [];
 const realFetch = globalThis.fetch;
 
-/** The seo-agent, mocked: records start/resume calls. */
+/** The seo-agent, mocked: records flow kickoffs and review decisions (v4 API). */
 function agentFetch(): typeof fetch {
   return (async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
     if (u.host !== "seo-agent.test:8080") return realFetch(url, init); // the local "live site" for verification
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
     agentCalls.push({ path: u.pathname, body });
-    if (u.pathname === "/runs") return Response.json({ thread_id: body.thread_id, status: "running", existing: false }, { status: 202 });
-    if (u.pathname.endsWith("/resume")) return Response.json({ status: "running" }, { status: 202 });
+    if (/^\/flows\/[a-z_]+\/kickoff$/.test(u.pathname)) return Response.json({ run_id: "00000000-0000-4000-8000-0000000000aa", status: "queued", existing: false }, { status: 202 });
+    if (/^\/review\/[^/]+\/decision$/.test(u.pathname)) return Response.json(body.decision === "reject" ? { status: "rejected" } : { run_id: "00000000-0000-4000-8000-0000000000bb", status: "queued", existing: false }, { status: body.decision === "reject" ? 200 : 202 });
     return Response.json({ error: "nope" }, { status: 404 });
   }) as typeof fetch;
 }
@@ -74,7 +74,7 @@ beforeEach(async () => {
   await saveSeoSettings(settingsInput(), "admin");
   articleId = (await seedArticle(db, { body: BODY })).id;
   agentCalls = [];
-  Object.assign(process.env, { SEO_ORCHESTRATOR: "langgraph", SEO_AGENT_TOKEN: AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN: CB_TOKEN, SEO_AGENT_URL: "http://seo-agent.test:8080", SITE_URL: "https://jithendar.com", SEO_VERIFY_FETCH_ORIGIN: liveOrigin, SEO_SUBMISSION_ENABLED: "true", INDEXNOW_KEY: "0123456789abcdef0123456789abcdef" });
+  Object.assign(process.env, { SEO_ORCHESTRATOR: "crewai", SEO_AGENT_TOKEN: AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN: CB_TOKEN, SEO_AGENT_URL: "http://seo-agent.test:8080", SITE_URL: "https://jithendar.com", SEO_VERIFY_FETCH_ORIGIN: liveOrigin, SEO_SUBMISSION_ENABLED: "true", INDEXNOW_KEY: "0123456789abcdef0123456789abcdef" });
   vi.stubGlobal("fetch", agentFetch());
 });
 afterEach(() => {
@@ -90,12 +90,12 @@ const MODEL = (paragraphBlock = "b2") => ({
   ],
 });
 
-/** What the graph does up to human_review, through the callback API: context → validate → save. */
+/** What optimize_article_flow does up to the draft, through the callback API: context → validate → save. */
 async function agentDraft() {
   await seedRecommendation(db, articleId, "low_ctr");
   await seedRecommendation(db, articleId, "striking_distance");
   const r = await orch.requestDraft(articleId, { trigger: "manual" });
-  expect(r).toMatchObject({ orchestrator: "langgraph", queued: true });
+  expect(r).toMatchObject({ orchestrator: "crewai", queued: true });
   const draftId = (r as { draftId: string }).draftId;
   const ctx = await cb("POST", `/articles/${articleId}/context`, {});
   expect(ctx.status).toBe(200);
@@ -116,20 +116,20 @@ describe("orchestrator switch", () => {
     expect(rowsOf(await db.execute(sql`select 1 from job where kind = 'seo_draft'`)).length).toBe(1);
   });
 
-  it("langgraph: reserves one draft owned by the run (thread id = draft id) and starts optimize_article", async () => {
+  it("crewai: reserves one draft owned by the agent (thread id = draft id) and kicks off optimize_article_flow", async () => {
     const draftId = await agentDraft();
-    expect(agentCalls[0]).toMatchObject({ path: "/runs", body: { graph: "optimize_article", thread_id: draftId, input: { article_id: articleId, draft_id: draftId } } });
+    expect(agentCalls[0]).toMatchObject({ path: "/flows/optimize_article_flow/kickoff", body: { inputs: { article_id: articleId, draft_id: draftId }, triggered_by: "manual" } });
     const d = await drafts.getDraft(draftId);
     expect(d).toMatchObject({ status: "ready_for_review", thread_id: draftId });
     expect(d!.changes.every((c) => c.decision === "pending")).toBe(true);
   });
 
-  it("drafts made by the legacy path keep legacy approval even in langgraph mode", async () => {
+  it("drafts made by the legacy path keep legacy approval even in crewai mode", async () => {
     delete process.env.SEO_ORCHESTRATOR;
     await seedRecommendation(db, articleId, "low_ctr");
     const base = await drafts.loadBase(db, articleId);
     const d = await drafts.reserveDraft(db, articleId, base, "manual");
-    process.env.SEO_ORCHESTRATOR = "langgraph";
+    process.env.SEO_ORCHESTRATOR = "crewai";
     expect(await orch.approve(d.id, admin, null)).toBeNull(); // route falls back to v2 approveDraft
   });
 });
@@ -152,7 +152,7 @@ describe("callback API", () => {
     expect(r.modelCategories).toContain("title_meta");
   });
 
-  it("validate reuses v2's validators (bad block id → error, feeding the graph's retry)", async () => {
+  it("validate reuses v2's validators (bad block id → error, feeding the flow's retry)", async () => {
     const r = (await cb("POST", `/articles/${articleId}/validate`, { draftId: "x", output: MODEL("b0") })).body as { errors: string[] };
     expect(r.errors.join(" ")).toMatch(/c2/);
     const bad = (await cb("POST", `/articles/${articleId}/validate`, { draftId: "x", output: { summary: 1 } })).body as { errors: string[] };
@@ -163,7 +163,7 @@ describe("callback API", () => {
     delete process.env.SEO_ORCHESTRATOR;
     const base = await drafts.loadBase(db, articleId);
     const legacy = await drafts.reserveDraft(db, articleId, base, "manual");
-    process.env.SEO_ORCHESTRATOR = "langgraph";
+    process.env.SEO_ORCHESTRATOR = "crewai";
     expect((await cb("POST", `/drafts/${legacy.id}/save`, { changes: [], threadId: legacy.id })).status).toBe(403);
     await db.execute(sql`update seo_drafts set status = 'superseded' where id = ${legacy.id}`);
     const draftId = await agentDraft();
@@ -188,23 +188,24 @@ describe("callback API", () => {
 });
 
 describe("the approval gate", () => {
-  it("approve in the admin API → graph resumes with the approval → publish → verify → submit (E2E, agent mocked)", async () => {
+  it("approve in the admin API → decision starts publish_flow with the approval → publish → verify → submit (E2E, agent mocked)", async () => {
     const draftId = await agentDraft();
     await drafts.decideChange(draftId, "c1", "accepted", "Kubernetes ingress TLS, step by step");
     await drafts.decideChange(draftId, "c2", "rejected");
     const r = await orch.approve(draftId, admin, null);
     expect(r).toMatchObject({ status: "publishing" });
-    const resume = agentCalls.find((c) => c.path === `/runs/${draftId}/resume`)!;
-    expect(resume.body).toMatchObject({ decision: "approve", accepted_change_ids: ["c1"], approval_id: r!.approvalId });
+    const decision = agentCalls.find((c) => c.path === `/review/${draftId}/decision`)!;
+    expect(decision.body).toMatchObject({ decision: "approve", accepted_change_ids: ["c1"], approval_id: r!.approvalId });
     expect((await db.select().from(schema.post))[0]!.version).toBe(1); // recording the approval publishes nothing
 
-    // The graph's publish node:
-    const p = await cb("POST", `/drafts/${draftId}/publish`, { approvalId: r!.approvalId, acceptedChangeIds: ["c1"] });
+    // publish_flow's cms_publish step (with the reviewer's stored edit; a different edit is refused):
+    expect((await cb("POST", `/drafts/${draftId}/publish`, { approvalId: r!.approvalId, acceptedChangeIds: ["c1"], edits: { c1: "something else" } })).status).toBe(409);
+    const p = await cb("POST", `/drafts/${draftId}/publish`, { approvalId: r!.approvalId, acceptedChangeIds: ["c1"], edits: { c1: "Kubernetes ingress TLS, step by step" } });
     expect(p).toMatchObject({ status: 200, body: { status: "published" } });
     const post = (await db.select().from(schema.post))[0]!;
     expect(post.seoTitle).toBe("Kubernetes ingress TLS, step by step");
     expect(post.body).toContain("Install it with Helm."); // rejected change left out
-    expect(rowsOf(await db.execute(sql`select 1 from job where kind = 'seo_verify'`)).length).toBe(0); // the graph owns verification
+    expect(rowsOf(await db.execute(sql`select 1 from job where kind = 'seo_verify'`)).length).toBe(0); // publish_flow owns verification
     // an approval works once
     expect((await cb("POST", `/drafts/${draftId}/publish`, { approvalId: r!.approvalId, acceptedChangeIds: ["c1"] })).status).toBe(403);
 
@@ -251,14 +252,15 @@ describe("the approval gate", () => {
     const draftId = await agentDraft();
     await drafts.decideChange(draftId, "c1", "accepted");
     await expect(orch.approve(draftId, { id: "author", role: "author", label: "author@example.com" }, null)).rejects.toMatchObject({ status: 403 });
-    expect(agentCalls.some((c) => c.path.endsWith("/resume"))).toBe(false);
+    expect(agentCalls.some((c) => c.path.endsWith("/decision"))).toBe(false);
   });
 
-  it("reject marks the draft rejected and ends the run", async () => {
+  it("reject marks the draft rejected and tells the agent (which cancels any drafting run); the agent's reject callback is idempotent", async () => {
     const draftId = await agentDraft();
     await orch.reject(draftId, admin, "not now");
     expect((await drafts.getDraft(draftId))!.status).toBe("rejected");
-    expect(agentCalls.at(-1)).toMatchObject({ path: `/runs/${draftId}/resume`, body: { decision: "reject", feedback: "not now" } });
+    expect(agentCalls.at(-1)).toMatchObject({ path: `/review/${draftId}/decision`, body: { decision: "reject", feedback: "not now" } });
+    expect(await cb("POST", `/drafts/${draftId}/reject`, { reason: "not now", actor: "admin" })).toMatchObject({ status: 200, body: { already: true } });
   });
 });
 

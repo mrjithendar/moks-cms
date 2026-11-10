@@ -430,7 +430,10 @@ export async function reviewQueue(f: QueueFilter = {}) {
   const rows = rowsOf<Record<string, unknown>>(
     await db.execute(sql`
       select d.*, p.title as article_title, p.collection as article_collection, p.slug as article_slug,
-        (select json_build_object('status', ar.status, 'node', ar.current_node, 'outcome', ar.outcome) from seo_agent_runs ar where ar.thread_id = d.thread_id) as agent_run,
+        coalesce(
+          (select json_build_object('status', fr.status, 'node', fr.current_step, 'outcome', fr.outputs->>'outcome') from seo_flow_runs fr where fr.draft_id = d.id order by fr.started_at desc limit 1),
+          (select json_build_object('status', ar.status, 'node', ar.current_node, 'outcome', ar.outcome) from seo_agent_runs ar where ar.thread_id = d.thread_id)
+        ) as agent_run,
         (select max(r.priority_score) from seo_recommendations r where r.id = any(d.recommendation_ids)) as priority,
         (select json_agg(json_build_object('problem', r.problem, 'band', r.priority_band, 'category', r.category) order by r.priority_score desc) from seo_recommendations r where r.id = any(d.recommendation_ids)) as recs
       from seo_drafts d join post p on p.id = d.article_id
@@ -512,7 +515,7 @@ export async function decideChange(draftId: string, changeId: string, decision: 
 }
 
 /** Reject a draft (optionally with a reason, stored to improve future prompts). Bulk-reject uses the same path. */
-export async function rejectDraft(draftId: string, actor: { id: string; label: string }, reason: string | null) {
+export async function rejectDraft(draftId: string, actor: { id: string | null; label: string }, reason: string | null) {
   const db = await getDb();
   const rows = rowsOf<{ id: string; article_id: string }>(await db.execute(sql`update seo_drafts set status = 'rejected', reject_reason = ${reason?.slice(0, 2000) ?? null}, decided_by = ${actor.label}, decided_by_id = ${actor.id}, decided_at = now(), updated_at = now() where id = ${draftId} and status in ('ready_for_review', 'generation_failed', 'scheduled') returning id, article_id`));
   if (!rows.length) throw new DraftError("Only open drafts can be rejected.", 409);

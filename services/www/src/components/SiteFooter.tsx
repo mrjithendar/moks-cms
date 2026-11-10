@@ -9,6 +9,7 @@ import { LogoMark } from "./Logo";
 import { BannerBackground } from "./site/BannerBackground";
 import { SocialIcon, socialLinks } from "./site/social";
 import { ThemeSelect } from "./theme/ThemeToggle";
+import { publicMcpEnabled } from "@/lib/seo-agent/config";
 
 /** Legal and consent links are always present, whatever the footer configuration (they are required). */
 const policies = [
@@ -139,7 +140,7 @@ export async function SiteFooter() {
           {copyright && <p>{copyright}</p>}
           <div className={`flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6 ${centered ? "items-center" : ""}`}>
             <ul aria-label="Policies" className={`flex flex-wrap gap-x-4 gap-y-1 ${centered ? "justify-center" : ""}`}>
-              {policies.map((p) => (
+              {[...policies, ...(publicMcpEnabled() ? [{ href: "/ai-assistants", label: "Use in your AI assistant" }] : [])].map((p) => (
                 <li key={p.href}>
                   <Link href={p.href} className="inline-flex min-h-8 items-center transition-colors hover:text-fg">
                     {p.label}

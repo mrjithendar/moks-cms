@@ -2,8 +2,8 @@ import "server-only";
 import { agentToken, agentUrl } from "./config";
 
 /**
- * Web app → seo-agent (ClusterIP, bearer SEO_AGENT_TOKEN). Used by the admin SEO routes (start/resume/cancel runs,
- * reindex) and the public /api/ask proxy. Errors surface as AgentError with the agent's status, never its internals.
+ * Web app → seo-agent (ClusterIP, bearer SEO_AGENT_TOKEN). Used by the admin SEO routes (flow kickoffs, review
+ * decisions, run status/cancel) and the public /api/ask proxy. Errors surface as AgentError with the agent's status, never its internals.
  */
 export class AgentError extends Error {
   constructor(
@@ -16,20 +16,30 @@ export class AgentError extends Error {
 
 export type AgentDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined> };
 
+/** One CrewAI flow run (seo_flow_runs), as seo-agent's GET /flows/runs/{id} returns it. */
 export type RunView = {
-  thread_id: string;
-  graph: string;
-  status: "running" | "interrupted" | "completed" | "failed" | "cancelled" | "paused_budget";
+  run_id: string;
+  flow: string;
+  target_id: string;
+  draft_id: string | null;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "paused_budget";
+  current_step: string | null;
   outcome: string | null;
-  current_node: string | null;
-  next: string[];
-  interrupt: Record<string, unknown> | null;
+  outputs: Record<string, unknown>;
   error: string | null;
+  tokens: number;
   cost_usd: number;
-  state: Record<string, unknown>;
+  triggered_by: string;
+  started_at: string | null;
+  finished_at: string | null;
+  state?: Record<string, unknown>;
 };
 
-export type Decision = { decision: "approve" | "reject" | "edit"; accepted_change_ids?: string[]; edits?: Record<string, string>; approval_id?: string | null; actor?: string | null; feedback?: string | null };
+/** POST /review/{draft_id}/decision: approve starts publish_flow (only with the approval the web app recorded). */
+export type Decision = { decision: "approve" | "reject" | "regenerate"; approval_id?: string | null; accepted_change_ids?: string[]; edits?: Record<string, string>; feedback?: string | null; actor?: string | null };
+
+/** Flows a person or a CronJob may start with POST /flows/{name}/kickoff. publish_flow is not one of them. */
+export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow";
 
 async function call<T>(method: string, path: string, body: unknown, deps: AgentDeps = {}, timeoutMs = 15_000): Promise<T> {
   const token = agentToken(deps.env);
@@ -60,12 +70,15 @@ async function call<T>(method: string, path: string, body: unknown, deps: AgentD
   return data as T;
 }
 
-export const startRun = (graph: "optimize_article" | "weekly_recommendations" | "internal_linking" | "new_article", input: Record<string, unknown>, threadId: string, deps?: AgentDeps) =>
-  call<{ thread_id: string; status: string; existing: boolean }>("POST", "/runs", { graph, input, thread_id: threadId }, deps);
-export const getRun = (threadId: string, deps?: AgentDeps) => call<RunView>("GET", `/runs/${encodeURIComponent(threadId)}`, undefined, deps, 5_000);
-export const resumeRun = (threadId: string, d: Decision, deps?: AgentDeps) => call<{ thread_id: string; status: string }>("POST", `/runs/${encodeURIComponent(threadId)}/resume`, d, deps);
-export const cancelRun = (threadId: string, deps?: AgentDeps) => call<{ status: string }>("POST", `/runs/${encodeURIComponent(threadId)}/cancel`, {}, deps);
-export const reindex = (body: { article_ids?: string[]; full?: boolean }, deps?: AgentDeps) => call<Record<string, number>>("POST", "/embeddings/reindex", body, deps, 120_000);
+export const kickoff = (flow: FlowName, inputs: Record<string, unknown>, opts: { triggeredBy?: "manual" | "cron"; actor?: string } = {}, deps?: AgentDeps) =>
+  call<{ run_id: string; status: string; existing: boolean }>("POST", `/flows/${flow}/kickoff`, { inputs, triggered_by: opts.triggeredBy ?? "manual", actor: opts.actor ?? null }, deps);
+export const getRun = (runId: string, deps?: AgentDeps) => call<RunView>("GET", `/flows/runs/${encodeURIComponent(runId)}`, undefined, deps, 5_000);
+export const listRuns = (q: { flow?: string; status?: string; draftId?: string; limit?: number }, deps?: AgentDeps) => {
+  const p = new URLSearchParams(Object.entries({ flow: q.flow, status: q.status, draft_id: q.draftId, limit: q.limit ? String(q.limit) : undefined }).filter((e): e is [string, string] => Boolean(e[1])));
+  return call<{ items: RunView[] }>("GET", `/flows/runs?${p}`, undefined, deps, 5_000);
+};
+export const cancelRun = (runId: string, deps?: AgentDeps) => call<{ status: string }>("POST", `/flows/runs/${encodeURIComponent(runId)}/cancel`, {}, deps);
+export const decide = (draftId: string, d: Decision, deps?: AgentDeps) => call<{ run_id?: string; status: string; existing?: boolean }>("POST", `/review/${encodeURIComponent(draftId)}/decision`, d, deps);
 
 /** Streaming answer (server-sent events) for the public /api/ask proxy. */
 export async function askStream(question: string, ipHash: string | null, deps: AgentDeps = {}): Promise<Response> {

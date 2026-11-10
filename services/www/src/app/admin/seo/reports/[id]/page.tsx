@@ -16,11 +16,20 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   if (!r) notFound();
   const g = r.organic.gsc;
   const a = r.organic.ga4;
+  // v4 report_flow adds a checked narrative and an R2 PDF to the payload.
+  const extra = r as typeof r & { narrative?: string; pdf?: { key: string } };
   return (
     <article className="seo-report">
       {/* Printing: hide the admin chrome and SEO tabs. */}
       <style>{`@media print { [data-admin-shell] > aside, nav[aria-label="SEO sections"], header, footer { display: none !important; } [data-admin-shell] { display: block !important; background: white; } }`}</style>
-      <AdminHeader title={`SEO ${r.type} report: ${r.period.start} – ${r.period.end}`} description={`Compared with ${r.period.prevStart} – ${r.period.prevEnd}. Generated ${r.generatedAt.slice(0, 16).replace("T", " ")} UTC. Sources: ${r.sources.gsc}; ${r.sources.ga4}.`} actions={<><a className="min-h-9 rounded-md border border-line-strong px-3 py-2 text-sm print:hidden" href={`/api/admin/seo/reports/${id}/csv`}>CSV</a><PrintButton /></>} />
+      <AdminHeader title={`SEO ${r.type} report: ${r.period.start} – ${r.period.end}`} description={`Compared with ${r.period.prevStart} – ${r.period.prevEnd}. Generated ${r.generatedAt.slice(0, 16).replace("T", " ")} UTC. Sources: ${r.sources.gsc}; ${r.sources.ga4}.`} actions={<>{extra.pdf?.key ? <a className="min-h-9 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-on-accent print:hidden" href={`/api/admin/seo/reports/${id}/pdf`}>Download PDF</a> : null}<a className="min-h-9 rounded-md border border-line-strong px-3 py-2 text-sm print:hidden" href={`/api/admin/seo/reports/${id}/csv`}>CSV</a><PrintButton /></>} />
+      {extra.narrative ? (
+        <section aria-label="Summary" className="mb-6 rounded-xl border border-line border-l-4 border-l-accent bg-surface p-4 text-sm leading-relaxed">
+          <p className="mb-1 font-semibold">Summary</p>
+          <p className="whitespace-pre-line text-fg-muted">{extra.narrative}</p>
+          <p className="mt-2 text-xs text-fg-subtle">Written by the report crew from the figures below; every number in it was checked against them.</p>
+        </section>
+      ) : null}
       {!r.organic.dataComplete && <p className="mb-4 text-sm text-amber-800 dark:text-amber-300">Search Console data for this period is incomplete ({g.current.daysWithData} days with data).</p>}
       <Section title="Organic performance">
         <Table head={<tr><th className={th}>Metric</th><th className={th}>This period</th><th className={th}>Previous</th><th className={th}>Change</th></tr>}>
