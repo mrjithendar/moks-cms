@@ -157,6 +157,7 @@ npx vitest run tests/seo-intel-*       # the platform's tests (fake Google, PGli
 
 Without `GOOGLE_SEO_SERVICE_ACCOUNT_JSON`, every view shows the **Disconnected** state over whatever (fixture) data
 exists. The fixture key and numbers in `tests/seo-fixtures.ts` are invented; never use them as real data.
+<<<<<<< HEAD
 
 ---
 
@@ -249,3 +250,5 @@ Rollbacks in `src/db/rollback/` — run **newest first** (0014 → 0013 → 0012
 Env: `ANTHROPIC_API_KEY` (Secret), `SEO_DRAFT_MODEL`, `SEO_CLASSIFY_MODEL`, `SEO_LLM_MONTHLY_BUDGET_USD`,
 `SEO_LLM_PRICES_JSON`, `SEO_SUBMISSION_ENABLED`, `SEO_SUBMIT_DEBOUNCE_MS`; E2E only (ignored in production):
 `SEO_VERIFY_FETCH_ORIGIN`. Settings sections: `drafts`, `links`, `submission`, `keywords`.
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

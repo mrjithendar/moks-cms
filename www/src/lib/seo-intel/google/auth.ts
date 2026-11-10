@@ -11,8 +11,11 @@ import { createSign } from "node:crypto";
 export const SCOPES = {
   searchConsole: "https://www.googleapis.com/auth/webmasters.readonly",
   analytics: "https://www.googleapis.com/auth/analytics.readonly",
+<<<<<<< HEAD
   /** Write scope, only for sitemaps.submit (needs Full or Owner permission on the property; docs/seo/SUBMISSION.md). */
   searchConsoleWrite: "https://www.googleapis.com/auth/webmasters",
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 } as const;
 
 export type ServiceAccount = { clientEmail: string; privateKey: string; tokenUri: string; projectId: string | null };

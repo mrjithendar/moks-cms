@@ -15,11 +15,15 @@ const KEY = "seo";
 
 export const SEARCH_TYPES = ["web", "image", "video", "news", "discover", "googleNews"] as const;
 export type SearchType = (typeof SEARCH_TYPES)[number];
+<<<<<<< HEAD
 export const LLM_PROVIDERS = ["openai", "gemini", "bedrock", "anthropic"] as const;
 /** Draft change categories Claude may work on automatically (each togglable in Settings → Drafts). */
 export const DRAFT_CATEGORIES = ["title_meta", "striking_expansion", "freshness", "internal_links", "alt_text", "faq_headings", "new_article"] as const;
 export type DraftCategory = (typeof DRAFT_CATEGORIES)[number];
 const modelId = z.string().trim().max(120).regex(/^[A-Za-z0-9._:\-/@]*$/, "Use the provider's model id.");
+=======
+export const LLM_PROVIDERS = ["openai", "gemini", "bedrock"] as const;
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 
 const hour = z.coerce.number().int().min(0).max(23);
 const weekday = z.coerce.number().int().min(0).max(6); // 0 = Sunday (UTC)
@@ -104,6 +108,7 @@ const settingsSchema = z.object({
     emailEnabled: z.boolean(),
     recipients: z.array(z.string().trim().toLowerCase().email()).max(10),
   }),
+<<<<<<< HEAD
   /** v2: Claude-drafted change sets (docs/seo/REVIEW_WORKFLOW.md). Automation stops at "ready for review". */
   drafts: z.object({
     enabled: z.boolean(),
@@ -149,6 +154,8 @@ const settingsSchema = z.object({
     classifyWithLlm: z.boolean(),
     clusterSimilarity: num(0.1, 0.95),
   }),
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 });
 
 export type SeoSettings = z.infer<typeof settingsSchema> & { llmKey: Sealed | null };
@@ -183,6 +190,7 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   crawler: { requestsPerSecond: 1, maxPages: 500, timeoutMs: 10_000, maxBytes: 2_000_000, maxRedirects: 5 },
   llm: { enabled: false, provider: "openai", model: "", baseUrl: "", region: "us-east-1", timeoutMs: 30_000, maxOutputTokens: 900, dailyRequestLimit: 100 },
   reports: { emailEnabled: false, recipients: [] },
+<<<<<<< HEAD
   drafts: {
     enabled: true,
     draftModel: "",
@@ -199,6 +207,8 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   links: { enabled: true, maxNewPerDraft: 3, wordsPerLink: 250, minWordsBetween: 100, maxInboundPerTargetPerRun: 5, minRelevance: 0.12, anchorMinWords: 2, anchorMaxWords: 6 },
   submission: { indexNow: true, googleSitemap: true, urlInspection: true, inspectionDelayHours: 60 },
   keywords: { brandRegex: "jithendar", risingMinGrowth: 0.5, decliningPositions: 3, trackedAlertPositions: 3, classifyWithLlm: true, clusterSimilarity: 0.5 },
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
   llmKey: null,
 };
 
@@ -216,6 +226,7 @@ function merge(stored: Stored | undefined): SeoSettings {
     crawler: { ...d.crawler, ...s.crawler },
     llm: { ...d.llm, ...s.llm },
     reports: { ...d.reports, ...s.reports },
+<<<<<<< HEAD
     drafts: {
       ...d.drafts,
       ...s.drafts,
@@ -227,6 +238,8 @@ function merge(stored: Stored | undefined): SeoSettings {
     links: { ...d.links, ...s.links },
     submission: { ...d.submission, ...s.submission },
     keywords: { ...d.keywords, ...s.keywords },
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
     llmKey: (s.llmKey as Sealed | null | undefined) ?? null,
   };
 }
@@ -267,6 +280,7 @@ export async function saveSeoSettings(raw: unknown, actorId: string): Promise<{ 
   const v = parsed.data;
   if (v.thresholds.strikingPositionMin >= v.thresholds.strikingPositionMax) throw new SettingsError("The settings are not valid.", ["thresholds: striking-distance minimum must be below the maximum"]);
   if (v.thresholds.bandMedium >= v.thresholds.bandHigh) throw new SettingsError("The settings are not valid.", ["thresholds: the medium band must start below the high band"]);
+<<<<<<< HEAD
   if (v.links.anchorMinWords > v.links.anchorMaxWords) throw new SettingsError("The settings are not valid.", ["links: the shortest anchor must not be longer than the longest"]);
   if (v.keywords.brandRegex) {
     try {
@@ -275,6 +289,8 @@ export async function saveSeoSettings(raw: unknown, actorId: string): Promise<{ 
       throw new SettingsError("The settings are not valid.", ["keywords.brandRegex: not a valid regular expression"]);
     }
   }
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
   if (Object.values(v.weights).every((w) => w === 0)) throw new SettingsError("The settings are not valid.", ["weights: at least one weight must be above 0"]);
   const current = await getSeoSettings();
   let llmKey = current.llmKey;
@@ -302,8 +318,11 @@ export function publicSettings(s: SeoSettings): PublicSeoSettings {
 /** The LLM API key: saved (sealed) key, else the provider's environment variable. Bedrock uses pod credentials. */
 export function seoLlmKey(s: SeoSettings, env: Record<string, string | undefined> = process.env): string | null {
   if (s.llm.provider === "bedrock") return null;
+<<<<<<< HEAD
   // Claude: the key is a secret reference only (Kubernetes Secret → env), never stored in the database.
   if (s.llm.provider === "anthropic") return env.ANTHROPIC_API_KEY?.trim() || null;
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
   if (s.llmKey) return unseal(s.llmKey);
   const v = s.llm.provider === "gemini" ? env.GEMINI_API_KEY : env.OPENAI_API_KEY;
   return v?.trim() || null;
@@ -316,6 +335,7 @@ export function llmConfigured(s: SeoSettings): boolean {
   if (s.llm.provider === "openai" && s.llm.baseUrl.startsWith("http://")) return true;
   return Boolean(seoLlmKey(s));
 }
+<<<<<<< HEAD
 
 // --- v2: Claude drafting configuration -------------------------------------------------------------------------
 
@@ -359,3 +379,5 @@ export function submissionEnabled(env: Record<string, string | undefined> = proc
   if (v === "false") return false;
   return env.APP_ENV === "production";
 }
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

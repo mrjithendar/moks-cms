@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { sql } from "drizzle-orm";
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
@@ -9,10 +10,17 @@ import { sourceStatus } from "@/lib/seo-intel/queries";
 import { getSeoSettings } from "@/lib/seo-intel/settings";
 import { requireRole } from "@/lib/session";
 import "./seo.css";
+=======
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import { SeoNav } from "@/components/seo/SeoNav";
+import { requireRole } from "@/lib/session";
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 
 export const metadata: Metadata = { title: { default: "SEO intelligence", template: "%s · SEO · Admin" }, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
+<<<<<<< HEAD
 const ago = (iso: string | null) => {
   if (!iso) return "never";
   const h = Math.round((Date.now() - Date.parse(iso)) / 3_600_000);
@@ -45,5 +53,15 @@ export default async function SeoLayout({ children }: { children: ReactNode }) {
         {children}
       </SeoShell>
     </Suspense>
+=======
+/** /admin/seo/* is admin-only (authors are redirected by requireRole). */
+export default async function SeoLayout({ children }: { children: ReactNode }) {
+  await requireRole("admin");
+  return (
+    <>
+      <SeoNav />
+      {children}
+    </>
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
   );
 }

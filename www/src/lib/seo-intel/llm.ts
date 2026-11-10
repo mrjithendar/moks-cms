@@ -5,7 +5,12 @@ import type { Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { log } from "../log";
 import { recordSeoLlm } from "../metrics";
+<<<<<<< HEAD
 import { callModel, ProviderError, type ModelSettings } from "../practice/ai/providers";
+=======
+import { callModel, ProviderError } from "../practice/ai/providers";
+import type { PracticeSettings } from "../practice/settings";
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 import { llmConfigured, seoLlmKey, type SeoSettings } from "./settings";
 
 /**
@@ -50,7 +55,11 @@ export function dataBlock(name: string, content: unknown): string {
   return `<data name="${name.replace(/[^a-z0-9_-]/gi, "")}">\n${text.replace(/<\/?data\b/gi, "‹data")}\n</data>`;
 }
 
+<<<<<<< HEAD
 function aiSettings(s: SeoSettings): ModelSettings {
+=======
+function aiSettings(s: SeoSettings): PracticeSettings["ai"] {
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
   return { enabled: true, provider: s.llm.provider, model: s.llm.model, baseUrl: s.llm.baseUrl, region: s.llm.region, apiKey: null, timeoutMs: s.llm.timeoutMs, maxOutputTokens: s.llm.maxOutputTokens, inputUsdPerMTok: 0, outputUsdPerMTok: 0 };
 }
 

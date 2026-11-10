@@ -125,6 +125,7 @@ Docs: README, ARCHITECTURE (Mermaid), OPERATIONS, SECURITY, MANUAL_SETUP, SCORIN
 - Google credentials and property access (MANUAL_SETUP.md); live Google behaviour is **not verified** here.
 - Alert rules must be copied into the miniKube repo; Grafana app sync after merge.
 - Branch also contains the owner's commit `d16f13c` (content image, CI workflow, init container) — review separately.
+<<<<<<< HEAD
 
 
 ---
@@ -287,3 +288,5 @@ to the session scratchpad. Recommendation: keep this repository outside a synced
   chips, roving keyboard rows, saved views via `/api/admin/seo/views`, sparkline); CSV export (formula-safe).
 - Bug found by tests and fixed: "locking"/"lock" did not cluster (added `-ing` stemming).
 - Tests: `tests/seo-v2-keywords.test.ts` (18).
+=======
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

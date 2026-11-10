@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /** /admin/seo sections: grouped for the sidebar, flat (SEO_SECTIONS) for older callers. */
 export type SectionIcon = "home" | "chart" | "users" | "file" | "inbox" | "bulb" | "key" | "doc" | "link" | "wrench" | "calendar" | "report" | "plug" | "sync" | "cog";
 export type Section = { href: string; label: string; icon: SectionIcon; hint: string; badge?: "review" };
@@ -41,3 +42,22 @@ export const SEO_GROUPS: { label: string; items: Section[] }[] = [
 ];
 
 export const SEO_SECTIONS = SEO_GROUPS.flatMap((g) => g.items.map(({ href, label }) => ({ href, label })));
+=======
+/** /admin/seo sections, in navigation order. */
+export const SEO_SECTIONS = [
+  { href: "/admin/seo", label: "Overview" },
+  { href: "/admin/seo/search", label: "Search performance" },
+  { href: "/admin/seo/analytics", label: "Visitor analytics" },
+  { href: "/admin/seo/pages", label: "Page intelligence" },
+  { href: "/admin/seo/keywords", label: "Keyword opportunities" },
+  { href: "/admin/seo/recommendations", label: "Recommendations" },
+  { href: "/admin/seo/content", label: "Content optimization" },
+  { href: "/admin/seo/links", label: "Internal linking" },
+  { href: "/admin/seo/technical", label: "Technical SEO" },
+  { href: "/admin/seo/calendar", label: "Editorial calendar" },
+  { href: "/admin/seo/reports", label: "Reports" },
+  { href: "/admin/seo/integrations", label: "Integrations" },
+  { href: "/admin/seo/sync", label: "Sync history" },
+  { href: "/admin/seo/settings", label: "Settings" },
+] as const;
+>>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
