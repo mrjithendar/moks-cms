@@ -68,7 +68,8 @@ export async function budgetState(db: Db, cfg: Pick<ClaudeConfig, "monthlyBudget
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const byModel = rowsOf<{ model: string; cost: number; calls: number; cr: number; inp: number }>(
     // v3: Ask the Blog (purpose "ask…") has its own daily cap in the seo-agent and never counts against this budget.
-    await db.execute(sql`select model, sum(cost_usd)::float8 as cost, count(*)::int as calls, sum(cache_read_tokens)::float8 as cr, sum(input_tokens)::float8 as inp from seo_llm_usage where at >= ${monthStart} and purpose not like 'ask%' group by model order by cost desc`),
+    // News desk: purpose "news…" has its own per-job and global caps (docs/news/COSTS.md), so it never pauses SEO drafting.
+    await db.execute(sql`select model, sum(cost_usd)::float8 as cost, count(*)::int as calls, sum(cache_read_tokens)::float8 as cr, sum(input_tokens)::float8 as inp from seo_llm_usage where at >= ${monthStart} and purpose not like 'ask%' and purpose not like 'news%' group by model order by cost desc`),
   ).map((r) => ({ model: r.model, costUsd: Number(r.cost), calls: Number(r.calls), cacheReadTokens: Number(r.cr), inputTokens: Number(r.inp) }));
   const [res] = rowsOf<{ n: number | null }>(await db.execute(sql`select sum(estimated_cost_usd)::float8 as n from seo_llm_batches where status = 'in_progress'`));
   const spentUsd = byModel.reduce((s, r) => s + r.costUsd, 0);

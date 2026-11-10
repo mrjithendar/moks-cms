@@ -81,10 +81,10 @@ export function allowedHosts(origin: URL): Set<string> {
   return new Set([h, h.startsWith("www.") ? h.slice(4) : `www.${h}`]);
 }
 
-function once(url: URL, timeoutMs: number, maxBytes: number): Promise<{ status: number; headers: Record<string, string>; body: string; truncated: boolean }> {
+function once(url: URL, timeoutMs: number, maxBytes: number, extraHeaders: Record<string, string> = {}): Promise<{ status: number; headers: Record<string, string>; body: string; truncated: boolean }> {
   return new Promise((resolve, reject) => {
     const mod = url.protocol === "https:" ? https : http;
-    const req = mod.request(url, { method: "GET", lookup: guardedLookup as never, headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8" }, timeout: timeoutMs }, (res) => {
+    const req = mod.request(url, { method: "GET", lookup: guardedLookup as never, headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8", ...extraHeaders }, timeout: timeoutMs }, (res) => {
       const chunks: Buffer[] = [];
       let size = 0;
       let truncated = false;
@@ -123,7 +123,16 @@ export function docsFetcher(domains: string[], opts: { timeoutMs: number; maxByt
   return hostFetcher((h) => allow.some((d) => h === d || h.endsWith(`.${d}`)), opts, ["https:"]);
 }
 
-function hostFetcher(allowed: (host: string) => boolean, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, protocols = ["http:", "https:"]): PageFetcher {
+/**
+ * News desk: the same guarded fetcher for feed and primary-source hosts, with request headers (User-Agent identifying the
+ * news desk, Accept for feeds, If-None-Match / If-Modified-Since for conditional GET). Headers are only ever these.
+ */
+export function headerFetcher(domains: string[], opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, protocols = ["https:"]) {
+  const allow = domains.map((d) => d.toLowerCase().replace(/\.$/, ""));
+  return (url: string, headers: Record<string, string>) => hostFetcher((h) => allow.some((d) => h === d || h.endsWith(`.${d}`)), opts, protocols, headers)(url);
+}
+
+function hostFetcher(allowed: (host: string) => boolean, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, protocols = ["http:", "https:"], headers: Record<string, string> = {}): PageFetcher {
   return async (start: string) => {
     const redirects: FetchResult["redirects"] = [];
     let current = new URL(start);
@@ -133,7 +142,7 @@ function hostFetcher(allowed: (host: string) => boolean, opts: { timeoutMs: numb
       }
       let res;
       try {
-        res = await once(current, opts.timeoutMs, opts.maxBytes);
+        res = await once(current, opts.timeoutMs, opts.maxBytes, headers);
       } catch (e) {
         return { url: start, finalUrl: current.href, status: 0, headers: {}, body: "", redirects, truncated: false, error: (e as { code?: string }).code === "EBLOCKED" ? (e as Error).message : `Request failed: ${(e as Error).message}`.slice(0, 200) };
       }
