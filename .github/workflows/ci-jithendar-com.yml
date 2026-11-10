@@ -20,19 +20,19 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'www/**'
+      - 'services/www/**'
       # Content and images ship in their own image (ci-content.yml); they never rebuild this one.
-      - '!www/content/**'
-      - '!www/public/images/**'
-      - '!www/Dockerfile.content*'
+      - '!services/www/content/**'
+      - '!services/www/public/images/**'
+      - '!services/www/Dockerfile.content*'
       - 'minikube/**'
       - '.github/workflows/ci-jithendar-com.yml'
   push:
     paths:
-      - 'www/**'
-      - '!www/content/**'
-      - '!www/public/images/**'
-      - '!www/Dockerfile.content*'
+      - 'services/www/**'
+      - '!services/www/content/**'
+      - '!services/www/public/images/**'
+      - '!services/www/Dockerfile.content*'
       - '.github/workflows/ci-jithendar-com.yml'
 
 permissions:
@@ -45,7 +45,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: www
+    working-directory: services/www
 
 jobs:
   check:
@@ -60,9 +60,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: www/.nvmrc
+          node-version-file: services/www/.nvmrc
           cache: npm
-          cache-dependency-path: www/package-lock.json
+          cache-dependency-path: services/www/package-lock.json
       - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
         with:
           version: v1.35.0
@@ -74,7 +74,7 @@ jobs:
         env:
           APP_ENV: production
       - name: Render production manifests
-        run: kubectl kustomize ../minikube > /dev/null
+        run: kubectl kustomize ../../minikube > /dev/null
 
   release:
     if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
@@ -91,9 +91,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: www/.nvmrc
+          node-version-file: services/www/.nvmrc
           cache: npm
-          cache-dependency-path: www/package-lock.json
+          cache-dependency-path: services/www/package-lock.json
       - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
         with:
           version: v1.35.0
@@ -115,7 +115,7 @@ jobs:
           sudo dmesg --ctime 2>/dev/null | grep -iE "oom|killed process|out of memory" | tail -20 || true
           journalctl --no-pager -u systemd-oomd --since "-30 min" 2>/dev/null | tail -20 || true
       - name: Render production manifests
-        run: kubectl kustomize ../minikube > /dev/null
+        run: kubectl kustomize ../../minikube > /dev/null
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
@@ -161,7 +161,7 @@ jobs:
           done
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           trap 'rm -f "$KUBECONFIG"' EXIT
-          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
+          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
           kubectl -n jithendar rollout restart deploy/jithendar-com
           if ! kubectl -n jithendar rollout status deploy/jithendar-com --timeout=5m; then
             echo "::error::Rollout of jithendar-com did not finish within 5 minutes"

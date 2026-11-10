@@ -1,4 +1,4 @@
-# Dependencies, build output and local state (www/.gitignore adds Next.js specifics)
+# Dependencies, build output and local state (services/www/.gitignore adds Next.js specifics)
 node_modules/
 .next/
 out/
@@ -21,11 +21,11 @@ jithendar-redis.yaml
 
 .DS_Store
 
-# Python (executor/)
+# Python (services/executor/)
 __pycache__/
 .pytest_cache/
 .venv/
-executor/build/
+services/executor/build/
 *.egg-info/
 infra/**/.terraform/
 *.tfplan

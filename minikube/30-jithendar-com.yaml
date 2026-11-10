@@ -29,7 +29,7 @@ spec:
         app.kubernetes.io/part-of: jithendar-com
     spec:
       automountServiceAccountToken: false
-      # Content (MDX and /images) ships in its own image, jithendar-content (www/Dockerfile.content,
+      # Content (MDX and /images) ships in its own image, jithendar-content (services/www/Dockerfile.content,
       # .github/workflows/ci-content.yml), so writing a post never rebuilds jithendar-com. This init container copies
       # it into the emptyDirs that the web container mounts over /app/content and /app/public/images; a rollout
       # restart (done by both workflows) pulls the newest :latest of each image.

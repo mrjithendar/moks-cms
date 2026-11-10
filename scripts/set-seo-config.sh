@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SEO intelligence platform (www/docs/seo/MANUAL_SETUP.md): store the Google service-account key and optional
+# SEO intelligence platform (services/www/docs/seo/MANUAL_SETUP.md): store the Google service-account key and optional
 # PageSpeed key in Secret jithendar/jithendar-com-env, and the property ids in ConfigMap jithendar-com-public.
 # Both are already loaded by the Deployment (envFrom), so no manifest changes are needed. Run by a person:
 #   scripts/set-seo-config.sh /path/to/service-account.json [kube-context]
