@@ -210,3 +210,37 @@ async def test_hash_embeddings_are_deterministic_and_normalised() -> None:
     [a] = await e.embed(["cert-manager renews certificates"])
     [b] = await e.embed(["cert-manager renews certificates"])
     assert a == b and abs(sum(x * x for x in a) - 1) < 1e-6
+
+
+def test_cited_numbers_accepts_common_citation_styles() -> None:
+    from app.services.ask_pipeline import cited_numbers
+
+    assert cited_numbers("A [1]. B [2][3].", 6) == [1, 2, 3]
+    assert cited_numbers("A [1, 3]. B [2; 4].", 6) == [1, 2, 3, 4]
+    assert cited_numbers("Out of range [7] and [0] are ignored [2].", 6) == [2]
+    assert cited_numbers("No citations here.", 6) == []
+
+
+def test_reindex_guard_thresholds() -> None:
+    from app.index import GUARD_MIN_INDEXED, refuse_reindex
+
+    assert refuse_reindex(0, 3) and refuse_reindex(0, 1)  # an empty list is always refused
+    assert not refuse_reindex(0, 0)  # first ever reindex
+    assert not refuse_reindex(1, 4)  # small site: unpublishing most articles is ordinary editing
+    assert refuse_reindex(GUARD_MIN_INDEXED // 2 - 1, GUARD_MIN_INDEXED)
+    assert not refuse_reindex(GUARD_MIN_INDEXED // 2, GUARD_MIN_INDEXED)
+
+
+async def test_retrieval_embeds_the_question_as_asked_not_normalised(llm: FakeLlm, web: FakeWebApp) -> None:
+    r = MemoryRetriever(hits())
+    c = memory_container(settings(), llm=llm, web=web, retriever=r)
+    llm.queue("ask_grade", Relevance(relevant=False, reason="no"))
+    await c.ask.ask("Why does  kubectl -n jithendar get svc/seo-agent:8080 fail?")
+    assert r.queries == ["Why does kubectl -n jithendar get svc/seo-agent:8080 fail?"]
+
+
+def test_title_is_part_of_the_stored_hash() -> None:
+    from app.index import _embed_hash
+
+    assert _embed_hash("Old title", "h") != _embed_hash("New title", "h")
+    assert _embed_hash("Same", "h") == _embed_hash("Same", "h")
