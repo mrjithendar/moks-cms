@@ -168,7 +168,7 @@ node e2e/fake-services.mjs &                                  # :3199
 PGLITE_DIR=/tmp/seo-e2e SITE_URL=http://localhost:3100 BETTER_AUTH_SECRET=<32+ chars> SETTINGS_ENCRYPTION_KEY=<same> \
   ANTHROPIC_API_KEY=sk-ant-fake ANTHROPIC_BASE_URL=http://localhost:3199 INDEXNOW_ENDPOINT=http://localhost:3199/indexnow \
   INDEXNOW_KEY=0123456789abcdef0123456789abcdef SEO_SUBMISSION_ENABLED=true SEO_SUBMIT_DEBOUNCE_MS=2000 \
-  SEO_VERIFY_FETCH_ORIGIN=http://localhost:3100 npx next start -p 3100 &
+  SEO_VERIFY_FETCH_ORIGIN=http://localhost:3100 E2E_WORKER=1 npx next start -p 3100 &
 npx playwright test e2e/review-flow.spec.ts e2e/popover.spec.ts
 ```
 `SEO_VERIFY_FETCH_ORIGIN` exists only for this: the SSRF-safe fetcher refuses loopback, so verification would always

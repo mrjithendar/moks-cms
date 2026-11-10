@@ -10,3 +10,7 @@
 | [DECISIONS.md](DECISIONS.md) | Where the implementation deviates from the brief, and why |
 | [DISCOVERY.md](DISCOVERY.md) · [PLAN.md](PLAN.md) · [PROGRESS.md](PROGRESS.md) | Phase 1 findings, plan, progress log |
 | [prometheus-alerts.yml](prometheus-alerts.yml) | Alert rules for the miniKube repo |
+| [REVIEW_WORKFLOW.md](REVIEW_WORKFLOW.md) · [SUBMISSION.md](SUBMISSION.md) · [INTERNAL_LINKING.md](INTERNAL_LINKING.md) · [STYLE_GUIDE.md](STYLE_GUIDE.md) | v2: review and approval, search-engine submission, internal links, the drafting style guide |
+| [AGENTS.md](AGENTS.md) | v3: LangGraph graphs (diagrams, state, nodes), interrupt/resume ↔ review UI, the approval gate, the CrewAI crew, tools, callback API, operations, resources |
+| [RAG.md](RAG.md) | v3: Ask the Blog (guards, abuse/cost controls, privacy), chunking, embeddings options, pgvector index and reindexing |
+| [COSTS.md](COSTS.md) | v3: tokens and cost per run type, monthly estimate for the current site, budget controls |

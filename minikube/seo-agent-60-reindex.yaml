@@ -1,0 +1,60 @@
+# Weekly incremental embeddings reindex (only chunks whose content hash changed; publishes also reindex the article
+# right after submit_search). The job only triggers the service, which holds the model and the reindex lock; Forbid +
+# the service's own lock mean two reindexes never overlap. Applied by a person with the rest of the seo-agent group.
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seo-agent-reindex
+  namespace: jithendar
+  labels: { app: seo-agent-reindex, app.kubernetes.io/part-of: jithendar-com }
+spec:
+  schedule: "17 3 * * 0" # Sundays 03:17 UTC
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 2400
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: { app: seo-agent-reindex, app.kubernetes.io/part-of: jithendar-com }
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          imagePullSecrets: [{ name: harbor-pull }]
+          securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+          containers:
+            - name: reindex
+              image: registry.jithendar.com/jithendar/seo-agent:latest
+              imagePullPolicy: Always
+              # Ends with POST 127.0.0.1:15020/quitquitquit so the Istio sidecar exits and the Job completes.
+              command: ["python", "-m", "app.reindex_job"]
+              env:
+                - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
+                - name: SEO_AGENT_TOKEN
+                  valueFrom: { secretKeyRef: { name: seo-agent-env, key: SEO_AGENT_TOKEN } }
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: seo-agent-reindex
+  namespace: jithendar
+  labels: { app.kubernetes.io/part-of: jithendar-com }
+spec:
+  podSelector: { matchLabels: { app: seo-agent-reindex } }
+  policyTypes: ["Ingress", "Egress"]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: seo-agent } } }]
+      ports: [{ port: 8080, protocol: TCP }]
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }, podSelector: { matchLabels: { k8s-app: kube-dns } } }]
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]

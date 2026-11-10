@@ -105,3 +105,83 @@ submissions (each event is still logged as `skipped`).
 ## 12. Digest recipients
 Settings → Drafts → digest → recipients (requires email in Admin → Storage & email). Until a recipient is set, nothing
 is emailed.
+
+# v3: agents (LangGraph, CrewAI, pgvector)
+
+Everything below is off until you do it. Until then, the site keeps running the v2 path. Do the steps in order;
+details are in [AGENTS.md](AGENTS.md) and [RAG.md](RAG.md).
+
+## 13. Enable pgvector (one time, needs the database superuser)
+The cluster's CloudNativePG image (`ghcr.io/cloudnative-pg/postgresql:18`) ships pgvector **0.8.6**, but the extension
+isn't marked *trusted*, so the app's role (`jithendar`) can't create it. This was checked read-only on 2026-11-10. Run
+this once on the **primary**, as the superuser:
+```bash
+P=$(kubectl --context mk4 -n postgres-db get pod -l cnpg.io/cluster=postgres-cluster,cnpg.io/instanceRole=primary -o name)
+kubectl --context mk4 -n postgres-db exec -it "$P" -c postgres -- psql -d jithendar -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+kubectl --context mk4 -n postgres-db exec -it "$P" -c postgres -- psql -d jithendar -c "select extversion from pg_extension where extname = 'vector';"
+```
+To keep it declarative, add it to the database in the miniKube repo instead: a CloudNativePG `Database` resource with
+`spec.extensions: [{name: vector, ensure: present}]` (minikube-infrastructure). No image change is needed. Without
+it, `seo-agent` starts anyway: `/readyz` says "pgvector extension is not enabled", Ask the Blog falls back, and drafting
+works without related articles.
+
+## 14. Secrets
+```bash
+scripts/create-seo-agent-secrets.sh            # seo-agent-env + the two tokens in jithendar-com-env
+```
+`ANTHROPIC_API_KEY` is copied from `jithendar-com-env` (the v2 key: one key, one budget) unless you export a different
+one first. `SEO_AGENT_TOKEN` (web → agent) and `SEO_AGENT_CALLBACK_TOKEN` (agent → web) are separate random 64-hex values.
+Rotate by running the script again and restarting both Deployments.
+
+## 15. Image and manifests
+1. Merge → CI (`ci-seo-agent.yml`) builds and pushes `registry.jithendar.com/jithendar/seo-agent:latest`.
+2. Apply the site group as usual (`./deploy.sh`): it adds the `jithendar-com-internal` Service (callback port 9465, not
+   routed by the VirtualService) and the NetworkPolicy rules. It's harmless before step 5.
+3. Apply the agent group (a person, once; CI only renders it):
+   ```bash
+   scripts/manifests.sh seo-agent | kubectl --context mk4 apply -f -
+   kubectl --context mk4 -n jithendar rollout status deploy/seo-agent
+   kubectl --context mk4 -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
+   ```
+4. RBAC: `minikube/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. A person applies it (`./deploy.sh`). To let
+   CI restart the agent after each release, set the repository variable `SEO_AGENT_DEPLOY=true`.
+
+## 16. Prometheus scrape job, alerts, dashboard (miniKube / tools repos)
+- Scrape job, in the miniKube repo's Prometheus config, like `jithendar-com`:
+  ```yaml
+  - job_name: seo-agent
+    metrics_path: /metrics
+    dns_sd_configs: [{ names: [seo-agent-metrics.jithendar.svc.cluster.local], type: A, port: 8080 }]
+  ```
+- Alerts: copy group `jithendar-com-seo-agent` from [prometheus-alerts.yml](prometheus-alerts.yml).
+- Dashboard: `services/grafana/jithendar-com-seo-agent.json` (Argo CD `grafana` app). **Since the `services/` move, the
+  app's path must be `services/grafana`** (tools repo, `deploy/minikube/applications/grafana.yaml`).
+
+## 17. Switch drafting to LangGraph
+```bash
+kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"langgraph"}}'
+kubectl --context mk4 -n jithendar rollout restart deploy/jithendar-com
+```
+Check: on an article's SEO panel, **Draft with Claude**. The review page shows "LangGraph run · Agent working…", then
+"Waiting for your review". Approve one change: the run publishes, verifies and submits, and the strip shows
+"Run published". Keep `SEO_LLM_MONTHLY_BUDGET_USD` equal in `jithendar-com-public` and `seo-agent-config`, because
+both read the same usage table.
+**Rollback:** set `SEO_ORCHESTRATOR=legacy` and restart. Drafts that runs created stay reviewable, but their
+approval needs the agent; reject them, or regenerate them under legacy.
+
+## 18. Ask the Blog (optional; off by default)
+Turn it on in **both** places: the widget and `/api/ask` live in the web app; answering lives in the agent.
+```bash
+kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true"}}'
+kubectl --context mk4 -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true","ASK_BLOG_DAILY_BUDGET_USD":"1"}}'
+kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+```
+Run a reindex first so there's something to retrieve: Admin → SEO → (API) `POST /api/admin/seo/agent/reindex {"full": true}`,
+or wait for the Sunday CronJob. Turn it off the same way with `"false"`.
+
+## 19. Embeddings model choice
+The default is `EMBEDDINGS_PROVIDER=onnx` (bge-small-en-v1.5, baked into the image). To use an Ollama already in the
+cluster: set `EMBEDDINGS_PROVIDER=ollama`, `OLLAMA_URL`, `OLLAMA_EMBED_MODEL` in `seo-agent-config`, allow egress to it
+in the `seo-agent` NetworkPolicy, restart, then run a full reindex (the table is rebuilt for the new dimension). A
+third-party API (`EMBEDDINGS_PROVIDER=api`) needs `EMBEDDINGS_API_URL`/`EMBEDDINGS_API_KEY` in `seo-agent-env`, and
+it sends article text to that provider.

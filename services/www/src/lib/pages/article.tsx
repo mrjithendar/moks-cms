@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AskBlog } from "@/components/ask/AskBlog";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -209,6 +210,8 @@ export async function ArticleView({
             </div>
 
             {a.share.enabled && a.share.networks.length > 0 && <ShareLinks url={canonicalFor(article)} title={fm.title} networks={a.share.networks} />}
+
+            {!article.preview && <AskBlog />}
 
             {!article.preview && <ArticleEngagement collection={collection} slug={article.slug} />}
             {!article.preview && ads?.slots.articleEnd && <AdSlot client={ads.client} slot={ads.slots.articleEnd} test={ads.test} />}

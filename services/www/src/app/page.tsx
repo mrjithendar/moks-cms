@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AskBlog } from "@/components/ask/AskBlog";
+import { Container } from "@/components/Container";
 import { JsonLd } from "@/components/JsonLd";
 import { HomeSections } from "@/components/sections/HomeSections";
 import { site, siteUrl } from "@/config/site";
@@ -25,6 +27,9 @@ export default async function HomePage() {
     <>
       <JsonLd data={[websiteLd(), organizationLd()]} />
       <HomeSections config={config} />
+      <Container>
+        <AskBlog />
+      </Container>
     </>
   );
 }

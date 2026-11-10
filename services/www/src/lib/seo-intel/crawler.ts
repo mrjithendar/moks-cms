@@ -111,11 +111,24 @@ function once(url: URL, timeoutMs: number, maxBytes: number): Promise<{ status: 
 /** The real fetcher: allowlisted hosts only, guarded DNS, manual redirects. */
 export function safeFetcher(origin: URL, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }): PageFetcher {
   const hosts = allowedHosts(origin);
+  return hostFetcher((h) => hosts.has(h), opts);
+}
+
+/**
+ * v3: the same guarded fetcher for the editorial crew's documentation allowlist (https only; a domain or its
+ * subdomains). Every hop, redirects included, is re-checked; DNS is resolved inside the socket and private ranges refused.
+ */
+export function docsFetcher(domains: string[], opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }): PageFetcher {
+  const allow = domains.map((d) => d.toLowerCase().replace(/\.$/, ""));
+  return hostFetcher((h) => allow.some((d) => h === d || h.endsWith(`.${d}`)), opts, ["https:"]);
+}
+
+function hostFetcher(allowed: (host: string) => boolean, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, protocols = ["http:", "https:"]): PageFetcher {
   return async (start: string) => {
     const redirects: FetchResult["redirects"] = [];
     let current = new URL(start);
     for (let hop = 0; ; hop++) {
-      if (!["http:", "https:"].includes(current.protocol) || !hosts.has(current.hostname.toLowerCase()) || (current.port && !["80", "443"].includes(current.port))) {
+      if (!protocols.includes(current.protocol) || !allowed(current.hostname.toLowerCase().replace(/\.$/, "")) || current.username || current.password || (current.port && !["80", "443"].includes(current.port))) {
         return { url: start, finalUrl: current.href, status: 0, headers: {}, body: "", redirects, truncated: false, error: `Not fetched: ${current.hostname} is outside the allowlist.` };
       }
       let res;

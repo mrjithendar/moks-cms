@@ -187,16 +187,19 @@ export function normalize(r: Record<string, unknown>): DraftRow {
 const uuidArray = (ids: string[]) => sql`${`{${ids.join(",")}}`}::uuid[]`;
 
 /** Reserve the article's open draft row (insert or reuse), so two workers never draft the same article twice. */
-async function reserveDraft(db: Db, articleId: string, base: BaseSnapshot, trigger: string): Promise<DraftRow> {
+export async function reserveDraft(db: Db, articleId: string, base: BaseSnapshot, trigger: string, opts: { kind?: "optimize" | "new_article"; threadManaged?: boolean; calendarId?: string | null } = {}): Promise<DraftRow> {
   const snapshot = { title: base.title, description: base.description, seoTitle: base.seoTitle, seoDescription: base.seoDescription, body: base.body, collection: base.collection, slug: base.slug, version: base.version, updatedAt: base.updatedAt ?? null };
   await db.execute(sql`
-    insert into seo_drafts (article_id, collection, status, base_version, base_snapshot, trigger)
-    values (${articleId}, ${base.collection}, 'generating', ${base.version}, ${JSON.stringify(snapshot)}::jsonb, ${trigger})
+    insert into seo_drafts (article_id, collection, status, base_version, base_snapshot, trigger, kind, calendar_id)
+    values (${articleId}, ${base.collection}, 'generating', ${base.version}, ${JSON.stringify(snapshot)}::jsonb, ${trigger}, ${opts.kind ?? "optimize"}, ${opts.calendarId ?? null})
     on conflict (article_id) where status in ('generating', 'ready_for_review', 'generation_failed', 'scheduled', 'publishing') do nothing`);
-  return (await openDraft(db, articleId))!;
+  const d = (await openDraft(db, articleId))!;
+  // v3: a LangGraph run owns the draft (thread_id = draft id).
+  if (opts.threadManaged && !d.thread_id) await db.execute(sql`update seo_drafts set thread_id = ${d.id} where id = ${d.id}`);
+  return { ...d, thread_id: opts.threadManaged ? d.id : d.thread_id };
 }
 
-function renumber(changes: Change[]): Change[] {
+export function renumber(changes: Change[]): Change[] {
   return changes.map((c, i) => ({ ...c, id: `c${i + 1}`, flags: c.flags.map((f) => ({ ...f, changeId: `c${i + 1}` })) }));
 }
 
@@ -427,6 +430,7 @@ export async function reviewQueue(f: QueueFilter = {}) {
   const rows = rowsOf<Record<string, unknown>>(
     await db.execute(sql`
       select d.*, p.title as article_title, p.collection as article_collection, p.slug as article_slug,
+        (select json_build_object('status', ar.status, 'node', ar.current_node, 'outcome', ar.outcome) from seo_agent_runs ar where ar.thread_id = d.thread_id) as agent_run,
         (select max(r.priority_score) from seo_recommendations r where r.id = any(d.recommendation_ids)) as priority,
         (select json_agg(json_build_object('problem', r.problem, 'band', r.priority_band, 'category', r.category) order by r.priority_score desc) from seo_recommendations r where r.id = any(d.recommendation_ids)) as recs
       from seo_drafts d join post p on p.id = d.article_id
@@ -462,6 +466,8 @@ export async function reviewQueue(f: QueueFilter = {}) {
       failureReason: (r.failure_reason as string | null) ?? null,
       errorFlags: d.changes.flatMap((c) => c.flags).filter((x) => x.severity === "error").length,
       inBatch: Boolean(r.batch_id),
+      kind: String(r.kind ?? "optimize"),
+      agent: (typeof r.agent_run === "string" ? JSON.parse(r.agent_run) : r.agent_run ?? null) as { status: string; node: string | null; outcome: string | null } | null,
     };
   });
   const filtered = items.filter((i) => (!f.type || i.typeCounts[f.type as keyof typeof i.typeCounts]) && (!f.priority || i.band === f.priority));

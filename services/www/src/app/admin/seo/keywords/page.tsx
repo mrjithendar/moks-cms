@@ -4,7 +4,9 @@ import { Suspense } from "react";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { AdminHeader, Card } from "@/components/admin/ui";
+import { ApiButton } from "@/components/seo/ApiButton";
 import { Badge } from "@/components/seo/badges";
+import { askGapClusters } from "@/lib/seo-agent/gaps";
 import { KeywordTable } from "@/components/seo/KeywordTable";
 import { FilterChips, SavedViews } from "@/components/seo/table-kit";
 import { Empty, Pager, Section } from "@/components/seo/ui";
@@ -38,6 +40,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
   ]);
   const cannibal = p.view === "cannibalization" ? await cannibalization(p) : [];
   const gaps = p.view === "gaps" ? await contentGaps(p) : [];
+  const asked = p.view === "gaps" ? await askGapClusters().catch(() => []) : [];
   const spark = table ? await sparklines(table.rows.map((r) => r.query), p.days === 90 ? 90 : 28) : new Map<string, number[]>();
   const base = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]);
   const link = (patch: Record<string, string | undefined>) => {
@@ -131,6 +134,37 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
               ))}
             </ul>
           ) : <Empty>No content gaps: every cluster with demand has a page ranking in the top 15.</Empty>}
+        </Section>
+      )}
+
+      {p.view === "gaps" && (
+        <Section title={`${asked.length} asked on site`} description="Questions readers asked Ask the Blog that no article answered, clustered weekly. Source: Ask the Blog (not Search Console); counts are questions, not impressions.">
+          {asked.length ? (
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {asked.map((g) => (
+                <li key={g.clusterId}><Card className="!p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge t="violet" title="Source: Ask the Blog questions, not Search Console">Asked on site</Badge>
+                    <span className="text-xs tabular-nums text-fg-subtle">asked {g.asked}× · last {g.lastSeen.slice(0, 10)}</span>
+                  </div>
+                  <p className="mt-2 font-semibold text-fg">{g.label}</p>
+                  <ul className="mt-1 space-y-0.5 text-sm text-fg-muted">
+                    {g.questions.slice(0, 3).map((q) => <li key={q.id}>“{q.question}”{q.asked > 1 ? ` (${q.asked}×)` : ""}</li>)}
+                  </ul>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {g.status === "sent" ? (
+                      <Link className="text-sm underline" href="/admin/seo/calendar">On the editorial calendar</Link>
+                    ) : (
+                      <>
+                        <ApiButton url={`/api/admin/seo/keywords/ask-gaps/${g.questions[0]!.id}`} body={{ action: "calendar" }} label="Send to editorial calendar" />
+                        <ApiButton url={`/api/admin/seo/keywords/ask-gaps/${g.questions[0]!.id}`} body={{ action: "ignore" }} label="Ignore" variant="ghost" />
+                      </>
+                    )}
+                  </div>
+                </Card></li>
+              ))}
+            </ul>
+          ) : <Empty>No unanswered reader questions{" "}(Ask the Blog is {process.env.ASK_BLOG_ENABLED === "true" ? "on" : "off"}).</Empty>}
         </Section>
       )}
     </>

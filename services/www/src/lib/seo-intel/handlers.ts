@@ -27,6 +27,11 @@ registerSeoHandler("report_monthly", async (ctx) => {
 registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: (await captureOutcomes(ctx.now)) + (await captureDraftOutcomes(ctx.now)) }));
 
 registerSeoHandler("drafts_weekly", async () => {
+  // Ask the Blog gaps are re-clustered weekly, whatever the orchestrator.
+  await (await import("../seo-agent/gaps")).clusterAskGaps().catch(() => 0);
+  // v3: one weekly_recommendations graph run per ISO week when SEO_ORCHESTRATOR=langgraph.
+  const viaGraph = await (await import("../seo-agent/orchestrate")).weekly();
+  if (viaGraph) return { status: "succeeded", rows: 0, detail: { orchestrator: "langgraph", threadId: viaGraph.thread_id, existing: viaGraph.existing } };
   const r = await weeklyBatch();
   return { status: r.skipped && r.skipped !== "nothing_to_do" ? "skipped" : "succeeded", rows: r.submitted, detail: r, ...(r.skipped === "budget" ? { error: "Monthly LLM budget reached; weekly drafting paused.", errorCode: "budget" } : {}) };
 });

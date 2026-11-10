@@ -35,7 +35,10 @@ export async function register() {
   const { listenForInvalidations } = await import("./lib/cache-bus");
   await listenForInvalidations().catch((err) => log.warn("cache invalidation listener unavailable", { err }));
 
-  if (!process.env.DATABASE_URL) return;
+  // Local E2E only (docs/seo/OPERATIONS.md "E2E"): PGlite has no DATABASE_URL, but the review-flow specs need the
+  // worker (draft, audit, verify and submission jobs). E2E_WORKER=1 opts in; it is ignored when APP_ENV=production.
+  const localWorker = !process.env.DATABASE_URL && process.env.E2E_WORKER === "1" && process.env.APP_ENV !== "production";
+  if (!process.env.DATABASE_URL && !localWorker) return;
   const { getDb } = await import("./db");
   const { migrateDb } = await import("./db/migrate");
   const { withSpan } = await import("./lib/trace");
@@ -53,6 +56,14 @@ export async function register() {
   // Scheduled publishing and the job queue (IndexNow submissions with retries).
   const { startWorker } = await import("./lib/scheduler");
   startWorker();
+
+  // SEO v3: cluster-internal callback API for the seo-agent service (only with SEO_ORCHESTRATOR=langgraph).
+  const { startCallbackServer } = await import("./lib/seo-agent/internal-server");
+  const cbPort = await startCallbackServer().catch((err) => {
+    log.warn("seo agent callback listener unavailable", { err });
+    return null;
+  });
+  if (cbPort) log.info("seo agent callbacks listening", { event: "seo_agent_callbacks_listening", port: cbPort });
 
   // Warm the caches so the first visitor gets a fast page, not a cold one.
   const { warmCaches } = await import("./lib/warm");

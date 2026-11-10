@@ -26,6 +26,10 @@ export type QueueItem = {
   failureReason: string | null;
   errorFlags: number;
   inBatch: boolean;
+  /** v3: "new_article" drafts come from the editorial crew. */
+  kind?: string;
+  /** v3: the LangGraph run that owns this draft (status + current node), from seo_agent_runs. */
+  agent?: { status: string; node: string | null; outcome: string | null } | null;
 };
 
 const ago = (iso: string | null) => {
@@ -92,6 +96,12 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
                   <p className="mt-0.5 truncate text-xs text-fg-subtle">{i.path}</p>
                   {i.evidence[0] && <p className="mt-1 line-clamp-2 text-sm text-fg-muted">{i.evidence[0]}</p>}
                   {i.status === "generation_failed" && i.failureReason && <p className="mt-1 text-sm text-red-700 dark:text-red-300">{i.failureReason}</p>}
+                  {(i.kind === "new_article" || i.agent) && (
+                    <p className="mt-1 text-xs text-fg-subtle">
+                      {i.kind === "new_article" ? "New article (editorial crew)" : "LangGraph run"}
+                      {i.agent ? ` · ${i.agent.status === "interrupted" ? "waiting for your review" : i.agent.status === "running" ? `working${i.agent.node ? ` (${i.agent.node.replace(/_/g, " ")})` : ""}` : (i.agent.outcome ?? i.agent.status).replace(/_/g, " ")}` : ""}
+                    </p>
+                  )}
                 </div>
                 <div className="mt-3 md:mt-0">
                   <p className="text-sm font-medium text-fg tabular-nums">{i.changeCount ? `${i.changeCount} change${i.changeCount === 1 ? "" : "s"}` : i.status === "generating" ? (i.inBatch ? "In this week's batch…" : "Generating…") : "—"}</p>

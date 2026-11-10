@@ -16,7 +16,7 @@ groups:
           severity: warning
         annotations:
           summary: 'SEO {{ $labels.job_type }} has failed {{ $value }} times in a row'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/www/docs/seo/OPERATIONS.md#sync-failures'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#sync-failures'
       # Credentials revoked/expired or the service account lost access to the property: stops immediately.
       - alert: SeoGoogleAuthError
         expr: sum by (job_type) (increase(seo_sync_failure_total{job="jithendar-com", error_code="auth"}[2h])) > 0
@@ -24,7 +24,7 @@ groups:
           severity: warning
         annotations:
           summary: 'Google denied access during SEO {{ $labels.job_type }} (credentials or property permissions)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/www/docs/seo/OPERATIONS.md#auth-errors'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#auth-errors'
       # Persistent Google API errors (after retries), at least 10 in 6 hours and more than half of requests.
       - alert: SeoGoogleApiErrorsPersistent
         expr: |
@@ -35,7 +35,7 @@ groups:
           severity: warning
         annotations:
           summary: 'More than half of {{ $labels.provider }} API requests failed in the last 6 hours'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/www/docs/seo/OPERATIONS.md#api-errors'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#api-errors'
       # No successful Search Console sync for 3 days although it has succeeded before (configured, then broke).
       - alert: SeoDataStale
         expr: (time() - max(seo_sync_last_success_timestamp_seconds{job="jithendar-com", job_type="gsc_sync"})) > 3 * 86400 and max(seo_sync_last_success_timestamp_seconds{job="jithendar-com", job_type="gsc_sync"}) > 0
@@ -44,4 +44,50 @@ groups:
           severity: info
         annotations:
           summary: 'No successful Search Console sync for more than 3 days'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/www/docs/seo/OPERATIONS.md#sync-failures'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#sync-failures'
+
+  # SEO v3 (services/seo-agent, docs/seo/AGENTS.md). Scrape job "seo-agent" (Service seo-agent-metrics, port 8080,
+  # /metrics; MANUAL_SETUP.md "v3"). Labels are fixed sets: graph, node, status, purpose, outcome, model.
+  - name: jithendar-com-seo-agent
+    rules:
+      - alert: SeoAgentDown
+        expr: absent(up{job="seo-agent"} == 1)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'The seo-agent service is down or not scraped: drafts in langgraph mode cannot run or resume (legacy path unaffected)'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/AGENTS.md#operations'
+      - alert: SeoGraphRepeatedFailures
+        expr: sum by (graph) (increase(seo_graph_runs_total{job="seo-agent", status=~"failed|publish_failed|verify_failed"}[6h])) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $value }} {{ $labels.graph }} runs failed in 6 hours'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/AGENTS.md#failed-runs'
+      - alert: SeoLlmBudget80
+        expr: max(seo_llm_budget_used_ratio{job="seo-agent"}) >= 0.8 and max(seo_llm_budget_used_ratio{job="seo-agent"}) < 1
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: 'SEO LLM spend is at {{ $value | humanizePercentage }} of the monthly budget (v2 + v3 share it)'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/COSTS.md#budget-controls'
+      - alert: SeoLlmBudgetReached
+        expr: max(seo_llm_budget_used_ratio{job="seo-agent"}) >= 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'SEO LLM monthly budget reached: new runs pause (paused_budget) until next month or a higher cap'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/COSTS.md#budget-controls'
+      - alert: AskBlogErrorRate
+        expr: |
+          sum(increase(seo_ask_requests_total{job="seo-agent", outcome="error"}[30m]))
+            / clamp_min(sum(increase(seo_ask_requests_total{job="seo-agent"}[30m])), 1) > 0.2
+          and sum(increase(seo_ask_requests_total{job="seo-agent"}[30m])) >= 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Ask the Blog: more than 20% of answers fail (kill switch: ASK_BLOG_ENABLED=false)'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/RAG.md#operations'

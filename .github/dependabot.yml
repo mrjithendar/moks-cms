@@ -91,6 +91,28 @@ updates:
           - minor
           - patch
 
+  # SEO v3 agent: services/seo-agent/pyproject.toml + uv.lock (exact pins). The two-week rule: cooldown 14 days here,
+  # and tool.uv.exclude-newer = "2 weeks" for transitive dependencies on every re-lock.
+  - package-ecosystem: uv
+    directory: /services/seo-agent
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 14
+    commit-message:
+      prefix: "deps(seo-agent)"
+    labels:
+      - dependencies
+      - python
+    groups:
+      seo-agent-minor-patch:
+        update-types:
+          - minor
+          - patch
+
   # AWS provider in infra/ (versions.tf) and infra/bootstrap (main.tf), with their .terraform.lock.hcl files.
   # Pull requests get fmt + validate from infra.yml; merging one runs infra.yml's apply job on master.
   - package-ecosystem: terraform

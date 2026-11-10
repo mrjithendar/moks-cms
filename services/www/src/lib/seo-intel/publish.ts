@@ -90,7 +90,7 @@ export async function approveDraft(draftId: string, actor: Actor, opts: ApproveO
   return publishDraft(db, draftId, actor, now);
 }
 
-async function publishDraft(db: Db, draftId: string, actor: Actor, now: Date) {
+async function publishDraft(db: Db, draftId: string, actor: Actor, now: Date, opts: { orchestrated?: boolean } = {}) {
   const { d, accepted, applied } = await preflight(db, draftId, actor);
   const claimed = rowsOf<{ id: string }>(await db.execute(sql`update seo_drafts set status = 'publishing', updated_at = now() where id = ${draftId} and status in ('ready_for_review', 'scheduled') returning id`));
   if (!claimed.length) throw new DraftError("This draft is already being published.", 409);
@@ -122,7 +122,8 @@ async function publishDraft(db: Db, draftId: string, actor: Actor, now: Date) {
   }
   await audit(actor, "seo.draft.publish", d.article_id, { draftId, version: row.version, previousVersion: d.base_version, accepted: accepted.map((c) => `${c.id}:${c.type}${c.edited ? ":edited" : ""}`), rejected: d.changes.filter((c) => c.decision === "rejected").map((c) => c.id), substantive });
   revalidate(d.article.path);
-  await enqueue(VERIFY_JOB_KIND, { draftId, attempt: 1, reason: "publish" }, { runAt: new Date(now.getTime() + VERIFY_DELAY_MS), dedupeKey: `seo_verify:${draftId}:publish`, maxAttempts: 1 });
+  // v3: the graph's verify_live / submit_search nodes take over (same checks, same submission code).
+  if (!opts.orchestrated) await enqueue(VERIFY_JOB_KIND, { draftId, attempt: 1, reason: "publish" }, { runAt: new Date(now.getTime() + VERIFY_DELAY_MS), dedupeKey: `seo_verify:${draftId}:publish`, maxAttempts: 1 });
   log.info("seo draft published", { operation: "seo_publish", outcome: "published", substantive });
   return { status: "published" as const, version: row.version, substantive };
 }
@@ -139,7 +140,11 @@ export async function publishDueDrafts(now = new Date()): Promise<number> {
       continue;
     }
     try {
-      await publishDraft(db, d.id, { id: u.id, role: "admin", label: u.email }, now);
+      const [own] = rowsOf<{ thread_id: string | null }>(await db.execute(sql`select thread_id from seo_drafts where id = ${d.id}`));
+      if (own?.thread_id) {
+        // v3: the waiting graph publishes; it is resumed with the approval the admin recorded when scheduling.
+        await (await import("../seo-agent/orchestrate")).resumeScheduled(d.id, now);
+      } else await publishDraft(db, d.id, { id: u.id, role: "admin", label: u.email }, now);
       n++;
     } catch (e) {
       await db.execute(sql`update seo_drafts set status = 'ready_for_review', scheduled_for = null, failure_reason = ${`Scheduled publish failed: ${(e as Error).message}`.slice(0, 1000)}, updated_at = now() where id = ${d.id} and status = 'scheduled'`);
@@ -182,7 +187,7 @@ export function verifyHtml(html: string, status: number, headers: Record<string,
   ];
 }
 
-export type VerifyDeps = { fetcher?: PageFetcher; now?: Date; submit?: typeof submitAfterPublish };
+export type VerifyDeps = { fetcher?: PageFetcher; now?: Date; submit?: (db: Db, t: Parameters<typeof submitAfterPublish>[1], deps?: Parameters<typeof submitAfterPublish>[2]) => Promise<void>; noRequeue?: boolean };
 
 /** Job: fetch the live URL, check it, then submit (or alert + offer rollback). Retries for cache propagation. */
 export async function verifyDraft(draftId: string, attempt: number, reason: "publish" | "rollback", deps: VerifyDeps = {}) {
@@ -211,6 +216,7 @@ export async function verifyDraft(draftId: string, attempt: number, reason: "pub
     return verification;
   }
   if (attempt < VERIFY_ATTEMPTS) {
+    if (deps.noRequeue) return verification;
     await enqueue(VERIFY_JOB_KIND, { draftId, attempt: attempt + 1, reason }, { runAt: new Date(Date.now() + 30_000 * attempt), dedupeKey: `seo_verify:${draftId}:${reason}:${attempt + 1}`, maxAttempts: 1 });
     return verification;
   }
@@ -290,4 +296,122 @@ export async function captureDraftOutcomes(now = new Date()): Promise<number> {
     }
   }
   return n;
+}
+
+
+// --- v3: the approval gate for LangGraph runs (docs/seo/DECISIONS.md D-43) ------------------------------------------
+
+const APPROVAL_TTL_MS = 7 * 86_400_000;
+
+/**
+ * The admin approve route (langgraph mode) records the approval here — after the same preflight as v2 — and only then
+ * resumes the graph with the approval id. Nothing is published by this function.
+ */
+export async function recordApproval(draftId: string, actor: Actor, opts: ApproveOpts = {}) {
+  const db = await getDb();
+  const now = opts.now ?? new Date();
+  const d = await getDraft(draftId);
+  if (!d) throw new DraftError("Draft not found.", 404);
+  const accepted = d.kind === "new_article" ? (await preflightNew(db, draftId, actor)).accepted : (await preflight(db, draftId, actor)).accepted;
+  const when = opts.publishAt ? new Date(opts.publishAt) : null;
+  if (when && Number.isNaN(when.getTime())) throw new DraftError("Invalid publish time.", 400);
+  const later = when && when.getTime() > now.getTime() + 60_000 ? when : null;
+  const expires = new Date((later ?? now).getTime() + APPROVAL_TTL_MS);
+  const [row] = rowsOf<{ id: string }>(
+    await db.execute(sql`
+      insert into seo_draft_approvals (draft_id, approved_by, approved_by_id, accepted_change_ids, publish_at, expires_at)
+      values (${draftId}, ${actor.label}, ${actor.id}, ${`{${accepted.map((c) => c.id).join(",")}}`}::text[], ${later?.toISOString() ?? null}, ${expires.toISOString()})
+      returning id`),
+  );
+  if (later) await db.execute(sql`update seo_drafts set status = 'scheduled', scheduled_for = ${later.toISOString()}, decided_by = ${actor.label}, decided_by_id = ${actor.id}, decided_at = now(), updated_at = now() where id = ${draftId}`);
+  await audit(actor, later ? "seo.draft.schedule" : "seo.draft.approve", d.article_id, { draftId, approvalId: row!.id, accepted: accepted.length, total: d.changes.length, publishAt: later?.toISOString() ?? null });
+  return { approvalId: row!.id, acceptedChangeIds: accepted.map((c) => c.id), publishAt: later?.toISOString() ?? null };
+}
+
+/**
+ * Called by the seo-agent's publish node (internal callback). Refused unless an unused, unexpired approval with this id
+ * exists for this draft, its accepted change ids are exactly the ones given, the approver is still an admin, and a
+ * scheduled approval's time has come. The approval is consumed before anything is written, so it works once.
+ */
+export async function publishWithApproval(draftId: string, approvalId: string, acceptedChangeIds: string[], now = new Date()) {
+  const db = await getDb();
+  if (!/^[0-9a-f-]{36}$/.test(approvalId)) throw new DraftError("No valid admin approval for this draft.", 403);
+  const [a] = rowsOf<{ id: string; approved_by_id: string; accepted_change_ids: unknown; publish_at: string | null; expires_at: string; used_at: string | null }>(
+    await db.execute(sql`select id, approved_by_id, accepted_change_ids, publish_at, expires_at, used_at from seo_draft_approvals where id = ${approvalId} and draft_id = ${draftId}`),
+  );
+  if (!a || a.used_at || new Date(a.expires_at).getTime() < now.getTime()) throw new DraftError("No valid admin approval for this draft.", 403);
+  const approved = (Array.isArray(a.accepted_change_ids) ? a.accepted_change_ids.map(String) : String(a.accepted_change_ids ?? "").replace(/^\{|\}$/g, "").split(",").filter(Boolean)).sort();
+  if (approved.join(",") !== [...acceptedChangeIds].sort().join(",")) throw new DraftError("The accepted changes differ from what the admin approved.", 409);
+  if (a.publish_at && new Date(a.publish_at).getTime() > now.getTime() + 60_000) throw new DraftError("This approval is scheduled for later.", 409);
+  const [u] = rowsOf<{ id: string; role: string; email: string }>(await db.execute(sql`select id, role, email from "user" where id = ${a.approved_by_id}`));
+  if (!u || u.role !== "admin") throw new DraftError("The approving admin is no longer an admin; approve again.", 403);
+  const d = await getDraft(draftId);
+  if (!d) throw new DraftError("Draft not found.", 404);
+  // The reviewer may have changed decisions after approving: the draft must still match the approval exactly.
+  const current = (d.kind === "new_article" ? d.changes : d.changes.filter((c) => c.decision === "accepted")).map((c) => c.id).sort();
+  if (current.join(",") !== approved.join(",")) throw new DraftError("The draft changed after it was approved; approve again.", 409);
+  const claimed = rowsOf<{ id: string }>(await db.execute(sql`update seo_draft_approvals set used_at = now() where id = ${approvalId} and used_at is null returning id`));
+  if (!claimed.length) throw new DraftError("No valid admin approval for this draft.", 403);
+  const actor: Actor = { id: u.id, role: "admin", label: u.email };
+  if (d.kind === "new_article") return publishNewArticle(db, draftId, actor, now);
+  return publishDraft(db, draftId, actor, now, { orchestrated: true });
+}
+
+type NewArticleDoc = { title: string; slug_suggestion: string; meta_description: string; body_mdx: string; incomplete?: boolean; fact_check_flags?: { severity: string }[] };
+
+/** New-article drafts: everything an approval checks before the CMS draft post is published. */
+async function preflightNew(db: Db, draftId: string, actor: Actor) {
+  if (actor.role !== "admin") throw new DraftError("Only admins can approve drafts.", 403);
+  const d = await getDraft(draftId);
+  if (!d) throw new DraftError("Draft not found.", 404);
+  if (!["ready_for_review", "scheduled"].includes(d.status)) throw new DraftError(`This draft is ${d.status.replace(/_/g, " ")}.`, 409);
+  const doc = (typeof d.document === "string" ? JSON.parse(d.document) : d.document) as NewArticleDoc | null;
+  if (!doc?.body_mdx?.trim()) throw new DraftError("This draft has no article body.", 400);
+  if (doc.incomplete) throw new DraftError("The crew's draft is incomplete; regenerate it or finish it in the editor.", 400);
+  const blocking = [...d.flags, ...d.changes.flatMap((c) => c.flags)].filter((f) => f.severity === "error");
+  if (blocking.length) throw new DraftError(`Resolve the blocking flags first (${blocking[0]!.message}).`, 400);
+  if (d.article.version !== d.base_version) throw new DraftError("The CMS draft was edited after this draft was made. Regenerate the draft.", 409);
+  if (!["draft", "review"].includes(d.article.status)) throw new DraftError("The CMS post is no longer a draft.", 409);
+  if (await getAutosave(actor, "post", d.article_id)) throw new DraftError("You have unsaved editor changes for this article. Save or discard them in the editor first.", 409);
+  return { d, doc, accepted: d.changes };
+}
+
+/** Publish a crew-written article into its CMS draft post through the CMS's own update path (status → published). */
+async function publishNewArticle(db: Db, draftId: string, actor: Actor, now: Date) {
+  const { d, doc } = await preflightNew(db, draftId, actor);
+  const claimed = rowsOf<{ id: string }>(await db.execute(sql`update seo_drafts set status = 'publishing', updated_at = now() where id = ${draftId} and status in ('ready_for_review', 'scheduled') returning id`));
+  if (!claimed.length) throw new DraftError("This draft is already being published.", 409);
+  const slugFree = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from post where collection = ${d.collection} and slug = ${doc.slug_suggestion} and id <> ${d.article_id}`))[0]?.n === 0;
+  const patch: Record<string, unknown> = { title: doc.title, description: doc.meta_description, seoDescription: doc.meta_description, body: doc.body_mdx, status: "published", publishedAt: toIsoOffset(now) };
+  if (slugFree && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(doc.slug_suggestion)) patch.slug = doc.slug_suggestion;
+  let row;
+  try {
+    row = await updatePost(actor, d.article_id, patch, { baseVersion: d.base_version, reason: "publish", notifySearchEngines: false });
+  } catch (e) {
+    await db.execute(sql`update seo_drafts set status = 'ready_for_review', updated_at = now() where id = ${draftId}`);
+    const err = e as { status?: number; message: string; issues?: string[] };
+    throw new DraftError(`The CMS refused the article: ${err.message}${err.issues?.length ? ` (${err.issues.slice(0, 3).join("; ")})` : ""}`, err.status && err.status < 500 ? err.status : 500);
+  }
+  await db.execute(sql`update seo_drafts set status = 'published', published_version = ${row.version}, previous_version = ${d.base_version}, substantive = true, decided_by = ${actor.label}, decided_by_id = ${actor.id}, decided_at = now(), verification = ${JSON.stringify({ state: "pending", attempts: 0 })}::jsonb, updated_at = now() where id = ${draftId}`);
+  if (d.calendar_id) await db.execute(sql`update seo_editorial_calendar set status = 'published', updated_at = now() where id = ${String(d.calendar_id)}`);
+  await audit(actor, "seo.draft.publish_new", d.article_id, { draftId, version: row.version, slug: row.slug });
+  revalidate(`/${row.collection}/${row.slug}`);
+  log.info("seo new article published", { operation: "seo_publish", outcome: "published" });
+  return { status: "published" as const, version: row.version, substantive: true };
+}
+
+/**
+ * One verification attempt for the graph's verify_live node (it owns the retries and delays). On the final failed
+ * attempt the v2 failure path runs: audit, alert with the one-click rollback link. Never submits anything.
+ */
+export async function verifyOnce(draftId: string, attempt: number, final: boolean, deps: VerifyDeps = {}) {
+  let submitted = false;
+  const v = await verifyDraft(draftId, final ? VERIFY_ATTEMPTS : Math.min(attempt, VERIFY_ATTEMPTS - 1), "publish", {
+    ...deps,
+    submit: async () => {
+      submitted = true; // passed: the graph's submit_search node submits, not this call
+    },
+    noRequeue: true,
+  });
+  return { ...v, attempts: attempt, state: v.state === "passed" || submitted ? "passed" : final ? "failed" : "retrying" };
 }

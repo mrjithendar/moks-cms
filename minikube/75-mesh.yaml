@@ -57,6 +57,8 @@ spec:
       - jithendar-com
       - practice-dispatcher
       - practice-executor-api
+      - seo-agent
+      - seo-agent-reindex
   policyTypes:
   - Ingress
   - Egress

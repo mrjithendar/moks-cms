@@ -46,6 +46,7 @@ MANUAL = {
     ("admissionregistration.k8s.io", "ValidatingAdmissionPolicyBinding"),
     ("security.istio.io", "PeerAuthentication"),  # mTLS posture: a commit must not be able to relax it
     ("security.istio.io", "AuthorizationPolicy"),  # 75-mesh.yaml allow-known-callers: a commit must not be able to widen it
+    ("batch", "CronJob"),  # seo-agent reindex: a schedule that runs workloads stays a person's decision
 }
 
 ROLLOUT_KINDS = {"Deployment": "deployment", "StatefulSet": "statefulset"}

@@ -139,7 +139,7 @@ function forbiddenRanges(text: string): [number, number][] {
  * Plan new links for one source article (pure). `inboundThisRun` counts new links already proposed to each target in
  * the current rolling week; it is updated with this plan's picks.
  */
-export function planLinks(source: LinkDoc, corpus: LinkDoc[], graph: Graph, vectors: Map<string, Map<string, number>>, limits: Limits, inboundThisRun: Map<string, number>, opts: { body?: string } = {}): PlanResult {
+export function planLinks(source: LinkDoc, corpus: LinkDoc[], graph: Graph, vectors: Map<string, Map<string, number>>, limits: Limits, inboundThisRun: Map<string, number>, opts: { body?: string; semantic?: Map<string, number> } = {}): PlanResult {
   const body = opts.body ?? source.body;
   const words = proseWords(body);
   const existingLinks = internalLinksOf(body);
@@ -154,12 +154,15 @@ export function planLinks(source: LinkDoc, corpus: LinkDoc[], graph: Graph, vect
   const scored = corpus
     .filter((t) => t.path !== source.path && !already.has(t.path))
     .map((t) => {
-      const cos = cosine(srcVec, vectors.get(t.path));
+      // v3: pgvector similarity blended with shared Search Console queries (seo-agent internal_linking graph) replaces
+      // the TF-IDF cosine when given; every limit below is unchanged.
+      const sem = opts.semantic?.get(t.path);
+      const cos = sem ?? cosine(srcVec, vectors.get(t.path));
       const q = jaccard(source.queries, t.queries);
       const cat = source.category === t.category ? 1 : 0;
       const tags = jaccard(source.tags.map((x) => x.toLowerCase()), t.tags.map((x) => x.toLowerCase()));
       const relevance = 0.55 * cos + 0.25 * q + 0.1 * cat + 0.1 * tags;
-      const reasons = [`content similarity ${cos.toFixed(2)}`];
+      const reasons = [`${sem === undefined ? "content" : "semantic"} similarity ${cos.toFixed(2)}`];
       if (q > 0) reasons.push(`shares ${Math.round(q * 100)}% of search queries`);
       if (cat) reasons.push("same category");
       if (tags > 0) reasons.push("shared tags");
@@ -262,12 +265,12 @@ export async function recentInbound(db: Db): Promise<Map<string, number>> {
 }
 
 /** Draft changes for one article (used by drafts.ts). */
-export async function linkChangesFor(db: Db, s: SeoSettings, base: BaseSnapshot, articleId: string, evidence: string[], startAt: number): Promise<Change[]> {
+export async function linkChangesFor(db: Db, s: SeoSettings, base: BaseSnapshot, articleId: string, evidence: string[], startAt: number, semantic?: Map<string, number>): Promise<Change[]> {
   if (!s.links.enabled || s.links.maxNewPerDraft === 0) return [];
   const corpus = await loadLinkCorpus(db);
   const path = `/${base.collection}/${base.slug}`;
   const source = corpus.find((d) => d.path === path) ?? { id: articleId, path, title: base.title, body: base.body, category: "", tags: [], publishedAt: null, queries: [] };
-  const plan = planLinks(source, corpus, linkGraph(corpus), tfidf(corpus.some((d) => d.path === path) ? corpus : [...corpus, source]), s.links, await recentInbound(db), { body: base.body });
+  const plan = planLinks(source, corpus, linkGraph(corpus), tfidf(corpus.some((d) => d.path === path) ? corpus : [...corpus, source]), s.links, await recentInbound(db), { body: base.body, semantic });
   return plan.planned.map((p, i) => ({
     id: `c${startAt + i}`,
     type: "internal_link" as const,

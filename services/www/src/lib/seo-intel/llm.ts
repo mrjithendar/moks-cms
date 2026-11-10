@@ -32,7 +32,7 @@ const SYSTEM_RULES = [
 
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const PHONE = /\+?\d[\d\s().-]{7,}\d/;
-const SECRETISH = /\b(sk-[A-Za-z0-9]{8,}|AKIA[0-9A-Z]{12,}|ya29\.[\w-]+|ghp_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
+const SECRETISH = /\b(sk-[A-Za-z0-9_-]{8,}|AKIA[0-9A-Z]{12,}|ya29\.[\w-]+|ghp_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
 
 /** Search queries are user-typed text: drop anything that looks like personal data or a secret. */
 export function safeQueries(queries: string[]): string[] {
