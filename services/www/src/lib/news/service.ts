@@ -339,7 +339,7 @@ export async function listRuns(q: { jobId?: string | null; status?: string | nul
   const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
   return rowsOf<Record<string, unknown>>(
     await db.execute(sql`select r.*, j.name as job_name, extract(epoch from (coalesce(r.finished_at, now()) - r.started_at))::float8 as seconds from news_runs r left join news_jobs j on j.id = r.job_id where ${sql.join(where, sql` and `)} order by r.started_at desc limit ${limit}`),
-  ).map((r) => ({ ...r, counters: asJson(r.counters, {}) }));
+  ).map((r) => ({ ...r, counters: asJson<Record<string, number>>(r.counters, {}) }) as Record<string, unknown> & { counters: Record<string, number> });
 }
 
 export async function runDetail(id: string) {
@@ -349,7 +349,13 @@ export async function runDetail(id: string) {
   const steps = rowsOf<Record<string, unknown>>(await db.execute(sql`select * from news_run_steps where run_id = ${id} order by seq, id`));
   const candidates = rowsOf<Record<string, unknown>>(await db.execute(sql`select k.*, c.title, c.source_count, c.topics from news_candidates k join news_clusters c on c.id = k.cluster_id where k.run_id = ${id} order by k.score desc limit 300`));
   const articles = rowsOf<Record<string, unknown>>(await db.execute(sql`select id, status, mode, draft_id, post_id, cluster_id, score, cost_usd, quality, generated_doc->>'title' as title from news_articles where run_id = ${id} order by created_at`));
-  return { run: { ...run, counters: asJson(run.counters, {}) }, steps: steps.map((s) => ({ ...s, detail: asJson(s.detail, {}) })), candidates: candidates.map((c) => ({ ...c, breakdown: asJson(c.breakdown, {}), features: asJson(c.features, {}), topics: asJson(c.topics, []) })), articles: articles.map((a) => ({ ...a, quality: asJson(a.quality, {}) })) };
+  type Row = Record<string, unknown>;
+  return {
+    run: { ...run, counters: asJson<Record<string, number>>(run.counters, {}) } as Row & { counters: Record<string, number> },
+    steps: steps.map((s) => ({ ...s, detail: asJson<Row>(s.detail, {}) }) as Row & { detail: Row }),
+    candidates: candidates.map((c) => ({ ...c, breakdown: asJson<Row>(c.breakdown, {}), features: asJson<Record<string, number>>(c.features, {}), topics: asJson<{ slug: string }[]>(c.topics, []) }) as Row & { breakdown: Row; features: Record<string, number>; topics: { slug: string }[] }),
+    articles: articles.map((a) => ({ ...a, quality: asJson<Row>(a.quality, {}) }) as Row & { quality: Row }),
+  };
 }
 
 export async function runLogs(id: string, afterId = 0, level?: string | null, search?: string | null) {

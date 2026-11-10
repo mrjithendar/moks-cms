@@ -6,6 +6,9 @@
    classes never add weight to the render-blocking CSS of public pages. */
 @source not "../components/seo";
 @source not "./admin/seo";
+/* News desk admin (docs/news): same split as the SEO admin (D-37); its layout loads admin/seo/seo.css. */
+@source not "../components/news";
+@source not "./admin/news";
 
 
 /* --- Base ---------------------------------------------------------------------------------- */

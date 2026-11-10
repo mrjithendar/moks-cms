@@ -52,9 +52,11 @@ async function robotsFor(origin: string, fetch: NonNullable<FetchDeps["fetcher"]
   const hit = robotsCache.get(origin);
   if (hit && now - hit.at < ROBOTS_TTL) return hit.robots;
   const r = await fetch(`${origin}/robots.txt`, { "User-Agent": NEWS_USER_AGENT, Accept: "text/plain" });
-  // Google's rules: 4xx = no restrictions; 5xx or unreachable = treat the whole site as disallowed for now.
-  const robots: Robots | "deny" | "allow" = r.error && r.status === 0 ? "deny" : r.status >= 500 ? "deny" : r.status >= 400 ? "allow" : parseRobots(r.body);
-  robotsCache.set(origin, { at: now, robots });
+  // Google's rules: 4xx = no restrictions, except 429 (too many requests), which like 5xx or unreachable means "treat the
+  // whole site as disallowed for now"; those are cached for 30 minutes only.
+  const transient = (r.error && r.status === 0) || r.status === 429 || r.status >= 500;
+  const robots: Robots | "deny" | "allow" = transient ? "deny" : r.status >= 400 ? "allow" : parseRobots(r.body);
+  robotsCache.set(origin, { at: transient ? now - ROBOTS_TTL + 30 * 60_000 : now, robots });
   return robots;
 }
 
