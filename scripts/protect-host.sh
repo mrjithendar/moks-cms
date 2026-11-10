@@ -35,7 +35,7 @@ status() {
 if [[ ${1:-} == status ]]; then status; exit 0; fi
 
 # 1. Swap
-if swapon --show=NAME --noheadings | grep -qx "$SWAP_FILE"; then
+if grep -qx -- "$SWAP_FILE" <<<"$(swapon --show=NAME --noheadings)"; then
   echo "→ Swap $SWAP_FILE already active"
 else
   echo "→ Creating $SWAP_SIZE swap at $SWAP_FILE"

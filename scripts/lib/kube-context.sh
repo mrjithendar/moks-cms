@@ -34,9 +34,12 @@ if [[ -z "$KCTX" ]]; then
   exit 1
 fi
 
-if ! command kubectl config get-contexts -o name 2>/dev/null | grep -Fqx -- "$KCTX"; then
+# Capture the list first: piping kubectl straight into `grep -q` races under pipefail (grep exits on the first match,
+# kubectl gets SIGPIPE, and the pipeline "fails" even though the context exists).
+_kctx_all="$(command kubectl config get-contexts -o name 2>/dev/null || true)"
+if ! grep -Fqx -- "$KCTX" <<<"$_kctx_all"; then
   echo "Kube context '$KCTX' ($_kctx_source) does not exist in the kubeconfig." >&2
-  echo "Available: $(command kubectl config get-contexts -o name 2>/dev/null | tr '\n' ' ')" >&2
+  echo "Available: $(tr '\n' ' ' <<<"$_kctx_all")" >&2
   exit 1
 fi
 
@@ -57,4 +60,4 @@ if [[ -z "${KUBE_CONTEXT:-}" && "${YES:-0}" != "1" && -t 0 ]]; then
       ;;
   esac
 fi
-unset _kctx_source _kctx_answer
+unset _kctx_source _kctx_answer _kctx_all

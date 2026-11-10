@@ -28,7 +28,8 @@ while (($#)); do
 done
 case "${args[*]}" in
   "config current-context") [[ -n "${STUB_CURRENT:-}" ]] && echo "$STUB_CURRENT" || exit 1 ;;
-  "config get-contexts -o name") printf 'ctx-a\nctx-b\n' ;;
+  # pause after the first name so a `kubectl … | grep -q` under pipefail reliably hits SIGPIPE (regression guard)
+  "config get-contexts -o name") printf 'ctx-a\n'; sleep 0.2; printf 'ctx-b\n' ;;
   config\ view*) echo "https://$ctx.example:8443" ;;
   *) echo "ran against $ctx: ${args[*]}" ;;
 esac
