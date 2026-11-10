@@ -29,6 +29,9 @@ data:
   CREW_TIMEOUT_SECONDS: "600"
   CREW_MAX_ITER: "4"
   CREW_MAX_RPM: "20"
+  # Per-agent models ("<crew>.<agent>"): the analyst only summarises query numbers, so it runs on Haiku; the editor and
+  # the technical reviewer stay on SEO_DRAFT_MODEL (docs/seo/COSTS.md).
+  SEO_CREW_MODELS: '{"optimization.analyst":"claude-haiku-5-5"}'
   SEO_FLOW_TIMEOUT_SECONDS: "1800"
   EMBEDDINGS_PROVIDER: onnx
   # CrewAI's local storage directory (nothing should write there: flows persist to Postgres; tests assert no SQLite).

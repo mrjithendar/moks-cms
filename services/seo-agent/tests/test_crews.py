@@ -123,7 +123,7 @@ async def test_built_agents_have_the_guardrails(llm: FakeLlm, web: FakeWebApp) -
     from app.tools import ToolContext
 
     s = settings()
-    agents = build_agents(OPT_AGENTS, s, llm, asyncio.get_running_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="draft", prompt_version="t")
+    agents = build_agents(OPT_AGENTS, s, llm, asyncio.get_running_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="draft", prompt_version="t", crew="optimization")
     crew = make_crew(agents, [], s)
     assert [a.role for a in agents.values()] == ["SEO analyst", "Editor", "Technical reviewer"]
     for a in agents.values():
@@ -234,3 +234,14 @@ async def test_report_crew_writes_from_facts(llm: FakeLlm, web: FakeWebApp) -> N
     r = await ReportCrew(settings(), llm, web, MemoryRetriever()).run(sample_report(), facts(sample_report()))
     assert r.narrative == "Clicks rose 14.1% to 665." and r.status == "completed"
     assert llm.calls[0].model == settings().classify_model  # cheap model for the narrative
+
+
+def test_per_agent_model_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -> None:
+    from app.config import load_settings
+    from app.tools import ToolContext
+
+    monkeypatch.setenv("SEO_CREW_MODELS", '{"optimization.analyst": "claude-haiku-5-5", "optimization.reviewer": "claude-haiku-5-5", "bad key": "x", "optimization.editor": "gpt-4"}')
+    s = load_settings()
+    assert s.crew_models == {"optimization.analyst": "claude-haiku-5-5", "optimization.reviewer": "claude-haiku-5-5"}
+    agents = build_agents(OPT_AGENTS, s, llm, asyncio.get_event_loop_policy().new_event_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="draft", prompt_version="t", crew="optimization")
+    assert {k: a.llm.model for k, a in agents.items()} == {"analyst": "claude-haiku-5-5", "editor": s.draft_model, "reviewer": "claude-haiku-5-5"}

@@ -11,6 +11,9 @@
 | [DISCOVERY.md](DISCOVERY.md) · [PLAN.md](PLAN.md) · [PROGRESS.md](PROGRESS.md) | Phase 1 findings, plan, progress log |
 | [prometheus-alerts.yml](prometheus-alerts.yml) | Alert rules for the miniKube repo |
 | [REVIEW_WORKFLOW.md](REVIEW_WORKFLOW.md) · [SUBMISSION.md](SUBMISSION.md) · [INTERNAL_LINKING.md](INTERNAL_LINKING.md) · [STYLE_GUIDE.md](STYLE_GUIDE.md) | v2: review and approval, search-engine submission, internal links, the drafting style guide |
-| [AGENTS.md](AGENTS.md) | v3: LangGraph graphs (diagrams, state, nodes), interrupt/resume ↔ review UI, the approval gate, the CrewAI crew, tools, callback API, operations, resources |
-| [RAG.md](RAG.md) | v3: Ask the Blog (guards, abuse/cost controls, privacy), chunking, embeddings options, pgvector index and reindexing |
-| [COSTS.md](COSTS.md) | v3: tokens and cost per run type, monthly estimate for the current site, budget controls |
+| [FLOWS.md](FLOWS.md) | v4: every CrewAI Flow (diagrams, triggers, state), the split-flow approval gate, persistence and locks, scheduling, internal API, operations, resources |
+| [CREWS.md](CREWS.md) | v4: the Optimization, Editorial and Report crews: agents, tasks, tools, limits, output schemas |
+| [MCP.md](MCP.md) | v4: public and admin MCP servers, every tool/resource/prompt with scopes, OAuth flow, connecting from Claude and MCP Inspector, kill switches, revocation |
+| [RAG.md](RAG.md) | Ask the Blog (guards, abuse/cost controls, privacy), chunking, embeddings options, pgvector index and reindexing |
+| [COSTS.md](COSTS.md) | v4: tokens and cost per flow, monthly estimate for the current site, budget controls |
+| [AGENTS.md](AGENTS.md) | v3 (superseded): pointer to the v4 docs |

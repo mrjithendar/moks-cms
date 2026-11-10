@@ -82,7 +82,7 @@ class OptimizationCrew:
         recs = [r for r in context.get("recommendations", []) if not recommendation_ids or r.get("id") in recommendation_ids]
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not feedback else "regenerate", prompt_version=PROMPT_VERSION, models=context.get("models") or {})
+            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not feedback else "regenerate", prompt_version=PROMPT_VERSION, crew="optimization", models=context.get("models") or {})
             evidence = data_block("evidence", {"recommendations": recs, "metrics_28d": context.get("metrics") or {}, "ga4_engagement_28d": context.get("ga4") or {}, "related_site_articles": related or []})
             # v2's own prompt (article blocks with ids). The web app already wraps article text in data blocks; it is
             # wrapped again here so a closing tag inside the article can never end the data section (defence in depth).

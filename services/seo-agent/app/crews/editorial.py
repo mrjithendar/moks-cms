@@ -54,7 +54,7 @@ class EditorialCrew:
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, on_source=lambda u, _t: fetched.append(u), style=str(brief.get("styleGuide") or ""))
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, models=brief.get("models") or {})
+            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
             b = data_block("brief", {k: brief.get(k) for k in ("title", "gap", "audience", "intent", "outline", "supportingQueries", "codeExamples", "internalLinks", "category")})
             style = data_block("style_guide", brief.get("styleGuide", ""))
             fb = f"\n\nThe previous draft was rejected. Fix these problems:\n{feedback}" if feedback else ""
