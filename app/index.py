@@ -199,12 +199,14 @@ class PgVectorIndex:
         stats = {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0}
         live = {a["id"] for a in articles}
         async with self.pool.connection() as c:
-            if only is None and not force:
-                # Guard: an empty or truncated article list (web app error, bad deploy) must not wipe the index.
-                cur = await c.execute("select count(distinct article_id) as n from seo_article_chunks")
-                indexed = int((await cur.fetchone())["n"])
-                if refuse_reindex(len(live), indexed):
-                    raise IndexSafetyError(f"refusing reindex: {len(live)} published articles vs {indexed} indexed; check the list, then rerun with force=true")
+            if only is None:
+                if not force:
+                    # Guard: an empty or truncated article list (web app error, bad deploy) must not wipe the index.
+                    cur = await c.execute("select count(distinct article_id) as n from seo_article_chunks")
+                    indexed = int((await cur.fetchone())["n"])
+                    if refuse_reindex(len(live), indexed):
+                        raise IndexSafetyError(f"refusing reindex: {len(live)} published articles vs {indexed} indexed; check the list, then rerun with force=true")
+                # Unpublished/deleted articles' chunks go on every full or weekly run; `force` skips only the guard.
                 cur = await c.execute("delete from seo_article_chunks where not (article_id::text = any(%s)) returning 1", (list(live),))
                 stats["deleted"] += len(await cur.fetchall())
             for a in articles:
