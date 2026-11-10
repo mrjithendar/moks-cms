@@ -4,7 +4,7 @@
 #
 #   site               kustomization.yaml (00-… to 85-…): the site, routing, mesh, CI accounts
 #   practice-executor  practice-executor-*.yaml: Python practice runner (applied by hand once gVisor is verified)
-#   seo-agent          seo-agent-*.yaml: SEO v3 agent service + reindex CronJob (applied by hand, docs/seo/MANUAL_SETUP.md)
+#   seo-agent          seo-agent-*.yaml: SEO v4 agent service + flow-trigger CronJobs (applied by hand, docs/seo/MANUAL_SETUP.md)
 #
 #   scripts/manifests.sh site | kubectl --context mk4 apply -f -
 #   scripts/manifests.sh practice-executor | kubectl --context mk4 diff -f -
