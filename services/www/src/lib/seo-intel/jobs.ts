@@ -22,7 +22,7 @@ import { syncGa4PagePairs, syncGa4Window, syncGscWindow } from "./sync";
  *   window, status, rows, API requests, retries, error and correlation id, and records Prometheus metrics.
  * - Backfills are manual only and resumable: each job handles a time-boxed slice and enqueues the rest.
  */
-export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest", "keywords_refresh"] as const;
+export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest", "keywords_refresh", "auto_links", "link_check"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 export type Trigger = "schedule" | "manual" | "backfill";
 export const JOB_KIND = "seo";
@@ -313,6 +313,10 @@ export function dueSlots(s: SeoSettings, now: Date): { type: JobType; slot: stri
   if (dr.digest.enabled && dr.digest.recipients.length && dow === dr.digest.weekday && h >= dr.digest.hourUtc) out.push({ type: "drafts_digest", slot: day });
   // After the daily GSC sync: clusters, intents for new queries, tracked-keyword alerts.
   if (sc.gscDaily.enabled && configured.gscProperty && h >= Math.min(23, sc.gscDaily.hourUtc + 1)) out.push({ type: "keywords_refresh", slot: day });
+  const al = s.links.auto;
+  if (s.links.enabled && al.enabled && dow === al.weekday && h >= al.hourUtc) out.push({ type: "auto_links", slot: day });
+  const lc = s.links.check;
+  if (lc.enabled && dow === lc.weekday && h >= lc.hourUtc) out.push({ type: "link_check", slot: day });
   if (h >= 2) out.push({ type: "retention", slot: day });
   if (h >= 9) out.push({ type: "outcomes", slot: day });
   return out;

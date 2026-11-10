@@ -1,6 +1,10 @@
+import { sql } from "drizzle-orm";
 import Link from "next/link";
+import { getDb } from "@/db";
+import { rowsOf } from "@/db/rows";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { CalendarControls } from "@/components/seo/CalendarControls";
+import { CalendarItemFields, type CalendarBrief } from "@/components/seo/CalendarItemFields";
 import { NewCalendarItem } from "@/components/seo/NewCalendarItem";
 import { Empty, fmtInt, Section } from "@/components/seo/ui";
 import { listCalendar, monthRange } from "@/lib/seo-intel/calendar";
@@ -10,35 +14,18 @@ export const metadata = { title: "Editorial calendar" };
 
 type Item = Awaited<ReturnType<typeof listCalendar>>["all"][number];
 
-function ItemCard({ item, compact = false }: { item: Item; compact?: boolean }) {
-  const brief = item.brief as { audience?: string; intent?: string; supportingQueries?: string[]; gap?: string; outline?: string[]; codeExamples?: string[]; diagrams?: string[]; internalLinks?: { title: string; path: string }[]; readingTimeMinutes?: number; notes?: string };
+function ItemCard({ item, owners, compact = false }: { item: Item; owners: { id: string; name: string }[]; compact?: boolean }) {
+  const brief = item.brief as CalendarBrief & { internalLinks?: { title: string; path: string }[] };
   return (
     <Card className={compact ? "!p-3" : ""}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <StatusPill status={item.status === "published" ? "published" : item.status === "dropped" ? "rejected" : item.status === "suggested" ? "pending" : "approved"} />
         <span className="text-fg-subtle">{item.status.replace("_", " ")} · {item.kind === "measured" ? "Measured (Search Console)" : "Editorial idea"} · {item.priorityBand}</span>
       </div>
-      <p className="mt-1 font-semibold text-fg [overflow-wrap:anywhere]">{item.title}</p>
-      <p className="text-xs text-fg-subtle">{[item.cluster, item.category, item.targetDate && `target ${item.targetDate}`, item.ownerName && `owner ${item.ownerName}`].filter(Boolean).join(" · ")}</p>
+      <CalendarItemFields id={item.id} title={item.title} cluster={item.cluster} category={item.category} ownerId={item.ownerId} owners={owners} brief={brief} compact={compact} />
+      {brief.internalLinks?.length ? <p className="mt-1 text-xs text-fg-subtle">Link to: {brief.internalLinks.map((l) => l.title).join("; ")}</p> : null}
       {item.postId && <p className="mt-1 text-sm">Draft: <Link className="underline" href={`/admin/posts/${item.postId}`}>{item.postTitle ?? item.postId}</Link> ({item.postStatus}){item.status === "published" && <> · clicks since publish (GSC): {fmtInt(item.clicksSincePublish)}</>}</p>}
-      {!compact && (
-        <details className="mt-2 text-sm">
-          <summary className="cursor-pointer text-fg-muted">Brief</summary>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            {brief.gap && <><dt className="text-fg-subtle">Gap</dt><dd>{brief.gap}</dd></>}
-            {brief.audience && <><dt className="text-fg-subtle">Audience</dt><dd>{brief.audience}</dd></>}
-            {brief.intent && <><dt className="text-fg-subtle">Intent</dt><dd>{brief.intent}</dd></>}
-            {brief.supportingQueries?.length ? <><dt className="text-fg-subtle">Queries</dt><dd>{brief.supportingQueries.join(", ")}</dd></> : null}
-            {brief.outline?.length ? <><dt className="text-fg-subtle">Outline</dt><dd><ol className="list-decimal pl-5">{brief.outline.map((o) => <li key={o}>{o}</li>)}</ol></dd></> : null}
-            {brief.codeExamples?.length ? <><dt className="text-fg-subtle">Code</dt><dd>{brief.codeExamples.join("; ")}</dd></> : null}
-            {brief.diagrams?.length ? <><dt className="text-fg-subtle">Diagrams</dt><dd>{brief.diagrams.join("; ")}</dd></> : null}
-            {brief.internalLinks?.length ? <><dt className="text-fg-subtle">Link to</dt><dd>{brief.internalLinks.map((l) => l.title).join("; ")}</dd></> : null}
-            {brief.readingTimeMinutes ? <><dt className="text-fg-subtle">Reading time</dt><dd>~{brief.readingTimeMinutes} min</dd></> : null}
-            {brief.notes ? <><dt className="text-fg-subtle">Notes</dt><dd>{brief.notes}</dd></> : null}
-          </dl>
-        </details>
-      )}
-      <CalendarControls id={item.id} status={item.status} targetDate={item.targetDate} postId={item.postId} />
+      <CalendarControls id={item.id} status={item.status} targetDate={item.targetDate} targetTime={item.targetTime} postId={item.postId} />
     </Card>
   );
 }
@@ -50,6 +37,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const weekStart = sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); })();
   const range = view === "week" ? { from: weekStart, to: addDays(weekStart, 6) } : { from, to };
   const cal = await listCalendar(range);
+  const owners = rowsOf<{ id: string; name: string }>(await (await getDb()).execute(sql`select id, coalesce(nullif(name, ''), email) as name from "user" where role in ('admin', 'author') order by name`));
   const days: string[] = [];
   for (let d = range.from; d <= range.to; d = addDays(d, 1)) days.push(d);
   const lead = view === "month" ? (new Date(`${range.from}T00:00:00Z`).getUTCDay() + 6) % 7 : 0;
@@ -74,16 +62,16 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {days.map((d) => (
             <li key={d} className={`min-h-20 rounded-md border border-line p-1 ${byDay.has(d) ? "bg-surface" : "bg-surface-muted"} ${byDay.has(d) ? "" : "hidden sm:block"}`}>
               <p className="text-xs text-fg-subtle">{d.slice(8)}<span className="sm:hidden"> {d}</span></p>
-              <ul className="mt-1 space-y-1">{(byDay.get(d) ?? []).map((i) => <li key={i.id} className="rounded bg-accent-soft px-1 py-0.5 text-xs text-accent-text [overflow-wrap:anywhere]" title={i.title}>{i.title}</li>)}</ul>
+              <ul className="mt-1 space-y-1">{(byDay.get(d) ?? []).map((i) => <li key={i.id} className="rounded bg-accent-soft px-1 py-0.5 text-xs text-accent-text [overflow-wrap:anywhere]" title={i.targetTime ? `${i.targetTime} IST · ${i.title}` : i.title}>{i.targetTime && <span className="font-semibold tabular-nums">{i.targetTime} </span>}{i.title}</li>)}</ul>
             </li>
           ))}
         </ol>
       </Section>
       <Section title="Scheduled items">
-        {cal.scheduled.length ? <div className="space-y-3">{cal.scheduled.map((i) => <ItemCard key={i.id} item={i} compact />)}</div> : <Empty>Nothing scheduled in this range.</Empty>}
+        {cal.scheduled.length ? <div className="space-y-3">{cal.scheduled.map((i) => <ItemCard key={i.id} item={i} owners={owners} compact />)}</div> : <Empty>Nothing scheduled in this range.</Empty>}
       </Section>
       <Section title={`Unscheduled (${cal.unscheduled.length})`} description="Suggestions from the recommendation engine (Measured or Editorial idea) and manual items without a date.">
-        {cal.unscheduled.length ? <div className="space-y-3">{cal.unscheduled.map((i) => <ItemCard key={i.id} item={i} />)}</div> : <Empty>No unscheduled items.</Empty>}
+        {cal.unscheduled.length ? <div className="space-y-3">{cal.unscheduled.map((i) => <ItemCard key={i.id} item={i} owners={owners} />)}</div> : <Empty>No unscheduled items.</Empty>}
       </Section>
       <Section title="Add an item"><Card><NewCalendarItem /></Card></Section>
     </>

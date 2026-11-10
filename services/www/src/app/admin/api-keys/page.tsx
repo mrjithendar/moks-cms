@@ -1,9 +1,9 @@
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { LocalTime } from "@/components/LocalTime";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Button } from "@/components/ui/form";
 import { actorOf, staffActor } from "@/lib/admin";
 import { listApiKeys, revokeApiKey } from "@/lib/api-keys";
-import { formatDateTime } from "@/lib/dates";
 import { flash } from "@/lib/flash";
 import { requireRole } from "@/lib/session";
 import { CreateKeyForm } from "./CreateKeyForm";
@@ -34,8 +34,8 @@ export default async function ApiKeysPage({ searchParams }: { searchParams: Flas
             <td className={td}><p className="font-medium text-fg">{k.name}</p><p className="text-xs text-slate-500">{owner}</p></td>
             <td className={`${td} font-mono text-xs`}>{k.prefix}…</td>
             <td className={`${td} text-xs`}>{k.scopes.join(", ")}</td>
-            <td className={td}><StatusPill status={state === "active" ? "approved" : state === "expired" ? "archived" : "rejected"} /> <span className="text-xs text-slate-500">{k.revokedAt ? "revoked" : k.expiresAt ? `expires ${formatDateTime(k.expiresAt.toISOString())}` : "no expiry"}</span></td>
-            <td className={`${td} whitespace-nowrap text-xs`}>{k.lastUsedAt ? formatDateTime(k.lastUsedAt.toISOString()) : "never"}</td>
+            <td className={td}><StatusPill status={state === "active" ? "approved" : state === "expired" ? "archived" : "rejected"} /> <span className="text-xs text-slate-500">{k.revokedAt ? "revoked" : k.expiresAt ? <>expires <LocalTime iso={k.expiresAt.toISOString()} /></> : "no expiry"}</span></td>
+            <td className={`${td} whitespace-nowrap text-xs`}>{k.lastUsedAt ? <LocalTime iso={k.lastUsedAt.toISOString()} /> : "never"}</td>
             <td className={td}>{!k.revokedAt && <form action={revoke}><input type="hidden" name="id" value={k.id} /><Button type="submit" variant="ghost">Revoke</Button></form>}</td>
           </tr>
         ))}

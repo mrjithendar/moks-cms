@@ -21,6 +21,7 @@ const { clearTokenCache, readServiceAccount, signJwt } = await import("@/lib/seo
 const { backoffDelay, googleJson } = await import("@/lib/seo-intel/google/http");
 const { syncGa4Window } = await import("@/lib/seo-intel/sync");
 const { renderMetrics } = await import("@/lib/metrics");
+const { testIntegrations } = await import("@/lib/seo-intel/integrations");
 
 let db: Db;
 const noSleep = async () => {};
@@ -218,6 +219,17 @@ describe("Search Console sync", () => {
     }
     expect(backfillRange(40, NOW)).toEqual({ start: "2025-06-26", end: "2026-10-26" });
     expect(gscWindow(s, { type: "gsc_sync", trigger: "schedule" }, NOW)).toEqual({ start: "2026-10-23", end: "2026-10-26" });
+  });
+});
+
+describe("GA4 test connection", () => {
+  it("ignores catalogue fields GA4 lists as incompatible and flags only requested ones", async () => {
+    await configure();
+    const ok = (await testIntegrations({ fetchImpl: fakeGoogle().fetch, env: FIXTURE_ENV, now: NOW })).find((r) => r.provider === "ga4")!;
+    expect(ok).toMatchObject({ ok: true, status: "connected" });
+
+    const bad = (await testIntegrations({ fetchImpl: fakeGoogle({ ga4Incompatible: ["newVsReturning"] }).fetch, env: FIXTURE_ENV, now: NOW })).find((r) => r.provider === "ga4")!;
+    expect(bad).toMatchObject({ ok: false, status: "error", message: "GA4 reports these fields as incompatible: newVsReturning." });
   });
 });
 

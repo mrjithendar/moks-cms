@@ -1,5 +1,7 @@
 "use client";
 
+import { formatLocal } from "@/components/LocalTime";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@/components/admin/Dialog";
 import { AlertIcon, CheckIcon, ExternalIcon } from "@/components/icons";
@@ -230,7 +232,7 @@ export function AppearanceEditor({
 
         {conflict && (
           <Alert>
-            Another administrator saved the draft{conflict.updatedAt ? ` at ${new Date(conflict.updatedAt).toLocaleTimeString()}` : ""} while you were editing.
+            Another administrator saved the draft{conflict.updatedAt ? ` at ${formatLocal(new Date(conflict.updatedAt).toISOString(), "time")}` : ""} while you were editing.
             <div className="mt-2 flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="secondary" onClick={() => (replace(conflict.config, conflict.version), setConflict(null))}>
                 Load their version

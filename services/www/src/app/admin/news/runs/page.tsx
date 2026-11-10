@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { StatusBadge } from "@/components/seo/badges";
@@ -47,7 +48,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
             const c = r.counters as Record<string, number>;
             return (
               <tr key={String(r.id)} className="border-t border-line">
-                <td className={td}><Link href={`/admin/news/runs/${String(r.id)}`} className="font-medium text-fg hover:underline">{new Date(String(r.started_at)).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</Link></td>
+                <td className={td}><Link href={`/admin/news/runs/${String(r.id)}`} className="font-medium text-fg hover:underline"><LocalTime iso={String(r.started_at)} /></Link></td>
                 <td className={td}>{String(r.job_name ?? "—")}<p className="text-xs text-fg-subtle">{String(r.kind)}{r.dry_run ? " · dry run" : ""}</p></td>
                 <td className={td}>{String(r.trigger)}</td>
                 <td className={td}><StatusBadge status={String(r.status)} /></td>

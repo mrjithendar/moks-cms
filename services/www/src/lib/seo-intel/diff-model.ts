@@ -101,10 +101,12 @@ const LABEL: Record<ChangeType, [string, string]> = {
   paragraph_add: ["addition", "additions"],
   code_block: ["code block", "code blocks"],
   internal_link: ["link", "links"],
+  external_link: ["docs link", "docs links"],
+  link_fix: ["link fix", "link fixes"],
   alt_text: ["alt text", "alt texts"],
   schema: ["schema", "schema"],
 };
-const ORDER: ChangeType[] = ["paragraph_edit", "paragraph_add", "heading", "internal_link", "title", "meta_description", "alt_text", "code_block", "schema"];
+const ORDER: ChangeType[] = ["paragraph_edit", "paragraph_add", "heading", "internal_link", "external_link", "link_fix", "title", "meta_description", "alt_text", "code_block", "schema"];
 
 export type Summary = { total: number; byType: Partial<Record<ChangeType, number>>; breakdownLabel: string; plusWords: number; minusWords: number; linksAdded: number; metadataChanged: number; reviewMinutes: number };
 

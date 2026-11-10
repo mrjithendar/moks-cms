@@ -36,6 +36,14 @@ registerSeoHandler("drafts_weekly", async () => {
   const r = await weeklyBatch();
   return { status: r.skipped && r.skipped !== "nothing_to_do" ? "skipped" : "succeeded", rows: r.submitted, detail: r, ...(r.skipped === "budget" ? { error: "Monthly LLM budget reached; weekly drafting paused.", errorCode: "budget" } : {}) };
 });
+registerSeoHandler("auto_links", async (ctx) => {
+  const r = await (await import("./auto-links")).runAutoLinks(ctx.db, ctx.settings, ctx.now);
+  return { status: r.failed.length && !r.published ? "failed" : r.failed.length ? "partial" : "succeeded", rows: r.links, detail: r, ...(r.failed.length ? { error: `${r.failed.length} article(s) not auto-linked; see their drafts.` } : {}) };
+});
+registerSeoHandler("link_check", async (ctx) => {
+  const r = await (await import("./broken-links")).runLinkCheck(ctx.db, ctx.settings, ctx.now);
+  return { status: "succeeded", rows: r.checked, detail: r };
+});
 registerSeoHandler("drafts_poll", async () => {
   const r = await pollDraftBatches();
   return { status: "succeeded", rows: r.processed, detail: r };

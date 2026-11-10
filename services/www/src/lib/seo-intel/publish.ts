@@ -128,6 +128,21 @@ async function publishDraft(db: Db, draftId: string, actor: Actor, now: Date, op
   return { status: "published" as const, version: row.version, substantive };
 }
 
+/**
+ * Automatic link maintenance (auto-links.ts; owner decision 2026-11-10): publish a links-only draft without a person.
+ * Refused unless every accepted change is a rules-made internal_link/external_link, so this can never publish prose,
+ * titles or Claude output. Same preflight, CMS update path, post-publish verification and rollback as an approval.
+ */
+export async function autoPublishLinkDraft(draftId: string, actor: Actor, now = new Date()) {
+  const d = await getDraft(draftId);
+  if (!d) throw new DraftError("Draft not found.", 404);
+  if (d.trigger !== "auto_links" || d.kind === "new_article") throw new DraftError("Only automatic link drafts can be published without review.", 403);
+  const accepted = acceptedChanges(d.changes);
+  if (!accepted.length || accepted.some((c) => c.origin !== "rules" || (c.type !== "internal_link" && c.type !== "external_link"))) throw new DraftError("Automatic publishing is limited to rule-made link changes.", 403);
+  const db = await getDb();
+  return publishDraft(db, draftId, actor, now);
+}
+
 /** Scheduler tick: publish approved drafts whose time has come, as the admin who approved them (still admin). */
 export async function publishDueDrafts(now = new Date()): Promise<number> {
   const db = await getDb();

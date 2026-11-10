@@ -232,7 +232,7 @@ export function reportCsv(r: Report): string {
 
 export async function listReports(limit = 50) {
   const db = await getDb();
-  return (await q<Record<string, unknown>>(db, sql`select id, period_type, period_start::text, period_end::text, generated_at, emailed_at, trigger from seo_reports order by period_start desc, period_type limit ${limit}`)).map((r) => ({
+  return (await q<Record<string, unknown>>(db, sql`select id, period_type, period_start::text, period_end::text, generated_at, emailed_at, trigger, payload->'pdf' as pdf, payload ? 'narrative' as summarized from seo_reports order by period_start desc, period_type limit ${limit}`)).map((r) => ({
     id: String(r.id),
     type: String(r.period_type),
     start: String(r.period_start),
@@ -240,7 +240,15 @@ export async function listReports(limit = 50) {
     generatedAt: new Date(String(r.generated_at)).toISOString(),
     emailedAt: r.emailed_at ? new Date(String(r.emailed_at)).toISOString() : null,
     trigger: String(r.trigger),
+    /** The designed PDF in R2 (v4 report_flow), served privately by GET /api/admin/seo/reports/{id}/pdf. */
+    pdf: pdfMeta(r.pdf),
+    summarized: r.summarized === true || r.summarized === "t",
   }));
+}
+
+function pdfMeta(v: unknown): { bytes: number; generatedAt: string | null; filename: string | null } | null {
+  const o = (typeof v === "string" ? JSON.parse(v) : v) as { key?: string; bytes?: number; generatedAt?: string; filename?: string } | null;
+  return o?.key ? { bytes: Number(o.bytes ?? 0), generatedAt: o.generatedAt ?? null, filename: o.filename ?? null } : null;
 }
 
 export async function getReport(id: string): Promise<Report | null> {

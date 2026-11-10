@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Button, Input, Select } from "@/components/ui/form";
@@ -19,7 +20,6 @@ import {
   type QueueItem,
   type ReportReason,
 } from "@/lib/comments";
-import { formatDateTime } from "@/lib/dates";
 import { flash } from "@/lib/flash";
 import { requireRole } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
@@ -164,7 +164,7 @@ async function Queue({ actor, filter, isAdmin }: { actor: Parameters<typeof mode
               <span className="flex flex-wrap items-center gap-2 text-fg-subtle">
                 <StatusPill status={c.deletedAt ? "deleted" : c.status} />
                 {c.reports.length > 0 && <StatusPill status="reported" />}
-                <time dateTime={c.createdAt.toISOString()}>{formatDateTime(c.createdAt.toISOString())}</time>
+                <LocalTime iso={c.createdAt.toISOString()} />
               </span>
             </div>
             {c.deletedAt ? (
@@ -172,7 +172,7 @@ async function Queue({ actor, filter, isAdmin }: { actor: Parameters<typeof mode
             ) : (
               <p className="mt-3 whitespace-pre-line break-words text-fg-muted">{c.body}</p>
             )}
-            {c.editedAt && <p className="mt-2 text-xs text-fg-subtle">Edited {formatDateTime(c.editedAt.toISOString())}</p>}
+            {c.editedAt && <p className="mt-2 text-xs text-fg-subtle">Edited {<LocalTime iso={c.editedAt.toISOString()} />}</p>}
             {c.reports.length > 0 && (
               <div className="mt-4 rounded-lg border border-red-200 bg-red-50/60 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/5">
                 <p className="font-semibold text-fg">

@@ -1,13 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Card } from "@/components/admin/ui";
+import { LocalTime } from "@/components/LocalTime";
 import { buttonClass } from "@/components/ui/form";
 import type { Filters, Kpi, SourceStatus } from "@/lib/seo-intel/queries";
 
 export const fmtInt = (v: number | null) => (v === null ? "—" : Intl.NumberFormat("en").format(Math.round(v)));
 export const fmtPct = (v: number | null, digits = 1) => (v === null ? "—" : `${(v * 100).toFixed(digits)}%`);
 export const fmtPos = (v: number | null) => (v === null ? "—" : v.toFixed(1));
-export const fmtWhen = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC" : "never");
+/** A timestamp in the viewer's local time zone (LocalTime); "never" when empty. Use in JSX, not inside template strings. */
+export const fmtWhen = (iso: string | null): ReactNode => (iso ? <LocalTime iso={iso} /> : "never");
 
 export { SEO_SECTIONS } from "./sections";
 

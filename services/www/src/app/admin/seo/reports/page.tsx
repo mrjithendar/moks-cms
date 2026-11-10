@@ -17,13 +17,19 @@ export default async function ReportsPage() {
       </Card>
       <Section title="Generated reports">
         {reports.length ? (
-          <Table head={<tr><th className={th}>Period</th><th className={th}>Type</th><th className={th}>Generated</th><th className={th}>Emailed</th><th className={th}></th></tr>}>
+          <Table head={<tr><th className={th}>Period</th><th className={th}>Type</th><th className={th}>Generated</th><th className={th}>Emailed</th><th className={th}>PDF (R2)</th><th className={th}>Export</th></tr>}>
             {reports.map((r) => (
               <tr key={r.id}>
                 <td className={td}><Link className="underline" href={`/admin/seo/reports/${r.id}`}>{r.start} – {r.end}</Link></td>
                 <td className={td}>{r.type}</td>
                 <td className={td}>{fmtWhen(r.generatedAt)} ({r.trigger})</td>
                 <td className={td}>{r.emailedAt ? fmtWhen(r.emailedAt) : "—"}</td>
+                <td className={td}>
+                  {r.pdf ? (
+                    <a className="underline" href={`/api/admin/seo/reports/${r.id}/pdf`} download={r.pdf.filename ?? undefined}>Download PDF</a>
+                  ) : <span className="text-fg-subtle">Not generated</span>}
+                  {r.pdf && <span className="ml-1 text-xs text-fg-subtle">{Math.max(1, Math.round(r.pdf.bytes / 1024))} KB{r.summarized ? " · summary checked" : ""}</span>}
+                </td>
                 <td className={td}><a className="underline" href={`/api/admin/seo/reports/${r.id}/csv`}>CSV</a></td>
               </tr>
             ))}

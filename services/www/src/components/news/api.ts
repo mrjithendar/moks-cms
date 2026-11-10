@@ -1,5 +1,8 @@
 "use client";
 
+import { createElement, type ReactNode } from "react";
+import { LocalTime } from "@/components/LocalTime";
+
 /** JSON call to /api/admin/news/* (or the SEO review API). Throws Error(message incl. the server's issues). */
 export async function api<T = Record<string, unknown>>(url: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "GET", body?: unknown): Promise<T> {
   const res = await fetch(url, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -9,7 +12,8 @@ export async function api<T = Record<string, unknown>>(url: string, method: "GET
 }
 
 export const usd = (v: unknown) => `$${Number(v ?? 0).toFixed(Number(v ?? 0) < 1 ? 3 : 2)}`;
-export const when = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—");
+/** A timestamp in the viewer's local time zone (LocalTime). */
+export const when = (iso: unknown): ReactNode => (iso ? createElement(LocalTime, { iso: String(iso) }) : "—");
 export const ago = (iso: unknown) => {
   if (!iso) return "never";
   const m = Math.round((Date.now() - Date.parse(String(iso))) / 60_000);

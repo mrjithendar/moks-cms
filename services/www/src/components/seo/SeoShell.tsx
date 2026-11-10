@@ -193,6 +193,17 @@ export function SeoShell({ children, reviewCount, property, sync }: { children: 
     router.push(`${pathname}?${p}`);
   };
   const range = sp.get("range") ?? "28";
+  // The view controls (period, compare, property, sync, Jump to…) belong to the dashboard only. Other pages keep the
+  // small-screen section picker (the rail is hidden below lg); ⌘K still opens Jump to… everywhere.
+  const onDashboard = pathname === "/admin/seo";
+  const sectionPicker = (
+    <label className="lg:hidden">
+      <span className="sr-only">Section</span>
+      <select value={current?.href ?? "/admin/seo"} onChange={(e) => router.push(carry(e.target.value))} className="min-h-11 max-w-[11rem] rounded-md border border-line-strong bg-surface px-2 text-sm font-medium text-fg">
+        {SEO_GROUPS.map((g) => <optgroup key={g.label} label={g.label}>{g.items.map((i) => <option key={i.href} value={i.href}>{i.label}{i.badge === "review" && reviewCount ? ` (${reviewCount})` : ""}</option>)}</optgroup>)}
+      </select>
+    </label>
+  );
 
   return (
     <div className={`lg:grid lg:gap-8 ${collapsed ? "lg:grid-cols-[3.25rem_minmax(0,1fr)]" : "lg:grid-cols-[13rem_minmax(0,1fr)]"}`}>
@@ -222,13 +233,10 @@ export function SeoShell({ children, reviewCount, property, sync }: { children: 
       </nav>
 
       <div className="min-w-0">
+        {!onDashboard && <div className="mb-4 lg:hidden">{sectionPicker}</div>}
+        {onDashboard && (
         <div role="toolbar" aria-label="SEO view controls" className="sticky top-header z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-line bg-surface-muted/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:mx-0 lg:rounded-xl lg:border lg:px-3">
-          <label className="lg:hidden">
-            <span className="sr-only">Section</span>
-            <select value={current?.href ?? "/admin/seo"} onChange={(e) => router.push(carry(e.target.value))} className="min-h-11 max-w-[11rem] rounded-md border border-line-strong bg-surface px-2 text-sm font-medium text-fg">
-              {SEO_GROUPS.map((g) => <optgroup key={g.label} label={g.label}>{g.items.map((i) => <option key={i.href} value={i.href}>{i.label}{i.badge === "review" && reviewCount ? ` (${reviewCount})` : ""}</option>)}</optgroup>)}
-            </select>
-          </label>
+          {sectionPicker}
           <label className="flex items-center gap-1.5 text-xs text-fg-subtle">
             <span className="max-sm:sr-only">Period</span>
             <select value={range} onChange={(e) => setParam("range", e.target.value)} className="min-h-11 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg sm:min-h-9">
@@ -254,6 +262,7 @@ export function SeoShell({ children, reviewCount, property, sync }: { children: 
             <kbd className="hidden rounded border border-line px-1 text-[0.7rem] text-fg-subtle sm:inline">⌘K</kbd>
           </button>
         </div>
+        )}
         {children}
       </div>
       <Palette open={palette} onClose={() => setPalette(false)} />

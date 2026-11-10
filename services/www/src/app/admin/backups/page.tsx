@@ -1,4 +1,5 @@
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Alert, Button, Field, Input, Select } from "@/components/ui/form";
@@ -6,7 +7,6 @@ import Link from "next/link";
 import { adminActor } from "@/lib/admin";
 import { BACKUP_ROOT, backupSummary, listStoredBackups, recentRuns, restoreStoredBackup, runBackup, saveDestination, saveGeneral, testDestination } from "@/lib/backups";
 import { RestoreButton } from "./RestoreButton";
-import { formatDateTime } from "@/lib/dates";
 import { flash } from "@/lib/flash";
 import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
@@ -118,11 +118,11 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
                 <tr key={f.key}>
                   <td className={`${td} font-mono text-xs`}>{f.name}</td>
                   <td className={`${td} whitespace-nowrap`}>{Math.round(f.size / 1024)} KB</td>
-                  <td className={`${td} whitespace-nowrap`}>{f.lastModified ? formatDateTime(f.lastModified) : "—"}</td>
+                  <td className={`${td} whitespace-nowrap`}>{f.lastModified ? <LocalTime iso={f.lastModified} /> : "—"}</td>
                   <td className={td}>
                     <div className="flex items-center gap-4 whitespace-nowrap">
                       <a className="link" href={`/api/admin/backup?file=${encodeURIComponent(f.name)}`} download>Download</a>
-                      {b.hasPassphrase && <RestoreButton name={f.name} created={f.lastModified ? formatDateTime(f.lastModified) : f.name} action={restore} />}
+                      {b.hasPassphrase && <RestoreButton name={f.name} created={f.lastModified ?? f.name} action={restore} />}
                     </div>
                   </td>
                 </tr>
@@ -137,7 +137,7 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
             {runs.length === 0 && <tr><td className={td} colSpan={5}>No backups yet.</td></tr>}
             {runs.map((r) => (
               <tr key={r.id}>
-                <td className={`${td} whitespace-nowrap`}>{formatDateTime(r.startedAt.toISOString())}</td>
+                <td className={`${td} whitespace-nowrap`}><LocalTime iso={r.startedAt.toISOString()} /></td>
                 <td className={td}>{r.trigger}</td>
                 <td className={td}><StatusPill status={r.status === "success" ? "ok" : r.status === "partial" ? "degraded" : r.status === "running" ? "pending" : "down"} /></td>
                 <td className={`${td} font-mono text-xs`}>{r.filename ?? "—"}{r.sizeBytes ? ` (${Math.round(r.sizeBytes / 1024)} KB)` : ""}</td>

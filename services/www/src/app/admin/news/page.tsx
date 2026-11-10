@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
 import { AdminHeader, Card, Stat, Table, td, th } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
@@ -56,7 +57,7 @@ export default async function NewsJobsPage() {
                     </td>
                     <td className={td}>
                       <code className="text-xs">{j.cron}</code>
-                      <p className="text-xs text-fg-subtle">{j.timezone}{j.next_runs[0] ? ` · next ${new Date(j.next_runs[0]).toLocaleString("en-GB", { timeZone: j.timezone, dateStyle: "short", timeStyle: "short" })}` : ""}</p>
+                      <p className="text-xs text-fg-subtle">{j.timezone}{j.next_runs[0] ? <> · next <LocalTime iso={j.next_runs[0]} /></> : ""}</p>
                     </td>
                     <td className={td}>
                       {run ? (

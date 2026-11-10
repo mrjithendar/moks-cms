@@ -115,6 +115,14 @@ export function safeFetcher(origin: URL, opts: { timeoutMs: number; maxBytes: nu
 }
 
 /**
+ * Broken-link checker (broken-links.ts): any public http(s) host. The private-address guard still runs on every hop
+ * (DNS resolved inside the socket), so a link can't make the server reach internal services.
+ */
+export function publicFetcher(opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }): PageFetcher {
+  return hostFetcher(() => true, opts);
+}
+
+/**
  * v3: the same guarded fetcher for the editorial crew's documentation allowlist (https only; a domain or its
  * subdomains). Every hop, redirects included, is re-checked; DNS is resolved inside the socket and private ranges refused.
  */

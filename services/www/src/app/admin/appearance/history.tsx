@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalTime } from "@/components/LocalTime";
+
 import { useEffect, useState, useTransition } from "react";
 import { Alert, Button } from "@/components/ui/form";
 import { defaultConfig, type SiteConfig } from "@/lib/site-config/schema";
@@ -51,7 +53,7 @@ export function HistoryPanel({ onLoaded, flush }: { onLoaded: (config: unknown, 
                   Version {r.version} {i === 0 && <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-100">Live</span>}
                 </p>
                 <p className="text-sm text-fg-subtle">
-                  {new Date(r.createdAt).toLocaleString()} · {r.author ?? "unknown"} · {r.reason}
+                  <LocalTime iso={r.createdAt} /> · {r.author ?? "unknown"} · {r.reason}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

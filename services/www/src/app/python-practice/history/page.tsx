@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Container } from "@/components/Container";
@@ -28,7 +29,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                   </Link>
                   <span className="text-fg-muted">{s.items} question(s)</span>
                   <span className="text-fg-muted">{s.status === "active" ? "In progress — resume" : s.score ? `${String(s.score.percent ?? 0)}%` : s.status}</span>
-                  <span className="ml-auto text-fg-subtle">{new Date(s.started_at).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" })}</span>
+                  <span className="ml-auto text-fg-subtle"><LocalTime iso={s.started_at} /></span>
                 </li>
               ))}
             </ul>
@@ -67,7 +68,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
                       <td className="px-4 py-2 tabular-nums text-fg-muted">
                         {s.passed}/{s.total}
                       </td>
-                      <td className="px-4 py-2 text-fg-subtle">{new Date(s.created_at).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" })}</td>
+                      <td className="px-4 py-2 text-fg-subtle"><LocalTime iso={s.created_at} /></td>
                     </tr>
                   ))}
                 </tbody>

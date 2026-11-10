@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalTime } from "@/components/LocalTime";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Dialog } from "@/components/admin/Dialog";
@@ -690,7 +692,7 @@ function SubmissionsPanel({ state }: { state: UserState | null }) {
           <li key={r.id} className="flex items-center justify-between py-2">
             <span className={r.verdict === "accepted" ? "font-medium text-emerald-700 dark:text-emerald-300" : "text-fg"}>{VERDICTS[r.verdict as Verdict] ?? "Pending"}</span>
             <span className="text-fg-subtle">
-              {r.passed}/{r.total} · {new Date(r.createdAt).toLocaleString()}
+              {r.passed}/{r.total} · <LocalTime iso={r.createdAt} />
             </span>
           </li>
         ))}

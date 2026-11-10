@@ -1,8 +1,8 @@
 import { asc, isNotNull, isNull } from "drizzle-orm";
+import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
 import { AdminHeader, Table, td, th } from "@/components/admin/ui";
 import { getDb, schema } from "@/db";
-import { formatDateTime } from "@/lib/dates";
 import { requireRole } from "@/lib/session";
 import { bundledPages } from "@/lib/site-pages";
 import { PageRowActions } from "./PageRowActions";
@@ -60,7 +60,7 @@ export default async function PagesPage({ searchParams }: { searchParams: Promis
             </td>
             <td className={`${td} font-mono text-xs`}>/{p.slug}</td>
             <td className={td}>{p.sortOrder}</td>
-            <td className={`${td} whitespace-nowrap`}>{formatDateTime((p.deletedAt ?? p.savedAt).toISOString())}</td>
+            <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={(p.deletedAt ?? p.savedAt).toISOString()} />}</td>
           </tr>
         ))}
       </Table>

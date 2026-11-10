@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
@@ -44,13 +45,13 @@ export default async function ArticleSeoPage({ params, searchParams }: { params:
       <Section title="Search engines" description="Submitting is a crawl hint, not an indexing guarantee. Google's state comes from the URL Inspection API (its last-known state, not live).">
         <Card>
           <ol className="grid gap-3 text-sm sm:grid-cols-3" aria-label="Submission timeline">
-            <li><p className="text-xs text-fg-subtle">1 · Submitted</p><p className="font-medium text-fg">{tl.submittedAt ? new Date(tl.submittedAt).toLocaleString() : "not yet"}</p></li>
-            <li><p className="text-xs text-fg-subtle">2 · Crawled (Google)</p><p className="font-medium text-fg">{tl.crawledAt ? new Date(tl.crawledAt).toLocaleString() : tl.pendingInspection ? "check scheduled" : "unknown"}</p></li>
+            <li><p className="text-xs text-fg-subtle">1 · Submitted</p><p className="font-medium text-fg"><LocalTime iso={tl.submittedAt} fallback="not yet" /></p></li>
+            <li><p className="text-xs text-fg-subtle">2 · Crawled (Google)</p><p className="font-medium text-fg">{tl.crawledAt ? <LocalTime iso={tl.crawledAt} /> : tl.pendingInspection ? "check scheduled" : "unknown"}</p></li>
             <li><p className="text-xs text-fg-subtle">3 · Index status (Google&apos;s last-known state)</p><p className="font-medium text-fg">{tl.indexState ?? (tl.pendingInspection ? "check scheduled" : "unknown")}</p></li>
           </ol>
           {submissions.length > 0 && (
             <details className="mt-3 text-sm"><summary className="cursor-pointer text-fg-muted">All {submissions.length} submission events</summary>
-              <ul className="mt-2 space-y-1 text-fg-muted">{submissions.map((s, i) => <li key={i}>{new Date(s.requestedAt).toLocaleString()} · <span className="font-medium text-fg">{s.engine}</span> {s.kind} · {s.status}{s.responseCode ? ` (HTTP ${s.responseCode})` : ""}{s.error ? ` — ${s.error}` : ""}</li>)}</ul>
+              <ul className="mt-2 space-y-1 text-fg-muted">{submissions.map((s, i) => <li key={i}><LocalTime iso={s.requestedAt} /> · <span className="font-medium text-fg">{s.engine}</span> {s.kind} · {s.status}{s.responseCode ? ` (HTTP ${s.responseCode})` : ""}{s.error ? ` — ${s.error}` : ""}</li>)}</ul>
             </details>
           )}
           {draft && <p className="mt-3 text-sm"><Link className="underline" href={`/admin/seo/review/${draft.id}`}>Open draft ({draft.status.replace(/_/g, " ")}, {draft.changes.length} changes)</Link></p>}

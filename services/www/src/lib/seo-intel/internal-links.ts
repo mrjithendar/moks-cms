@@ -126,10 +126,10 @@ export function anchorPhrases(target: LinkDoc, limits: Limits): string[] {
   return [...phrases].sort((a, b) => b.split(" ").length - a.split(" ").length || b.length - a.length);
 }
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Character ranges inside a paragraph that may not hold a new link: existing links/images, inline code, raw HTML. */
-function forbiddenRanges(text: string): [number, number][] {
+export function forbiddenRanges(text: string): [number, number][] {
   const out: [number, number][] = [];
   for (const m of text.matchAll(/!?\[[^\]]*\]\([^)]*\)|`[^`]*`|<[^>]+>|https?:\/\/\S+/g)) out.push([m.index!, m.index! + m[0].length]);
   return out;

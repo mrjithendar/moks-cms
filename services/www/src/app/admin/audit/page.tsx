@@ -1,9 +1,9 @@
 import Link from "next/link";
+import { LocalTime } from "@/components/LocalTime";
 import { AdminHeader, Card, Stat, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Button, buttonClass, Input, Select } from "@/components/ui/form";
 import { SEVERITIES } from "@/lib/audit";
 import { AUDIT_CATEGORIES, AUDIT_PERIODS, parseAuditFilter, queryAudit, type AuditFilter } from "@/lib/audit-query";
-import { formatDateTime } from "@/lib/dates";
 import { securityOverview } from "@/lib/security";
 import { requireRole } from "@/lib/session";
 
@@ -82,7 +82,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                     <td className={`${td} font-mono text-xs`} title={r.lastAgent ?? ""}><Link href={`/admin/audit?ip=${encodeURIComponent(r.ip)}&days=1`} className="underline">{r.ip}</Link></td>
                     <td className={td}>{r.failures}</td>
                     <td className={td}>{r.accounts}</td>
-                    <td className={`${td} whitespace-nowrap`}>{formatDateTime(r.lastSeen)}</td>
+                    <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={r.lastSeen} />}</td>
                   </tr>
                 ))}
               </Table>
@@ -94,7 +94,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
                     <td className={`${td} [overflow-wrap:anywhere]`}><Link href={`/admin/audit?q=${encodeURIComponent(a.account)}&days=1`} className="underline">{a.account}</Link></td>
                     <td className={td}>{a.failures}</td>
                     <td className={td}>{a.ips}</td>
-                    <td className={`${td} whitespace-nowrap`}>{formatDateTime(a.lastSeen)}</td>
+                    <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={a.lastSeen} />}</td>
                   </tr>
                 ))}
               </Table>
@@ -144,7 +144,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         {rows.length === 0 && <tr><td className={td} colSpan={7}>No entries.</td></tr>}
         {rows.map((r) => (
           <tr key={r.id}>
-            <td className={`${td} whitespace-nowrap`}>{formatDateTime(r.createdAt.toISOString())}</td>
+            <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={r.createdAt.toISOString()} />}</td>
             <td className={td}><StatusPill status={r.severity} /></td>
             <td className={`${td} max-w-[12rem] truncate`} title={r.actor}>{r.actor}</td>
             <td className={`${td} whitespace-nowrap font-mono text-xs`}>{r.action}</td>

@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
@@ -28,8 +29,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   return (
     <>
       <AdminHeader
-        title={`${String(run.job_name ?? run.kind)} · ${new Date(String(run.started_at)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`}
-        description={<>Trigger {String(run.trigger)}{run.dry_run ? " · dry run (nothing saved to the review queue)" : ""} · job version {String(run.job_version ?? "—")} · ${(Number(run.cost_usd) + Number(run.image_cost_usd)).toFixed(3)} ({Number(run.tokens).toLocaleString("en")} tokens){run.parent_run_id ? <> · retry of <Link className="underline" href={`/admin/news/runs/${String(run.parent_run_id)}`}>{String(run.parent_run_id).slice(0, 8)}</Link></> : null}</>}
+        title={String(run.job_name ?? run.kind)}
+        description={<>Started <LocalTime iso={String(run.started_at)} /> · Trigger {String(run.trigger)}{run.dry_run ? " · dry run (nothing saved to the review queue)" : ""} · job version {String(run.job_version ?? "—")} · ${(Number(run.cost_usd) + Number(run.image_cost_usd)).toFixed(3)} ({Number(run.tokens).toLocaleString("en")} tokens){run.parent_run_id ? <> · retry of <Link className="underline" href={`/admin/news/runs/${String(run.parent_run_id)}`}>{String(run.parent_run_id).slice(0, 8)}</Link></> : null}</>}
         actions={
           run.job_id && !live ? (
             <>
