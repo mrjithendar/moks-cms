@@ -7,7 +7,7 @@
 # change ships without rebuilding jithendar-com. busybox only provides `cp`.
 #
 #   docker build --platform linux/arm64 -f Dockerfile.content -t jithendar-content .   (run from services/www/)
-FROM busybox:1.37.0
+FROM busybox:1.38.0
 COPY --chown=1000:1000 content /content
 COPY --chown=1000:1000 public/images /images
 USER 1000:1000
