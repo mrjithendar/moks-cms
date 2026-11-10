@@ -158,7 +158,7 @@ class ReportCrew:
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=PROMPT_VERSION, default_model=self.settings.classify_model)
+            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=PROMPT_VERSION, crew="report", default_model=self.settings.classify_model)
             kind = report.get("type", "weekly")
             task = Task(
                 description=(
