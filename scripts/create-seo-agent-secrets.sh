@@ -8,9 +8,8 @@
 # drafting already uses; one key, one shared monthly budget). Two different random tokens: one per direction.
 # Nothing is printed, written to disk or committed; secrets travel on stdin only. Restart commands are printed.
 set -euo pipefail
-CTX="${1:-mk4}"
 NS=jithendar
-k() { kubectl --context "$CTX" -n "$NS" "$@"; }
+k() { kubectl -n "$NS" "$@"; }
 
 k get secret jithendar-com-env >/dev/null
 agent_token=$(openssl rand -hex 32)
@@ -32,5 +31,5 @@ AT="$agent_token" CT="$callback_token" python3 -c 'import json, os; print(json.d
 unset agent_token callback_token ANTHROPIC_API_KEY
 
 echo "Stored seo-agent-env and the site's SEO_AGENT_TOKEN / SEO_AGENT_CALLBACK_TOKEN in $NS. Restart both:"
-echo "  kubectl --context $CTX -n $NS rollout restart deploy/seo-agent"
-echo "  kubectl --context $CTX -n $NS rollout restart deploy/jithendar-com"
+echo "  kubectl -n $NS rollout restart deploy/seo-agent"
+echo "  kubectl -n $NS rollout restart deploy/jithendar-com"
