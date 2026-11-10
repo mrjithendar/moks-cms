@@ -46,7 +46,7 @@ export type Change = {
 };
 
 export type Fields = { title: string; description: string; seoTitle: string | null; seoDescription: string | null };
-export type BaseSnapshot = Fields & { body: string; collection: string; slug: string; version: number };
+export type BaseSnapshot = Fields & { body: string; collection: string; slug: string; version: number; updatedAt?: string | null };
 
 export type BlockKind = "heading" | "paragraph" | "code" | "list" | "blockquote" | "table" | "html" | "thematicBreak" | "directive" | "other";
 export type Block = { id: string; kind: BlockKind; depth?: number; lang?: string | null; headingPath: string; start: number; end: number; source: string; hasImage: boolean; firstSentenceEnd?: number };

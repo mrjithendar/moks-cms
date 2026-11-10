@@ -13,11 +13,23 @@ import { publishDuePosts } from "./posts";
 export async function workerTick(now = new Date()) {
   const published = await publishDuePosts(now);
   if (published.length) log.info("scheduled posts published", { count: published.length, ids: published });
-  const { seoJobHandler, draftJobHandler } = await import("./seo-intel/handlers");
-  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler }, now);
+  const { seoJobHandler, draftJobHandler, verifyJobHandler } = await import("./seo-intel/handlers");
+  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler }, now);
   if (jobs.done || jobs.retried || jobs.failed) log.info("jobs processed", jobs);
   await practiceTick(now);
+  await seoDraftTick(now);
   await seoScheduleTick(now);
+}
+
+/** SEO drafts an admin approved for later: published on the tick their time comes (like scheduled posts). */
+async function seoDraftTick(now: Date) {
+  try {
+    const { publishDueDrafts } = await import("./seo-intel/publish");
+    const n = await publishDueDrafts(now);
+    if (n) log.info("scheduled seo drafts published", { count: n });
+  } catch (error) {
+    log.warn("seo draft tick failed", { operation: "seo_draft_tick", err: error });
+  }
 }
 
 const seoState = globalThis as unknown as { __seoTickAt?: number };

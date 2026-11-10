@@ -148,7 +148,7 @@ was needed). Decisions D-21 … in DECISIONS.md.
 | Phase | Status |
 |---|---|
 | 1 Claude API draft automation | done (mock-tested; live API needs credentials) |
-| 2 Review & approve (mobile-first) | pending |
+| 2 Review & approve (mobile-first) | done (mock-tested; live publish verified only against local fakes) |
 | 3 Search-engine submission | pending |
 | 4 Automated internal linking | pending |
 | 5 Content optimization popovers | pending |
@@ -181,3 +181,28 @@ was needed). Decisions D-21 … in DECISIONS.md.
   categories, per-change decisions/edits.
 - Two v1 tests needed scoping because they counted *all* `seo_*` tables (now 21); they now check the tables 0011
   creates. One v1 page test renders Settings synchronously, so the usage card is a sync component fed by the page.
+
+## v2 Phase 2 notes
+
+- `publish.ts` (D-21): approve one draft → preflight (admin, ≥ 1 accepted, no blocking flags, base version unchanged,
+  still published, no unsaved editor copy, no conflicts) → `updatePost` (reason `seo-draft`) → baseline metrics →
+  linked recommendations `implemented` → revalidate → `seo_verify` job (+40 s; up to 3 attempts) → submission
+  (Phase 3). Schedule ("publish later") → `publishDueDrafts` in the 30-s worker, as the approving admin (refused if
+  no longer admin). Rollback restores the previous revision's fields (or the draft's snapshot when an imported post
+  has no revision row) as a new revision, then verifies + submits again. Draft outcomes at +28/+56 days.
+- Substantive-change rule: only body changes (heading/paragraph/code) move `updatedAt` → sitemap `<lastmod>`,
+  visible "Updated" and JSON-LD `dateModified`. Title/meta/alt/link-only drafts leave them alone.
+- API: `POST /drafts`, `GET /drafts/{id}`, `PATCH /drafts/{id}/changes/{c}`, `POST /drafts/{id}/approve|reject|rollback|regenerate`,
+  `POST /review/bulk-reject`. No bulk approve. v1's auth matrix covers them automatically (38 tests).
+- UI: `/admin/seo/review` (Articles / News / Published tabs, filters type/priority/age, sort, cards on phones,
+  bulk reject), `/admin/seo/review/{id}` (`DiffReview`: summary bar, Auto/Inline/Side-by-side, rendered-token word
+  diffs, line diffs for code, numbered changes with j/k, a/x, swipe, per-change accept/reject/edit with live counter,
+  rationale + evidence, SERP preview desktop/mobile, sticky thumb-reach action bar, confirmation dialog listing every
+  step, schedule, reject with reason, verification + submission timeline + rollback), `/preview/seo-draft/{id}`
+  (public `ArticleView` with accepted changes, admin-only, noindex). Shared `badges.tsx` scales.
+- v1's static "no automatic publishing" scan now exempts only `publish.ts`, which has its own assertions (only
+  `updatePost`, only from `publishDraft`/`rollbackDraft`, importers limited to the approve/rollback routes and the
+  job registry).
+- Tests: `tests/seo-v2-review.test.ts` (12): accepted/edited/rejected → exact post fields + revision + audit,
+  metadata-only keeps lastmod, guards, duplicate-title block, scheduling (+ demoted approver), verification pass /
+  retry / fail-without-submit, `verifyHtml`, rollback (+ refused after later edits), queue/reject, outcomes.

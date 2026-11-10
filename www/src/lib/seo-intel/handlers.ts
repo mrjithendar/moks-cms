@@ -1,6 +1,7 @@
 import { pollDraftBatches, weeklyBatch } from "./drafts";
 import { registerSeoHandler } from "./jobs";
 import { sendDraftDigest } from "./notify";
+import { captureDraftOutcomes } from "./publish";
 import { captureOutcomes, generateRecommendations } from "./recommendations";
 import { generateReport } from "./reports";
 import { runTechnicalScan } from "./technical";
@@ -22,7 +23,7 @@ registerSeoHandler("report_monthly", async (ctx) => {
   const r = await generateReport("monthly", ctx.payload.trigger === "schedule" ? "schedule" : "manual", ctx.now);
   return { status: "succeeded", rows: 1, detail: r };
 });
-registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: await captureOutcomes(ctx.now) }));
+registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: (await captureOutcomes(ctx.now)) + (await captureDraftOutcomes(ctx.now)) }));
 
 registerSeoHandler("drafts_weekly", async () => {
   const r = await weeklyBatch();
@@ -39,3 +40,4 @@ registerSeoHandler("drafts_digest", async (ctx) => {
 
 export { seoJobHandler, runSeoJob } from "./jobs";
 export { draftJobHandler } from "./drafts";
+export { verifyJobHandler } from "./publish";

@@ -153,14 +153,30 @@ describe("no automatic publishing", () => {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : []));
   });
 
+  // v2 (docs/seo/DECISIONS.md D-21): publish.ts is the single module allowed to update a post, from an explicit approval.
+  const PUBLISHER = path.resolve(import.meta.dirname, "..", "src/lib/seo-intel/publish.ts");
+
   it("no SEO module calls the CMS's publish/update/delete functions or writes post status", () => {
     expect(files.length).toBeGreaterThan(20);
-    for (const f of files) {
+    for (const f of files.filter((x) => x !== PUBLISHER)) {
       const src = fs.readFileSync(f, "utf8");
       expect(src, f).not.toMatch(/\b(publishPost|updatePost|publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost)\b/);
       expect(src, f).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);
       expect(src, f).not.toMatch(/status:\s*["']published["']/);
     }
+  });
+
+  it("publish.ts only uses updatePost (never publish/delete/raw writes), and only from approve, schedule and rollback", () => {
+    const src = fs.readFileSync(PUBLISHER, "utf8");
+    expect(src).not.toMatch(/\b(publishPost|publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost|createPost)\b/);
+    expect(src).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);
+    const callers = [...src.matchAll(/^(?:export )?async function (\w+)[\s\S]*?^}/gm)].filter((m) => /\bupdatePost\(/.test(m[0])).map((m) => m[1]);
+    expect(callers.sort()).toEqual(["publishDraft", "rollbackDraft"]);
+    expect(src).toMatch(/export async function approveDraft[\s\S]*?publishDraft\(/);
+    expect(src).toMatch(/export async function publishDueDrafts[\s\S]*?role !== "admin"/);
+    // nothing else in the SEO code imports the publisher's write paths except the routes and the scheduler hook
+    const importers = files.filter((f) => f !== PUBLISHER && /from "(@\/lib\/seo-intel|\.)\/publish"/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(path.resolve(import.meta.dirname, ".."), f)).sort();
+    expect(importers).toEqual(["src/app/api/admin/seo/drafts/[id]/approve/route.ts", "src/app/api/admin/seo/drafts/[id]/rollback/route.ts", "src/lib/seo-intel/handlers.ts"]);
   });
 
   it("the only post-creating call is createPost with a hard-coded draft status", () => {

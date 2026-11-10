@@ -1,6 +1,7 @@
 /** /admin/seo sections, in navigation order. */
 export const SEO_SECTIONS = [
   { href: "/admin/seo", label: "Overview" },
+  { href: "/admin/seo/review", label: "Review queue" },
   { href: "/admin/seo/search", label: "Search performance" },
   { href: "/admin/seo/analytics", label: "Visitor analytics" },
   { href: "/admin/seo/pages", label: "Page intelligence" },

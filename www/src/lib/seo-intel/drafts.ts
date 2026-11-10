@@ -107,9 +107,9 @@ export async function eligibleRecommendations(db: Db, s: SeoSettings, articleId:
 }
 
 export async function loadBase(db: Db, articleId: string): Promise<BaseSnapshot & { status: string; id: string }> {
-  const [r] = rowsOf<Record<string, unknown>>(await db.execute(sql`select id, collection, slug, title, description, seo_title, seo_description, body, version, status, deleted_at from post where id = ${articleId}`));
+  const [r] = rowsOf<Record<string, unknown>>(await db.execute(sql`select id, collection, slug, title, description, seo_title, seo_description, body, version, status, deleted_at, updated_at from post where id = ${articleId}`));
   if (!r || r.deleted_at) throw new PermanentJobError("Article not found.");
-  return { id: String(r.id), collection: String(r.collection), slug: String(r.slug), title: String(r.title), description: String(r.description), seoTitle: (r.seo_title as string | null) ?? null, seoDescription: (r.seo_description as string | null) ?? null, body: String(r.body ?? ""), version: Number(r.version), status: String(r.status) };
+  return { id: String(r.id), collection: String(r.collection), slug: String(r.slug), title: String(r.title), description: String(r.description), seoTitle: (r.seo_title as string | null) ?? null, seoDescription: (r.seo_description as string | null) ?? null, body: String(r.body ?? ""), version: Number(r.version), status: String(r.status), updatedAt: r.updated_at ? new Date(String(r.updated_at)).toISOString() : null };
 }
 
 export async function validationContext(db: Db, s: SeoSettings, articleId: string, categories: string[]): Promise<ValidationContext> {
@@ -188,7 +188,7 @@ const uuidArray = (ids: string[]) => sql`${`{${ids.join(",")}}`}::uuid[]`;
 
 /** Reserve the article's open draft row (insert or reuse), so two workers never draft the same article twice. */
 async function reserveDraft(db: Db, articleId: string, base: BaseSnapshot, trigger: string): Promise<DraftRow> {
-  const snapshot = { title: base.title, description: base.description, seoTitle: base.seoTitle, seoDescription: base.seoDescription, body: base.body, collection: base.collection, slug: base.slug, version: base.version };
+  const snapshot = { title: base.title, description: base.description, seoTitle: base.seoTitle, seoDescription: base.seoDescription, body: base.body, collection: base.collection, slug: base.slug, version: base.version, updatedAt: base.updatedAt ?? null };
   await db.execute(sql`
     insert into seo_drafts (article_id, collection, status, base_version, base_snapshot, trigger)
     values (${articleId}, ${base.collection}, 'generating', ${base.version}, ${JSON.stringify(snapshot)}::jsonb, ${trigger})
@@ -420,7 +420,7 @@ export async function pollDraftBatches(deps: { fetchImpl?: typeof fetch } = {}) 
 
 // --- Review queue ---------------------------------------------------------------------------------------------
 
-export type QueueFilter = { collection?: "blog" | "news" | "projects"; type?: string; priority?: "high" | "medium" | "low"; maxAgeDays?: number; status?: string; sort?: "priority" | "newest" | "oldest" | "changes" };
+export type QueueFilter = { collection?: "blog" | "news" | "projects"; type?: string; priority?: "high" | "medium" | "low"; maxAgeDays?: number; done?: boolean; sort?: "priority" | "newest" | "oldest" | "changes" };
 
 export async function reviewQueue(f: QueueFilter = {}) {
   const db = await getDb();
@@ -430,7 +430,7 @@ export async function reviewQueue(f: QueueFilter = {}) {
         (select max(r.priority_score) from seo_recommendations r where r.id = any(d.recommendation_ids)) as priority,
         (select json_agg(json_build_object('problem', r.problem, 'band', r.priority_band, 'category', r.category) order by r.priority_score desc) from seo_recommendations r where r.id = any(d.recommendation_ids)) as recs
       from seo_drafts d join post p on p.id = d.article_id
-      where d.status in ${f.status ? sql`(${f.status})` : sql`('ready_for_review', 'generation_failed', 'generating', 'scheduled')`}
+      where d.status in ${f.done ? sql`('published', 'rolled_back')` : sql`('ready_for_review', 'generation_failed', 'generating', 'scheduled')`}
         ${f.collection ? sql`and d.collection = ${f.collection}` : sql``}
         ${f.maxAgeDays ? sql`and d.created_at > now() - make_interval(days => ${f.maxAgeDays})` : sql``}
       order by d.created_at desc limit 300`),
