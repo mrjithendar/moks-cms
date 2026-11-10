@@ -43,12 +43,12 @@ test("draft → review → reject one, edit one → approve & publish → verify
   await expect(card(1).getByText("Accepted with your edit")).toBeVisible();
   // 2: reject the meta description
   await card(2).getByRole("button", { name: "Reject" }).click();
-  await expect(card(2).getByText("✕ Rejected")).toBeVisible();
+  await expect(card(2).locator("span", { hasText: "✕ Rejected" })).toBeVisible(); // the status badge (the pressed button reads the same)
   // 3 + 4: accept, using the keyboard (j to move, a to accept)
   await card(2).focus();
   await page.keyboard.press("j");
   await page.keyboard.press("a");
-  await expect(card(3).getByText("✓ Accepted")).toBeVisible();
+  await expect(card(3).locator("span", { hasText: "✓ Accepted" })).toBeVisible();
   await page.keyboard.press("j");
   await page.keyboard.press("a");
   await expect(page.getByText("3 of 4 accepted")).toBeVisible();

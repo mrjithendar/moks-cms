@@ -35,7 +35,10 @@ export async function register() {
   const { listenForInvalidations } = await import("./lib/cache-bus");
   await listenForInvalidations().catch((err) => log.warn("cache invalidation listener unavailable", { err }));
 
-  if (!process.env.DATABASE_URL) return;
+  // Local E2E only (docs/seo/OPERATIONS.md "E2E"): PGlite has no DATABASE_URL, but the review-flow specs need the
+  // worker (draft, audit, verify and submission jobs). E2E_WORKER=1 opts in; it is ignored when APP_ENV=production.
+  const localWorker = !process.env.DATABASE_URL && process.env.E2E_WORKER === "1" && process.env.APP_ENV !== "production";
+  if (!process.env.DATABASE_URL && !localWorker) return;
   const { getDb } = await import("./db");
   const { migrateDb } = await import("./db/migrate");
   const { withSpan } = await import("./lib/trace");

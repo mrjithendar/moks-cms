@@ -153,8 +153,8 @@ was needed). Decisions D-21 … in DECISIONS.md.
 | 4 Automated internal linking | done (unit + DB-tested; uses real corpus once posts are in Postgres) |
 | 5 Content optimization popovers | done (unit + DOM-tested) |
 | 6 Keyword opportunities | done (SQL + mocked-Haiku tested; real data needs GSC credentials) |
-| 7 UI/UX overhaul | pending |
-| 8 Tests, docs, PR | pending |
+| 7 UI/UX overhaul | done (owner commit `f592652`; Lighthouse before/after + screenshots in `docs/seo/ui-review/`) |
+| 8 Tests, docs, PR | done (PR #25 merged; E2E harness fixed and green 2026-11-10, see below) |
 
 ## v2 Phase 1 notes
 
@@ -287,3 +287,36 @@ to the session scratchpad. Recommendation: keep this repository outside a synced
   chips, roving keyboard rows, saved views via `/api/admin/seo/views`, sparkline); CSV export (formula-safe).
 - Bug found by tests and fixed: "locking"/"lock" did not cluster (added `-ing` stemming).
 - Tests: `tests/seo-v2-keywords.test.ts` (18).
+
+
+## v2 Phase 7 notes (owner commit `f592652` "added v2 seo")
+
+- Admin shell rebuilt (`SeoShell`, health score, synced charts), admin CSS split from public CSS (D-37), public-site
+  additions (D-40), E2E specs (`e2e/review-flow`, `popover`, `screenshots`, `seo-snapshot`) and the Lighthouse "after" run:
+  every page within ±1 point / ±10 ms LCP of the baseline (`docs/seo/ui-review/lighthouse-*.txt`).
+
+## v2 Phase 8: validation (2026-11-10, branch `feature/seo-v3-orchestration` from master `b08d54a`, Node 26)
+
+| Command | Result |
+|---|---|
+| `npm run lint` / `npm run typecheck` | pass |
+| `npm test` | pass (before v3 changes: 59 files, 695 tests) |
+| `APP_ENV=production npm run build` | pass; the 1 pre-existing Edge-runtime warning (`request-log.ts`) |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+| E2E `review-flow` + `popover` (desktop + mobile) | **pass** after three harness fixes (below); first runs failed 4/4 |
+
+E2E harness bugs found and fixed (none in product code):
+1. `instrumentation.ts` returned before starting the worker when there is no `DATABASE_URL` (local PGlite), so the draft,
+   audit, verify and submission jobs the specs wait for never ran. `E2E_WORKER=1` now opts in locally (ignored when
+   `APP_ENV=production`); OPERATIONS.md "E2E" updated.
+2. `e2e/helpers.ts#signIn` waited for `/\/admin/`, which the login URL itself (`/login?next=/admin/seo`) matches, so a
+   failed sign-in passed silently; and Cloudflare's Turnstile widget does not produce a token in headless Chrome here.
+   It now signs in through Better Auth's endpoint with Cloudflare's documented test token (the server still verifies it)
+   and checks the pathname.
+3. `e2e/fake-services.mjs` proposed a heading change on block `b5` (a paragraph); the heading is `b4`. The validators
+   correctly rejected it twice → `generation_failed`. Also two strict-mode locators matched both the status badge and
+   the pressed button ("✕ Rejected").
+
+Also fixed: the secret filter `sk-[A-Za-z0-9]{8,}` (llm.ts) missed Anthropic-style keys `sk-ant-…` (found by a v3 test).
+Not run: `e2e/screenshots.spec.ts` (would overwrite the committed screenshots), `seo-snapshot` (needs the published-content
+scratch setup from Phase 7).

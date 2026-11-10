@@ -15,7 +15,7 @@ function changeSet() {
       { type: "title", block_id: "", before: TITLE, after: "Kubernetes ingress TLS with cert-manager", rationale: "Leads with the searched phrase (fixture evidence).", evidence_ref: [], source_urls: [] },
       { type: "meta_description", block_id: "", before: META, after: "Terminate TLS at a Kubernetes ingress with cert-manager: Helm install, ClusterIssuer setup, renewal, and the DNS and HTTP-01 failures to check first.", rationale: "States what the reader gets in under 155 characters.", evidence_ref: [], source_urls: [] },
       { type: "paragraph_edit", block_id: "b2", before: "Install it with Helm.", after: "Install the ingress-nginx controller with Helm.", rationale: "Names what is installed.", evidence_ref: [], source_urls: [] },
-      { type: "heading", block_id: "b5", before: "Terminate TLS", after: "Terminate TLS with cert-manager", rationale: "Matches the query wording.", evidence_ref: [], source_urls: [] },
+      { type: "heading", block_id: "b4", before: "Terminate TLS", after: "Terminate TLS with cert-manager", rationale: "Matches the query wording.", evidence_ref: [], source_urls: [] },
     ],
   });
 }
