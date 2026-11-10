@@ -82,6 +82,9 @@ class Relevance(BaseModel):
     model_config = ConfigDict(extra="forbid")
     relevant: bool
     reason: str
+    # v5 (ask-blog-v3): which excerpt numbers address the question. Optional for backward compatibility: an answer
+    # without it (older prompt, cached result, fake models in tests) means "all excerpts", as in v4.
+    relevant_excerpts: list[int] = Field(default_factory=list, max_length=12, description="Numbers of the excerpts that directly help answer the question; [] when relevant=false.")
 
 
 class Citation(BaseModel):
