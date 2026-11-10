@@ -1,9 +1,15 @@
-/* Utilities used only by the SEO admin (components/seo, app/admin/seo), loaded by app/admin/seo/layout.tsx only, so
-   public pages never download them (globals.css excludes these folders with `@source not`).
+/* Utilities for SEO admin pages, loaded by app/admin/seo/layout.tsx only, so public pages never download them
+   (globals.css excludes components/seo and app/admin/seo with `@source not`).
+
+   This sheet loads after globals.css and its utilities are unlayered, so on SEO pages they win over globals.css for
+   every class both contain. It must therefore contain *every* class that can render on these pages (the site header,
+   the admin shell and its nav, not only the SEO components), in Tailwind's own order. Scanning only the SEO folders
+   made its copies of base utilities (`flex`, `hidden`, `border`, `p-3`, `sm:grid-cols-2`) override the admin nav's
+   `lg:` rules, so the phone layout of the admin menu showed on desktop (2026-11-10). A test guards this.
    The default theme and the site tokens are imported (not referenced) so the theme variables these utilities use are
    defined here too; Tailwind emits only the variables a stylesheet actually uses. */
 @import "tailwindcss/theme" layer(theme);
 @import "../../theme-tokens.css";
 @tailwind utilities source(none);
-@source "../../../components/seo";
-@source "./";
+@source "../../../components";
+@source "../../";
