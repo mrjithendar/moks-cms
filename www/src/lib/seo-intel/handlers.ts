@@ -1,12 +1,8 @@
-<<<<<<< HEAD
 import { pollDraftBatches, weeklyBatch } from "./drafts";
 import { registerSeoHandler } from "./jobs";
 import { refreshKeywords, trackedAlerts } from "./keywords";
 import { sendDraftDigest } from "./notify";
 import { captureDraftOutcomes } from "./publish";
-=======
-import { registerSeoHandler } from "./jobs";
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 import { captureOutcomes, generateRecommendations } from "./recommendations";
 import { generateReport } from "./reports";
 import { runTechnicalScan } from "./technical";
@@ -28,7 +24,6 @@ registerSeoHandler("report_monthly", async (ctx) => {
   const r = await generateReport("monthly", ctx.payload.trigger === "schedule" ? "schedule" : "manual", ctx.now);
   return { status: "succeeded", rows: 1, detail: r };
 });
-<<<<<<< HEAD
 registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: (await captureOutcomes(ctx.now)) + (await captureDraftOutcomes(ctx.now)) }));
 
 registerSeoHandler("drafts_weekly", async () => {
@@ -54,8 +49,3 @@ export { seoJobHandler, runSeoJob } from "./jobs";
 export { draftJobHandler } from "./drafts";
 export { verifyJobHandler } from "./publish";
 export { submissionJobHandler } from "./submission";
-=======
-registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: await captureOutcomes(ctx.now) }));
-
-export { seoJobHandler, runSeoJob } from "./jobs";
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

@@ -133,7 +133,6 @@ the database (survive restarts).
   row, so a later deploy re-creates empty tables. Also delete the `setting` row `seo` if wanted.
 - **Content changes**: proposals only ever land in editor working copies; anything published went through the editor
   and can be restored from its revision history.
-<<<<<<< HEAD
 
 ---
 
@@ -182,5 +181,3 @@ and `next start`, Lighthouse 13.5.0 mobile (simulated throttling), median of 3; 
 `scripts/lighthouse-summary.py`. SEO snapshot: `npx tsx scripts/seo-snapshot.ts --check tests/fixtures/seo-snapshot.json`
 or `SEO_SNAPSHOT_CHECK=1 npx playwright test e2e/seo-snapshot.spec.ts` against the same configuration. To snapshot the
 real top-20 URLs, set `SEO_SNAPSHOT_URLS` from Search Console and capture against production before a release.
-=======
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

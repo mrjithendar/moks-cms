@@ -118,7 +118,6 @@ which links the dashboard's Sync history to Loki/Jaeger.
 `grafana/jithendar-com-seo.json` (uid `jithendar-com-seo`) is added to the existing folder synced by the shared
 `grafana` Argo CD app. It only reads metrics/logs this site already exports. Like the other dashboards, it is loaded
 after merge and an Argo CD sync of the `grafana` app (a person does that).
-<<<<<<< HEAD
 
 ---
 
@@ -229,5 +228,3 @@ language label, mobile TOC, instant search and self-hosted fonts with `font-disp
 as they were. Added: fence-meta filenames and line highlighting (opt-in; existing articles render unchanged),
 TOC scroll-spy (~1 KB), related reading from the internal-link graph, series/topic previous-next, category "Start here"
 hub row. Nothing in metadata, JSON-LD, canonicals, sitemap or robots changed (snapshot test).
-=======
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

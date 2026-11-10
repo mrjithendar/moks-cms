@@ -59,7 +59,6 @@ Admin → SEO intelligence → Settings (which then win).
 - **Report emails**: Admin → Storage & email must be configured; then Settings → Reports: enable and add recipients.
 - **Alerts**: copy `www/docs/seo/prometheus-alerts.yml` into the miniKube repo (OPERATIONS.md#alerts).
 - **Dashboard**: sync the `grafana` Argo CD app after merge.
-<<<<<<< HEAD
 
 ---
 
@@ -106,5 +105,3 @@ submissions (each event is still logged as `skipped`).
 ## 12. Digest recipients
 Settings → Drafts → digest → recipients (requires email in Admin → Storage & email). Until a recipient is set, nothing
 is emailed.
-=======
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd

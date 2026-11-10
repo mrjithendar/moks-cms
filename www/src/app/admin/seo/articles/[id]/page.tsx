@@ -6,7 +6,6 @@ import { ApiButton } from "@/components/seo/ApiButton";
 import { TrendLine } from "@/components/seo/Charts";
 import { SideBySide } from "@/components/seo/Diff";
 import { Empty, fmtInt, fmtPct, fmtPos, Section } from "@/components/seo/ui";
-<<<<<<< HEAD
 import { getDb } from "@/db";
 import { articlePanel } from "@/lib/seo-intel/article-panel";
 import { openDraft } from "@/lib/seo-intel/drafts";
@@ -26,18 +25,6 @@ export default async function ArticleSeoPage({ params, searchParams }: { params:
   const db = await getDb();
   const [submissions, draft] = await Promise.all([listSubmissions(db, { articleId: id }), openDraft(db, id)]);
   const tl = timelineSummary(submissions);
-=======
-import { articlePanel } from "@/lib/seo-intel/article-panel";
-import { UUID } from "@/lib/seo-intel/http";
-
-export const metadata = { title: "Article SEO" };
-
-export default async function ArticleSeoPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  if (!UUID.test(id)) notFound();
-  const p = await articlePanel(id);
-  if (!p) notFound();
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
   const a = p.article;
   const proposals = p.optimizations.filter((o) => o.status === "proposed");
   const decided = p.optimizations.filter((o) => o.status !== "proposed");
@@ -46,11 +33,7 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
       <AdminHeader
         title={a.title}
         description={<>SEO panel for <code>{a.path}</code> ({a.status}). Proposals never change the article: accepting one puts it into your editor working copy, and you save or publish from the editor as usual.</>}
-<<<<<<< HEAD
         actions={<><Link href={`/admin/posts/${a.id}`} className={buttonClass("secondary", "sm")}>Open in editor</Link><ApiButton url={`/api/admin/seo/articles/${a.id}/optimize`} label="Generate proposals" variant="secondary" />{a.status === "published" && <ApiButton url="/api/admin/seo/drafts" body={{ articleId: a.id }} label="Draft with Claude" variant="primary" />}</>}
-=======
-        actions={<><Link href={`/admin/posts/${a.id}`} className={buttonClass("secondary", "sm")}>Open in editor</Link><ApiButton url={`/api/admin/seo/articles/${a.id}/optimize`} label="Generate proposals" variant="primary" /></>}
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="!p-4"><p className="text-sm text-fg-subtle">Clicks (GSC, 28 d)</p><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtInt(p.gsc?.clicks ?? null)}</p><p className="text-xs text-fg-subtle">{p.period.start} – {p.period.end}</p></Card>
@@ -58,7 +41,6 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
         <Card className="!p-4"><p className="text-sm text-fg-subtle">Sessions (GA4, landing)</p><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtInt(p.ga4.sessions)}</p><p className="text-xs text-fg-subtle">{fmtInt(p.ga4.organic)} from organic search</p></Card>
         <Card className="!p-4"><p className="text-sm text-fg-subtle">Engagement (GA4)</p><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtPct(p.ga4.engagementRate)}</p><p className="text-xs text-fg-subtle">{p.ga4.avgEngagementSeconds === null ? "—" : `${Math.round(p.ga4.avgEngagementSeconds)} s per session`}</p></Card>
       </div>
-<<<<<<< HEAD
       <Section title="Search engines" description="Submitting is a crawl hint, not an indexing guarantee. Google's state comes from the URL Inspection API (its last-known state, not live).">
         <Card>
           <ol className="grid gap-3 text-sm sm:grid-cols-3" aria-label="Submission timeline">
@@ -74,8 +56,6 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
           {draft && <p className="mt-3 text-sm"><Link className="underline" href={`/admin/seo/review/${draft.id}`}>Open draft ({draft.status.replace(/_/g, " ")}, {draft.changes.length} changes)</Link></p>}
         </Card>
       </Section>
-=======
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
       <Section title="Clicks per day (90 days)"><Card><TrendLine label="Clicks" data={p.gscTrend.map((t) => ({ date: t.date, value: t.clicks }))} /></Card></Section>
 
       <Section title={`Proposals (${proposals.length})`} description="Each shows the current value next to the proposal. Accept → your working copy; Reject → dismissed. AI proposals are labelled and must be checked for accuracy.">
@@ -137,7 +117,6 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
           ))}</ul>
         ) : <Empty>No findings.</Empty>}
       </Section>
-<<<<<<< HEAD
       <Section id="issues" title="All located issues" description="Each issue with where it is. Line links jump to the body below and highlight the line.">
         {(() => {
           const issues = issuesFor("errors", p.audit, a.body).concat(issuesFor("warnings", p.audit, a.body), issuesFor("notices", p.audit, a.body));
@@ -156,8 +135,6 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
           </ol>
         </details>
       </Section>
-=======
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
       <Section title="Heading outline">
         {p.audit.headings.length ? <ol className="space-y-0.5 text-sm">{p.audit.headings.map((h, i) => <li key={i} style={{ paddingLeft: `${(h.level - 1) * 1}rem` }}><span className="text-fg-subtle">H{h.level}</span> {h.text}</li>)}</ol> : <Empty>No headings.</Empty>}
       </Section>

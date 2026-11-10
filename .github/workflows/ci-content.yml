@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-name: jithendar.com content
-=======
 name: wwww-content
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 
 # Content-only releases: no lint, no typecheck, no Next.js build.
 #
