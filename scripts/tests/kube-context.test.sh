@@ -77,19 +77,45 @@ if run KUBE_CONTEXT=ctx-b && grep -q "Kube context: ctx-b (KUBE_CONTEXT), API se
   pass "prints the context and API server"
 else nope "prints the context and API server"; fi
 
-# 6. With a TTY and no KUBE_CONTEXT it asks, and anything but yes aborts (needs util-linux/BSD `script`; skipped otherwise).
-if command -v script >/dev/null 2>&1; then
+# 6. With a TTY and no KUBE_CONTEXT it asks, and anything but yes aborts. A python pty driver answers 'n' only once the
+#    prompt has appeared (no sleep-based timing, which flaked with `script` fed from a pipe). Skipped without python3.
+if command -v python3 >/dev/null 2>&1; then
   : >"$KUBECTL_LOG"
-  if [[ "$(uname)" == Darwin ]]; then
-    (sleep 1; printf 'n\n'; sleep 1) | env -u KUBE_CONTEXT -u YES STUB_CURRENT=ctx-a script -q /dev/null bash "$TMP/script.sh" >"$TMP/tty" 2>&1
-  else
-    (sleep 1; printf 'n\n'; sleep 1) | env -u KUBE_CONTEXT -u YES STUB_CURRENT=ctx-a script -qec "bash $TMP/script.sh" /dev/null >"$TMP/tty" 2>&1
-  fi
-  if grep -q "Continue against 'ctx-a'" "$TMP/tty" && grep -q "Aborted" "$TMP/tty" && ! grep -q "get pods" "$KUBECTL_LOG"; then
+  env -u KUBE_CONTEXT -u YES STUB_CURRENT=ctx-a python3 - "$TMP/script.sh" >"$TMP/tty" 2>&1 <<'PY'
+import os, pty, select, signal, sys, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("bash", ["bash", sys.argv[1]])
+out, answered, deadline = b"", False, time.time() + 15
+while time.time() < deadline:
+    if not select.select([fd], [], [], 0.2)[0]:
+        continue
+    try:
+        chunk = os.read(fd, 4096)
+    except OSError:  # Linux: EIO once the child has exited
+        break
+    if not chunk:
+        break
+    out += chunk
+    if not answered and b"Continue against" in out:
+        os.write(fd, b"n\n")
+        answered = True
+else:
+    os.kill(pid, signal.SIGKILL)
+    out += b"\n[driver] timed out\n"
+_, status = os.waitpid(pid, 0)
+sys.stdout.write(out.decode(errors="replace"))
+sys.exit(os.waitstatus_to_exitcode(status) if hasattr(os, "waitstatus_to_exitcode") else status >> 8)
+PY
+  rc=$?
+  if ((rc != 0)) && grep -q "Continue against 'ctx-a'" "$TMP/tty" && grep -q "Aborted" "$TMP/tty" && ! grep -q "get pods" "$KUBECTL_LOG"; then
     pass "TTY without KUBE_CONTEXT prompts; 'n' aborts"
-  else nope "TTY without KUBE_CONTEXT prompts; 'n' aborts"; fi
+  else
+    nope "TTY without KUBE_CONTEXT prompts; 'n' aborts (exit $rc)"
+    sed 's/^/      /' "$TMP/tty" >&2
+  fi
 else
-  echo "SKIP  TTY prompt (no 'script' command)"
+  echo "SKIP  TTY prompt (no python3)"
 fi
 
 # 7. Every script that changes the cluster sources the guard (manifests.sh only prints).
