@@ -155,7 +155,7 @@ Claude may not add internal links (a validator rejects them). Links come only fr
 (Phase 4), whose limits are testable and auditable. They are reviewed like any other change.
 
 ## D-26 Budget: hard cap from the environment, estimated before each call
-`SEO_LLM_MONTHLY_BUDGET_USD` (default $10 when unset) is a ceiling the settings can lower but not raise. Before every
+`SEO_LLM_MONTHLY_BUDGET_USD` (default $15 when unset since v5; $10 before) is a ceiling the settings can lower but not raise. Before every
 synchronous call and every batch, an upper-bound estimate (input characters / 3.5, full `max_tokens`) is checked
 against month-to-date spend plus batch reservations; when it would cross the cap, nothing is sent, the draft records
 "Paused", the weekly job reports `skipped/budget` and every `/admin/seo` page shows a banner. Prices are first-party
@@ -444,3 +444,97 @@ As in v3 (D-52): the Python flows, the web callbacks they call and the contract 
 and pass together. Phase 6 (deployment) and Phase 7 (docs, tests) are separate commits. Two owner requests made during
 the work (the admin menu layout and the sync-history error popover) were committed separately so they can ship to master
 on their own.
+
+---
+
+# v5 (branch `feature/seo-v5-ml-rag`)
+
+## D-66 Kube-context guard: explicit or confirmed, never hard-coded
+Every cluster-changing script sources `scripts/lib/kube-context.sh`. It resolves the context from `KUBE_CONTEXT` or, failing
+that, the current context (no name is hard-coded, so the 2026-11-10 removal of `--context mk4` stands), checks that it
+exists, prints it with its API server, and pins every kubectl call to it with `--context` (a `kubectl config
+use-context` in another terminal can't redirect a running script). Only an implicit context is confirmed, and only on a
+TTY with `YES` ≠ 1, so CI and pipes never block. Calls that bring a generated kubeconfig (`--kubeconfig`, the CI
+setup scripts) use `command kubectl` to bypass the wrapper. `manifests.sh` only prints and has no guard. Tested with
+a stub kubectl in plain bash (bats isn't installed here or on the runner image by default).
+
+## D-67 Budget default $15; per-flow cost from seo_flow_runs
+The admin month is estimated at $8–10.5 (COSTS.md), too close to $10. The default is now $15 in all three places (web
+default, agent default, `seo-agent-config`). The per-flow breakdown reads `seo_flow_runs.cost_usd`, which the agent's
+persistence already writes per run, so no column was added to `seo_llm_usage`; the remainder of the admin month is
+shown as "outside flows". The 80 % alert (`SeoLlmBudget80`) already existed.
+
+## D-68 Image size gate against a committed baseline
+`scripts/image-size.sh` reports uncompressed (`docker image inspect`) and compressed (`docker save | gzip`, close to the
+registry's gzip layers) sizes in the job summary and fails above +15 % of `image-size-baseline.json`. The seo-agent gate
+runs on the pull-request build (amd64); the web image is only built at release, so its gate runs there, before the
+push. A baseline with null values reports and warns instead of failing, until it is filled from a CI run: this machine
+has no container runtime, so no size was invented.
+
+## D-69 One generated alerts file for the miniKube repo
+`scripts/build-alerts.py` combines the SEO and news groups into `docs/seo/alerts-for-minikube-repo.yaml`; the sources
+stay where they were (D-12). CI checks staleness and runs `promtool check rules` from the pinned `prom/prometheus:v3.5.0`
+image; promtool isn't installed on this machine (and downloading it was not allowed), so local runs do structural checks.
+
+## D-70 Token chunking with code windows; one row per window
+The chunker budgets tokens with the model's tokenizer (target 350, hard max 480, prefix included). An oversized code
+block keeps one display copy (`content`) and is embedded as overlapping windows, one row each (`part`, `embed_text`),
+so `similar_articles`' mean embedding and the HNSW index need no change; retrieval merges windows by content. The
+chunker version is in the stored hash, so the first reindex after deploying re-embeds everything once. Measured: v4 had
+16 % of inputs over 512 tokens; v5 has none.
+
+## D-71 Retrieval defaults decided by the eval set: vector, ≤ 3 per article
+Hybrid (RRF over pgvector + `tsvector` + exact identifiers) is built and tested but not the default: on the 55-question
+set it does not beat vector on Recall@3 (95.7 vs 100 at ≤ 3 per article; a tie at ≤ 2) and has fewer anchor hits.
+Diversification is 3 per article, not the brief's 2: 2 cost 10.7 points of section-anchor hits for no recall gain.
+Both are one environment variable (`RAG_MODE`, `RAG_MAX_PER_ARTICLE`). The eval set saturates article-level Recall@3,
+so a harder set should come before revisiting this (RAG.md "Reading it honestly").
+
+## D-72 ASK_BLOG_MIN_SCORE 0.66, applied to cosine before fusion; retrieval logged per question
+The floor is calibrated on the eval set (highest floor losing no expected answer) and stays a cosine pre-filter in
+both modes; `Hit.score` keeps meaning cosine everywhere. `seo_ask_log` gains `retrieval` and `prompt_version`
+(migration 0018) so `scripts/rag_calibrate.py` can check the floor against real traffic. It prints, never applies.
+
+## D-73 The grader names the relevant excerpts (ask-blog-v3)
+`Relevance.relevant_excerpts` is optional (default `[]` = all), so an older or cached grader answer and the fake model in
+tests keep v4 behaviour. The answer step sees only the named excerpts, renumbered; citations map back to them.
+
+## D-74 Reranker left off without downloading a model
+Its gate (+3 points of Recall@3) is unreachable when Recall@3 is already 100 %. Downloading and measuring a 280 MB model
+that cannot be enabled was skipped; the code and eval config stay for a harder set.
+
+## D-75 STL in numpy, not statsmodels
+The brief names statsmodels for STL, and the rules allow a new library only if nothing installed can do the job.
+statsmodels needs pandas and patsy (~100 MB installed) for one function; STL is iterated LOESS, which numpy does.
+`app/seo_ml/stl.py` follows Cleveland et al. (1990), with a vectorised LOESS for evenly spaced days that matches the
+reference loop to 1e-15 (tested), and yearly seasonality by a second STL pass (MSTL-style). Decay detection adds a
+last-week confirmation to the brief's conditions, because STL's trend at the end of a series cannot yet tell a dip that
+just ended from a decline. The detector was designed on one seed range and is judged on a held-out range.
+
+## D-76 One flow, one registry, one decision function
+All five models are steps of `seo_ml_flow` and register versions in `seo_ml_models` through one `register()` (activation
+rule, carried-over review, automatic fallback with a metric). The web app decides "model or rule" in one place
+(`ml.ts mlDecision`: override, active, fresh within 14 days), and every consumer labels its output with that decision.
+Outputs are written even for inactive models, so "force the model" works and the Models page can show them.
+
+## D-77 Clusters and intents reach the existing tables at refresh time
+The keyword views, content gaps and "Asked on site" already read `seo_query_clusters` / `seo_query_intents`. The daily
+keyword refresh copies the model's clusters (plus token-set clusters for queries the weekly model hasn't seen, id-offset)
+and the confident intent predictions into them, with a `source`, instead of rewriting every reader. Ask-the-Blog gaps
+are embedded in the same HDBSCAN run as `ask:<normalized>` rows.
+
+## D-78 Cluster activation gates on ARI, purity within 0.05
+Purity alone rewards over-splitting (singletons score 1), which is what token-set clustering does; the brief asks to
+compare ARI and purity. ARI must be strictly higher; purity may be at most 0.05 lower; inverse purity is reported.
+
+## D-79 Related articles: an A/B by id parity; link ranking only uses an active model
+The public block shows the model's list on even article ids while the model is `experiment_running`, measured with a
+consent-gated `related_click` GA4 event. Internal-link candidate ranking uses the model's score (25 % blend) only when
+the model is active or forced, so an unvalidated experiment can't change draft links; the v2 link limits stay in the
+planner. GA4 page-pair data is fetched outside `GA4_REPORTS`, so a property that rejects the pair can't fail the sync or
+"Test connection".
+
+## D-80 Settings improvements as their own commit (owner request during v5)
+The owner asked for better SEO settings mid-build and chose: organise the form (tabs, change tracking, defaults, field
+errors), a connections card, and ML/RAG controls. The first two were committed separately (`de84e76`); the ML/RAG
+card ships with Phase 3 because it needs the model registry.

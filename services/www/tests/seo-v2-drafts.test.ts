@@ -134,7 +134,7 @@ describe("migration 0012", () => {
     const later = fs.readdirSync(path.resolve(migrationsDir(), "../rollback")).filter((f) => f > "0012_seo_drafts.down.sql").sort().reverse();
     const v2 = ["seo_drafts", "seo_llm_usage", "seo_llm_batches"];
     const laterTables = new Set<string>();
-    for (const f of later) for (const m of fs.readFileSync(path.resolve(migrationsDir(), "../rollback", f), "utf8").matchAll(/DROP TABLE IF EXISTS "([a-z_]+)"/g)) laterTables.add(m[1]!);
+    for (const f of later) for (const m of fs.readFileSync(path.resolve(migrationsDir(), "../rollback", f), "utf8").matchAll(/DROP TABLE IF EXISTS "([a-z0-9_]+)"/g)) laterTables.add(m[1]!);
     for (const f of [...later, "0012_seo_drafts.down.sql"]) {
       const down = fs.readFileSync(path.resolve(migrationsDir(), "../rollback", f), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean);
       for (const stmt of down) await clean.execute(sql.raw(stmt));
@@ -265,7 +265,7 @@ describe("Claude draft pipeline (mocked API)", () => {
     const s = { ...DEFAULT_SEO_SETTINGS, drafts: { ...DEFAULT_SEO_SETTINGS.drafts, monthlyBudgetUsd: 50 } };
     expect(claudeConfig(s, { SEO_LLM_MONTHLY_BUDGET_USD: "20" }).monthlyBudgetUsd).toBe(20);
     expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 5 } }, { SEO_LLM_MONTHLY_BUDGET_USD: "20" }).monthlyBudgetUsd).toBe(5);
-    expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 0 } }, {}).monthlyBudgetUsd).toBe(10);
+    expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 0 } }, {}).monthlyBudgetUsd).toBe(15);
     expect(claudeConfig(s, { SEO_DRAFT_MODEL: "claude-opus-5-5" }).draftModel).toBe("claude-opus-5-5");
     expect(claudeConfig(s, {}).classifyModel).toBe("claude-haiku-5-5");
   });

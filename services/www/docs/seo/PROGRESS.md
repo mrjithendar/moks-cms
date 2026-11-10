@@ -483,3 +483,92 @@ not built: the web side runs on PGlite in tests and has no long-running callback
   $10 cap (COSTS.md has the levers).
 - **Environment:** no stray cloud-sync copies appeared this time. The scratch PostgreSQL and the local agent were
   stopped after the checks.
+
+
+---
+
+# v5: RAG quality, SEO-side ML, safety and housekeeping (branch `feature/seo-v5-ml-rag`)
+
+Branched 2026-11-10 from master `0ea52e4`. Decisions D-66 onwards. CrewAI Flows stay the only orchestrator; ML runs as
+plain Python steps inside flows and writes Postgres tables that the TypeScript rules read, with a fallback to the rule.
+
+## v5 phase status
+
+| Phase | Status | Commit |
+|---|---|---|
+| 1 Safety and housekeeping | done | `8a5ca05` |
+| 2 RAG quality | done (eval measured with the real model; pgvector tests run in CI only) | `09f6fe7` |
+| Owner request: SEO settings (tabs, connections, change tracking) | done | `de84e76` |
+| 3 SEO-side ML | done (mock- and synthetic-tested; real metrics need production data) | (phase 3 commit) |
+| 4 Deployment and observability | done (rendered, client-validated; not applied) | (phase 3 commit) |
+| 5 Tests, docs, PR | not started | |
+
+## Phase 1 notes
+
+- **Kube-context guard** (`scripts/lib/kube-context.sh`, D-66) sourced by `deploy.sh`, `create-*` (3), `set-*` (4),
+  `setup-ci-applier/deployer`, `verify-practice-sandbox.sh`. `setup-ci-ecr-user.sh` runs no kubectl and is left alone;
+  `manifests.sh` only prints. Test: `bash scripts/tests/kube-context.test.sh` (stub kubectl) — 7 behaviours + a check
+  that every kubectl script sources the guard: all pass. CI job `ci-repo.yml`.
+- **`README 2.md`** was an older copy (pre-`services/` paths, no SEO agent or content image): nothing to merge; deleted.
+  `scripts/check-conflict-copies.sh` fails CI on tracked `name 2.ext` / `name (1).ext` files (1–2 digits, so
+  `notes 2026.txt` is allowed).
+- **LangGraph leftovers:** comments in 7 source files and 2 docs now say CrewAI; MANUAL_SETUP §17 shortened to the alias
+  note. The `SEO_ORCHESTRATOR=langgraph` alias stays, with its own test (`tests/seo-orchestrator-alias.test.ts`, 5 cases).
+  Migrations 0015/0016, the blog content, the news gazetteer (a product name) and history in PROGRESS/DECISIONS untouched.
+- **Budget:** default $15 (D-67); 80 % alert already present; per-flow breakdown on Settings → Claude usage (test in
+  `seo-v4-agent.test.ts` "budgets"); COSTS.md updated.
+- **Alerts handoff:** `docs/seo/alerts-for-minikube-repo.yaml` (generated, D-69); copy step in OPERATIONS.md#alerts.
+- **Image size:** `scripts/image-size.sh` + baselines (D-68); the baselines are empty until the first CI run.
+
+## Phase 2 notes
+
+- **Eval set** `services/seo-agent/tests/fixtures/rag_eval.yaml`: 55 questions (8 no-answer); every slug and anchor is
+  checked against the chunker in a test. Baseline recorded first (`baseline-v4` = v4 chunker + cosine, exact).
+- **Results** (RAG.md "Results"; files in `docs/seo/rag-eval/`): v4 had 198/1,221 inputs over 512 tokens → v5 0/1,790.
+  Recall@3 100 % → 100 % (vector default), MRR 0.989 → 0.968, anchor hits 97.9 → 95.7. Hybrid not adopted (D-71).
+- **Floor** 0.15 → 0.66 (calibrated); no-answer questions reaching the grader 100 % → 62.5 %.
+- **Grader-selected excerpts** (ask-blog-v3), retrieval logged per question (migration 0018), `rag_calibrate.py`.
+- **Reranker** off and unmeasured: its gate can't be met on this set (D-74).
+- **Internal linking** check: top-5 similar-article overlap 0.78 between v4 and v5 chunking.
+- **Tests:** seo-agent 242 passed, 9 skipped locally (the 5 new + 4 old pgvector tests need CI's pgvector image; the
+  non-vector Postgres tests, incl. the new ask-log columns, pass on a local PostgreSQL 17). The hybrid SQL was also
+  checked by hand on PostgreSQL 17 with the vector expression stubbed (DDL on an existing table, idempotency, empty
+  identifier arrays, stop-word-only questions).
+- **Environment:** LightGBM needs libomp on macOS; this Mac has none, so local test runs set
+  `DYLD_LIBRARY_PATH` to scikit-learn's bundled `sklearn/.dylibs` (no system change). The ONNX model came from an earlier
+  session's scratch copy, verified against the Dockerfile's sha256 pins.
+
+## Phase 3 notes (SEO-side ML; ML.md)
+
+- **Agent:** `app/seo_ml/` (stl, decay, clusters, intent, priority, related, store, train) and `app/flows/ml.py`
+  (`seo_ml_flow`, in SPECS and the CronJob list). One `register()` holds the activation rule (beats the rule; review
+  where required, carried over to retrains that still win) and the automatic fallback with its metric.
+- **Web:** migration 0019 (+ rollback); `ml.ts` (the one model-or-rule decision: override, active, fresh ≤ 14 days),
+  decay in `rules.ts` (STL signals, labelled source, trend-vs-actual chart on Recommendations), clusters and intents
+  in the keyword refresh (with `source`), ask-gap clustering, related articles A/B on the public page (+ the
+  `related_click` GA4 event), GA4 page pairs (best-effort, outside `GA4_REPORTS`), **ML models** and **Labelling**
+  pages, APIs (models, override/review, labels, proposals, run), Settings → "ML models & retrieval" (owner request).
+- **Measured** (held-out synthetic, 2026-11-10): decay 2/180 false alarms vs the rule's 13, drop recall 91 % vs 47 %.
+  Clusters, intent, priority and related need production data and your labels (status "collecting data" / "needs
+  review" / "experiment running" until then).
+- **Bugs found while measuring and fixed:** LOESS as a Python loop made the weekly run take > 10 minutes (vectorised,
+  identical to 1e-15); a yearly STL with two cycles absorbed the declines it should find (0/133 flagged → yearly shape
+  from the previous year); σ inflated by the unadjusted first year; holiday dips just before the cut-off flagged
+  (last-week confirmation); co-visitation normalisation saturating at 1; token-set "purity" rewarding over-splitting
+  (ARI gate); a rollback-test regex that couldn't see table names with digits.
+- **Memory** (this Mac, Python 3.13, ONNX bge-small loaded, in-memory store with 400 pages × 800 days, 2,000 queries,
+  400 intent labels, 120 outcomes, 40 articles): whole flow ≈ 44 s, **peak RSS 456 MiB** (ONNX 276 MiB, fixtures
+  ~110 MiB, ML ≈ 70 MiB). The seo-agent limit is 1,280 MiB and the reindex peak ~0.7 GiB runs at 03:17, the ML flow at
+  04:47, so training stays in the Deployment; no separate Job, no limit change.
+
+## Phase 4 notes
+
+- CronJob `seo-flow-ml` (Sun 04:47 UTC, `concurrencyPolicy: Forbid`) in `seo-agent-60-flow-triggers.yaml`;
+  `seo-agent-config` gains the RAG settings. `scripts/manifests.sh seo-agent | python scripts/ci-app-manifests.py`
+  and `kubectl create --dry-run=client`: 13 CronJobs, pass.
+- Metrics: `seo_ml_train_runs_total{model,status}`, `seo_ml_model_active{model}`, `seo_ml_metric{model,metric}`,
+  `seo_ml_flow_consecutive_failures`, `seo_rag_eval_recall_at_3`, `seo_rag_retrieval_mode{mode}`,
+  `seo_rag_chunk_tokens`, `seo_rag_chunks_truncated_total` (all fixed label sets).
+- Alerts (group `jithendar-com-seo-ml`): `SeoMlFlowFailing`, `SeoMlModelFellBackToRule`, `SeoRagChunksTruncated`;
+  handoff file regenerated (4 groups, 20 rules).
+- Grafana: "ML & RAG" row on the SEO agents dashboard (8 panels); `check-dashboards.py` passes.

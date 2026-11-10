@@ -111,3 +111,32 @@ groups:
         annotations:
           summary: 'Ask the Blog: more than 20% of answers fail (kill switch: ASK_BLOG_ENABLED=false)'
           runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/RAG.md#operations'
+  # v5: SEO-side ML and RAG quality (docs/seo/ML.md, RAG.md). Gauges come from the database (restart-safe).
+  - name: jithendar-com-seo-ml
+    rules:
+      # seo_ml_flow failed on its last two runs (weekly: two weeks without retraining; the site keeps using the last
+      # outputs until they are 14 days old, then the rules).
+      - alert: SeoMlFlowFailing
+        expr: max(seo_ml_flow_consecutive_failures{job="seo-agent"}) >= 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'seo_ml_flow failed {{ $value }} times in a row'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/ML.md#overriding-and-rolling-back'
+      # A model that was in use no longer beat its rule on retraining: the flow switched the site back to the rule.
+      - alert: SeoMlModelFellBackToRule
+        expr: sum by (model) (increase(seo_ml_train_runs_total{job="seo-agent", status="fallback_to_rule"}[8d])) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: 'The {{ $labels.model }} model fell below its rule on retraining; the site uses the rule again'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/ML.md#model-or-rule-srclibseo-intelmlts-mldecision'
+      # The token-aware chunker must keep every embedded input within the model's 512 tokens.
+      - alert: SeoRagChunksTruncated
+        expr: sum(increase(seo_rag_chunks_truncated_total{job="seo-agent"}[1d])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $value }} chunks were longer than the embedding model accepts during reindexing (their tails are not searchable)'
+          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/RAG.md#chunking-v5-token-budget'

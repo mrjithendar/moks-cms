@@ -51,6 +51,10 @@ type Options = {
   ga4TokensRemaining?: number;
   /** Extra synthetic pages so a report needs several pages of results. */
   extraPages?: number;
+  /** Requested GA4 dimensions that checkCompatibility should report as incompatible. */
+  ga4Incompatible?: string[];
+  /** v5: answer the landing page × page path report with 400 INVALID_ARGUMENT, like a property without that pair. */
+  ga4PairsUnsupported?: boolean;
 };
 
 export type FakeGoogle = { fetch: typeof fetch; calls: { url: string; body: Record<string, unknown> }[] };
@@ -81,6 +85,10 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
       const rowLimit = Number(body.rowLimit);
       const startRow = Number(body.startRow ?? 0);
       const type = String(body.type);
+      // Like Google: Discover cannot be grouped by device (or query).
+      if (type === "discover" && (dims.includes("device") || dims.includes("query"))) {
+        return Response.json({ error: { code: 400, message: "Requests for Discover cannot be grouped by device.", status: "INVALID_ARGUMENT" } }, { status: 400 });
+      }
       const typeFactor = type === "web" ? 1 : 0.1;
       const rows: { keys: string[]; clicks: number; impressions: number; ctr: number; position?: number }[] = [];
       for (const day of days) {
@@ -101,8 +109,10 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
                 if ((qi + p.base) % 2 !== 0) continue;
                 rows.push({ keys: [day, p.raw, q, device, "ind"], clicks: Math.max(0, clicks - qi), impressions: impressions + qi * 10, ctr: 0, position: 4 + qi * 3 });
               }
-            } else {
+            } else if (dims.includes("device")) {
               rows.push({ keys: [day, p.raw, device, "ind"], clicks, impressions, ctr: clicks / impressions, position: 6.5 });
+            } else {
+              rows.push({ keys: [day, p.raw, "ind"], clicks, impressions, ctr: clicks / impressions, position: 6.5 });
             }
           }
         }
@@ -110,6 +120,13 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
       for (const r of rows) r.ctr = r.impressions ? r.clicks / r.impressions : 0;
       if (type === "discover") for (const r of rows) delete r.position;
       return Response.json({ rows: rows.slice(startRow, startRow + rowLimit), responseAggregationType: "byPage", metadata: { firstIncompleteDate: String(body.endDate) } });
+    }
+
+    if (url.endsWith(":runReport") && JSON.stringify(body.dimensions).includes("pagePath")) {
+      if (opts.ga4PairsUnsupported) return Response.json({ error: { code: 400, message: "Please remove pagePath to make the request compatible.", status: "INVALID_ARGUMENT" } }, { status: 400 });
+      const paths = pages.map((p) => new URL(p.raw).pathname);
+      const rows = paths.flatMap((a, i) => paths.filter((_b, j) => j !== i).map((b, j) => ({ dimensionValues: [{ value: a }, { value: b }], metricValues: [{ value: String(10 + i + j) }] })));
+      return Response.json({ dimensionHeaders: [{ name: "landingPagePlusQueryString" }, { name: "pagePath" }], metricHeaders: [{ name: "screenPageViews" }], rows, rowCount: rows.length, metadata: { timeZone: "Asia/Kolkata" } });
     }
 
     if (url.endsWith(":runReport")) {
@@ -139,7 +156,15 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
       });
     }
 
-    if (url.endsWith(":checkCompatibility")) return Response.json({ dimensionCompatibilities: [], metricCompatibilities: [] });
+    if (url.endsWith(":checkCompatibility")) {
+      // Like Google: INCOMPATIBLE lists catalogue fields that can't be added to the request, not only requested ones.
+      const dim = (apiName: string) => ({ dimensionMetadata: { apiName }, compatibility: "INCOMPATIBLE" });
+      const met = (apiName: string) => ({ metricMetadata: { apiName }, compatibility: "INCOMPATIBLE" });
+      return Response.json({
+        dimensionCompatibilities: ["campaignId", "cohortNthDay", "googleAdsKeyword", ...(opts.ga4Incompatible ?? [])].map(dim),
+        metricCompatibilities: ["advertiserAdCost", "organicGoogleSearchClicks"].map(met),
+      });
+    }
     return new Response("not found", { status: 404 });
   };
   return { fetch: impl as typeof fetch, calls };

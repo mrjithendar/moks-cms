@@ -27,6 +27,7 @@ on:
       - '!services/www/Dockerfile.content*'
       - 'minikube/**'
       - '.github/workflows/ci-jithendar-com.yml'
+      - 'scripts/image-size.sh'
   push:
     paths:
       - 'services/www/**'
@@ -34,6 +35,7 @@ on:
       - '!services/www/public/images/**'
       - '!services/www/Dockerfile.content*'
       - '.github/workflows/ci-jithendar-com.yml'
+      - 'scripts/image-size.sh'
 
 permissions:
   contents: read
@@ -126,6 +128,9 @@ jobs:
           printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
       - name: Package image
         run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$GITHUB_SHA" -t "$REGISTRY_IMAGE:latest" .
+      # Before the push: a release whose image grew more than 15 % over the stored baseline stops here.
+      - name: Image size (summary; fails above +15 % of the stored baseline)
+        run: ../../scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
       # Never push an image that cannot start or optimise images.
       - name: Smoke-test the image
         env:

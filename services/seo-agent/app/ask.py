@@ -17,7 +17,18 @@ from typing import Any, Protocol
 
 from . import metrics
 from .llm import BudgetExceeded
-from .services.ask_pipeline import REFUSALS, normalize_question
+from .services.ask_pipeline import PROMPT_VERSION, REFUSALS, normalize_question
+
+
+def retrieval_log(state: dict[str, Any], res: dict[str, Any]) -> list[dict[str, Any]]:
+    """What retrieval returned, for calibrating ASK_BLOG_MIN_SCORE (scripts/rag_calibrate.py): per excerpt that passed
+    the floor, its cosine, fused score, URL, whether the grader kept it and whether the answer cited it."""
+    graded = {h["url"] for h in state.get("answer_hits") or []} if state.get("relevant") else set()
+    cited = {c["url"] for c in res.get("citations") or []}
+    return [
+        {"score": round(float(h.get("score", 0)), 4), "fused": round(float(h.get("fused", 0)), 5), "url": h["url"], "graded": h["url"] in graded, "cited": h["url"] in cited}
+        for h in state.get("hits") or []
+    ][:12]
 
 
 class AskLog(Protocol):
@@ -32,9 +43,10 @@ class PgAskLog:
     async def record(self, row: dict[str, Any]) -> None:
         async with self.pool.connection() as c:
             await c.execute(
-                """insert into seo_ask_log (question, normalized, ip_hash, outcome, citations, cached, cost_usd, index_version)
-                   values (%(question)s, %(normalized)s, %(ip_hash)s, %(outcome)s, %(citations)s::jsonb, %(cached)s, %(cost_usd)s, %(index_version)s)""",
-                {**row, "citations": json.dumps(row.get("citations") or [])},
+                """insert into seo_ask_log (question, normalized, ip_hash, outcome, citations, cached, cost_usd, index_version, retrieval, prompt_version)
+                   values (%(question)s, %(normalized)s, %(ip_hash)s, %(outcome)s, %(citations)s::jsonb, %(cached)s, %(cost_usd)s, %(index_version)s,
+                     %(retrieval)s::jsonb, %(prompt_version)s)""",
+                {**row, "citations": json.dumps(row.get("citations") or []), "retrieval": json.dumps(row["retrieval"]) if row.get("retrieval") is not None else None, "prompt_version": row.get("prompt_version")},
             )
             if row["outcome"] == "fallback":
                 await c.execute(
@@ -96,9 +108,9 @@ class AskService:
     async def _key(self, question: str) -> str:
         return hashlib.sha256(f"{normalize_question(question)}\n{await self.retriever.version()}".encode()).hexdigest()
 
-    async def _record(self, question: str, ip_hash: str | None, res: dict[str, Any], cached: bool) -> None:
+    async def _record(self, question: str, ip_hash: str | None, res: dict[str, Any], cached: bool, state: dict[str, Any] | None = None) -> None:
         try:
-            await self.log.record({"question": question[:500], "normalized": normalize_question(question), "ip_hash": ip_hash, "outcome": res["outcome"], "citations": res.get("citations"), "cached": cached, "cost_usd": float(res.get("cost_usd") or 0), "index_version": await self.retriever.version()})
+            await self.log.record({"question": question[:500], "normalized": normalize_question(question), "ip_hash": ip_hash, "outcome": res["outcome"], "citations": res.get("citations"), "cached": cached, "cost_usd": float(res.get("cost_usd") or 0), "index_version": await self.retriever.version(), "retrieval": retrieval_log(state, res) if state else None, "prompt_version": PROMPT_VERSION})
         except Exception:  # noqa: S110 - logging must not fail an answer
             pass
 
@@ -121,7 +133,7 @@ class AskService:
         metrics.ASK_REQUESTS.labels(outcome=res["outcome"]).inc()
         if res["outcome"] in ("answered", "fallback"):
             self.cache.put(key, res)
-        await self._record(question, ip_hash, res, False)
+        await self._record(question, ip_hash, res, False, s)
         return res
 
     @staticmethod
@@ -176,5 +188,5 @@ class AskService:
         metrics.ASK_REQUESTS.labels(outcome=res["outcome"]).inc()
         if res["outcome"] in ("answered", "fallback"):
             self.cache.put(key, res)
-        await self._record(question, ip_hash, res, False)
+        await self._record(question, ip_hash, res, False, s)
         yield ev("final", res)

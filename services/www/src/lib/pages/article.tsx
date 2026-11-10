@@ -20,7 +20,9 @@ import { absoluteUrl, site } from "@/config/site";
 import { collectionLabels, type Collection } from "@/config/taxonomy";
 import { getCategoryMap, labelOf } from "@/lib/categories";
 import { findRedirect } from "@/lib/redirects";
-import { getAuthor, getPublishedArticle, readingTimeMinutes, relatedArticles, seriesNeighbours, type Article, type Author } from "@/lib/content";
+import { RelatedClickTracker } from "@/components/RelatedClickTracker";
+import { getAuthor, getPublishedArticle, readingTimeMinutes, seriesNeighbours, type Article, type Author } from "@/lib/content";
+import { relatedForArticle } from "@/lib/seo-intel/related-ab";
 import { ScrollSpy } from "@/components/ScrollSpy";
 import { formatDateTime } from "@/lib/dates";
 import { compileMdx } from "@/lib/mdx/compile";
@@ -104,7 +106,9 @@ export async function ArticleView({
   const { config } = await getSiteConfig();
   // Presentation options (Admin → Appearance → Blog). Structured data below never depends on them.
   const a = config.blog.article;
-  const related = a.related.enabled ? await relatedArticles(article, a.related.count) : [];
+  // v5: the ML list on the A/B arm or when the related-articles model is in use (seo-intel/related-ab.ts).
+  const relatedPick = a.related.enabled ? await relatedForArticle(article, a.related.count) : { items: [], arm: null, source: "rule" };
+  const related = relatedPick.items;
   const neighbours = article.preview ? null : await seriesNeighbours(article);
   const cats = await getCategoryMap();
   const category = cats.get(fm.category);
@@ -314,7 +318,8 @@ export async function ArticleView({
       </Container>
 
       {related.length > 0 && (
-        <section aria-labelledby="related" className="mt-section border-t border-line bg-surface-muted py-section">
+        <section id="related-reading" aria-labelledby="related" data-related-source={relatedPick.source} className="mt-section border-t border-line bg-surface-muted py-section">
+          {relatedPick.arm && <RelatedClickTracker targetId="related-reading" arm={relatedPick.arm} />}
           <Container>
             <h2 id="related" className="text-heading font-semibold text-fg">
               Related reading

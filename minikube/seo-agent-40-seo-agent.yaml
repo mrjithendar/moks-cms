@@ -19,7 +19,7 @@ data:
   SEO_DRAFT_MODEL: claude-sonnet-5-5
   SEO_CLASSIFY_MODEL: claude-haiku-5-5
   # Shared with the web app (same seo_llm_usage table): keep equal to the site's SEO_LLM_MONTHLY_BUDGET_USD.
-  SEO_LLM_MONTHLY_BUDGET_USD: "10"
+  SEO_LLM_MONTHLY_BUDGET_USD: "15"
   ASK_BLOG_DAILY_BUDGET_USD: "1"
   # Kill switch for the public assistant; the web app's ASK_BLOG_ENABLED gates the widget and /api/ask too.
   ASK_BLOG_ENABLED: "false"
@@ -34,6 +34,12 @@ data:
   SEO_CREW_MODELS: '{"optimization.analyst":"claude-haiku-5-5"}'
   SEO_FLOW_TIMEOUT_SECONDS: "1800"
   EMBEDDINGS_PROVIDER: onnx
+  # v5 retrieval (docs/seo/RAG.md "Defaults"): decided by the eval set. Rollback for hybrid: RAG_MODE=vector.
+  RAG_MODE: vector
+  RAG_MAX_PER_ARTICLE: "3"
+  # Cosine pre-filter for bge-small, calibrated on the eval set (RAG.md "Score calibration"); was 0.15.
+  ASK_BLOG_MIN_SCORE: "0.66"
+  RAG_RERANKER_ENABLED: "false"
   # CrewAI's local storage directory (nothing should write there: flows persist to Postgres; tests assert no SQLite).
   CREWAI_STORAGE_DIR: /tmp/crewai
   # MCP (docs/seo/MCP.md). Both off until switched on; the admin server only after the OAuth flow is verified.

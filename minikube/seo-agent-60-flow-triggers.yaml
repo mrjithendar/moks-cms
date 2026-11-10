@@ -384,6 +384,50 @@ spec:
                 limits: { cpu: 200m, memory: 128Mi }
               securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
 ---
+# v5 SEO-side ML (docs/seo/ML.md): seo_ml_flow trains the decay, query-cluster, intent, priority and related-articles
+# models, writes their outputs and runs the live retrieval eval. Sundays 04:47 UTC, after the weekly reindex (03:17)
+# and before Monday's recommendations. Runs inside the seo-agent pod (measured peak in docs/seo/PROGRESS.md v5).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seo-flow-ml
+  namespace: jithendar
+  labels: { app: seo-agent-trigger, app.kubernetes.io/part-of: jithendar-com }
+spec:
+  schedule: "47 4 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: { app: seo-agent-trigger, app.kubernetes.io/part-of: jithendar-com }
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          imagePullSecrets: [{ name: harbor-pull }]
+          securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+          containers:
+            - name: trigger
+              image: registry.jithendar.com/jithendar/seo-agent:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.trigger", "seo_ml_flow"]
+              env:
+                - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
+                - name: SEO_AGENT_TOKEN
+                  valueFrom: { secretKeyRef: { name: seo-agent-env, key: SEO_AGENT_TOKEN } }
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

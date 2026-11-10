@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
+import { TrendChart } from "@/components/seo/TrendChart";
 import { Empty, Pager } from "@/components/seo/ui";
 import { listRecommendations } from "@/lib/seo-intel/recommendations";
 
@@ -49,6 +50,16 @@ export default async function RecommendationsPage({ searchParams }: { searchPara
                     {r.query && <span className="font-normal text-fg-muted"> · &ldquo;{r.query}&rdquo;</span>}
                   </h2>
                   <p className="mt-1 text-sm text-fg">{r.problem}</p>
+                  {(() => {
+                    const method = r.evidence.find((e) => e.metric === "decay_method")?.valueText;
+                    const chart = r.evidence.find((e) => e.metric === "trend_vs_actual")?.detail as { dates?: string[]; actual?: number[]; trend?: number[] } | undefined;
+                    return (
+                      <>
+                        {method && <p className="mt-1 text-xs text-fg-subtle">Decided by: <strong className="text-fg-muted">{method}</strong></p>}
+                        {chart?.dates && chart.actual && chart.trend && <TrendChart dates={chart.dates} actual={chart.actual} trend={chart.trend} />}
+                      </>
+                    );
+                  })()}
                   <p className="mt-2 text-sm"><strong>Proposed action:</strong> {r.proposedAction}</p>
                   <p className="mt-1 text-sm text-fg-muted"><strong>Expected impact (qualitative):</strong> {r.expectedImpact}</p>
                   {r.aiExplanation && (

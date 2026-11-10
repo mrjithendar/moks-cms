@@ -6,13 +6,16 @@
 # MK4_API_SERVER and MK4_CA_DATA are shared with the restart-only deployer: run scripts/setup-ci-deployer.sh first
 # if they are not set yet. ./deploy.sh also applies the manifest (it is in minikube/kustomization.yaml).
 #
-#   scripts/setup-ci-applier.sh            # apply SA + Role + token, test the kubeconfig, store the values
-#   SKIP_GH=1 scripts/setup-ci-applier.sh  # only apply and test; set the values in GitHub yourself
-#   ROTATE=1 scripts/setup-ci-applier.sh   # replace the token (the old one stops working)
+#   KUBE_CONTEXT=mk4 scripts/setup-ci-applier.sh            # apply SA + Role + token, test the kubeconfig, store the values
+#   KUBE_CONTEXT=mk4 SKIP_GH=1 scripts/setup-ci-applier.sh  # only apply and test; set the values in GitHub yourself
+#   KUBE_CONTEXT=mk4 ROTATE=1 scripts/setup-ci-applier.sh   # replace the token (the old one stops working)
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 #
 # The token goes straight into `gh secret set` (stdin) and is never printed.
 # Needs: kubectl with cluster-admin on context mk4; gh CLI signed in with admin on the repository (unless SKIP_GH=1).
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 
 REPO="${GITHUB_REPO:-mrjithendar/jithendar.com}"
 NS="jithendar"
@@ -52,7 +55,7 @@ echo "→ Testing $TEMPLATE with these values"
 KCFG="$(mktemp)"
 trap 'rm -f "$KCFG"' EXIT
 perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' "$TEMPLATE" > "$KCFG"
-can() { kubectl --kubeconfig "$KCFG" auth can-i "$@" -n "$NS"; }
+can() { command kubectl --kubeconfig "$KCFG" auth can-i "$@" -n "$NS"; }
 [[ "$(can patch deployments)" == yes && "$(can create ingresses.networking.k8s.io)" == yes ]] \
   || { echo "The rendered kubeconfig cannot apply the application manifests." >&2; exit 1; }
 for denied in "get secrets" "create roles.rbac.authorization.k8s.io" "delete deployments" "create pods"; do
@@ -62,7 +65,7 @@ done
 echo "→ Dry run of every application object as $SA"
 for group in site practice-executor; do
   scripts/manifests.sh "$group" | python3 scripts/ci-app-manifests.py 2>/dev/null \
-    | kubectl --kubeconfig "$KCFG" apply --dry-run=server -f - >/dev/null
+    | command kubectl --kubeconfig "$KCFG" apply --dry-run=server -f - >/dev/null
 done
 
 if [[ "${SKIP_GH:-0}" == "1" ]]; then

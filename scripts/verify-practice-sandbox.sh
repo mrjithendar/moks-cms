@@ -9,6 +9,8 @@
 #      mounts the site's Secret and cannot delete the site's pods (server-side dry runs, impersonating it).
 # Prints PASS/FAIL per check; exits non-zero on any failure. Creates and deletes only its own probe pod.
 set -uo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 NS=jithendar
 IMAGE="${SANDBOX_IMAGE:-python:3.13-slim}"
 k() { kubectl "$@"; }

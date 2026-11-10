@@ -15,7 +15,15 @@ export const GA4_REPORTS = {
   },
 } as const;
 
-export type Ga4Report = (typeof GA4_REPORTS)[keyof typeof GA4_REPORTS];
+export type Ga4Report = { readonly dimensions: readonly string[]; readonly metrics: readonly string[] };
+
+/**
+ * v5 (docs/seo/ML.md "Related articles"): views of each page path in sessions that started on a landing page,
+ * aggregated over 28 days: the reader co-visitation signal. Kept out of GA4_REPORTS on purpose: a property where this
+ * pair isn't available must not make "Test connection" or the daily sync fail; the sync tries it and records the
+ * answer (seo_integrations.config.pagePairs).
+ */
+export const GA4_PAGE_PAIRS_REPORT = { dimensions: ["landingPagePlusQueryString", "pagePath"], metrics: ["screenPageViews"] } as const;
 
 export type QuotaStatus = { consumed?: number; remaining?: number };
 export type PropertyQuota = Partial<Record<"tokensPerDay" | "tokensPerHour" | "concurrentRequests" | "serverErrorsPerProjectPerHour" | "potentiallyThresholdedRequestsPerHour" | "tokensPerProjectPerHour", QuotaStatus>>;
@@ -60,17 +68,23 @@ type CompatibilityResponse = {
   metricCompatibilities?: { metricMetadata?: { apiName?: string }; compatibility?: string }[];
 };
 
-/** Names in `report` that GA4 says cannot be combined (empty = compatible). */
+/**
+ * Names in `report` that GA4 says cannot be combined (empty = compatible).
+ *
+ * checkCompatibility lists every field in the property's catalogue that could not be *added* to the request
+ * (campaign, Google Ads, cohort, item… fields), so the answer is filtered to the fields the report actually asks for.
+ */
 export async function checkCompatibility(ctx: ApiContext, propertyId: string, report: Ga4Report): Promise<string[]> {
   const res = await googleJson<CompatibilityResponse>(ctx, `${base(propertyId)}:checkCompatibility`, {
     dimensions: report.dimensions.map((name) => ({ name })),
     metrics: report.metrics.map((name) => ({ name })),
     compatibilityFilter: "INCOMPATIBLE",
   });
+  const requested = new Set<string>([...report.dimensions, ...report.metrics]);
   return [
-    ...(res.dimensionCompatibilities ?? []).map((d) => d.dimensionMetadata?.apiName ?? "?"),
-    ...(res.metricCompatibilities ?? []).map((m) => m.metricMetadata?.apiName ?? "?"),
-  ];
+    ...(res.dimensionCompatibilities ?? []).map((d) => d.dimensionMetadata?.apiName),
+    ...(res.metricCompatibilities ?? []).map((m) => m.metricMetadata?.apiName),
+  ].filter((name): name is string => !!name && requested.has(name));
 }
 
 /** Stop a sync before the property's token budget is exhausted (other GA4 users share it). */

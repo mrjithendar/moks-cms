@@ -69,3 +69,20 @@ Quarterly (or after ≥ 20 implemented recommendations):
 
 These are observational comparisons, not controlled experiments: other changes (algorithm updates, seasonality,
 new competitors) affect the same windows, so treat them as signals, not proof.
+
+## Learned proposals (v5)
+
+The quarterly manual recalibration above now has a measured helper ([ML.md "Learned priority"](ML.md)):
+
+- Once **≥ 50** implemented recommendations have a 28-day outcome, `seo_ml_flow` fits the outcome **lift**: the change
+  in clicks in the 28 days after "implemented" vs the 28 days before, minus the page's own trend before that, divided
+  by max(clicks before, 10). It uses LightGBM on the recommendation's features, and a non-negative least-squares fit of
+  the lift's rank on the six score inputs. The NNLS fit is what gives **proposed weights**, scaled to 100.
+- The proposal is compared with the current weights on the **newest 20 %** of outcomes (held out), by NDCG@10 of each
+  ranking against the lifts. It is offered only when it ranks better.
+- **Never applied automatically.** Settings → "ML models & retrieval" shows current and proposed weights side by
+  side with both NDCG@10 values; **Approve** writes them into the settings document (audit-logged as
+  `seo.ml.weights.approve`, a new weights version), and **Dismiss** leaves everything as it is.
+- Below 50 outcomes the Models page shows "collecting data: N/50".
+- The same caveat applies: outcomes are observational (algorithm updates, seasonality and other edits move the same
+  windows), so a proposal is evidence to weigh, not proof.

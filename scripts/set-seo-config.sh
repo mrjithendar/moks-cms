@@ -2,10 +2,13 @@
 # SEO intelligence platform (services/www/docs/seo/MANUAL_SETUP.md): store the Google service-account key and optional
 # PageSpeed key in Secret jithendar/jithendar-com-env, and the property ids in ConfigMap jithendar-com-public.
 # Both are already loaded by the Deployment (envFrom), so no manifest changes are needed. Run by a person:
-#   scripts/set-seo-config.sh /path/to/service-account.json
+#   KUBE_CONTEXT=mk4 scripts/set-seo-config.sh /path/to/service-account.json
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 # It MERGES keys into the existing Secret/ConfigMap (other keys are kept) and prints no secret values.
 # Then restart: kubectl -n jithendar rollout restart deployment/jithendar-com
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 KEY_FILE="${1:?usage: $0 /path/to/service-account.json}"
 NS="jithendar"
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }

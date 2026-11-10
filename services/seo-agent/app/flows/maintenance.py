@@ -27,13 +27,26 @@ from .base import SeoFlow
 W_VECTOR, W_QUERIES = 0.65, 0.35
 
 
-def combine(similar: list[tuple[str, str, float]], source_queries: set[str], target_queries: dict[str, set[str]]) -> list[dict[str, Any]]:
-    """Relevance per target path: weighted cosine similarity + Jaccard overlap of the queries both pages rank for."""
+W_RELATED = 0.25  # v5: share of the related-articles model's score, only while that model is in use
+
+
+def combine(similar: list[tuple[str, str, float]], source_queries: set[str], target_queries: dict[str, set[str]], related: dict[str, float] | None = None) -> list[dict[str, Any]]:
+    """Relevance per target path: weighted cosine similarity + Jaccard overlap of the queries both pages rank for.
+    v5: when the related-articles model is in use (active or forced; `related` = its scores by article id), it takes
+    W_RELATED of the score and the rule's two parts share the rest. Only the ORDER of candidates changes: the web
+    app's planner still enforces every v2 internal-link limit."""
     out = []
-    for _aid, path, sim in similar:
+    use = bool(related)
+    for aid, path, sim in similar:
         tq = target_queries.get(path, set())
         overlap = len(source_queries & tq) / len(source_queries | tq) if (source_queries or tq) else 0.0
-        out.append({"path": path, "score": round(W_VECTOR * max(0.0, sim) + W_QUERIES * overlap, 4), "similarity": round(sim, 4), "sharedQueries": sorted(source_queries & tq)[:5]})
+        base = W_VECTOR * max(0.0, sim) + W_QUERIES * overlap
+        rel = (related or {}).get(aid, 0.0)
+        score = (1 - W_RELATED) * base + W_RELATED * rel if use else base
+        c = {"path": path, "score": round(score, 4), "similarity": round(sim, 4), "sharedQueries": sorted(source_queries & tq)[:5]}
+        if use:
+            c["related"] = round(rel, 4)
+        out.append(c)
     return sorted(out, key=lambda c: -c["score"])
 
 
@@ -56,7 +69,9 @@ class InternalLinkingFlow(SeoFlow[LinkingState]):
                 for tid, path, _ in similar:
                     rows = await self.retry(partial(web.gsc_queries, article_id=tid, limit=50))
                     tq[path] = set(safe_queries([r["query"] for r in rows]))
-                out[aid] = combine(similar, src_q, tq)
+                ml = self.deps.extra.get("ml_store")
+                related = await ml.related_scores(aid) if ml is not None else {}
+                out[aid] = combine(similar, src_q, tq, related)
             s.candidates = out
 
     @listen(candidates)

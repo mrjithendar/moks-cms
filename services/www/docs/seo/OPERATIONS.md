@@ -120,6 +120,19 @@ a row), `SeoGoogleAuthError`, `SeoGoogleApiErrorsPersistent`, `SeoDataStale`. Co
 `alerts.yml`, then reload Prometheus the way that repo documents. The consecutive-failure and staleness inputs come from
 the database (survive restarts).
 
+### Alerts handoff (v5): one file for the miniKube repo
+
+The SEO, agent, ML/RAG and news groups are combined into
+[`alerts-for-minikube-repo.yaml`](alerts-for-minikube-repo.yaml) by `python3 scripts/build-alerts.py` (generated; edit
+`docs/seo/prometheus-alerts.yml` or `docs/news/prometheus-alerts.yml`, then rerun). CI (`ci-repo.yml`) fails if the file
+is stale and validates it with `promtool check rules` (pinned `prom/prometheus:v3.5.0`). Copy step, in the miniKube repo:
+
+1. Open `deploy/minikube/observability/prometheus/files/alerts.yml`.
+2. Replace the groups listed in the file's header (append them the first time) with the groups from the generated file.
+3. `promtool check rules alerts.yml`, commit, and let Prometheus reload as that repo documents.
+
+This repository never edits the miniKube repo or applies alert rules (D-12).
+
 ## Backup and rollback
 
 - **Data**: SEO tables are in the site database and are included in Admin → Backups like every other table. GSC and GA4

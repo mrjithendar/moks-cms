@@ -16,6 +16,10 @@ import { googleJson, type ApiContext } from "./http";
 export const GSC_TIME_ZONE = "America/Los_Angeles";
 /** Discover and Google News do not support the `query` dimension. */
 export const QUERY_SEARCH_TYPES: readonly SearchType[] = ["web", "image", "video", "news"];
+/** Discover rejects the `device` dimension (HTTP 400 "Requests for Discover cannot be grouped by device"). */
+export const DEVICE_SEARCH_TYPES: readonly SearchType[] = ["web", "image", "video", "news", "googleNews"];
+/** Stored in the `device` key column when a search type has no device breakdown. */
+export const NO_DEVICE = "(not set)";
 
 export type GscRow = { keys: string[]; clicks: number; impressions: number; ctr: number; position?: number };
 type GscResponse = { rows?: GscRow[]; metadata?: { firstIncompleteDate?: string } };

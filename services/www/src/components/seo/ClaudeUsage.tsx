@@ -1,20 +1,22 @@
 import { getDb } from "@/db";
 import { Card } from "@/components/admin/ui";
-import { budgetState } from "@/lib/seo-intel/claude";
+import { budgetState, flowCostBreakdown } from "@/lib/seo-intel/claude";
 import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
 
 const usd = (n: number) => `$${n.toFixed(n < 10 ? 2 : 0)}`;
 
-export type ClaudeUsageData = { cfg: Omit<ReturnType<typeof claudeConfig>, "apiKey"> & { keySet: boolean }; b: Awaited<ReturnType<typeof budgetState>> };
+export type ClaudeUsageData = { cfg: Omit<ReturnType<typeof claudeConfig>, "apiKey"> & { keySet: boolean }; b: Awaited<ReturnType<typeof budgetState>>; flows?: Awaited<ReturnType<typeof flowCostBreakdown>> };
 
 export async function loadClaudeUsage(): Promise<ClaudeUsageData> {
   const { apiKey, ...cfg } = claudeConfig(await getSeoSettings());
-  return { cfg: { ...cfg, keySet: Boolean(apiKey) }, b: await budgetState(await getDb(), cfg) };
+  const db = await getDb();
+  const b = await budgetState(db, cfg);
+  return { cfg: { ...cfg, keySet: Boolean(apiKey) }, b, flows: await flowCostBreakdown(db, b.spentUsd) };
 }
 
 /** Settings → Claude usage: month-to-date spend against the hard cap, per model, with cache reads. */
 export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
-  const { cfg, b } = data;
+  const { cfg, b, flows } = data;
   const pct = b.budgetUsd ? Math.min(100, ((b.spentUsd + b.reservedUsd) / b.budgetUsd) * 100) : 100;
   return (
     <Card className="mb-6">
@@ -49,6 +51,40 @@ export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
             ))}
           </tbody>
         </table>
+      )}
+      {flows && (flows.flows.length > 0 || flows.outsideFlowsUsd > 0) && (
+        <div className="mt-5">
+          <h3 className="text-sm font-semibold text-fg">By flow</h3>
+          <p className="mt-0.5 text-xs text-fg-subtle">Measured cost of each agent flow&apos;s runs this month (seo_flow_runs). News and Ask the Blog have their own caps and are not included.</p>
+          <table className="mt-2 w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-fg-subtle"><th className="py-1 font-medium">Flow</th><th className="font-medium">Runs</th><th className="font-medium">Share</th><th className="text-right font-medium">Cost</th></tr>
+            </thead>
+            <tbody>
+              {flows.flows.map((f) => (
+                <tr key={f.flow} className="border-t border-line">
+                  <td className="py-1.5"><code>{f.flow}</code></td>
+                  <td className="tabular-nums">{f.runs}</td>
+                  <td className="tabular-nums">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true"><span className="block h-full bg-accent" style={{ width: `${Math.round(f.share * 100)}%` }} /></span>
+                      {Math.round(f.share * 100)}%
+                    </span>
+                  </td>
+                  <td className="text-right tabular-nums">{usd(f.costUsd)}</td>
+                </tr>
+              ))}
+              {flows.outsideFlowsUsd > 0 && (
+                <tr className="border-t border-line text-fg-muted">
+                  <td className="py-1.5">Outside flows (v2 path, keyword intents, explanations)</td>
+                  <td>—</td>
+                  <td className="tabular-nums">{flows.totalUsd ? Math.round((flows.outsideFlowsUsd / flows.totalUsd) * 100) : 0}%</td>
+                  <td className="text-right tabular-nums">{usd(flows.outsideFlowsUsd)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </Card>
   );

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { GA4_REPORTS, ga4Date, quotaLow, runReport, type PropertyQuota } from "./google/ga4";
-import { QUERY_SEARCH_TYPES, queryAll, type GscRow } from "./google/gsc";
+import { GA4_PAGE_PAIRS_REPORT, GA4_REPORTS, ga4Date, quotaLow, runReport, type PropertyQuota } from "./google/ga4";
+import { DEVICE_SEARCH_TYPES, NO_DEVICE, QUERY_SEARCH_TYPES, queryAll, type GscRow } from "./google/gsc";
 import { GoogleApiError, type ApiContext } from "./google/http";
 import type { SearchType } from "./settings";
 import { upsertRows } from "./sqlutil";
@@ -59,13 +59,15 @@ export async function syncGscWindow(db: Db, ctx: ApiContext, property: string, s
     );
     await prune(db, "seo_gsc_daily_totals", window, type, now);
 
-    // 2. Pages (date × page × device × country): page totals.
-    const pages = await queryAll(ctx, property, { startDate: window.start, endDate: window.end, dimensions: ["date", "page", "device", "country"], type }, rowLimit);
+    // 2. Pages (date × page × device × country): page totals. Discover has no device breakdown (NO_DEVICE).
+    const byDevice = DEVICE_SEARCH_TYPES.includes(type);
+    const pages = await queryAll(ctx, property, { startDate: window.start, endDate: window.end, dimensions: byDevice ? ["date", "page", "device", "country"] : ["date", "page", "country"], type }, rowLimit);
     const pageAgg = aggregate(pages.rows, (r) => {
       const n = normalizeUrl(r.keys[1] ?? "");
       if (!n) return null;
       urls.push(n);
-      return [r.keys[0]!, n.url, (r.keys[2] ?? "").toLowerCase(), (r.keys[3] ?? "").toLowerCase()];
+      const [device, country] = byDevice ? [(r.keys[2] ?? "").toLowerCase(), r.keys[3]] : [NO_DEVICE, r.keys[2]];
+      return [r.keys[0]!, n.url, device, (country ?? "").toLowerCase()];
     });
     rows += await upsertRows(
       db,
@@ -155,6 +157,40 @@ export async function syncGa4Window(db: Db, ctx: ApiContext, propertyId: string,
   if (!partial) await prune(db, "seo_ga4_page_daily", window, null, now);
   await upsertUrlMap(db, urls.filter((u) => u.internal), now);
   return { rows, partial, note, timeZone, quota, thresholded };
+}
+
+/**
+ * v5: landing page → page path views in the same sessions over one window (default the last 28 days), replacing
+ * `seo_ga4_page_pairs`. Only internal URLs; at most `maxRows`. Returns `unsupported` instead of throwing when the
+ * property rejects the dimension pair, so the related-articles model falls back to similarity + queries + category.
+ */
+export async function syncGa4PagePairs(db: Db, ctx: ApiContext, propertyId: string, window: { start: string; end: string }, now = new Date(), maxRows = 20_000): Promise<{ rows: number; unsupported?: string }> {
+  const agg = new Map<string, number>();
+  try {
+    for (let offset = 0; offset < maxRows; offset += 10_000) {
+      const page = await runReport(ctx, propertyId, GA4_PAGE_PAIRS_REPORT, window, offset, 10_000);
+      for (const r of page.rows) {
+        const from = normalizeUrl(r.landingPagePlusQueryString ?? "");
+        const to = normalizeUrl(r.pagePath ?? "");
+        if (!from?.internal || !to?.internal || from.path === to.path) continue;
+        const k = JSON.stringify([from.path, to.path]);
+        agg.set(k, (agg.get(k) ?? 0) + int(r.screenPageViews));
+      }
+      if (offset + 10_000 >= page.rowCount || page.rows.length < 10_000 || quotaLow(page.quota)) break;
+    }
+  } catch (e) {
+    if (e instanceof GoogleApiError && e.code !== "auth") return { rows: 0, unsupported: e.message.slice(0, 300) };
+    throw e;
+  }
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`delete from seo_ga4_page_pairs`);
+    const rows = [...agg].map(([k, v]) => [...(JSON.parse(k) as [string, string]), v] as const);
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = rows.slice(i, i + 500);
+      await tx.execute(sql`insert into seo_ga4_page_pairs (landing_page, page_path, views, period_start, period_end, synced_at) values ${sql.join(chunk.map(([a, b, v]) => sql`(${a}, ${b}, ${v}, ${window.start}, ${window.end}, ${now.toISOString()})`), sql`, `)}`);
+    }
+  });
+  return { rows: agg.size };
 }
 
 export { GoogleApiError };

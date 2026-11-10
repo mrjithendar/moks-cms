@@ -1,17 +1,21 @@
 import { AdminHeader } from "@/components/admin/ui";
 import { ClaudeUsageCard, loadClaudeUsage } from "@/components/seo/ClaudeUsage";
+import { IntegrationStatusCard, loadConnections } from "@/components/seo/IntegrationStatus";
+import { loadMlSettings, MlSettingsCard } from "@/components/seo/MlSettingsCard";
 import { SettingsForm } from "@/components/seo/SettingsForm";
-import { getSeoSettings, publicSettings } from "@/lib/seo-intel/settings";
+import { DEFAULT_SEO_SETTINGS, getSeoSettings, publicSettings } from "@/lib/seo-intel/settings";
 
 export const metadata = { title: "Settings" };
 
 export default async function SeoSettingsPage() {
-  const [s, usage] = await Promise.all([getSeoSettings().then(publicSettings), loadClaudeUsage()]);
+  const [s, usage, connections, ml] = await Promise.all([getSeoSettings().then(publicSettings), loadClaudeUsage(), loadConnections(), loadMlSettings()]);
   return (
     <>
-      <AdminHeader title="SEO settings" description="Properties, schedules (UTC), scoring weights, rule thresholds, crawler limits, optional LLM enrichment and report recipients. Saved changes are audit-logged." />
+      <AdminHeader title="SEO settings" description="Connections, Claude usage, ML models and retrieval, then the settings by area: data sources, schedules (UTC), scoring, content and links, AI, crawler and reports. Saved changes are audit-logged." />
+      <IntegrationStatusCard rows={connections} />
       <ClaudeUsageCard data={usage} />
-      <SettingsForm initial={s} />
+      <MlSettingsCard data={ml} />
+      <SettingsForm initial={s} defaults={publicSettings(DEFAULT_SEO_SETTINGS)} />
     </>
   );
 }

@@ -11,7 +11,7 @@ import { GSC_TIME_ZONE } from "./google/gsc";
 import { GoogleApiError, type ApiContext, type RunStats } from "./google/http";
 import { getSeoSettings, type SeoSettings } from "./settings";
 import { addDays, addMonths, dateIn, isDay, windows } from "./sqlutil";
-import { syncGa4Window, syncGscWindow } from "./sync";
+import { syncGa4PagePairs, syncGa4Window, syncGscWindow } from "./sync";
 
 /**
  * SEO background work. Runs inside the existing worker (src/lib/scheduler.ts) and job queue (src/lib/jobs.ts):
@@ -243,8 +243,18 @@ async function runGa4(ctx: RunContext): Promise<RunOutcome> {
     if (e instanceof GoogleApiError) await setIntegration(db, "ga4", propertyId, e.code === "auth" ? "auth_error" : "error", e.message);
     throw e;
   }
-  await setIntegration(db, "ga4", propertyId, "connected", null, zone ? { timeZone: zone } : {});
-  return { status: "succeeded", rows, window: range, detail: { timeZone: zone, thresholded } };
+  // v5: reader co-visitation for the related-articles model (daily runs only; never fails the GA4 sync).
+  let pagePairs: { rows: number; unsupported?: string } | { error: string } | null = null;
+  if (!backfill) {
+    try {
+      pagePairs = await syncGa4PagePairs(db, api, propertyId, { start: addDays(range.end, -27), end: range.end }, ctx.now);
+    } catch (e) {
+      pagePairs = { error: (e as Error).message.slice(0, 300) };
+    }
+  }
+  const pairState = pagePairs === null ? {} : { pagePairs: "unsupported" in pagePairs && pagePairs.unsupported ? "unsupported" : "error" in pagePairs ? "error" : "ok" };
+  await setIntegration(db, "ga4", propertyId, "connected", null, { ...(zone ? { timeZone: zone } : {}), ...pairState });
+  return { status: "succeeded", rows, window: range, detail: { timeZone: zone, thresholded, pagePairs } };
 }
 
 /** Delete daily rows older than the retention period (default 16 months, like Search Console itself). */

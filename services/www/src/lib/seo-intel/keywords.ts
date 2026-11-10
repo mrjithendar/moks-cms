@@ -5,6 +5,7 @@ import { rowsOf } from "@/db/rows";
 import { log } from "../log";
 import { claudeJson } from "./claude";
 import { dataBlock, safeQueries } from "./llm";
+import { mlDecision, mlIntents, mlQueryClusters } from "./ml";
 import { sendSeoAlert } from "./notify";
 import { expectedCtr as fallbackCtr } from "./queries";
 import { claudeConfig, getSeoSettings, type SeoSettings } from "./settings";
@@ -177,7 +178,7 @@ export async function siteCurve(db: Db, asOf: string): Promise<Curve> {
 
 const pgArray = (xs: number[]) => `{${xs.map((x) => x.toFixed(6)).join(",")}}`;
 
-export type KwRow = { query: string; page: string | null; articleId: string | null; position: number | null; prevPosition: number | null; change: number | null; impressions: number; prevImpressions: number; clicks: number; ctr: number; expectedCtr: number; gap: number; intent: Intent | null; clusterId: number | null; parentTopic: string | null; brand: boolean; tracked: boolean; firstSeen: string | null };
+export type KwRow = { query: string; page: string | null; articleId: string | null; position: number | null; prevPosition: number | null; change: number | null; impressions: number; prevImpressions: number; clicks: number; ctr: number; expectedCtr: number; gap: number; intent: Intent | null; intentSource: string | null; clusterId: number | null; parentTopic: string | null; parentTopicSource: string | null; brand: boolean; tracked: boolean; firstSeen: string | null };
 
 /** The keyword table for a view: aggregation, derived metrics, filters, sort and pagination all in SQL. */
 export async function keywordTable(p: KwParams) {
@@ -243,7 +244,7 @@ export async function keywordTable(p: KwParams) {
           case when c.position is null then null else (${pgArray(curve.ctr)}::float8[])[least(greatest(round(c.position)::int, 1), ${MAX_POS})] end as expected_ctr,
           pr.position - c.position as change,
           case when coalesce(pr.impressions, 0) > 0 then coalesce(c.impressions, 0) / pr.impressions - 1 else null end as growth,
-          qi.intent, qc.cluster_id, qc.parent_topic, coalesce(c.query, pr.query) ~* ${brand} as brand,
+          qi.intent, case when qi.source = 'model' then qi.model else qi.source end as intent_source, qc.cluster_id, qc.parent_topic, qc.source as cluster_source, coalesce(c.query, pr.query) ~* ${brand} as brand,
           exists (select 1 from seo_tracked_keywords t where t.query = coalesce(c.query, pr.query)) as tracked, fs.first_seen
         from cur c full outer join prev pr on pr.query = c.query
         left join best b on b.query = coalesce(c.query, pr.query)
@@ -278,6 +279,8 @@ export async function keywordTable(p: KwParams) {
         intent: (r.intent as Intent | null) ?? null,
         clusterId: n(r.cluster_id),
         parentTopic: (r.parent_topic as string | null) ?? null,
+        parentTopicSource: (r.cluster_source as string | null) ?? null,
+        intentSource: (r.intent_source as string | null) ?? null,
         brand: Boolean(r.brand),
         tracked: Boolean(r.tracked),
         firstSeen: (r.first_seen as string | null) ?? null,
@@ -382,18 +385,39 @@ export async function refreshKeywords(deps: { fetchImpl?: typeof fetch; now?: Da
   const asOf = await latest(db);
   if (!asOf) return { clustered: 0, classified: 0, byLlm: 0 };
   const top = rowsOf<{ query: string; impressions: number }>(await db.execute(sql`select query, sum(impressions)::float8 as impressions from seo_gsc_query_daily where search_type = 'web' and date > ${addDays(asOf, -90)} group by query order by 2 desc limit 5000`)).map((r) => ({ query: r.query, impressions: Number(r.impressions) }));
-  const clusters = clusterQueries(top, s.keywords.clusterSimilarity);
+  // v5: the embedding clusters (seo_ml_query_clusters) when the model is in use; queries it hasn't seen yet (it runs
+  // weekly) and every query otherwise get the token-set clusters. `source` records which.
+  const clusterDecision = await mlDecision(db, "query_clusters");
+  const mlClusters = clusterDecision.mode === "model" ? await mlQueryClusters(db) : new Map<string, { clusterId: number; label: string }>();
+  const fromModel = top.filter((t) => mlClusters.has(t.query));
+  const rest = clusterQueries(top.filter((t) => !mlClusters.has(t.query)), s.keywords.clusterSimilarity);
+  const clusters = new Map<string, { id: number; parent: string; source: string }>([
+    ...fromModel.map((t) => [t.query, { id: mlClusters.get(t.query)!.clusterId, parent: mlClusters.get(t.query)!.label, source: clusterDecision.label }] as const),
+    ...[...rest].map(([q, c]) => [q, { id: (fromModel.length ? 1_000_000 : 0) + c.id, parent: c.parent, source: "rule" }] as const),
+  ]);
   await db.execute(sql`delete from seo_query_clusters`);
   const entries = [...clusters];
   for (let i = 0; i < entries.length; i += 500) {
     const chunk = entries.slice(i, i + 500);
-    await db.execute(sql`insert into seo_query_clusters (query, cluster_id, parent_topic) values ${sql.join(chunk.map(([q, c]) => sql`(${q}, ${c.id}, ${c.parent})`), sql`, `)} on conflict (query) do update set cluster_id = excluded.cluster_id, parent_topic = excluded.parent_topic, computed_at = now()`);
+    await db.execute(sql`insert into seo_query_clusters (query, cluster_id, parent_topic, source) values ${sql.join(chunk.map(([q, c]) => sql`(${q}, ${c.id}, ${c.parent}, ${c.source})`), sql`, `)} on conflict (query) do update set cluster_id = excluded.cluster_id, parent_topic = excluded.parent_topic, source = excluded.source, computed_at = now()`);
   }
   const known = new Set(rowsOf<{ query: string }>(await db.execute(sql`select query from seo_query_intents`)).map((r) => r.query));
-  const todo = top.map((t) => t.query).filter((q) => !known.has(q));
+  let todo = top.map((t) => t.query).filter((q) => !known.has(q));
   const brand = brandRegex(s);
   const cfg = claudeConfig(s);
   let byLlm = 0;
+  // v5: the distilled intent classifier answers when it is in use and confident; the rest go to Haiku (whose answers
+  // become the classifier's next training data) or the rules.
+  let byModel = 0;
+  const intentDecision = await mlDecision(db, "intent");
+  if (intentDecision.mode === "model" && todo.length) {
+    const ml = await mlIntents(db);
+    const confident = todo.filter((q) => (ml.byQuery.get(q)?.confidence ?? 0) >= ml.threshold);
+    for (const q of confident) await db.execute(sql`insert into seo_query_intents (query, intent, source, model) values (${q}, ${ml.byQuery.get(q)!.intent}, 'model', ${intentDecision.label}) on conflict (query) do nothing`);
+    byModel = confident.length;
+    const done = new Set(confident);
+    todo = todo.filter((q) => !done.has(q));
+  }
   const batch = deps.batch ?? 100;
   for (let i = 0; i < todo.length; i += batch) {
     const chunk = todo.slice(i, i + batch);
@@ -424,10 +448,10 @@ export async function refreshKeywords(deps: { fetchImpl?: typeof fetch; now?: Da
     }
     for (const q of chunk) {
       const viaLlm = llm?.get(q);
-      await db.execute(sql`insert into seo_query_intents (query, intent, source, model) values (${q}, ${viaLlm ?? intentByRules(q, brand)}, ${viaLlm ? "llm" : "rules"}, ${viaLlm ? cfg.classifyModel : null}) on conflict (query) do nothing`);
+      await db.execute(sql`insert into seo_query_intents (query, intent, source, model, prompt_version) values (${q}, ${viaLlm ?? intentByRules(q, brand)}, ${viaLlm ? "llm" : "rules"}, ${viaLlm ? cfg.classifyModel : null}, ${viaLlm ? INTENT_PROMPT_VERSION : null}) on conflict (query) do nothing`);
     }
   }
-  return { clustered: clusters.size, classified: todo.length, byLlm };
+  return { clustered: clusters.size, classified: todo.length + byModel, byLlm, byModel, clusterSource: clusterDecision.label, intentSource: intentDecision.label };
 }
 
 // --- Tracked keywords ---------------------------------------------------------------------------------------------

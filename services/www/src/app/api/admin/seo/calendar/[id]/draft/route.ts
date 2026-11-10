@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/admin/seo/calendar/{id}/draft — create a DRAFT post from an approved item (never published). With
- * SEO_ORCHESTRATOR=langgraph the editorial crew then writes it (new_article graph), stopping at human review.
+ * SEO_ORCHESTRATOR=crewai the Editorial Crew then writes it (new_article_flow), stopping at human review.
  */
 export const POST = seoRoute<{ id: string }>("calendar-draft", { mutating: true, rate: { max: 10, windowSeconds: 600 } }, async (_req, ctx, { id }) => {
   if (!UUID.test(id)) throw new SeoApiError("Calendar item not found.", 404, "not_found");

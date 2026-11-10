@@ -9,7 +9,7 @@ import { callbackPort, callbackToken } from "./config";
 /**
  * Cluster-internal callback API for the seo-agent service (docs/seo/AGENTS.md "Callback API").
  *
- * A separate listener in the web process (SEO_AGENT_CALLBACK_PORT, default 9465, on only when SEO_ORCHESTRATOR=langgraph),
+ * A separate listener in the web process (SEO_AGENT_CALLBACK_PORT, default 9465, on only when SEO_ORCHESTRATOR=crewai),
  * like the metrics port: the Istio VirtualService routes the public site to port 3000 only, so nothing on the internet
  * can reach this; the NetworkPolicy admits only seo-agent pods; every request needs SEO_AGENT_CALLBACK_TOKEN.
  */

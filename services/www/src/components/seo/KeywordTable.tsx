@@ -93,9 +93,21 @@ export function KeywordTable({ rows, view, days }: { rows: KwViewRow[]; view: Vi
       case "trend":
         return <Sparkline values={r.spark} label={`Impressions per day, last ${days} days`} />;
       case "intent":
-        return r.intent ? <Badge>{r.intent}</Badge> : <span className="text-fg-subtle">—</span>;
+        return r.intent ? (
+          <span title={r.intentSource ? `Labelled by: ${r.intentSource}` : undefined}>
+            <Badge>{r.intent}</Badge>
+            {r.intentSource && r.intentSource !== "llm" && <span className="ml-1 text-[10px] text-fg-subtle">({r.intentSource})</span>}
+          </span>
+        ) : (
+          <span className="text-fg-subtle">—</span>
+        );
       case "parent_topic":
-        return <span className="text-xs text-fg-muted">{r.parentTopic ?? "—"}</span>;
+        return (
+          <span className="text-xs text-fg-muted" title={r.parentTopicSource ? `Clustered by: ${r.parentTopicSource}` : undefined}>
+            {r.parentTopic ?? "—"}
+            {r.parentTopic && r.parentTopicSource && <span className="ml-1 text-[10px] text-fg-subtle">({r.parentTopicSource === "rule" ? "rule" : r.parentTopicSource})</span>}
+          </span>
+        );
     }
     return null;
   };

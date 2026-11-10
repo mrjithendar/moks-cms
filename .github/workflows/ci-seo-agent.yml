@@ -17,11 +17,13 @@ on:
       - 'services/www/src/lib/seo-agent/internal-server.ts'
       - 'minikube/seo-agent-*.yaml'
       - '.github/workflows/ci-seo-agent.yml'
+      - 'scripts/image-size.sh'
   push:
     paths:
       - 'services/seo-agent/**'
       - 'services/www/src/lib/seo-agent/internal-server.ts'
       - '.github/workflows/ci-seo-agent.yml'
+      - 'scripts/image-size.sh'
 
 permissions:
   contents: read
@@ -68,6 +70,8 @@ jobs:
         run: uv run --frozen mypy app
       - name: Tests (pytest, incl. Postgres + pgvector)
         run: uv run --frozen pytest -q -rs
+      - name: RAG eval smoke (hashed embeddings; only that it runs; the real run is rag-eval.yml)
+        run: uv run --frozen python scripts/rag_eval.py --embeddings hash --configs baseline-v4,token-hybrid --dsn "$SEO_AGENT_TEST_DATABASE_URL" --out "$RUNNER_TEMP/rag-eval"
       - name: Dependency audit (pip-audit on the locked production set)
         # Isolated: pip-audit's own dependencies conflict with crewai's pins, so it audits an exported requirements file.
         run: |
@@ -80,7 +84,9 @@ jobs:
       - name: Build the image (no push)
         run: |
           docker build --provenance=false -t seo-agent:ci .
-          echo "image size: $(docker image ls seo-agent:ci --format '{{.Size}}')" >> "$GITHUB_STEP_SUMMARY"
+      - name: Image size (summary; fails above +15 % of the stored baseline)
+        working-directory: .
+        run: scripts/image-size.sh seo-agent:ci services/seo-agent/image-size-baseline.json
       - name: Image smoke test
         run: |
           set -euo pipefail
@@ -128,9 +134,10 @@ jobs:
           docker push --quiet "$REGISTRY/seo-agent:latest"
           {
             echo "- $REGISTRY/seo-agent:latest ($(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/seo-agent:latest"))"
-            echo "- size $(docker image ls "$REGISTRY/seo-agent:latest" --format '{{.Size}}')"
             echo "- commit $GITHUB_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
+          # arm64 release image: reported only (the gate runs on the pull request's amd64 build).
+          ../../scripts/image-size.sh "$REGISTRY/seo-agent:latest" /dev/null
 
   deploy:
     needs: release

@@ -322,7 +322,7 @@ export function llmConfigured(s: SeoSettings): boolean {
 export const DEFAULT_DRAFT_MODEL = "claude-sonnet-5-5";
 export const DEFAULT_CLASSIFY_MODEL = "claude-haiku-5-5";
 /** Used when neither the setting nor SEO_LLM_MONTHLY_BUDGET_USD is set. */
-export const DEFAULT_MONTHLY_BUDGET_USD = 10;
+export const DEFAULT_MONTHLY_BUDGET_USD = 15; // v5: the admin month is estimated at $8–10.5 (COSTS.md), too close to $10
 
 export type ClaudeConfig = { apiKey: string | null; draftModel: string; classifyModel: string; monthlyBudgetUsd: number; budgetSource: "env" | "settings" | "default" };
 

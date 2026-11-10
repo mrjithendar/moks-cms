@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
+import { mlDecision, mlQueryClusters } from "@/lib/seo-intel/ml";
 import { createItem } from "../seo-intel/calendar";
 import { clusterQueries } from "../seo-intel/keywords";
 import { safeQueries } from "../seo-intel/llm";
@@ -17,9 +18,14 @@ export async function clusterAskGaps(threshold = 0.5): Promise<number> {
   const db = await getDb();
   const rows = rowsOf<{ id: number; normalized: string; asked: number }>(await db.execute(sql`select id, normalized, asked from seo_ask_gaps where status = 'open'`));
   if (!rows.length) return 0;
-  const clusters = clusterQueries(rows.map((r) => ({ query: r.normalized, impressions: Number(r.asked) })), threshold);
+  // v5: the embedding clusters (questions stored as "ask:<normalized>" by seo_ml_flow) when that model is in use;
+  // questions it hasn't seen yet, and all of them otherwise, get the token-set clusters.
+  const decision = await mlDecision(db, "query_clusters");
+  const ml = decision.mode === "model" ? await mlQueryClusters(db) : new Map<string, { clusterId: number; label: string }>();
+  const clusters = clusterQueries(rows.filter((r) => !ml.has(`ask:${r.normalized}`)).map((r) => ({ query: r.normalized, impressions: Number(r.asked) })), threshold);
   for (const r of rows) {
-    const c = clusters.get(r.normalized)!;
+    const m = ml.get(`ask:${r.normalized}`);
+    const c = m ? { id: m.clusterId, parent: m.label.replace(/^ask:/, "") } : { ...clusters.get(r.normalized)!, id: clusters.get(r.normalized)!.id + (ml.size ? 1_000_000 : 0) };
     await db.execute(sql`update seo_ask_gaps set cluster_id = ${c.id}, cluster_label = ${c.parent.slice(0, 200)} where id = ${r.id}`);
   }
   return rows.length;

@@ -3,13 +3,16 @@
 # wait and smoke-test. CI already restarts the site after every push to master; run this for manifest
 # changes or a manual redeploy.
 #
-#   ./deploy.sh
+#   KUBE_CONTEXT=mk4 ./deploy.sh
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 #
 # Started as `sh deploy.sh`? Re-run under full bash (macOS sh is bash in POSIX mode).
 if [ -z "${BASH_VERSION:-}" ] || case ":${SHELLOPTS:-}:" in *:posix:*) true ;; *) false ;; esac; then
   exec bash "$0" "$@"
 fi
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/scripts/lib/kube-context.sh"
 
 k() { kubectl "$@"; }
 

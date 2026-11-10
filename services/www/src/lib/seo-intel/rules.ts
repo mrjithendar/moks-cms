@@ -11,7 +11,7 @@ import type { SeoSettings } from "./settings";
  * produce candidates with evidence rows (metric, period, value, source). Expected impact is qualitative only:
  * never a traffic forecast or a ranking promise.
  */
-export type Evidence = { metric: string; period: string; value: number | null; valueText?: string; source: "gsc" | "ga4" | "cms" | "crawl" | "rule"; detail?: Record<string, unknown> };
+export type Evidence = { metric: string; period: string; value: number | null; valueText?: string; source: "gsc" | "ga4" | "cms" | "crawl" | "rule" | "model"; detail?: Record<string, unknown> };
 export type Category = "low_ctr" | "striking_distance" | "content_decay" | "content_gap" | "internal_links" | "outdated_tech" | "quality";
 
 export type Candidate = {
@@ -108,12 +108,52 @@ export function strikingDistanceRule(d: AnalysisData, s: SeoSettings): Candidate
   });
 }
 
+/**
+ * Content decay. v5: when the STL decay model is in use (ml.ts mlDecision: active and fresh, or forced), a page with
+ * enough history is flagged by the model's signal (trend falling ≥ 21 days, beyond 2σ of its own history, last week
+ * confirming); pages without enough history, and every page when the model is not in use, keep the 28-day rule below.
+ * Each candidate records which one decided ("model vN", "rule", "rule (insufficient history)").
+ */
 export function decayRule(d: AnalysisData, s: SeoSettings): Candidate[] {
   if (!d.periods) return [];
   const t = s.thresholds;
   const out: Candidate[] = [];
   const maxPrev = Math.max(1, ...[...d.pages.values()].map((p) => p.prev?.clicks ?? 0));
+  const ml = d.ml?.decay;
+  const useModel = ml?.decision.mode === "model";
+  if (useModel) {
+    for (const [page, sig] of ml!.signals) {
+      if (sig.methodVersion === "insufficient_history" || !sig.decaying) continue;
+      const m = d.pages.get(page);
+      const a = d.articleByUrl.get(page);
+      const ev = sig.evidence;
+      const n = ev.actual?.length ?? 0;
+      const recent = n ? ev.actual!.slice(-28).reduce((x, y) => x + y, 0) : null;
+      out.push({
+        fingerprint: fingerprint("content_decay", a?.id ?? page),
+        category: "content_decay",
+        ruleKey: "content_decay.stl",
+        articleId: a?.id ?? null,
+        url: page,
+        query: null,
+        problem: `The click trend (weekly${(ev as { periods?: number[] }).periods?.includes(365) ? " and yearly" : ""} seasonality removed) has fallen for ${ev.falling_days ?? "21+"} days in a row, ${fmtPct(sig.dropPct ?? 0)} below where it was, beyond what this page's own week-to-week variation explains.`,
+        proposedAction: "Check what changed: queries lost (Search performance → filter by this page), newer competing content, outdated versions or screenshots. Refresh facts and examples, then set a new update date only for substantive changes.",
+        evidence: [
+          { metric: "decay_method", period: "current", value: null, valueText: ml!.decision.label, source: "model" },
+          { metric: "trend_drop", period: `${sig.evidence.dates?.[0] ?? ""}..${sig.evidence.dates?.at(-1) ?? ""}`, value: -(sig.dropPct ?? 0), source: "model", detail: { z: ev.z, fallingDays: ev.falling_days } },
+          { metric: "trend_vs_actual", period: "last 120 days", value: recent, source: "model", detail: { dates: ev.dates, actual: ev.actual, trend: ev.trend } },
+          ...(m ? [{ metric: "clicks", period: range(d.periods.cur), value: m.cur.clicks, source: "gsc" as const }] : []),
+        ],
+        inputs: { searchOpportunity: logNorm(m?.prev?.clicks ?? m?.cur.clicks ?? 0, maxPrev), trend: clamp01(sig.dropPct ?? 0), relevance: a ? 1 : 0.5, effort: 0.4 },
+        confidence: (sig.confidence ?? 0) >= 0.75 ? "high" : (sig.confidence ?? 0) >= 0.5 ? "medium" : "low",
+        expectedImpact: "Refreshing decayed content can recover lost visibility when the decline is due to staleness; it cannot offset demand changes.",
+      });
+    }
+  }
   for (const [page, m] of d.pages) {
+    const sig = ml?.signals.get(page);
+    if (useModel && sig && sig.methodVersion !== "insufficient_history") continue; // the model decided this page
+    const method = useModel ? "rule (insufficient history)" : "rule";
     if (!m.prev || m.prev.clicks < t.decayMinClicks) continue;
     const drop = (m.prev.clicks - m.cur.clicks) / m.prev.clicks;
     if (drop < t.decayDropRatio) continue;
@@ -122,6 +162,7 @@ export function decayRule(d: AnalysisData, s: SeoSettings): Candidate[] {
     if (yoyDrop !== null && yoyDrop < t.decayDropRatio) continue;
     const a = d.articleByUrl.get(page);
     const ev: Evidence[] = [
+      { metric: "decay_method", period: "current", value: null, valueText: method, source: "rule" },
       { metric: "clicks", period: range(d.periods.cur), value: m.cur.clicks, source: "gsc" },
       { metric: "clicks", period: range(d.periods.prev), value: m.prev.clicks, source: "gsc" },
       { metric: "click_change", period: "28d vs prior 28d", value: -drop, source: "gsc" },
