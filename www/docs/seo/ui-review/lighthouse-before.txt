@@ -1,0 +1,8 @@
+# Lighthouse baseline (before Phase 7), 2026-11-10T02:07Z
+# Lighthouse 13.5.0, mobile (default simulated throttling), Chrome headless, local 'next start' with bundled content marked published (scratch copy); median of 3 runs.
+page                perf  a11y  seo  LCP ms    CLS  TBT ms  JS KB
+article-eks           68   100   69    7577  0.001       9    587  (n=3)
+article-four-ai       55    97   69    7419  0.001     338   2890  (n=3)
+article-istio         65    97   69    8252  0.001       9    587  (n=3)
+category              75   100   69    6229  0.001       9    550  (n=3)
+home                  74   100   66    6375  0.001       9    550  (n=3)

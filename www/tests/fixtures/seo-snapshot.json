@@ -1,0 +1,1319 @@
+{
+ "urls": [
+  "/",
+  "/category/ai-engineering",
+  "/category/ai-agents",
+  "/category/kubernetes",
+  "/category/devops-sre",
+  "/news/openai-linux-kernel-exploits-kubernetes-node-patching",
+  "/blog/deploy-roboshop-ai-amazon-eks",
+  "/blog/roboshop-ai-microservices",
+  "/blog/roboshop-ai-gateway",
+  "/blog/mermaid-diagrams-on-jithendar-com",
+  "/blog/four-ai-systems-one-cluster",
+  "/blog/typescript-advantages-over-python-and-go",
+  "/blog/roboshop-ai-eks-system-design",
+  "/blog/logging-tracing-observability-jithendar-com",
+  "/blog/fastapi-and-fastmcp-ai-projects",
+  "/blog/traefik-minikube-architecture-implementation",
+  "/blog/roboshop-ai-architecture",
+  "/blog/learning-typescript-real-project-jithendar-com",
+  "/blog/devops-interview-preparation-guide",
+  "/blog/system-design-evolution-cloud-native-ai-2026"
+ ],
+ "pages": {
+  "/": {
+   "status": 200,
+   "title": "Jithendar.com: engineering insight on AI, cloud and Kubernetes",
+   "description": "Engineering notes, news and analysis on AI engineering, cloud, Kubernetes, platform engineering, infrastructure as code and security.",
+   "canonical": "https://jithendar.com",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com",
+   "ogTitle": "Jithendar.com",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@id": "https://jithendar.com/#website",
+      "@type": "WebSite",
+      "inLanguage": "en",
+      "name": "Jithendar.com",
+      "publisher": {
+       "@id": "https://jithendar.com/#organization"
+      },
+      "url": "https://jithendar.com"
+     },
+     {
+      "@context": "https://schema.org",
+      "@id": "https://jithendar.com/#organization",
+      "@type": "Organization",
+      "name": "Jithendar.com",
+      "url": "https://jithendar.com"
+     }
+    ]
+   ]
+  },
+  "/category/ai-engineering": {
+   "status": 200,
+   "title": "AI Engineering | Jithendar.com",
+   "description": "Building production systems on large language models: retrieval, evaluation, guardrails, cost and latency, and the engineering trade-offs behind them.",
+   "canonical": "https://jithendar.com/category/ai-engineering",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/category/ai-engineering",
+   "ogTitle": "AI Engineering",
+   "jsonLd": [
+    {
+     "@context": "https://schema.org",
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com",
+       "name": "Home",
+       "position": 1
+      },
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com/category/ai-engineering",
+       "name": "AI Engineering",
+       "position": 2
+      }
+     ]
+    }
+   ]
+  },
+  "/category/ai-agents": {
+   "status": 200,
+   "title": "AI Agents, MCP & LLMOps | Jithendar.com",
+   "description": "Agents, tool use and the Model Context Protocol, plus the LLMOps practices that keep them observable, testable and safe to run.",
+   "canonical": "https://jithendar.com/category/ai-agents",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/category/ai-agents",
+   "ogTitle": "AI Agents, MCP & LLMOps",
+   "jsonLd": [
+    {
+     "@context": "https://schema.org",
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com",
+       "name": "Home",
+       "position": 1
+      },
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com/category/ai-agents",
+       "name": "AI Agents, MCP & LLMOps",
+       "position": 2
+      }
+     ]
+    }
+   ]
+  },
+  "/category/kubernetes": {
+   "status": 200,
+   "title": "Kubernetes & Cloud Native | Jithendar.com",
+   "description": "Kubernetes and the cloud-native ecosystem: cluster operations, GitOps with Argo CD, ingress, certificates and workload security.",
+   "canonical": "https://jithendar.com/category/kubernetes",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/category/kubernetes",
+   "ogTitle": "Kubernetes & Cloud Native",
+   "jsonLd": [
+    {
+     "@context": "https://schema.org",
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com",
+       "name": "Home",
+       "position": 1
+      },
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com/category/kubernetes",
+       "name": "Kubernetes & Cloud Native",
+       "position": 2
+      }
+     ]
+    }
+   ]
+  },
+  "/category/devops-sre": {
+   "status": 200,
+   "title": "DevOps, SRE & Platform Engineering | Jithendar.com",
+   "description": "CI/CD, reliability engineering and internal platforms: how teams ship safely, measure service health and recover from failure.",
+   "canonical": "https://jithendar.com/category/devops-sre",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/category/devops-sre",
+   "ogTitle": "DevOps, SRE & Platform Engineering",
+   "jsonLd": [
+    {
+     "@context": "https://schema.org",
+     "@type": "BreadcrumbList",
+     "itemListElement": [
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com",
+       "name": "Home",
+       "position": 1
+      },
+      {
+       "@type": "ListItem",
+       "item": "https://jithendar.com/category/devops-sre",
+       "name": "DevOps, SRE & Platform Engineering",
+       "position": 2
+      }
+     ]
+    }
+   ]
+  },
+  "/news/openai-linux-kernel-exploits-kubernetes-node-patching": {
+   "status": 200,
+   "title": "OpenAI's 948 Linux Kernel Exploits: A Kubernetes Patching Guide",
+   "description": "OpenAI reports 948 Linux privilege-escalation exploits. How Kubernetes teams check node kernel exposure and roll patched EKS managed node groups safely.",
+   "canonical": "https://jithendar.com/news/openai-linux-kernel-exploits-kubernetes-node-patching",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/news/openai-linux-kernel-exploits-kubernetes-node-patching",
+   "ogTitle": "OpenAI's 948 Linux Kernel Exploits: A Kubernetes Patching Guide",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "articleSection": "Cybersecurity",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-11-06T09:00:00+05:30",
+      "description": "OpenAI's AI pipeline produced 948 Linux root exploits. What that means for Kubernetes nodes, and how to go from a vendor advisory to patched EKS nodes.",
+      "headline": "OpenAI Reports 948 Linux Privilege-Escalation Exploits. What Should Kubernetes Teams Take Away?",
+      "inLanguage": "en",
+      "keywords": "linux kernel, privilege escalation, vulnerability management, kubernetes, amazon eks, managed node groups, patching, openai",
+      "mainEntityOfPage": "https://jithendar.com/news/openai-linux-kernel-exploits-kubernetes-node-patching",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/news/openai-linux-kernel-exploits-kubernetes-node-patching"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/news",
+        "name": "News",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/news/openai-linux-kernel-exploits-kubernetes-node-patching",
+        "name": "OpenAI Reports 948 Linux Privilege-Escalation Exploits. What Should Kubernetes Teams Take Away?",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/deploy-roboshop-ai-amazon-eks": {
+   "status": 200,
+   "title": "Deploy a microservices app on Amazon EKS with Terraform, Argo CD and Istio",
+   "description": "A checked EKS walkthrough from RoboShop AI: Terraform, a remote Argo CD hub, an NLB in front of Istio, a safe mesh rollout, failure modes and teardown.",
+   "canonical": "https://jithendar.com/blog/deploy-roboshop-ai-amazon-eks",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/deploy-roboshop-ai-amazon-eks",
+   "ogTitle": "Deploy a microservices app on Amazon EKS with Terraform, Argo CD and Istio",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "Kubernetes & Cloud Native",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-10-30T10:15:31+05:30",
+      "description": "A checked EKS walkthrough from RoboShop AI: Terraform, a remote Argo CD hub, an NLB in front of Istio, a safe mesh rollout, failure modes and teardown.",
+      "headline": "Deploy a microservices app on Amazon EKS with Terraform, Argo CD and Istio",
+      "inLanguage": "en",
+      "keywords": "amazon eks, terraform, argo cd, istio, aws load balancer controller, cert-manager, runbook",
+      "mainEntityOfPage": "https://jithendar.com/blog/deploy-roboshop-ai-amazon-eks",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/deploy-roboshop-ai-amazon-eks"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/deploy-roboshop-ai-amazon-eks",
+        "name": "Deploy a microservices app on Amazon EKS with Terraform, Argo CD and Istio",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/roboshop-ai-microservices": {
+   "status": 200,
+   "title": "RoboShop AI microservices architecture: service boundaries, request flows and trade-offs",
+   "description": "How RoboShop AI splits a demo store into services: three real request flows, what each boundary buys, what it costs, and when a monolith would be simpler.",
+   "canonical": "https://jithendar.com/blog/roboshop-ai-microservices",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/roboshop-ai-microservices",
+   "ogTitle": "RoboShop AI microservices architecture: service boundaries, request flows and trade-offs",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "articleSection": "DevOps, SRE & Platform Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-10-29T18:32:25+05:30",
+      "description": "How RoboShop AI splits a demo store into services: three real request flows, what each boundary buys, what it costs, and when a monolith would be simpler.",
+      "headline": "RoboShop AI microservices architecture: service boundaries, request flows and trade-offs",
+      "inLanguage": "en",
+      "keywords": "microservices, kubernetes, amazon eks, mcp, rabbitmq, istio",
+      "mainEntityOfPage": "https://jithendar.com/blog/roboshop-ai-microservices",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/roboshop-ai-microservices"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/roboshop-ai-microservices",
+        "name": "RoboShop AI microservices architecture: service boundaries, request flows and trade-offs",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/roboshop-ai-gateway": {
+   "status": 200,
+   "title": "AI Gateway Architecture: Building the RoboShop AI Gateway",
+   "description": "What the RoboShop AI gateway really does: authorization, LLM configuration, chat admission and time budgets, and why it never calls a model itself.",
+   "canonical": "https://jithendar.com/blog/roboshop-ai-gateway",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/roboshop-ai-gateway",
+   "ogTitle": "AI Gateway Architecture: Building the RoboShop AI Gateway",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "AI Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-09-27T09:00:00+05:30",
+      "description": "What the RoboShop AI gateway really does: authorization, LLM configuration, chat admission and time budgets, and why it never calls a model itself.",
+      "headline": "Building the RoboShop AI Gateway",
+      "inLanguage": "en",
+      "keywords": "ai gateway, fastapi, api gateway, rate limiting, llmops, amazon bedrock",
+      "mainEntityOfPage": "https://jithendar.com/blog/roboshop-ai-gateway",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/roboshop-ai-gateway"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/roboshop-ai-gateway",
+        "name": "Building the RoboShop AI Gateway",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/mermaid-diagrams-on-jithendar-com": {
+   "status": 200,
+   "title": "Mermaid Diagrams in a Next.js Blog: What, Why and How",
+   "description": "What Mermaid is, why text-based diagrams suit a technical blog, and how jithendar.com renders Mermaid code blocks as diagrams in Next.js, with code.",
+   "canonical": "https://jithendar.com/blog/mermaid-diagrams-on-jithendar-com",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/mermaid-diagrams-on-jithendar-com",
+   "ogTitle": "Mermaid Diagrams in a Next.js Blog: What, Why and How",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "DevOps, SRE & Platform Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-09-18T09:00:00+05:30",
+      "description": "What Mermaid is, why text-based diagrams suit a technical blog, and how jithendar.com renders Mermaid code blocks as diagrams in Next.js, with code.",
+      "headline": "Mermaid Diagrams on a Next.js Blog: What Mermaid Is, Why It Matters, and How I Added It to jithendar.com",
+      "inLanguage": "en",
+      "keywords": "mermaid, next.js, react, markdown, diagrams, technical writing",
+      "mainEntityOfPage": "https://jithendar.com/blog/mermaid-diagrams-on-jithendar-com",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/mermaid-diagrams-on-jithendar-com"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/mermaid-diagrams-on-jithendar-com",
+        "name": "Mermaid Diagrams on a Next.js Blog: What Mermaid Is, Why It Matters, and How I Added It to jithendar.com",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/four-ai-systems-one-cluster": {
+   "status": 200,
+   "title": "Four AI Systems, One Cluster: The model proposes, code decides",
+   "description": "How an SRE agent, an AI gateway, an MCP server and a shopping agent on one Minikube cluster keep scope, auth, budgets and side effects in code.",
+   "canonical": "https://jithendar.com/blog/four-ai-systems-one-cluster",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/four-ai-systems-one-cluster",
+   "ogTitle": "Four AI Systems, One Cluster: The model proposes, code decides",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "articleSection": "AI Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-09-09T09:00:00+05:30",
+      "description": "How an SRE agent, an AI gateway, an MCP server and a shopping agent on one Minikube cluster keep scope, auth, budgets and side effects in code.",
+      "headline": "Four AI Systems, One Cluster: The model proposes, code decides",
+      "inLanguage": "en",
+      "keywords": "ai architecture, ai agents, mcp, langgraph, crewai, sre, ai security",
+      "mainEntityOfPage": "https://jithendar.com/blog/four-ai-systems-one-cluster",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/four-ai-systems-one-cluster"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/four-ai-systems-one-cluster",
+        "name": "Four AI Systems, One Cluster: The model proposes, code decides",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/typescript-advantages-over-python-and-go": {
+   "status": 200,
+   "title": "TypeScript vs Python and Go: When TypeScript Is the Better Choice",
+   "description": "TypeScript's real advantages over Python and Go for web apps, APIs, dashboards and AI products, with runnable examples and a fair guide to when not to use it.",
+   "canonical": "https://jithendar.com/blog/typescript-advantages-over-python-and-go",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/typescript-advantages-over-python-and-go",
+   "ogTitle": "TypeScript vs Python and Go: When TypeScript Is the Better Choice",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "AI Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-09-09T09:00:00+05:30",
+      "description": "Where TypeScript beats Python and Go: one language for browser and server, shared API types, streaming UIs and AI product glue. And where it doesn't.",
+      "headline": "Advantages of TypeScript Over Python and Go: When TypeScript Is the Better Choice",
+      "inLanguage": "en",
+      "keywords": "typescript, python, go, javascript, node.js, next.js, zod, ai engineering",
+      "mainEntityOfPage": "https://jithendar.com/blog/typescript-advantages-over-python-and-go",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/typescript-advantages-over-python-and-go"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/typescript-advantages-over-python-and-go",
+        "name": "Advantages of TypeScript Over Python and Go: When TypeScript Is the Better Choice",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/roboshop-ai-eks-system-design": {
+   "status": 200,
+   "title": "RoboShop AI on Amazon EKS: system design with Istio, Karpenter, KEDA and Gatekeeper",
+   "description": "How RoboShop AI maps onto Amazon EKS: NLB and Istio ingress, mesh authorization, Gatekeeper policies, KEDA and Karpenter scaling, and telemetry.",
+   "canonical": "https://jithendar.com/blog/roboshop-ai-eks-system-design",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/roboshop-ai-eks-system-design",
+   "ogTitle": "RoboShop AI on Amazon EKS: system design with Istio, Karpenter, KEDA and Gatekeeper",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "articleSection": "Kubernetes & Cloud Native",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-08-26T09:00:00+05:30",
+      "description": "How RoboShop AI maps onto Amazon EKS: NLB and Istio ingress, mesh authorization, Gatekeeper policies, KEDA and Karpenter scaling, and telemetry.",
+      "headline": "RoboShop AI on Amazon EKS: system design with Istio, Karpenter, KEDA and Gatekeeper",
+      "inLanguage": "en",
+      "keywords": "amazon eks, istio, karpenter, keda, opa gatekeeper, terraform, argo cd",
+      "mainEntityOfPage": "https://jithendar.com/blog/roboshop-ai-eks-system-design",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/roboshop-ai-eks-system-design"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/roboshop-ai-eks-system-design",
+        "name": "RoboShop AI on Amazon EKS: system design with Istio, Karpenter, KEDA and Gatekeeper",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/logging-tracing-observability-jithendar-com": {
+   "status": 200,
+   "title": "Next.js Observability on Kubernetes: OpenTelemetry, Loki, Jaeger, Prometheus",
+   "description": "Structured logs, OpenTelemetry traces and Prometheus metrics for a self-hosted Next.js site: the real setup, a slow-request investigation and the fixes.",
+   "canonical": "https://jithendar.com/blog/logging-tracing-observability-jithendar-com",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/logging-tracing-observability-jithendar-com",
+   "ogTitle": "Next.js Observability on Kubernetes: OpenTelemetry, Loki, Jaeger, Prometheus",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "DevOps, SRE & Platform Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-08-17T09:00:00+05:30",
+      "description": "How jithendar.com ties structured logs, OpenTelemetry traces and Prometheus metrics together on Kubernetes, and the gaps a review found and fixed.",
+      "headline": "How We Implemented Logging, Tracing, and Observability on jithendar.com",
+      "image": {
+       "@type": "ImageObject",
+       "height": 1408,
+       "url": "https://jithendar.com/images/jithendar-com-observability/jithendar-com-telemetry-flow.png",
+       "width": 1240
+      },
+      "inLanguage": "en",
+      "keywords": "observability, opentelemetry, next.js, loki, grafana alloy, jaeger, prometheus, grafana, kubernetes, sre",
+      "mainEntityOfPage": "https://jithendar.com/blog/logging-tracing-observability-jithendar-com",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/logging-tracing-observability-jithendar-com"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/logging-tracing-observability-jithendar-com",
+        "name": "How We Implemented Logging, Tracing, and Observability on jithendar.com",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/fastapi-and-fastmcp-ai-projects": {
+   "status": 200,
+   "title": "FastAPI and FastMCP: How I Use Them in My AI Projects",
+   "description": "How I use FastAPI and FastMCP in RoboShop AI and MOKS: real routes, tools, auth, transports and limits, and why the two never share a process.",
+   "canonical": "https://jithendar.com/blog/fastapi-and-fastmcp-ai-projects",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/fastapi-and-fastmcp-ai-projects",
+   "ogTitle": "FastAPI and FastMCP: How I Use Them in My AI Projects",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "AI Agents, MCP & LLMOps",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-08-08T09:00:00+05:30",
+      "description": "How I use FastAPI and FastMCP in RoboShop AI and MOKS: real routes, tools, auth, transports and limits, and why the two never share a process.",
+      "headline": "How I Use FastAPI and FastMCP Across My AI Projects",
+      "inLanguage": "en",
+      "keywords": "fastapi, fastmcp, mcp, model context protocol, python, ai agents",
+      "mainEntityOfPage": "https://jithendar.com/blog/fastapi-and-fastmcp-ai-projects",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/fastapi-and-fastmcp-ai-projects"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/fastapi-and-fastmcp-ai-projects",
+        "name": "How I Use FastAPI and FastMCP Across My AI Projects",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/traefik-minikube-architecture-implementation": {
+   "status": 200,
+   "title": "Traefik on Minikube: Real Architecture and Setup",
+   "description": "How Traefik v3.7 runs on a self-hosted Minikube cluster: Helm install, NodePort and HAProxy exposure, TLS, middlewares, app onboarding and troubleshooting.",
+   "canonical": "https://jithendar.com/blog/traefik-minikube-architecture-implementation",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/traefik-minikube-architecture-implementation",
+   "ogTitle": "Traefik on Minikube: Real Architecture and Setup",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "Kubernetes & Cloud Native",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-08-08T09:00:00+05:30",
+      "description": "How one Traefik v3.7 pod routes jithendar.com, MOKS, Grafana, Prometheus, Loki and Argo CD on a Minikube cluster, checked against Git and the running cluster.",
+      "headline": "Traefik on Minikube: Architecture, Features, and Implementation Across My Applications",
+      "image": {
+       "@type": "ImageObject",
+       "height": 1440,
+       "url": "https://jithendar.com/images/traefik-minikube/traefik-minikube-request-path.png",
+       "width": 1800
+      },
+      "inLanguage": "en",
+      "keywords": "traefik, kubernetes, minikube, ingress, cert-manager, let's encrypt, helm, argo cd, devops",
+      "mainEntityOfPage": "https://jithendar.com/blog/traefik-minikube-architecture-implementation",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/traefik-minikube-architecture-implementation"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/traefik-minikube-architecture-implementation",
+        "name": "Traefik on Minikube: Architecture, Features, and Implementation Across My Applications",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/roboshop-ai-architecture": {
+   "status": 200,
+   "title": "Inside RoboShop AI: Architecture of an AI Shopping App",
+   "description": "How RoboShop AI separates a normal store from its AI features: services, data owners, request flows, failure boundaries and what runs on EKS today.",
+   "canonical": "https://jithendar.com/blog/roboshop-ai-architecture",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/roboshop-ai-architecture",
+   "ogTitle": "Inside RoboShop AI: Architecture of an AI Shopping App",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "AI Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-07-25T09:00:00+05:30",
+      "description": "How RoboShop AI separates a normal store from its AI features: services, data owners, request flows, failure boundaries and what runs on EKS today.",
+      "headline": "Inside RoboShop AI: Architecture of an AI-Powered Shopping Application",
+      "inLanguage": "en",
+      "keywords": "ai architecture, microservices, kubernetes, langgraph, mcp, amazon eks",
+      "mainEntityOfPage": "https://jithendar.com/blog/roboshop-ai-architecture",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/roboshop-ai-architecture"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/roboshop-ai-architecture",
+        "name": "Inside RoboShop AI: Architecture of an AI-Powered Shopping Application",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/learning-typescript-real-project-jithendar-com": {
+   "status": 200,
+   "title": "TypeScript Tutorial: Real TypeScript Examples from a Next.js Site",
+   "description": "Learn TypeScript with React through real examples from a Next.js codebase: types, narrowing, props, async code, unknown, generics and tsconfig.",
+   "canonical": "https://jithendar.com/blog/learning-typescript-real-project-jithendar-com",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/learning-typescript-real-project-jithendar-com",
+   "ogTitle": "TypeScript Tutorial: Real TypeScript Examples from a Next.js Site",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "DevOps, SRE & Platform Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-07-16T09:00:00+05:30",
+      "description": "A beginner-friendly TypeScript tutorial built on real code from jithendar.com: types, unions, React props, API calls, Zod validation and tsconfig.",
+      "headline": "Learning TypeScript Through a Real Project: How I Use It on jithendar.com",
+      "inLanguage": "en",
+      "keywords": "typescript, javascript, react, next.js, zod, tutorial",
+      "mainEntityOfPage": "https://jithendar.com/blog/learning-typescript-real-project-jithendar-com",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/learning-typescript-real-project-jithendar-com"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/learning-typescript-real-project-jithendar-com",
+        "name": "Learning TypeScript Through a Real Project: How I Use It on jithendar.com",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/devops-interview-preparation-guide": {
+   "status": 200,
+   "title": "DevOps Interview Prep: Linux, K8s, AWS, Python, MCP, AI",
+   "description": "DevOps interview preparation for 2026: a 7-week roadmap, model answers for Linux, Kubernetes, AWS, Python and MCP, and two full system design walkthroughs.",
+   "canonical": "https://jithendar.com/blog/devops-interview-preparation-guide",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/devops-interview-preparation-guide",
+   "ogTitle": "DevOps Interview Prep: Linux, K8s, AWS, Python, MCP, AI",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "articleSection": "DevOps, SRE & Platform Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-07-07T09:00:00+05:30",
+      "description": "DevOps interview preparation for 2026: a 7-week roadmap, model answers for Linux, Kubernetes, AWS, Python and MCP, and two full system design walkthroughs.",
+      "headline": "The Complete Interview Prep Guide: Linux, Kubernetes, AWS, Python, MCP and AI System Design",
+      "inLanguage": "en",
+      "keywords": "devops interview, sre interview, kubernetes, aws, linux, python, mcp, ai system design, career",
+      "mainEntityOfPage": "https://jithendar.com/blog/devops-interview-preparation-guide",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/devops-interview-preparation-guide"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/devops-interview-preparation-guide",
+        "name": "The Complete Interview Prep Guide: Linux, Kubernetes, AWS, Python, MCP and AI System Design",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  },
+  "/blog/system-design-evolution-cloud-native-ai-2026": {
+   "status": 200,
+   "title": "System Design Evolution, Part 2: Cloud-Native and AI in 2026",
+   "description": "Modern system design in 2026: platform engineering, AI-native architecture, one shop built in 1992, 2012 and 2026, a real case study and interview changes.",
+   "canonical": "https://jithendar.com/blog/system-design-evolution-cloud-native-ai-2026",
+   "robots": "noindex, nofollow",
+   "xRobotsTag": "noindex, nofollow",
+   "ogUrl": "https://jithendar.com/blog/system-design-evolution-cloud-native-ai-2026",
+   "ogTitle": "System Design Then vs Now (Part 2): Cloud-Native and AI-Native Systems",
+   "jsonLd": [
+    [
+     {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "articleSection": "DevOps, SRE & Platform Engineering",
+      "author": {
+       "@type": "Person",
+       "name": "Jithendar Dharmapuri",
+       "url": "https://jithendar.com/authors/jithendar-dharmapuri"
+      },
+      "datePublished": "2026-07-07T09:00:00+05:30",
+      "description": "Platform engineering, AI-native architecture, one shop designed in 1992, 2012 and 2026, a real case study and how interviews changed. Part 2 of 2.",
+      "headline": "System Design from the 1990s to 2026, Part 2: Cloud-Native, AI-Native and One Shop Built Three Times",
+      "image": {
+       "@type": "ImageObject",
+       "height": 1638,
+       "url": "https://jithendar.com/images/system-design-evolution/2026-ai-native-architecture.png",
+       "width": 1722
+      },
+      "inLanguage": "en",
+      "keywords": "system design, cloud-native architecture, ai-native architecture, platform engineering, microservices, system design interview, roboshop ai",
+      "mainEntityOfPage": "https://jithendar.com/blog/system-design-evolution-cloud-native-ai-2026",
+      "publisher": {
+       "@type": "Organization",
+       "name": "Jithendar.com",
+       "url": "https://jithendar.com"
+      },
+      "url": "https://jithendar.com/blog/system-design-evolution-cloud-native-ai-2026"
+     },
+     {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com",
+        "name": "Home",
+        "position": 1
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog",
+        "name": "Articles",
+        "position": 2
+       },
+       {
+        "@type": "ListItem",
+        "item": "https://jithendar.com/blog/system-design-evolution-cloud-native-ai-2026",
+        "name": "System Design from the 1990s to 2026, Part 2: Cloud-Native, AI-Native and One Shop Built Three Times",
+        "position": 3
+       }
+      ]
+     }
+    ]
+   ]
+  }
+ },
+ "sitemap": [
+  {
+   "loc": "https://jithendar.com",
+   "lastmod": "2026-11-06T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/about",
+   "lastmod": "2026-10-30T12:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/ai-use-policy",
+   "lastmod": "2026-10-27T18:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/authors/jithendar-dharmapuri",
+   "lastmod": "2026-11-06T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog",
+   "lastmod": "2026-10-30T10:15:31+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/15-essential-kubernetes-tools-devops-engineers-2026-part-1",
+   "lastmod": "2026-01-01T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/15-essential-kubernetes-tools-devops-engineers-2026-part-2",
+   "lastmod": "2026-02-02T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/cloudflare-turnstile-nextjs-bot-protection",
+   "lastmod": "2026-03-03T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/cloudnativepg-postgres-cluster-minikube-terraform",
+   "lastmod": "2026-04-04T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/dependabot-setup-five-repositories",
+   "lastmod": "2026-05-05T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/deploy-roboshop-ai-amazon-eks",
+   "lastmod": "2026-10-30T10:15:31+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/devops-interview-preparation-guide",
+   "lastmod": "2026-07-07T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/fastapi-and-fastmcp-ai-projects",
+   "lastmod": "2026-08-08T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/four-ai-systems-one-cluster",
+   "lastmod": "2026-09-09T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/github-actions-authenticate-minikube",
+   "lastmod": "2026-01-10T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/istio-service-mesh-minikube-features-setup-troubleshooting",
+   "lastmod": "2026-02-11T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/kiali-minikube-service-mesh-observability",
+   "lastmod": "2026-03-12T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/kubernetes-history-origins-evolution-milestones",
+   "lastmod": "2026-04-13T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/langchain-vs-langgraph-sre-agent-moks",
+   "lastmod": "2026-05-14T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/learning-terraform-real-project-tools-repository",
+   "lastmod": "2026-06-15T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/learning-typescript-real-project-jithendar-com",
+   "lastmod": "2026-07-16T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/logging-tracing-observability-jithendar-com",
+   "lastmod": "2026-08-17T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/mermaid-diagrams-on-jithendar-com",
+   "lastmod": "2026-09-18T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/moks-observability-logging-tracing-ai-agent-monitoring",
+   "lastmod": "2026-01-19T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/moks-rag-and-skills-design",
+   "lastmod": "2026-02-20T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/python-tutorial-beginners-real-projects",
+   "lastmod": "2026-03-21T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/python-vs-go-vs-typescript",
+   "lastmod": "2026-04-22T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/python-vs-typescript",
+   "lastmod": "2026-05-23T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/pytorch-rag-reranking-moks-sre-agent",
+   "lastmod": "2026-06-24T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-architecture",
+   "lastmod": "2026-07-25T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-eks-system-design",
+   "lastmod": "2026-08-26T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-gateway",
+   "lastmod": "2026-09-27T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-mcp-server",
+   "lastmod": "2026-01-01T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-microservices",
+   "lastmod": "2026-10-29T18:32:25+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-microservices-architecture",
+   "lastmod": "2026-02-02T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/roboshop-ai-shopping-agent",
+   "lastmod": "2026-04-04T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/shell-scripting-vs-python",
+   "lastmod": "2026-05-05T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/system-design-evolution-1990s-to-microservices",
+   "lastmod": "2026-06-06T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/system-design-evolution-cloud-native-ai-2026",
+   "lastmod": "2026-07-07T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/traefik-minikube-architecture-implementation",
+   "lastmod": "2026-08-08T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/typescript-advantages-over-python-and-go",
+   "lastmod": "2026-09-09T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/blog/valkey-redis-sentinel-minikube-terraform",
+   "lastmod": "2026-01-10T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/category/ai-agents",
+   "lastmod": "2026-08-08T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/category/ai-engineering",
+   "lastmod": "2026-09-27T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/category/devops-sre",
+   "lastmod": "2026-10-29T18:32:25+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/category/kubernetes",
+   "lastmod": "2026-10-30T10:15:31+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/contact",
+   "lastmod": "2026-10-27T18:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/cookies",
+   "lastmod": "2026-10-29T12:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/corrections-policy",
+   "lastmod": "2026-10-27T18:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/editorial-policy",
+   "lastmod": "2026-10-27T18:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/news",
+   "lastmod": "2026-11-06T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/news/october-2026-tech-roundup-ai-cloud-developer-tools",
+   "lastmod": "2026-02-11T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/news/openai-linux-kernel-exploits-kubernetes-node-patching",
+   "lastmod": "2026-11-06T09:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/privacy-policy",
+   "lastmod": "2026-10-29T12:00:00+05:30"
+  },
+  {
+   "loc": "https://jithendar.com/terms",
+   "lastmod": "2026-10-27T18:00:00+05:30"
+  }
+ ],
+ "robotsTxt": "User-agent: *\nAllow: /\n"
+}

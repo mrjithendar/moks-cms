@@ -125,3 +125,59 @@ Docs: README, ARCHITECTURE (Mermaid), OPERATIONS, SECURITY, MANUAL_SETUP, SCORIN
 - Google credentials and property access (MANUAL_SETUP.md); live Google behaviour is **not verified** here.
 - Alert rules must be copied into the miniKube repo; Grafana app sync after merge.
 - Branch also contains the owner's commit `d16f13c` (content image, CI workflow, init container) — review separately.
+
+
+---
+
+# v2: drafts, review, submission, UI (branch `feature/seo-v2-drafts-review-ui`)
+
+Branched 2026-11-10 from `feature/ai-seo-intelligence-platform` @ `ee8ab6c` (v1 complete; nothing missing from v1
+was needed). Decisions D-21 … in DECISIONS.md.
+
+## Baseline (before any v2 change, 2026-11-10)
+
+- `npm test` first run: 591 tests, 584 passed, 7 failed in `tests/editor-workflow.test.ts` with `ENOENT
+  …/pglite/dist/pglite.data`: a stale `node_modules` (vitest 5.0.5 installed vs 5.1.0 declared). After `npm install`
+  the same file passes 64/64. Not a code problem; recorded so it is not mistaken for a regression.
+- Public-site baseline captured before Phase 7 (local production build, bundled content marked published in a
+  scratch copy, `CONTENT_DIR`): Lighthouse in `docs/seo/ui-review/lighthouse-before.txt`, screenshots in
+  `docs/seo/ui-review/before/`, SEO snapshot of 20 URLs + sitemap + robots in `tests/fixtures/seo-snapshot.json`.
+
+## v2 phase status
+
+| Phase | Status |
+|---|---|
+| 1 Claude API draft automation | done (mock-tested; live API needs credentials) |
+| 2 Review & approve (mobile-first) | pending |
+| 3 Search-engine submission | pending |
+| 4 Automated internal linking | pending |
+| 5 Content optimization popovers | pending |
+| 6 Keyword opportunities | pending |
+| 7 UI/UX overhaul | pending |
+| 8 Tests, docs, PR | pending |
+
+## v2 Phase 1 notes
+
+- Dependencies: `@anthropic-ai/sdk@1.3.0`, `diff@9.0.0` (jsdiff), dev `@playwright/test@1.64.1` — all exact pins,
+  all released > 2 weeks before install. `npm audit` result recorded in Phase 8.
+- Provider: `src/lib/practice/ai/anthropic.ts` + `callModel` `provider: "anthropic"` (D-22). Structured output,
+  cached system blocks, refusal fallback for Sonnet/Opus, typed error mapping.
+- `src/lib/seo-intel/claude.ts`: prices, `seo_llm_usage` rows (tokens, cache tokens, cost, model, prompt version,
+  latency, request id), month-to-date budget with batch reservations, `claudeJson` (validated, one feedback retry),
+  `submitBatch` / `pollBatches`.
+- `changeset.ts` (blocks with ids + heading paths, atomic changes, apply, validators), `diff-model.ts` (rendered-token
+  word diffs, line diffs, counts, SERP truncation), `drafts.ts` (eligibility, prompt, generate/merge/regenerate, weekly
+  batch, batch results, queue, per-change decisions, reject), `notify.ts` (digest via `sendMail`).
+- Migration `0012_seo_drafts.sql` (+ rollback; up → down → up tested): `seo_drafts` (one open per article via a
+  partial unique index), `seo_llm_usage`, `seo_llm_batches`.
+- Settings: `drafts`, `links`, `submission`, `keywords` sections; Settings page shows month-to-date spend; budget banner
+  on every `/admin/seo` page.
+- Jobs: `drafts_weekly` (batch), `drafts_poll` (hourly), `drafts_digest`; queue kind `seo_draft` for on-demand runs.
+- Style guide generated from 39 articles: `docs/seo/STYLE_GUIDE.md`.
+- Tests: `tests/seo-v2-drafts.test.ts` (24): blocks/apply/conflicts, validators (hard + soft), substantive-change rule,
+  diff model, migration, and mocked Claude: valid → ready + usage row, invalid → retry → `generation_failed`,
+  invalid → valid, budget pause (no request sent), env/settings budget precedence, merge vs regenerate (no stacking),
+  injection neutralisation, batch submit → poll → apply with reservation release, batch-invalid → sync retry, news
+  categories, per-change decisions/edits.
+- Two v1 tests needed scoping because they counted *all* `seo_*` tables (now 21); they now check the tables 0011
+  creates. One v1 page test renders Settings synchronously, so the usage card is a sync component fed by the page.

@@ -118,3 +118,66 @@ which links the dashboard's Sync history to Loki/Jaeger.
 `grafana/jithendar-com-seo.json` (uid `jithendar-com-seo`) is added to the existing folder synced by the shared
 `grafana` Argo CD app. It only reads metrics/logs this site already exports. Like the other dashboards, it is loaded
 after merge and an Argo CD sync of the `grafana` app (a person does that).
+
+---
+
+# v2 (branch `feature/seo-v2-drafts-review-ui`, from `feature/ai-seo-intelligence-platform` @ `ee8ab6c`)
+
+## D-21 Approval publishes through the CMS's own update path (supersedes D-06 for approved drafts only)
+v1 never wrote `post` (D-06). v2's brief asks that an explicit "Approve & publish" makes the page live. Automation
+still stops at `ready_for_review`: generation, validation, merging and the weekly batch never write `post` (a static
+test enforces this for every SEO module except `publish.ts`). Only `publish.ts`, called from the admin-only approve
+route (same-origin, rate-limited, audit-logged) or from a schedule the admin set, calls `updatePost` with the
+approving admin as actor and the draft's `base_version` as optimistic-concurrency guard. That is the same function
+the editor's "Update" button uses, so permission checks, validation, revision history, redirects, IndexNow and cache
+invalidation all apply unchanged.
+
+## D-22 Claude is one more provider of `callModel`, via the official SDK
+`@anthropic-ai/sdk@1.3.0` (released 2026-10-23, older than two weeks at install) is added as `provider: "anthropic"`
+in `src/lib/practice/ai/providers.ts` (implementation in `anthropic.ts`). The SEO-specific parts (pricing, the
+monthly cap, usage rows, Message Batches) live in `src/lib/seo-intel/claude.ts` and reuse the same client factory and
+request builder, so there is one AI layer. The tutor's provider list (`AI_PROVIDERS`) is unchanged: Claude is not
+offered to the Python-practice tutor by this work. The v1 SEO enrichment (`llm.ts`) can now also select Claude.
+
+## D-23 The API key is a secret reference only
+`ANTHROPIC_API_KEY` comes from the existing `jithendar-com-env` Secret. Unlike the v1 LLM key, it cannot be saved in
+the database (no sealed copy), never appears in settings, logs or API responses.
+
+## D-24 Structured output via `output_config.format`, validated twice
+Every Claude response uses a JSON schema (`MODEL_OUTPUT_JSON_SCHEMA`) and is then validated server-side with zod and
+the change-set validators (block exists, `before` matches exactly once, code untouched, no invented URLs, …). Any
+schema or semantic failure triggers exactly one retry, with the validator's messages as feedback; a second failure
+marks the draft `generation_failed` with the reason. Soft problems (lengths, unsourced technical detail, large
+rewrites) do not retry; they become flags the reviewer sees.
+
+## D-25 Internal links are never written by Claude
+Claude may not add internal links (a validator rejects them). Links come only from the deterministic planner
+(Phase 4), whose limits are testable and auditable. They are reviewed like any other change.
+
+## D-26 Budget: hard cap from the environment, estimated before each call
+`SEO_LLM_MONTHLY_BUDGET_USD` (default $10 when unset) is a ceiling the settings can lower but not raise. Before every
+synchronous call and every batch, an upper-bound estimate (input characters / 3.5, full `max_tokens`) is checked
+against month-to-date spend plus batch reservations; when it would cross the cap, nothing is sent, the draft records
+"Paused", the weekly job reports `skipped/budget` and every `/admin/seo` page shows a banner. Prices are first-party
+list prices (Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50 per MTok; cache reads 0.1×, writes 1.25×; batches −50 %),
+overridable with `SEO_LLM_PRICES_JSON`. Unknown models are priced at the most expensive known rate.
+
+## D-27 Weekly generation uses Message Batches; "regenerate now" uses the synchronous API
+The weekly job submits one batch (custom_id `d_<draftId>`), reserves its estimated cost, and an hourly
+`drafts_poll` job applies results. A batch result that fails validation gets its single retry through the
+synchronous API. The Batches API rejects `fallbacks`, so batch requests carry none; synchronous Sonnet/Opus calls use
+the server-side refusal fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`).
+User-triggered generation runs as a `seo_draft` job in the existing queue, so the request returns immediately.
+
+## D-28 Style guide is generated, and also compiled into the app
+`scripts/seo-style-guide.ts` measures the articles and writes `docs/seo/STYLE_GUIDE.md` plus
+`src/lib/seo-intel/style-guide.ts` (same text), because `docs/` is not in the runtime image. It is the second cached
+system block (after the rules), so it is billed at cache-read rates after the first call in a 5-minute window.
+
+## D-29 `seo_audit_logs` → the existing `audit_log` (D-04 continues)
+Every v2 action (generate, decide change, approve, schedule, publish, verify, submit, rollback, reject) is written to
+`audit_log` as `seo.draft.*` / `seo.submission.*`, like v1.
+
+## D-30 News articles
+News drafts are generated like blog drafts but with their own category set (default: title/meta, alt text, internal
+links — no body rewrites of reported facts) and appear in a separate News tab of the queue and recommendations.

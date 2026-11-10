@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { BudgetBanner } from "@/components/seo/ClaudeUsage";
 import { SeoNav } from "@/components/seo/SeoNav";
 import { requireRole } from "@/lib/session";
 
@@ -12,6 +13,7 @@ export default async function SeoLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <SeoNav />
+      <BudgetBanner />
       {children}
     </>
   );

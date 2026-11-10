@@ -1,4 +1,6 @@
+import { pollDraftBatches, weeklyBatch } from "./drafts";
 import { registerSeoHandler } from "./jobs";
+import { sendDraftDigest } from "./notify";
 import { captureOutcomes, generateRecommendations } from "./recommendations";
 import { generateReport } from "./reports";
 import { runTechnicalScan } from "./technical";
@@ -22,4 +24,18 @@ registerSeoHandler("report_monthly", async (ctx) => {
 });
 registerSeoHandler("outcomes", async (ctx) => ({ status: "succeeded", rows: await captureOutcomes(ctx.now) }));
 
+registerSeoHandler("drafts_weekly", async () => {
+  const r = await weeklyBatch();
+  return { status: r.skipped && r.skipped !== "nothing_to_do" ? "skipped" : "succeeded", rows: r.submitted, detail: r, ...(r.skipped === "budget" ? { error: "Monthly LLM budget reached; weekly drafting paused.", errorCode: "budget" } : {}) };
+});
+registerSeoHandler("drafts_poll", async () => {
+  const r = await pollDraftBatches();
+  return { status: "succeeded", rows: r.processed, detail: r };
+});
+registerSeoHandler("drafts_digest", async (ctx) => {
+  const r = await sendDraftDigest(ctx.now);
+  return { status: r.sent ? "succeeded" : "skipped", rows: r.drafts, detail: r };
+});
+
 export { seoJobHandler, runSeoJob } from "./jobs";
+export { draftJobHandler } from "./drafts";

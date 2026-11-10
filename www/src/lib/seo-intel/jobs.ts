@@ -22,7 +22,7 @@ import { syncGa4Window, syncGscWindow } from "./sync";
  *   window, status, rows, API requests, retries, error and correlation id, and records Prometheus metrics.
  * - Backfills are manual only and resumable: each job handles a time-boxed slice and enqueues the rest.
  */
-export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes"] as const;
+export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 export type Trigger = "schedule" | "manual" | "backfill";
 export const JOB_KIND = "seo";
@@ -296,6 +296,11 @@ export function dueSlots(s: SeoSettings, now: Date): { type: JobType; slot: stri
   if (sc.recommendationsWeekly.enabled && dow === sc.recommendationsWeekly.weekday && h >= sc.recommendationsWeekly.hourUtc) out.push({ type: "recommendations", slot: day });
   if (sc.reportsWeekly.enabled && dow === sc.reportsWeekly.weekday && h >= sc.reportsWeekly.hourUtc) out.push({ type: "report_weekly", slot: day });
   if (sc.reportsMonthly.enabled && now.getUTCDate() === sc.reportsMonthly.dayOfMonth && h >= sc.reportsMonthly.hourUtc) out.push({ type: "report_monthly", slot: day.slice(0, 7) });
+  const dr = s.drafts;
+  if (dr.enabled && dr.weekly.enabled && dow === dr.weekly.weekday && h >= dr.weekly.hourUtc) out.push({ type: "drafts_weekly", slot: day });
+  // Batches usually end within an hour: poll once per hour (a no-op when nothing is in flight).
+  if (dr.enabled) out.push({ type: "drafts_poll", slot: `${day}T${String(h).padStart(2, "0")}` });
+  if (dr.digest.enabled && dr.digest.recipients.length && dow === dr.digest.weekday && h >= dr.digest.hourUtc) out.push({ type: "drafts_digest", slot: day });
   if (h >= 2) out.push({ type: "retention", slot: day });
   if (h >= 9) out.push({ type: "outcomes", slot: day });
   return out;

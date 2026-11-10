@@ -15,7 +15,11 @@ const KEY = "seo";
 
 export const SEARCH_TYPES = ["web", "image", "video", "news", "discover", "googleNews"] as const;
 export type SearchType = (typeof SEARCH_TYPES)[number];
-export const LLM_PROVIDERS = ["openai", "gemini", "bedrock"] as const;
+export const LLM_PROVIDERS = ["openai", "gemini", "bedrock", "anthropic"] as const;
+/** Draft change categories Claude may work on automatically (each togglable in Settings → Drafts). */
+export const DRAFT_CATEGORIES = ["title_meta", "striking_expansion", "freshness", "internal_links", "alt_text", "faq_headings", "new_article"] as const;
+export type DraftCategory = (typeof DRAFT_CATEGORIES)[number];
+const modelId = z.string().trim().max(120).regex(/^[A-Za-z0-9._:\-/@]*$/, "Use the provider's model id.");
 
 const hour = z.coerce.number().int().min(0).max(23);
 const weekday = z.coerce.number().int().min(0).max(6); // 0 = Sunday (UTC)
@@ -100,6 +104,51 @@ const settingsSchema = z.object({
     emailEnabled: z.boolean(),
     recipients: z.array(z.string().trim().toLowerCase().email()).max(10),
   }),
+  /** v2: Claude-drafted change sets (docs/seo/REVIEW_WORKFLOW.md). Automation stops at "ready for review". */
+  drafts: z.object({
+    enabled: z.boolean(),
+    /** Empty = SEO_DRAFT_MODEL / SEO_CLASSIFY_MODEL from the environment, else the built-in defaults. */
+    draftModel: modelId,
+    classifyModel: modelId,
+    /** Empty/0 = SEO_LLM_MONTHLY_BUDGET_USD. The environment value is a ceiling the setting cannot raise. */
+    monthlyBudgetUsd: num(0, 10_000),
+    effort: z.enum(["low", "medium", "high"]),
+    maxOutputTokens: num(1000, 32_000),
+    /** Flag a draft that rewrites more than this share of the body when its recommendations did not ask for it. */
+    maxRewriteRatio: num(0.05, 1),
+    autoEligible: z.object(Object.fromEntries(DRAFT_CATEGORIES.map((c) => [c, z.boolean()])) as Record<DraftCategory, z.ZodBoolean>),
+    /** News articles: their own (narrower) set of categories; news drafts show in the News tab. */
+    news: z.object({ enabled: z.boolean(), categories: z.array(z.enum(DRAFT_CATEGORIES)).max(DRAFT_CATEGORIES.length) }),
+    weekly: z.object({ enabled: z.boolean(), weekday, hourUtc: hour, maxArticles: num(1, 200) }),
+    digest: z.object({ enabled: z.boolean(), weekday, hourUtc: hour, recipients: z.array(z.string().trim().toLowerCase().email()).max(10) }),
+  }),
+  /** v2 Phase 4: conservative automated internal linking (docs/seo/INTERNAL_LINKING.md). */
+  links: z.object({
+    enabled: z.boolean(),
+    maxNewPerDraft: num(0, 10),
+    wordsPerLink: num(100, 2000),
+    minWordsBetween: num(0, 1000),
+    maxInboundPerTargetPerRun: num(1, 50),
+    minRelevance: num(0, 1),
+    anchorMinWords: num(1, 6),
+    anchorMaxWords: num(2, 10),
+  }),
+  /** v2 Phase 3: compliant search-engine submission (docs/seo/SUBMISSION.md). Kill switch: SEO_SUBMISSION_ENABLED. */
+  submission: z.object({
+    indexNow: z.boolean(),
+    googleSitemap: z.boolean(),
+    urlInspection: z.boolean(),
+    inspectionDelayHours: num(24, 168),
+  }),
+  /** v2 Phase 6: keyword opportunities. */
+  keywords: z.object({
+    brandRegex: z.string().trim().max(200),
+    risingMinGrowth: num(0.05, 10),
+    decliningPositions: num(1, 50),
+    trackedAlertPositions: num(1, 50),
+    classifyWithLlm: z.boolean(),
+    clusterSimilarity: num(0.1, 0.95),
+  }),
 });
 
 export type SeoSettings = z.infer<typeof settingsSchema> & { llmKey: Sealed | null };
@@ -134,6 +183,22 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   crawler: { requestsPerSecond: 1, maxPages: 500, timeoutMs: 10_000, maxBytes: 2_000_000, maxRedirects: 5 },
   llm: { enabled: false, provider: "openai", model: "", baseUrl: "", region: "us-east-1", timeoutMs: 30_000, maxOutputTokens: 900, dailyRequestLimit: 100 },
   reports: { emailEnabled: false, recipients: [] },
+  drafts: {
+    enabled: true,
+    draftModel: "",
+    classifyModel: "",
+    monthlyBudgetUsd: 0,
+    effort: "medium",
+    maxOutputTokens: 16_000,
+    maxRewriteRatio: 0.25,
+    autoEligible: { title_meta: true, striking_expansion: true, freshness: true, internal_links: true, alt_text: true, faq_headings: true, new_article: false },
+    news: { enabled: true, categories: ["title_meta", "alt_text", "internal_links"] },
+    weekly: { enabled: true, weekday: 2, hourUtc: 4, maxArticles: 20 },
+    digest: { enabled: true, weekday: 6, hourUtc: 5, recipients: [] },
+  },
+  links: { enabled: true, maxNewPerDraft: 3, wordsPerLink: 250, minWordsBetween: 100, maxInboundPerTargetPerRun: 5, minRelevance: 0.12, anchorMinWords: 2, anchorMaxWords: 6 },
+  submission: { indexNow: true, googleSitemap: true, urlInspection: true, inspectionDelayHours: 60 },
+  keywords: { brandRegex: "jithendar", risingMinGrowth: 0.5, decliningPositions: 3, trackedAlertPositions: 3, classifyWithLlm: true, clusterSimilarity: 0.5 },
   llmKey: null,
 };
 
@@ -151,6 +216,17 @@ function merge(stored: Stored | undefined): SeoSettings {
     crawler: { ...d.crawler, ...s.crawler },
     llm: { ...d.llm, ...s.llm },
     reports: { ...d.reports, ...s.reports },
+    drafts: {
+      ...d.drafts,
+      ...s.drafts,
+      autoEligible: { ...d.drafts.autoEligible, ...s.drafts?.autoEligible },
+      news: { ...d.drafts.news, ...s.drafts?.news },
+      weekly: { ...d.drafts.weekly, ...s.drafts?.weekly },
+      digest: { ...d.drafts.digest, ...s.drafts?.digest },
+    },
+    links: { ...d.links, ...s.links },
+    submission: { ...d.submission, ...s.submission },
+    keywords: { ...d.keywords, ...s.keywords },
     llmKey: (s.llmKey as Sealed | null | undefined) ?? null,
   };
 }
@@ -191,6 +267,14 @@ export async function saveSeoSettings(raw: unknown, actorId: string): Promise<{ 
   const v = parsed.data;
   if (v.thresholds.strikingPositionMin >= v.thresholds.strikingPositionMax) throw new SettingsError("The settings are not valid.", ["thresholds: striking-distance minimum must be below the maximum"]);
   if (v.thresholds.bandMedium >= v.thresholds.bandHigh) throw new SettingsError("The settings are not valid.", ["thresholds: the medium band must start below the high band"]);
+  if (v.links.anchorMinWords > v.links.anchorMaxWords) throw new SettingsError("The settings are not valid.", ["links: the shortest anchor must not be longer than the longest"]);
+  if (v.keywords.brandRegex) {
+    try {
+      new RegExp(v.keywords.brandRegex, "i");
+    } catch {
+      throw new SettingsError("The settings are not valid.", ["keywords.brandRegex: not a valid regular expression"]);
+    }
+  }
   if (Object.values(v.weights).every((w) => w === 0)) throw new SettingsError("The settings are not valid.", ["weights: at least one weight must be above 0"]);
   const current = await getSeoSettings();
   let llmKey = current.llmKey;
@@ -218,6 +302,8 @@ export function publicSettings(s: SeoSettings): PublicSeoSettings {
 /** The LLM API key: saved (sealed) key, else the provider's environment variable. Bedrock uses pod credentials. */
 export function seoLlmKey(s: SeoSettings, env: Record<string, string | undefined> = process.env): string | null {
   if (s.llm.provider === "bedrock") return null;
+  // Claude: the key is a secret reference only (Kubernetes Secret → env), never stored in the database.
+  if (s.llm.provider === "anthropic") return env.ANTHROPIC_API_KEY?.trim() || null;
   if (s.llmKey) return unseal(s.llmKey);
   const v = s.llm.provider === "gemini" ? env.GEMINI_API_KEY : env.OPENAI_API_KEY;
   return v?.trim() || null;
@@ -229,4 +315,47 @@ export function llmConfigured(s: SeoSettings): boolean {
   // Ollama and other local OpenAI-compatible servers need no key.
   if (s.llm.provider === "openai" && s.llm.baseUrl.startsWith("http://")) return true;
   return Boolean(seoLlmKey(s));
+}
+
+// --- v2: Claude drafting configuration -------------------------------------------------------------------------
+
+export const DEFAULT_DRAFT_MODEL = "claude-sonnet-5-5";
+export const DEFAULT_CLASSIFY_MODEL = "claude-haiku-5-5";
+/** Used when neither the setting nor SEO_LLM_MONTHLY_BUDGET_USD is set. */
+export const DEFAULT_MONTHLY_BUDGET_USD = 10;
+
+export type ClaudeConfig = { apiKey: string | null; draftModel: string; classifyModel: string; monthlyBudgetUsd: number; budgetSource: "env" | "settings" | "default" };
+
+/** Models, key and budget for Claude drafting. The env budget is a hard ceiling; the setting may only lower it. */
+export function claudeConfig(s: SeoSettings, env: Record<string, string | undefined> = process.env): ClaudeConfig {
+  const envBudget = Number(env.SEO_LLM_MONTHLY_BUDGET_USD);
+  const hasEnv = Number.isFinite(envBudget) && envBudget >= 0 && env.SEO_LLM_MONTHLY_BUDGET_USD?.trim() !== "" && env.SEO_LLM_MONTHLY_BUDGET_USD !== undefined;
+  const fromSettings = s.drafts.monthlyBudgetUsd > 0 ? s.drafts.monthlyBudgetUsd : null;
+  let monthlyBudgetUsd = DEFAULT_MONTHLY_BUDGET_USD;
+  let budgetSource: ClaudeConfig["budgetSource"] = "default";
+  if (hasEnv && fromSettings !== null) {
+    monthlyBudgetUsd = Math.min(envBudget, fromSettings);
+    budgetSource = fromSettings < envBudget ? "settings" : "env";
+  } else if (hasEnv) {
+    monthlyBudgetUsd = envBudget;
+    budgetSource = "env";
+  } else if (fromSettings !== null) {
+    monthlyBudgetUsd = fromSettings;
+    budgetSource = "settings";
+  }
+  return {
+    apiKey: env.ANTHROPIC_API_KEY?.trim() || null,
+    draftModel: s.drafts.draftModel || env.SEO_DRAFT_MODEL?.trim() || DEFAULT_DRAFT_MODEL,
+    classifyModel: s.drafts.classifyModel || env.SEO_CLASSIFY_MODEL?.trim() || DEFAULT_CLASSIFY_MODEL,
+    monthlyBudgetUsd,
+    budgetSource,
+  };
+}
+
+/** Kill switch for search-engine submission: SEO_SUBMISSION_ENABLED=true|false; unset → on only in production. */
+export function submissionEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env.SEO_SUBMISSION_ENABLED?.trim().toLowerCase();
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return env.APP_ENV === "production";
 }

@@ -21,6 +21,10 @@ const SECTION_LABELS: Record<string, string> = {
   crawler: "Technical crawler",
   llm: "LLM enrichment (optional; off by default)",
   reports: "Reports (email only after recipients are set and email is enabled)",
+  drafts: "Claude drafts (automation stops at “ready for review”; empty models/budget = environment defaults)",
+  links: "Internal linking limits (conservative by default)",
+  submission: "Search-engine submission (kill switch: SEO_SUBMISSION_ENABLED)",
+  keywords: "Keyword opportunities",
 };
 const SEARCH_TYPES = ["web", "image", "video", "news", "discover", "googleNews"];
 

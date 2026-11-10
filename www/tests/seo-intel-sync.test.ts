@@ -52,11 +52,13 @@ describe("migration 0011", () => {
     const pg = new PGlite();
     const clean = drizzle(pg, { schema }) as unknown as Db;
     await migrateDb(clean);
-    const seoTables = async () => rowsOf<{ t: string }>(await clean.execute(sql`select table_name as t from information_schema.tables where table_name like 'seo\\_%' order by 1`)).map((r) => r.t);
+    // Only the tables 0011 itself creates (later migrations add more seo_* tables of their own).
+    const own = new Set([...fs.readFileSync(path.resolve(migrationsDir(), "0011_seo_intelligence.sql"), "utf8").matchAll(/CREATE TABLE IF NOT EXISTS "(seo_[a-z0-9_]+)"/g)].map((m) => m[1]!));
+    const seoTables = async () => rowsOf<{ t: string }>(await clean.execute(sql`select table_name as t from information_schema.tables where table_name like 'seo\\_%' order by 1`)).map((r) => r.t).filter((t) => own.has(t));
     const allTables = async () => rowsOf<{ t: string }>(await clean.execute(sql`select table_name as t from information_schema.tables where table_schema = 'public' order by 1`)).map((r) => r.t);
     expect(await seoTables()).toContain("seo_gsc_daily_totals");
     expect((await seoTables()).length).toBe(18);
-    const before = (await allTables()).filter((t) => !t.startsWith("seo_"));
+    const before = (await allTables()).filter((t) => !own.has(t));
     const down = fs.readFileSync(path.resolve(migrationsDir(), "../rollback/0011_seo_intelligence.down.sql"), "utf8").split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
     for (const stmt of down) await clean.execute(sql.raw(stmt));
     expect(await seoTables()).toEqual([]);

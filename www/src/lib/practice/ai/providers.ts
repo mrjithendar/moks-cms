@@ -1,5 +1,6 @@
 import "server-only";
 import type { PracticeSettings } from "../settings";
+import { anthropicCall } from "./anthropic";
 import { traceAwsClient } from "../../trace";
 
 /**
@@ -10,9 +11,23 @@ import { traceAwsClient } from "../../trace";
  * - openai: OpenAI Chat Completions or any OpenAI-compatible endpoint (base URL), structured output via json_schema
  * - gemini: Gemini API generateContent with responseSchema (reuses GEMINI_API_KEY when no key is saved)
  * - bedrock: Amazon Bedrock Converse API with the pod's AWS credentials (env or IRSA); JSON requested in the prompt
+ * - anthropic: Claude Messages API through the official SDK (@anthropic-ai/sdk), structured output via
+ *   output_config.format (JSON schema), prompt caching for the stable system blocks (src/lib/practice/ai/anthropic.ts)
  */
-export type ModelCall = { system: string; user: string; schema: Record<string, unknown>; maxTokens: number; signal: AbortSignal };
-export type ModelResult = { text: string; inputTokens: number; outputTokens: number };
+export type ModelProvider = PracticeSettings["ai"]["provider"] | "anthropic";
+export type ModelSettings = Omit<PracticeSettings["ai"], "provider"> & { provider: ModelProvider };
+export type ModelCall = {
+  system: string;
+  user: string;
+  schema: Record<string, unknown>;
+  maxTokens: number;
+  signal: AbortSignal;
+  /** Anthropic only: stable system blocks sent before `system` and marked for prompt caching (rules, style guide). */
+  cachedSystem?: string[];
+  /** Anthropic only: output_config.effort. */
+  effort?: "low" | "medium" | "high";
+};
+export type ModelResult = { text: string; inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number; requestId?: string | null; model?: string; stopReason?: string | null };
 
 export class ProviderError extends Error {
   constructor(
@@ -47,7 +62,8 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
   }
 }
 
-export async function callModel(settings: PracticeSettings["ai"], apiKey: string | null, call: ModelCall, fetchImpl: typeof fetch = fetch): Promise<ModelResult> {
+export async function callModel(settings: ModelSettings, apiKey: string | null, call: ModelCall, fetchImpl: typeof fetch = fetch): Promise<ModelResult> {
+  if (settings.provider === "anthropic") return anthropicCall(settings.model, apiKey, call, fetchImpl);
   if (settings.provider === "openai") {
     const base = settings.baseUrl || "https://api.openai.com/v1";
     const official = !settings.baseUrl;
