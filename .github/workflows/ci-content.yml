@@ -1,13 +1,9 @@
-<<<<<<< HEAD
-name: jithendar.com content
-=======
 name: wwww-content
->>>>>>> b2fdd38e5c9ee8e194e969e929c61253a9beaafd
 
 # Content-only releases: no lint, no typecheck, no Next.js build.
 #
 # check   → pull requests touching content: validate content/ (frontmatter schema, internal links)
-# release → default branch: validate, package www/content and www/public/images into a tiny busybox image,
+# release → default branch: validate, package services/www/content and services/www/public/images into a tiny busybox image,
 #           push registry.jithendar.com/jithendar/jithendar-content:latest to Harbor, then
 #           `kubectl rollout restart deploy/jithendar-com` so the init container "content" copies the new files
 #           into the pods (minikube/30-jithendar-com.yaml).
@@ -20,17 +16,17 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'www/content/**'
-      - 'www/public/images/**'
-      - 'www/Dockerfile.content'
-      - 'www/Dockerfile.content.dockerignore'
+      - 'services/www/content/**'
+      - 'services/www/public/images/**'
+      - 'services/www/Dockerfile.content'
+      - 'services/www/Dockerfile.content.dockerignore'
       - '.github/workflows/ci-content.yml'
   push:
     paths:
-      - 'www/content/**'
-      - 'www/public/images/**'
-      - 'www/Dockerfile.content'
-      - 'www/Dockerfile.content.dockerignore'
+      - 'services/www/content/**'
+      - 'services/www/public/images/**'
+      - 'services/www/Dockerfile.content'
+      - 'services/www/Dockerfile.content.dockerignore'
       - '.github/workflows/ci-content.yml'
 
 permissions:
@@ -42,7 +38,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: www
+    working-directory: services/www
 
 jobs:
   check:
@@ -55,9 +51,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: www/.nvmrc
+          node-version-file: services/www/.nvmrc
           cache: npm
-          cache-dependency-path: www/package-lock.json
+          cache-dependency-path: services/www/package-lock.json
       - run: npm ci --no-audit --no-fund
       - name: Validate content
         run: npx vitest run tests/content.test.ts tests/links.test.ts
@@ -74,9 +70,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: www/.nvmrc
+          node-version-file: services/www/.nvmrc
           cache: npm
-          cache-dependency-path: www/package-lock.json
+          cache-dependency-path: services/www/package-lock.json
       - run: npm ci --no-audit --no-fund
       - name: Validate content
         run: npx vitest run tests/content.test.ts tests/links.test.ts
@@ -116,7 +112,7 @@ jobs:
           done
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           trap 'rm -f "$KUBECONFIG"' EXIT
-          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
+          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
           kubectl -n jithendar rollout restart deploy/jithendar-com
           if ! kubectl -n jithendar rollout status deploy/jithendar-com --timeout=5m; then
             echo "::error::Rollout of jithendar-com did not finish within 5 minutes"

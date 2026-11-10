@@ -9,7 +9,7 @@ name: practice-executor
 #           executor Deployments so they pull :latest, and wait for the rollout. Everything runs :latest; sandbox
 #           pods pull practice-sandbox:latest with imagePullPolicy Always.
 #           It never applies manifests: namespaces, RuntimeClass, admission policy, RBAC and Secrets are applied
-#           once by a person (www/docs/PYTHON_PRACTICE_EXECUTOR.md). Set the variable only after
+#           once by a person (services/www/docs/PYTHON_PRACTICE_EXECUTOR.md). Set the variable only after
 #           scripts/verify-practice-sandbox.sh passes on mk4; until then the job is skipped.
 #
 # Registry: the release job logs in to Harbor with repository secrets HARBOR_USERNAME and HARBOR_PASSWORD. For deploy,
@@ -19,15 +19,15 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'executor/**'
-      - 'www/content/python-practice/**'
+      - 'services/executor/**'
+      - 'services/www/content/python-practice/**'
       - 'minikube/practice-executor-*.yaml'
       - 'scripts/manifests.sh'
       - '.github/workflows/ci-practice-executor.yml'
   push:
     paths:
-      - 'executor/**'
-      - 'www/content/python-practice/**'
+      - 'services/executor/**'
+      - 'services/www/content/python-practice/**'
       - '.github/workflows/ci-practice-executor.yml'
 
 permissions:
@@ -50,16 +50,16 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install test dependencies
-        working-directory: executor
+        working-directory: services/executor
         run: pip install --quiet ".[test]" pyyaml==6.0.3
       - name: Executor tests
-        working-directory: executor
+        working-directory: services/executor
         run: python -m pytest -q
       - name: Catalog is valid and up to date
         run: |
-          python executor/tools/build_problems.py
-          git diff --exit-code -- www/content/python-practice/catalog.generated.json || {
-            echo "::error::catalog.generated.json is stale: run python executor/tools/build_problems.py and commit it"; exit 1; }
+          python services/executor/tools/build_problems.py
+          git diff --exit-code -- services/www/content/python-practice/catalog.generated.json || {
+            echo "::error::catalog.generated.json is stale: run python services/executor/tools/build_problems.py and commit it"; exit 1; }
       - name: Render manifests
         run: scripts/manifests.sh practice-executor | python scripts/ci-app-manifests.py > /dev/null
 
@@ -85,7 +85,7 @@ jobs:
         run: printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
       - name: Build and push
         id: push
-        working-directory: executor
+        working-directory: services/executor
         # One tag, latest: the cluster runs it with imagePullPolicy Always. A re-run builds and pushes again.
         run: |
           set -euo pipefail

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Static checks for the Grafana dashboards in grafana/ (run by .github/workflows/grafana-dashboards.yml).
+"""Static checks for the Grafana dashboards in services/grafana/ (run by .github/workflows/grafana-dashboards.yml).
 
   python3 scripts/check-dashboards.py
 
-Checks that every JSON file is in grafana/kustomization.yaml (and the other way round), that uids and titles are
+Checks that every JSON file is in services/grafana/kustomization.yaml (and the other way round), that uids and titles are
 unique, that panels use only the data sources Grafana provisions (tools: deploy/minikube/observability/grafana/
 values.yaml), that panel ids are unique and panels do not overlap, that every $variable a query uses is defined,
 and that dashboard links point at dashboards that exist. Queries are not run: that needs the cluster.
@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / "grafana"
+ROOT = Path(__file__).resolve().parents[1] / "services" / "grafana"
 # uid → type, as provisioned by the grafana values in the tools repo.
 DATASOURCES = {"roboshop-prometheus": "prometheus", "roboshop-loki": "loki", "jaeger": "jaeger"}
 BUILTIN = {"__interval", "__interval_ms", "__range", "__range_s", "__range_ms", "__rate_interval", "__all",
@@ -89,9 +89,9 @@ def main() -> int:
     listed = set(re.findall(r"^\s*-\s+(\S+\.json)\s*$", (ROOT / "kustomization.yaml").read_text(), re.M))
     present = {p.name for p in ROOT.glob("*.json")}
     for missing in sorted(present - listed):
-        problems.append(f"{missing}: not listed in grafana/kustomization.yaml, so Grafana never sees it")
+        problems.append(f"{missing}: not listed in services/grafana/kustomization.yaml, so Grafana never sees it")
     for missing in sorted(listed - present):
-        problems.append(f"{missing}: listed in grafana/kustomization.yaml but missing")
+        problems.append(f"{missing}: listed in services/grafana/kustomization.yaml but missing")
 
     results = [r for p in sorted(ROOT.glob("*.json")) if (r := check(p, problems))]
     uids = [uid for uid, _, _ in results]

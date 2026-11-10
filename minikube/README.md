@@ -16,7 +16,7 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 | `00-namespace.yaml` | Namespace `jithendar` |
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, PodDisruptionBudget, NetworkPolicy `jithendar-com` |
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
-| `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `www/docs/OBSERVABILITY.md` |
+| `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `services/www/docs/OBSERVABILITY.md` |
 | `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only restart the site and the executor (`scripts/setup-ci-deployer.sh`) |
 | `85-ci-applier.yaml` | ServiceAccount `github-ci-applier`: `.github/workflows/deploy-minikube.yml` applies the application objects (not RBAC, Secrets or anything cluster-wide; `scripts/setup-ci-applier.sh`) |
 
@@ -25,7 +25,7 @@ reach Grafana through Argo CD.
 
 ## Python practice executor (`practice-executor-*.yaml`)
 
-Code runner in namespace `jithendar`, next to the site (`www/docs/PYTHON_PRACTICE_EXECUTOR.md`). Not in
+Code runner in namespace `jithendar`, next to the site (`services/www/docs/PYTHON_PRACTICE_EXECUTOR.md`). Not in
 `kustomization.yaml` on purpose, so `./deploy.sh` never applies it. Apply it by hand, only after gVisor is
 installed (`scripts/install-gvisor-mk4.sh`), then prove isolation with `scripts/verify-practice-sandbox.sh`:
 
@@ -99,4 +99,4 @@ scripts/manifests.sh site | kubectl --context mk4 apply -f -
 every group at once and try to apply `kustomization.yaml` itself.
 
 A push to `master` that changes `minikube/` also runs `.github/workflows/deploy-minikube.yml`, which applies the
-application objects of all three groups as `github-ci-applier` (`www/docs/DEPLOYMENT.md`).
+application objects of all three groups as `github-ci-applier` (`services/www/docs/DEPLOYMENT.md`).
