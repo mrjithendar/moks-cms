@@ -142,6 +142,14 @@ export const listFilter = z.object({
   offset: z.coerce.number().int().min(0).catch(0),
 });
 
+/** Counts per review status for the Recommendations status tabs. */
+export async function recommendationStatusCounts(): Promise<{ pending: number; approved: number; rejected: number; all: number }> {
+  const db = await getDb();
+  const rows = rowsOf<{ s: string; n: number }>(await db.execute(sql`select review_status as s, count(*)::int as n from seo_recommendations group by 1`));
+  const by = Object.fromEntries(rows.map((r) => [r.s, Number(r.n)]));
+  return { pending: by.pending ?? 0, approved: by.approved ?? 0, rejected: by.rejected ?? 0, all: rows.reduce((a, r) => a + Number(r.n), 0) };
+}
+
 export async function listRecommendations(raw: Record<string, unknown>) {
   const f = listFilter.parse(raw);
   const db = await getDb();

@@ -22,7 +22,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
     <>
       <AdminHeader title="Content optimization" description="Every published article, weakest audit first. Hover, tap or focus any number for the issues behind it. Word count and keyword density are not scored (they are not ranking factors)." />
       <nav aria-label="Content tabs" className="mb-4 flex gap-1 border-b border-line">
-        {([["articles", "Articles"], ["news", "News"]] as const).map(([k, l]) => <Link key={k} href={`?tab=${k}`} aria-current={tab === k ? "page" : undefined} className={`-mb-px min-h-11 border-b-2 px-3 pt-3 text-sm font-medium ${tab === k ? "border-accent text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}>{l}</Link>)}
+        {([["articles", "Articles"], ["news", "News"]] as const).map(([k, l]) => <Link key={k} href={`?tab=${k}`} aria-current={tab === k ? "page" : undefined} className={`-mb-px min-h-11 border-b-2 px-3 pt-3 text-sm font-medium ${tab === k ? "border-accent text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}>{l} <span className="tabular-nums text-fg-subtle">({all.filter((r) => (k === "news" ? r.collection === "news" : r.collection !== "news")).length})</span></Link>)}
       </nav>
       {!rows.length ? <Empty>No published {tab === "news" ? "news articles" : "articles"} in the database yet.</Empty> : (
         <>
