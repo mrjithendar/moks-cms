@@ -22,14 +22,14 @@ read -r -s -p "PageSpeed Insights API key (optional, Enter to skip): " PSI; echo
 
 B64="$(base64 < "$KEY_FILE" | tr -d '\n')"
 PATCH="$(jq -n --arg k "$B64" --arg p "$PSI" '{data: ({GOOGLE_SEO_SERVICE_ACCOUNT_JSON: ($k | @base64)} + (if $p == "" then {} else {PAGESPEED_API_KEY: ($p | @base64)} end))}')"
-kubectl --context "$CONTEXT" -n "$NS" get secret jithendar-com-env >/dev/null
-kubectl --context "$CONTEXT" -n "$NS" patch secret jithendar-com-env --type merge -p "$PATCH" >/dev/null
+kubectl -n "$NS" get secret jithendar-com-env >/dev/null
+kubectl -n "$NS" patch secret jithendar-com-env --type merge -p "$PATCH" >/dev/null
 echo "Secret $NS/jithendar-com-env: GOOGLE_SEO_SERVICE_ACCOUNT_JSON${PSI:+ and PAGESPEED_API_KEY} set."
 
-if kubectl --context "$CONTEXT" -n "$NS" get configmap jithendar-com-public >/dev/null 2>&1; then
-  kubectl --context "$CONTEXT" -n "$NS" patch configmap jithendar-com-public --type merge -p "$(jq -n --arg g "$GSC" --arg a "$GA4" '{data: {SEO_GSC_PROPERTY: $g, SEO_GA4_PROPERTY_ID: $a}}')" >/dev/null
+if kubectl -n "$NS" get configmap jithendar-com-public >/dev/null 2>&1; then
+  kubectl -n "$NS" patch configmap jithendar-com-public --type merge -p "$(jq -n --arg g "$GSC" --arg a "$GA4" '{data: {SEO_GSC_PROPERTY: $g, SEO_GA4_PROPERTY_ID: $a}}')" >/dev/null
 else
-  kubectl --context "$CONTEXT" -n "$NS" create configmap jithendar-com-public --from-literal="SEO_GSC_PROPERTY=$GSC" --from-literal="SEO_GA4_PROPERTY_ID=$GA4" >/dev/null
+  kubectl -n "$NS" create configmap jithendar-com-public --from-literal="SEO_GSC_PROPERTY=$GSC" --from-literal="SEO_GA4_PROPERTY_ID=$GA4" >/dev/null
 fi
 echo "ConfigMap $NS/jithendar-com-public: SEO_GSC_PROPERTY, SEO_GA4_PROPERTY_ID set."
 echo "Restart: kubectl --context $CONTEXT -n $NS rollout restart deployment/jithendar-com"

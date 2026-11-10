@@ -21,16 +21,16 @@ CONTEXT="${KUBE_CONTEXT:-mk4}"
 NS="jithendar"
 SA="github-ci-deployer"
 TEMPLATE=".github/jithendar-ci-deployer.yaml"
-k() { kubectl --context "$CONTEXT" "$@"; }
+k() { kubectl "$@"; }
 
 cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 # get cluster endpoint: ex https://jithendar.com:32771
-MK4_API_SERVER="$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.server}')"
+MK4_API_SERVER="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')"
 # get cluster certificate-authority-data
-MK4_CA_DATA="$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
+MK4_CA_DATA="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
 # if CA is empty, base64 the CA file the context points to instead
-[[ -n "$MK4_CA_DATA" ]] || MK4_CA_DATA="$(base64 < "$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.certificate-authority}')" | tr -d '\n')"
+[[ -n "$MK4_CA_DATA" ]] || MK4_CA_DATA="$(base64 < "$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority}')" | tr -d '\n')"
 # if SERVER or CA is empty script should exit
 [[ -n "$MK4_API_SERVER" && -n "$MK4_CA_DATA" ]] || { echo "Could not read server/CA of context $CONTEXT." >&2; exit 1; }
 

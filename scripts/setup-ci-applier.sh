@@ -19,14 +19,14 @@ CONTEXT="${KUBE_CONTEXT:-mk4}"
 NS="jithendar"
 SA="github-ci-applier"
 TEMPLATE=".github/jithendar-ci-applier.yaml"
-k() { kubectl --context "$CONTEXT" "$@"; }
+k() { kubectl "$@"; }
 
 cd "$(dirname -- "${BASH_SOURCE[0]}")/.."
 python3 -c "import yaml" 2>/dev/null || { echo "scripts/ci-app-manifests.py needs PyYAML: python3 -m pip install --user pyyaml==6.0.3" >&2; exit 1; }
 
-MK4_API_SERVER="$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.server}')"
-MK4_CA_DATA="$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
-[[ -n "$MK4_CA_DATA" ]] || MK4_CA_DATA="$(base64 < "$(kubectl config view --raw --minify --context "$CONTEXT" -o jsonpath='{.clusters[0].cluster.certificate-authority}')" | tr -d '\n')"
+MK4_API_SERVER="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')"
+MK4_CA_DATA="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
+[[ -n "$MK4_CA_DATA" ]] || MK4_CA_DATA="$(base64 < "$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority}')" | tr -d '\n')"
 [[ -n "$MK4_API_SERVER" && -n "$MK4_CA_DATA" ]] || { echo "Could not read server/CA of context $CONTEXT." >&2; exit 1; }
 
 echo "→ Cluster $MK4_API_SERVER, ServiceAccount $NS/$SA, repository $REPO"
