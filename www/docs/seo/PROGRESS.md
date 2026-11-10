@@ -150,7 +150,7 @@ was needed). Decisions D-21 … in DECISIONS.md.
 | 1 Claude API draft automation | done (mock-tested; live API needs credentials) |
 | 2 Review & approve (mobile-first) | done (mock-tested; live publish verified only against local fakes) |
 | 3 Search-engine submission | done (mock-tested; live IndexNow/Google need production + credentials) |
-| 4 Automated internal linking | pending |
+| 4 Automated internal linking | done (unit + DB-tested; uses real corpus once posts are in Postgres) |
 | 5 Content optimization popovers | pending |
 | 6 Keyword opportunities | pending |
 | 7 UI/UX overhaul | pending |
@@ -224,3 +224,19 @@ was needed). Decisions D-21 … in DECISIONS.md.
 - Tests: `tests/seo-v2-submission.test.ts` (12): kill switch, payload, batching/debounce/dedupe, retry vs terminal,
   automatic key (and respecting "off"), sitemap queue incl. news, write scope + PUT URL, hourly dedupe, missing
   credentials and 403 hint, inspection result + timeline, lastmod only on substantive change, migration.
+
+## v2 Phase 4 notes
+
+- `internal-links.ts`: TF-IDF + shared GSC queries + category/tags relevance, tutorial-path and orphan priorities,
+  every hard limit from the brief (INTERNAL_LINKING.md), anchors from existing paragraph text only, anchor diversity
+  per target, rolling-week inbound cap from `seo_drafts`. Wired into `drafts.ts` (`linkChangesFor`); a links-only
+  recommendation produces a draft without any Claude call.
+- Two planner bugs found by the tests and fixed: stripped apostrophes produced truncated anchors ("…for let"); the
+  prerequisite signal now requires the source to mention the earlier article's subject instead of a fixed
+  similarity threshold.
+- `/admin/seo/links` rebuilt: counts, pending link changes with accept/reject (`LinkDecision`), orphans, over-linked,
+  sortable inbound/outbound table; v1 rule candidates kept in a collapsible list.
+- Tests: `tests/seo-v2-links.test.ts` (11): max per draft, one per target, no self/existing/unrelated, density cap and
+  skip-at-cap, forbidden zones (headings/code/captions/first sentence/existing links), spacing, inbound cap per week,
+  2–6-word existing anchors, no repeated exact anchor, orphan/prerequisite/series priority, threshold, graph; plus DB
+  integration: links-only draft → validate → approve → links in the published body; no re-linking.
