@@ -6,8 +6,10 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 | Path | Contents |
 |---|---|
 | [`services/www/`](services/www/README.md) | The Next.js site: source, content, tests, Dockerfiles and [docs](services/www/docs/) |
-| [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), and the Python practice executor (`practice-executor-*.yaml`); `scripts/manifests.sh <group>` prints one group |
-| [`services/grafana/`](services/grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app |
+| [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), the Python practice executor (`practice-executor-*.yaml`) and the SEO agent (`seo-agent-*.yaml`); `scripts/manifests.sh <group>` prints one group |
+| [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
+| `services/seo-agent/` | SEO v3 agent service (Python: LangGraph, CrewAI, pgvector, Ask the Blog); see [AGENTS.md](services/www/docs/seo/AGENTS.md) |
+| [`services/grafana/`](services/grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app (its path must be `services/grafana`) |
 | `deploy.sh` | Apply the site manifests and restart the site on `jithendar-com:latest` |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |

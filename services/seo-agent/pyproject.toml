@@ -40,6 +40,9 @@ exclude-newer = "2 weeks"
 # CrewAI hard-requires LanceDB (+ pyarrow, ~290 MB) for its memory feature, which this service never enables
 # (memory=False). chromadb cannot be dropped: crewai imports it at load. docs/seo/DECISIONS.md D-47.
 override-dependencies = ["lancedb; sys_platform == 'never'"]
+# Security exception to the two-week rule (D-53): oauthlib 4.0.1 (2026-10-31) fixes CVE-2026-49272.
+constraint-dependencies = ["oauthlib>=4.0.1"]
+exclude-newer-package = { oauthlib = "2026-11-10T00:00:00Z" }
 package = false
 
 [tool.pytest.ini_options]

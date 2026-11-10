@@ -320,3 +320,77 @@ E2E harness bugs found and fixed (none in product code):
 Also fixed: the secret filter `sk-[A-Za-z0-9]{8,}` (llm.ts) missed Anthropic-style keys `sk-ant-…` (found by a v3 test).
 Not run: `e2e/screenshots.spec.ts` (would overwrite the committed screenshots), `seo-snapshot` (needs the published-content
 scratch setup from Phase 7).
+
+
+---
+
+# v3: LangGraph, CrewAI, pgvector, Ask the Blog (branch `feature/seo-v3-orchestration`)
+
+Branched 2026-11-10 from master `b08d54a` (#26, with v2 merged as #25 and the `services/` move). The brief asked for a
+branch from the latest SEO branch: both SEO branches are merged into master, so master is it. Decisions D-41 to D-53.
+
+## v3 phase status
+
+| Phase | Status | Commit |
+|---|---|---|
+| 1 Architecture + service skeleton | done | `d0aeea7` |
+| 2 LangGraph workflows | done (fake-LLM tests; Postgres checkpointer tests run in CI) | `d0aeea7` |
+| 3 CrewAI editorial crew | done (deterministic-LLM tests) | `d0aeea7` |
+| 4 Embeddings + pgvector | done (real ONNX model measured; pgvector tests run in CI) | `d0aeea7` |
+| 5 Ask the Blog | done (off by default) | `d0aeea7` |
+| 6 Deployment + observability | done (manifests rendered and filtered; image not built locally) | `bc297d6` |
+| 7 Tests, docs, PR | done | this commit |
+
+## Validation (2026-11-10, this Mac, Node 26, Python 3.13.17)
+
+| Check | Result |
+|---|---|
+| web `npm run lint` / `typecheck` | pass |
+| web `npm test` | pass: 60 files, **720 tests** (v2 baseline 695; +25 v3, 3 v1/v2 tests adjusted on purpose: the publish scan now covers `seo-agent` and allows `publishNewArticle`; the 0011 rollback now runs 0015's rollback first) |
+| web `APP_ENV=production npm run build` | pass (1 pre-existing Edge warning) |
+| web `npm audit --omit=dev` | 0 vulnerabilities |
+| E2E `review-flow` + `popover`, desktop + mobile (legacy path) | pass, re-run on the final code |
+| seo-agent `ruff` / `mypy` | pass |
+| seo-agent `pytest` | **89 passed, 5 skipped**: the skipped tests need PostgreSQL + pgvector (no Docker or pgvector on this Mac; building pgvector from source was blocked by the sandbox) and run in CI against `pgvector/pgvector:0.8.1-pg18` |
+| `pip-audit` (production lock) | oauthlib bumped to 4.0.1 (CVE); chromadb advisories accepted (D-53); otherwise clean |
+| `kubectl kustomize minikube`, `manifests.sh seo-agent`, `ci-app-manifests.py` (3 groups) | pass |
+| `check-dashboards.py` (5) · `actionlint` · `shellcheck` | pass |
+| Docker image build / size | **not run** (no container runtime locally); CI builds and reports the size |
+| Live Claude, live cluster, pgvector in the cluster | **not run** (needs credentials and the manual steps) |
+
+## Status by area
+
+| Area | Verified | Mock-tested | Needs credentials / manual step |
+|---|---|---|---|
+| optimize_article: happy path, retry → fail, reject, edit, approve → publish → verify → submit, verify failure → no submission + alert, budget → paused_budget, transient retries, injection | | ✓ fake LLM, fake web app, in-memory checkpointer | live Claude |
+| Resume after restart | ✓ in-memory (new manager, same saver) | Postgres variant written, CI | |
+| Approval gate (once, expiry, exact ids, demoted approver, changed decisions, scheduled) + E2E approve → resume → publish → verify → submit records | ✓ web tests on PGlite with the agent mocked | | |
+| weekly fan-out (≤ 2 concurrent, idempotent), internal_linking → v2 planner | | ✓ | GSC data |
+| Crew: schema, real ReAct tool call, token cap, timeout, budget, roles/tools, new_article graph | | ✓ deterministic LLM | live Claude |
+| Tool allowlist, SSRF (Python checks + web docs fetcher), data blocks | ✓ | | |
+| Chunker + rehype-slug anchors (cross-checked with github-slugger) | ✓ | | |
+| Embeddings (bge-small ONNX): load, memory, retrieval on the 37 real articles | ✓ measured | | |
+| pgvector index (incremental reindex, retrieval, versioning) | | written, CI | `CREATE EXTENSION vector` (MANUAL_SETUP §13) |
+| Ask the Blog: guards, citations, fallback/gaps, cache, kill switch, daily cap separate from admin, streaming, rate limits | | ✓ | `ASK_BLOG_ENABLED`, live Claude |
+| Callback API auth/ownership; client ↔ server contract | ✓ | | Secrets (MANUAL_SETUP §14) |
+| K8s manifests, CI workflow, alerts, dashboard | rendered/linted | | apply (§15), scrape job (§16), Argo path |
+
+## Notes
+
+- **Bugs found by the new tests and fixed before commit:**
+  - The secret filter missed `sk-ant-…` keys (v2 code too).
+  - LangChain's splitter lost paragraph boundaries and duplicate-heading anchors, so it was replaced.
+  - Recovery after a crash before the first checkpoint did nothing.
+  - The Python and web context endpoints disagreed (GET vs POST); the contract test now guards this.
+  - Ask the Blog spend counted against the admin budget.
+  - The crew token cap (60k) was below a normal run (~80–105k), so it's now 150k.
+  - The ONNX reindex peaked at 1.15 GiB; it's now ~0.7 GiB.
+- **Not done / open:**
+  - The Docker image size is an estimate (~0.7 GB) until CI reports it.
+  - The Lighthouse check with `ASK_BLOG_ENABLED=true` wasn't run. The launcher is one small client component, and
+    the panel chunk loads only on click; with the flag off nothing renders.
+- **Environment:**
+  - Cloud-sync side effects appeared again: `services/www/.gitignore` vanished from disk and was restored from git, and
+    `services/www/src/components/ScrollSpy (1).tsx` (an older, different copy) appeared. It was left untouched and
+    uncommitted.
+  - Node 20 in `/usr/local/bin` shadows Homebrew's Node 26 in the default PATH; the project needs ≥ 24.

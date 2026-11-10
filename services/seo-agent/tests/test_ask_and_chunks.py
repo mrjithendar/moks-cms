@@ -127,8 +127,15 @@ async def test_daily_public_budget_is_separate_from_admin_budget(web: FakeWebApp
     llm = FakeLlm(BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=1.0))
     r = await memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits())).ask.ask("How does cert-manager renew certificates?")
     assert r["outcome"] == "budget" and llm.calls == []
-    llm.queue("draft", {"summary": "s", "changes": []})  # the admin path is still within its monthly budget
-    await llm.guard.ensure("claude-sonnet-5-5", 1000, 1000, "draft")
+    await llm.guard.ensure("claude-sonnet-5-5", 1000, 1000, "draft")  # the admin path is unaffected
+
+
+async def test_public_spend_never_eats_the_admin_budget(web: FakeWebApp) -> None:
+    store = MemorySpendStore()
+    store.rows.append({"purpose": "ask_answer", "cost_usd": 9.99})  # a month of public answers
+    guard = BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=100.0)
+    await guard.ensure("claude-sonnet-5-5", 4000, 4096, "draft")  # drafting still allowed
+    assert (await guard.status())["month_spend_usd"] == 0
 
 
 async def test_streaming_emits_deltas_then_a_guarded_final(llm: FakeLlm, web: FakeWebApp) -> None:

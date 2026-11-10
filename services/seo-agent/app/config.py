@@ -71,7 +71,7 @@ class Settings:
     monthly_budget_usd: float = 10.0
     ask_daily_budget_usd: float = 1.0
     ask_enabled: bool = False
-    crew_max_tokens_per_run: int = 60_000
+    crew_max_tokens_per_run: int = 150_000  # ≈ a normal 4-agent run is ~80k (docs/seo/COSTS.md)
     crew_timeout_s: int = 600
     crew_max_iter: int = 4
     fanout_concurrency: int = 2

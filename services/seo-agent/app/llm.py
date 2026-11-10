@@ -1,8 +1,9 @@
 """Claude access for every graph node and the crew: model factory, budget guard, usage logging.
 
-- One budget for v2 and v3: usage rows go to the web app's `seo_llm_usage` table (same columns, same prices), so
-  SEO_LLM_MONTHLY_BUDGET_USD caps the legacy path and the agents together. Ask-the-Blog has its own daily cap
-  (ASK_BLOG_DAILY_BUDGET_USD) on top, counted from rows whose purpose starts with "ask".
+- One admin budget for v2 and v3: usage rows go to the web app's `seo_llm_usage` table (same columns, same prices), so
+  SEO_LLM_MONTHLY_BUDGET_USD caps the legacy path and the agents together. Ask-the-Blog is separate: its rows (purpose
+  "ask…") never count against the admin budget, and it has its own daily cap (ASK_BLOG_DAILY_BUDGET_USD), which also
+  bounds its month (≤ 31 × daily).
 - Before every call an upper-bound estimate (characters / 3.5 in, full max_tokens out) is checked; a call that could
   cross the cap is never sent (BudgetExceeded → the graph moves to paused_budget).
 - Stable system text (rules, style guide) is sent as cached system blocks (cache_control ephemeral).
@@ -110,7 +111,7 @@ class PgSpendStore:
         start = datetime(now.year, now.month, 1, tzinfo=UTC)
         async with self.pool.connection() as c:
             cur = await c.execute(
-                "select coalesce(sum(cost_usd), 0)::float8 as s from seo_llm_usage where at >= %s", (start,)
+                "select coalesce(sum(cost_usd), 0)::float8 as s from seo_llm_usage where at >= %s and purpose not like 'ask%%'", (start,)
             )
             spent = float((await cur.fetchone())["s"])
             cur = await c.execute(
@@ -147,7 +148,7 @@ class MemorySpendStore:
     preexisting_usd: float = 0.0
 
     async def month_spend(self, now: datetime) -> float:
-        return self.preexisting_usd + sum(r["cost_usd"] for r in self.rows)
+        return self.preexisting_usd + sum(r["cost_usd"] for r in self.rows if not r["purpose"].startswith("ask"))
 
     async def day_spend(self, now: datetime, purpose_prefix: str) -> float:
         return sum(r["cost_usd"] for r in self.rows if r["purpose"].startswith(purpose_prefix))
@@ -166,11 +167,12 @@ class BudgetGuard:
     async def ensure(self, model: str, input_chars: int, max_tokens: int, purpose: str) -> None:
         now = self.clock()
         est = estimate_cost_usd(model, input_chars, max_tokens)
-        month = await self.store.month_spend(now)
-        if month + est > self.monthly_usd:
-            metrics.BUDGET_BLOCKED.labels(scope="monthly").inc()
-            raise BudgetExceeded("monthly", f"monthly LLM budget ${self.monthly_usd:.2f} would be exceeded (spent ${month:.2f})")
-        if purpose.startswith("ask"):
+        if not purpose.startswith("ask"):
+            month = await self.store.month_spend(now)
+            if month + est > self.monthly_usd:
+                metrics.BUDGET_BLOCKED.labels(scope="monthly").inc()
+                raise BudgetExceeded("monthly", f"monthly LLM budget ${self.monthly_usd:.2f} would be exceeded (spent ${month:.2f})")
+        else:
             day = await self.store.day_spend(now, "ask")
             if day + est > self.ask_daily_usd:
                 metrics.BUDGET_BLOCKED.labels(scope="ask_daily").inc()

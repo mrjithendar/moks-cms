@@ -228,3 +228,105 @@ language label, mobile TOC, instant search and self-hosted fonts with `font-disp
 as they were. Added: fence-meta filenames and line highlighting (opt-in; existing articles render unchanged),
 TOC scroll-spy (~1 KB), related reading from the internal-link graph, series/topic previous-next, category "Start here"
 hub row. Nothing in metadata, JSON-LD, canonicals, sitemap or robots changed (snapshot test).
+
+---
+
+# v3 (branch `feature/seo-v3-orchestration`, from master `b08d54a`)
+
+## D-41 Library versions and the two-week rule
+The brief asks for the latest stable releases. The v1/v2 rule is the newest stable release that's at least two weeks
+old at install time. On 2026-11-10 that gives `langgraph==1.2.18`, `langgraph-checkpoint-postgres==3.2.0`
+(`langgraph-checkpoint` 4.3.1), `langchain-core==1.7.0`, `langchain-anthropic==1.7.6` (anthropic SDK 1.17.0),
+`langchain-text-splitters==1.1.3`, `crewai==1.15.30` (pydantic 2.12.5, which crewai caps below 2.13),
+`fastapi==0.162.0`, `uvicorn==0.54.0`, `psycopg[binary]==3.3.6`, `psycopg-pool==3.3.3`, `onnxruntime==1.31.1`,
+`tokenizers==0.23.3`, `numpy==2.5.4`, `prometheus-client==0.26.0`, `opentelemetry-sdk`/`-exporter-otlp-proto-http`
+1.45.1, Python 3.13 (crewai needs < 3.14 and numpy ≥ 3.12). The direct pins are exact, and `uv.lock` pins all 177.
+`tool.uv.exclude-newer = "2 weeks"` applies the same rule to transitive dependencies on every re-lock, Dependabot's
+included (cooldown 14 days). API names were checked against the installed packages: `interrupt`, `Command(resume=)`,
+`RetryPolicy`, `AsyncPostgresSaver`, `with_structured_output(include_raw=True)`, and CrewAI `Agent`/`Task`/`Crew`/
+`Process.sequential`/`BaseLLM.call`. pip-audit's own dependencies conflict with crewai's `tomli-w` pin, so CI runs
+it in isolation (`uvx`) on the exported production lock.
+
+## D-42 A Python service, `services/seo-agent`
+CrewAI is Python-only, and the backend is Next.js/TypeScript, so the agent layer is a separate FastAPI service, as
+the brief planned. It has one replica and a ClusterIP Service only. Service-to-service auth uses bearer tokens from
+Secrets. Istio STRICT mTLS already encrypts the hop, but every pod here runs as the `default` service account, so mTLS
+identity can't tell the site from other pods. Two tokens are used, one per direction, so a leak in one direction
+doesn't give the other.
+
+## D-43 The approval gate lives in the web app
+The brief keeps human approval as the only way to publish. Trusting the agent's `approve` decision wouldn't be
+enough, because anything that can call `/runs/{id}/resume` could forge one. So the admin approve route records an
+approval (`seo_draft_approvals`: approver, exact accepted change ids, expiry, single use), and the agent's publish
+callback goes through `publishWithApproval`, which re-checks all of it plus "approver still admin". The agent's
+writes are limited to its own drafts, with every change saved as `pending`. The static no-publish test now also scans
+`src/lib/seo-agent`, and `publishNewArticle` was added to the allowed callers of `updatePost`.
+
+## D-44 v2 code is called, not reimplemented: a callback API on its own port
+Prompts, validators, the link planner, publish/verify/submit and the SSRF-safe fetcher are TypeScript. The agent
+calls them through `/internal/seo-agent/*`, which is served by a separate listener in the web process (port 9465,
+like the metrics port). It has a `jithendar-com-internal` Service that the VirtualService never routes, a
+NetworkPolicy that admits only `seo-agent`, and a token compared in constant time. A contract test checks every client
+call against the parsed route table. Agent documentation fetches go through the same SSRF-safe fetcher with a
+documentation allowlist, so the agent itself needs internet egress only for the Anthropic API.
+
+## D-45 Direct SQL for pgvector, and a custom chunker
+`langchain-postgres` (0.0.19) owns its table layout. The brief's `seo_article_chunks` needs an article foreign key,
+heading path, anchor and content hash, and the column dimension follows the embeddings model. Direct SQL is simpler,
+so `langchain-postgres` isn't installed. LangChain is still used for the model wrapper (`langchain-anthropic`,
+`langchain-core` messages) and LangGraph. LangChain's `MarkdownHeaderTextSplitter` was tried and dropped: it removes
+blank lines, so paragraph boundaries are lost, and it can't tell repeated headings apart, which breaks rehype-slug's
+`-1` anchors. Both were caught by tests. `seo_article_chunks` is created by `seo-agent` when the extension exists,
+not by the web app's migrations.
+
+## D-46 No Message Batches inside graphs
+`weekly_recommendations` fans out to `optimize_article` children. Each child needs its model answer inline
+(validate → one retry → human_review), and a batch result can take up to 24 hours. Children therefore use the
+synchronous API with prompt caching, with concurrency capped at 2. The legacy path keeps Batches (−50 %); the
+difference is about $1 a month at the current size (COSTS.md).
+
+## D-47 CrewAI's unused stores
+crewai 1.15 hard-requires chromadb and lancedb for memory features this service never enables (`memory=False`).
+lancedb (with pyarrow, ~290 MB) is excluded with a uv override marker that never matches; a test asserts it isn't
+installed. chromadb stays because crewai imports it at load. The production venv went from 761 to 469 MB.
+
+## D-48 Ask-the-Blog spend is separate from the admin budget
+The brief asks for a daily public cap separate from the admin budget. Public rows (purpose `ask…`) are excluded from
+the monthly admin total in both the agent's guard and v2's `budgetState`, so a busy assistant can never pause
+drafting. The daily cap also bounds the public month (≤ 31 × daily).
+
+## D-49 Kustomize groups, not Helm or Argo CD
+The site has no Helm chart and isn't an Argo CD app (D-08). The agent is a new manifest group `seo-agent-*.yaml`
+(`scripts/manifests.sh seo-agent`), applied by a person once its Secret and pgvector exist. CI renders it, and applies
+the Deployment, Service and ConfigMap kinds only via the existing applier. `CronJob` is classified as manual (a
+schedule that runs workloads stays a person's decision). The reindex CronJob calls the service and then the Istio
+sidecar's `/quitquitquit`, so the Job completes in the mesh. The Deployment uses `Recreate`, so two pods never drive
+the same runs.
+
+## D-50 The orchestrator stays `legacy` until switched
+`SEO_ORCHESTRATOR` defaults to `legacy`. That makes rollback a config change, and merging this branch changes nothing
+until the agent, its Secret and pgvector are in place. Drafts remember their owner (`thread_id`), so switching modes
+never strands one.
+
+## D-51 Tracing and telemetry
+OTel spans per node and per crew run go to the existing collector (`OTEL_EXPORTER_OTLP_ENDPOINT`, then Jaeger; this
+cluster uses Jaeger, not Tempo). LangSmith is off (`LANGSMITH_TRACING=false`). CrewAI telemetry and tracing are off
+via `CREWAI_DISABLE_TELEMETRY`, `CREWAI_DISABLE_TRACKING`, `CREWAI_TRACING_ENABLED=false` and
+`CREWAI_DISABLE_VERSION_CHECK`, as read in crewai_core 1.15.30. `OTEL_SDK_DISABLED` is deliberately **not** set: it
+would silence this service's own tracing. Langfuse (self-hosted) is documented as an option and not deployed.
+
+## D-52 Phases 1–5 in one commit
+The service's modules depend on each other (`main.py` wires graphs, crew, index and ask together), so Phases 1–5 landed
+in one commit (`d0aeea7`) that builds and passes tests. Phase 6 (deploy/CI/observability) and Phase 7 (docs) are
+separate commits.
+
+## D-53 Dependency audit findings (pip-audit, 2026-11-10)
+- `oauthlib 4.0.0` → **4.0.1** (CVE-2026-49272, device-flow token disclosure). 4.0.1 is 10 days old, so it's a
+  deliberate exception to the two-week rule: a released security fix beats the waiting period (`constraint-dependencies`
+  + a per-package `exclude-newer-package` in `pyproject.toml`). oauthlib is a transitive dependency of crewai; this
+  service runs no OAuth flow.
+- `chromadb 1.5.9`: PYSEC-2026-311 and -3813/-3814/-3815, with **no fixed release**. crewai pins `~=1.5.9` and imports it
+  at load, so it can't be removed (D-47). The advisories concern a Chroma server or client (pre-auth code injection,
+  tenant/RBAC checks). This service never starts or connects to one: crewai memory and knowledge are off, and
+  NetworkPolicy allows no inbound traffic except from the site, the reindex job and Prometheus. **Accepted risk**,
+  ignored by those exact IDs in CI. Revisit when crewai allows a fixed chromadb.
