@@ -123,6 +123,12 @@ async def test_built_crew_agents_match_roles_and_limits(llm: FakeLlm, web: FakeW
     assert built.memory is False and built.planning is False and len(tasks) == 4 and tasks[-1].output_pydantic is NewArticleDraft
 
 
+def test_unused_crewai_memory_store_is_not_installed() -> None:
+    import importlib.util
+
+    assert importlib.util.find_spec("lancedb") is None and importlib.util.find_spec("pyarrow") is None
+
+
 def test_third_party_telemetry_is_off() -> None:
     import app.config  # noqa: F401 - sets the flags on import
 

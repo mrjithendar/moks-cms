@@ -22,7 +22,7 @@ rules:
 # kubectl rollout restart (patches the pod template's restartedAt annotation)
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  resourceNames: ["jithendar-com", "practice-executor-api", "practice-dispatcher"]
+  resourceNames: ["jithendar-com", "practice-executor-api", "practice-dispatcher", "seo-agent"]
   verbs: ["patch"]
 # rollout diagnostics
 - apiGroups: [""]

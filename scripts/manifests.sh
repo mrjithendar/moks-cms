@@ -4,6 +4,7 @@
 #
 #   site               kustomization.yaml (00-… to 85-…): the site, routing, mesh, CI accounts
 #   practice-executor  practice-executor-*.yaml: Python practice runner (applied by hand once gVisor is verified)
+#   seo-agent          seo-agent-*.yaml: SEO v3 agent service + reindex CronJob (applied by hand, docs/seo/MANUAL_SETUP.md)
 #
 #   scripts/manifests.sh site | kubectl --context mk4 apply -f -
 #   scripts/manifests.sh practice-executor | kubectl --context mk4 diff -f -
@@ -19,7 +20,7 @@ case "$group" in
   site)
     kubectl kustomize "$dir"
     ;;
-  practice-executor)
+  practice-executor|seo-agent)
     shopt -s nullglob
     files=("$dir/$group"-*.yaml)
     [[ ${#files[@]} -gt 0 ]] || { echo "No minikube/$group-*.yaml files" >&2; exit 1; }
@@ -30,7 +31,7 @@ case "$group" in
     done
     ;;
   *)
-    echo "usage: $0 site|practice-executor" >&2
+    echo "usage: $0 site|practice-executor|seo-agent" >&2
     exit 2
     ;;
 esac

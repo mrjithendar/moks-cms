@@ -48,6 +48,7 @@ class OnnxEmbeddings:
     """bge-small-en-v1.5 via ONNX Runtime: CLS pooling + L2 normalisation (the model card's recipe)."""
 
     QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+    BATCH = 4
 
     def __init__(self, model_dir: str, threads: int = 2):
         import onnxruntime as ort
@@ -61,6 +62,10 @@ class OnnxEmbeddings:
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = threads
         opts.inter_op_num_threads = 1
+        # Measured (docs/seo/AGENTS.md "Resources"): with the default memory arena and batches of 16, a full reindex
+        # peaked at ~1.15 GiB RSS; without the arena, small length-sorted batches stay a few hundred MiB.
+        opts.enable_cpu_mem_arena = False
+        opts.enable_mem_pattern = False  # per-shape allocation plans grew RSS across many batch shapes
         self.session = ort.InferenceSession(str(d / "model.onnx"), sess_options=opts, providers=["CPUExecutionProvider"])
         self.inputs = {i.name for i in self.session.get_inputs()}
         self.dim = int(self.session.get_outputs()[0].shape[-1] or 384)
@@ -81,10 +86,15 @@ class OnnxEmbeddings:
 
         if query:
             texts = [self.QUERY_PREFIX + t for t in texts]
-        rows: list[list[float]] = []
-        for i in range(0, len(texts), 16):  # bounded batches keep peak memory flat
-            rows.extend((await asyncio.to_thread(self._run, texts[i : i + 16])).tolist())
-        return rows
+        # Length-sorted, small batches: padding (and attention memory) is bounded by similar-length neighbours.
+        order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+        out: list[list[float] | None] = [None] * len(texts)
+        for b in range(0, len(order), self.BATCH):
+            idx = order[b : b + self.BATCH]
+            vecs = await asyncio.to_thread(self._run, [texts[i] for i in idx])
+            for i, v in zip(idx, vecs.tolist(), strict=True):
+                out[i] = v
+        return [v for v in out if v is not None]
 
 
 class OllamaEmbeddings:

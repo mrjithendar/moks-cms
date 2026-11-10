@@ -64,7 +64,7 @@ jobs:
       - name: Render and select application objects
         run: |
           set -euo pipefail
-          for group in site practice-executor; do
+          for group in site practice-executor seo-agent; do
             echo "::group::$group"
             scripts/manifests.sh "$group" | python scripts/ci-app-manifests.py > /dev/null
             echo "::endgroup::"

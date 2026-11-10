@@ -1,0 +1,155 @@
+name: seo-agent
+
+# check   → pull requests and pushes touching the agent: ruff, mypy, pytest (with a pgvector PostgreSQL service, so the
+#           checkpointer resume and retrieval tests run), pip-audit of the locked production dependencies, and a
+#           Docker build of the image (model checksums verified inside the build).
+# release → default branch: build arm64, push registry.jithendar.com/jithendar/seo-agent:latest (the only tag).
+# deploy  → default branch, only when repository variable SEO_AGENT_DEPLOY is "true": restart deploy/seo-agent and wait.
+#           Manifests and Secrets are applied once by a person (docs/seo/MANUAL_SETUP.md "v3"); CI never applies them.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'services/seo-agent/**'
+      - 'services/www/src/lib/seo-agent/internal-server.ts'
+      - 'minikube/seo-agent-*.yaml'
+      - '.github/workflows/ci-seo-agent.yml'
+  push:
+    paths:
+      - 'services/seo-agent/**'
+      - 'services/www/src/lib/seo-agent/internal-server.ts'
+      - '.github/workflows/ci-seo-agent.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seo-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: services/seo-agent
+
+jobs:
+  check:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        # Same pgvector minor as the cluster's CloudNativePG image (0.8.x), PostgreSQL 18.
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_PASSWORD: ci-only-not-secret
+          POSTGRES_DB: seo_agent_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      SEO_AGENT_TEST_DATABASE_URL: postgresql://postgres:ci-only-not-secret@localhost:5432/seo_agent_test
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Install uv (pinned)
+        run: pip install --quiet "uv==0.13.5"
+      - name: Install locked dependencies
+        run: uv sync --frozen --python python3.13
+      - name: Lint (ruff)
+        run: uv run --frozen ruff check app tests
+      - name: Types (mypy)
+        run: uv run --frozen mypy app
+      - name: Tests (pytest, incl. Postgres + pgvector)
+        run: uv run --frozen pytest -q -rs
+      - name: Dependency audit (pip-audit on the locked production set)
+        # Isolated: pip-audit's own dependencies conflict with crewai's pins, so it audits an exported requirements file.
+        run: |
+          set -euo pipefail
+          uv export --frozen --no-dev --no-hashes --format requirements-txt > "$RUNNER_TEMP/requirements.txt"
+          uvx --from "pip-audit==2.10.1" pip-audit --strict --progress-spinner off -r "$RUNNER_TEMP/requirements.txt"
+      - name: Build the image (no push)
+        run: |
+          docker build --provenance=false -t seo-agent:ci .
+          echo "image size: $(docker image ls seo-agent:ci --format '{{.Size}}')" >> "$GITHUB_STEP_SUMMARY"
+      - name: Image smoke test
+        run: |
+          set -euo pipefail
+          docker run -d --name agent -e SEO_AGENT_TOKEN=ci -e DATABASE_URL="postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test" --add-host host.docker.internal:host-gateway -p 8080:8080 seo-agent:ci
+          # A fresh database without the web app's tables: the service must still start and say so on /readyz.
+          for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 2; done
+          curl -sS http://127.0.0.1:8080/readyz | tee /dev/stderr | grep -q '"status"' 
+          curl -fsS http://127.0.0.1:8080/metrics | grep -q seo_graph_runs_total
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/runs -H 'Content-Type: application/json' -d '{}')" = 401
+          docker exec agent python -c "from app.embeddings import OnnxEmbeddings; import asyncio; e=OnnxEmbeddings('/models/bge-small-en-v1.5'); print(len(asyncio.run(e.embed(['ok']))[0]))" | grep -qx 384
+          docker rm -f agent
+      - name: Render manifests
+        working-directory: .
+        run: |
+          pip install --quiet pyyaml==6.0.3
+          scripts/manifests.sh seo-agent | python scripts/ci-app-manifests.py > /dev/null
+
+  release:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      REGISTRY: registry.jithendar.com/jithendar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Log in to Harbor
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
+      - name: Build and push
+        run: |
+          set -euo pipefail
+          docker build --platform linux/arm64 --provenance=false -t "$REGISTRY/seo-agent:latest" .
+          docker push --quiet "$REGISTRY/seo-agent:latest"
+          {
+            echo "- $REGISTRY/seo-agent:latest ($(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/seo-agent:latest"))"
+            echo "- size $(docker image ls "$REGISTRY/seo-agent:latest" --format '{{.Size}}')"
+            echo "- commit $GITHUB_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: release
+    if: vars.SEO_AGENT_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: seo-agent-deploy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/jithendar-ci-deployer.yaml
+          sparse-checkout-cone-mode: false
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
+      - name: Roll out to mk4
+        env:
+          MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
+          MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
+          MK4_CI_TOKEN: ${{ secrets.MK4_CI_TOKEN }}
+        run: |
+          set -euo pipefail
+          for v in MK4_API_SERVER MK4_CA_DATA MK4_CI_TOKEN; do
+            [[ -n "${!v}" ]] || { echo "::error::$v is not set (scripts/setup-ci-deployer.sh)"; exit 1; }
+          done
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+          trap 'rm -f "$KUBECONFIG"' EXIT
+          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
+          kubectl -n jithendar rollout restart deploy/seo-agent
+          kubectl -n jithendar rollout status deploy/seo-agent --timeout=5m

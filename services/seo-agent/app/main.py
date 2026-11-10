@@ -165,7 +165,11 @@ def create_app(container: Container | None = None) -> FastAPI:
                 raise RuntimeError("SEO_AGENT_TOKEN and SEO_AGENT_CALLBACK_TOKEN must be set (≥ 32 characters)")
             setup_tracing(settings.otel_endpoint, settings.service_name, VERSION)
             c = await build_container(settings)
-            await c.runs.recover()
+            try:
+                await c.runs.recover()
+            except Exception as e:  # e.g. the web app's migration 0015 not applied yet: start, report on /readyz
+                c.reasons.append(f"run recovery failed: {type(e).__name__} (is migration 0015 applied?)")
+                log.warning("run recovery failed", extra={"event": "recover_failed"})
             c.ready = True
             c.bg.append(asyncio.create_task(_gauges(c)))
         app.state.c = c
