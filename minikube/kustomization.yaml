@@ -2,7 +2,8 @@
 # listed; practice-executor-*.yaml is a separate group (README.md, scripts/manifests.sh).
 # Secrets (jithendar-com-env, harbor-pull) are created separately and never committed. PostgreSQL is the shared
 # CloudNativePG cluster in namespace postgres-db (miniKube repo), whose Secret postgres-db-credentials Terraform writes
-# here. The site uses no Redis; the practice executor uses the shared Valkey (redis-practice-credentials).
+# here. The site uses no REDIS_URL; its cache bus (pub/sub only, redis-site-cachebus-credentials, optional) and the
+# practice executor (redis-practice-credentials) use the shared Valkey.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 # No `namespace:` here: every namespaced manifest sets namespace jithendar itself.

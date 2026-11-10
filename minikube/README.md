@@ -15,7 +15,7 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 | File | Resources |
 |---|---|
 | `00-namespace.yaml` | Namespace `jithendar` |
-| `30-jithendar-com.yaml` | Deployment (2 replicas), Service, Service `jithendar-com-internal` (SEO agent callbacks, port 9465, never routed publicly), PodDisruptionBudget, NetworkPolicy `jithendar-com` |
+| `30-jithendar-com.yaml` | Deployment (2 replicas), Service, Service `jithendar-com-internal` (SEO agent callbacks, port 9465, never routed publicly), PodDisruptionBudget, NetworkPolicy `jithendar-com`, NetworkPolicy `jithendar-com-cache-bus` (egress to the Valkey pods, pod port 6380 only) |
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `services/www/docs/OBSERVABILITY.md` |
 | `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only restart the site, the executor and the SEO agent (`scripts/setup-ci-deployer.sh`) |
@@ -73,7 +73,15 @@ creates `jithendar-com-env`; Terraform in the miniKube repository writes the dat
   `postgres-db`, written by Terraform in the miniKube repository (`minikube-infrastructure/postgres.tf`)
 - `redis-practice-credentials` (key `uri`, read as `EXECUTOR_REDIS_URL` by the practice executor): the shared Valkey
   in namespace `redis`, written by Terraform in the miniKube repository (`minikube-infrastructure/redis.tf`,
-  `redis_tenants.practice`). The site itself uses no Redis (removed 2026-11-09)
+  `redis_tenants.practice`). The site itself has no `REDIS_URL` (removed 2026-11-09)
+- `redis-site-cachebus-credentials` (key `uri`, read as `CACHE_BUS_REDIS_URL` by the site, through an explicit `env`
+  entry, never `envFrom`): the site's cache bus, PUBLISH/SUBSCRIBE only on the shared Valkey (ACL user `site-cachebus`,
+  `redis_tenants.site-cachebus`). Optional: the site starts without it and keeps TTL-only caches. Apply order:
+  1. miniKube repo: add the tenant (`services/www/docs/redis-site-cachebus.md`), `terraform apply`;
+  2. check the Secret appeared: `kubectl -n jithendar get secret redis-site-cachebus-credentials`;
+  3. `KUBE_CONTEXT=mk4 ./deploy.sh` (or, if the site is already on this version,
+     `kubectl -n jithendar rollout restart deployment/jithendar-com`: env is read at pod start);
+  4. the ACL check in that document, then Admin → System status shows "cache bus: connected".
 - `harbor-pull` (pull secret for `registry.jithendar.com`, used by the site, the practice executor and sandbox pods;
   written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets`)
 

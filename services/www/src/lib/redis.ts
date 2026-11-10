@@ -2,10 +2,13 @@ import type { Redis } from "ioredis";
 import { log } from "./log";
 
 /**
- * Optional Redis (REDIS_URL). Used for cross-replica cache invalidation, Better Auth sessions and
- * rate limits. Everything works without it: callers fall back to Postgres and per-process caches.
+ * Optional Redis (REDIS_URL). When set, Better Auth sessions, rate limits and API-key lookups use it (auth.ts,
+ * rate-limit.ts, api-keys.ts). Production does not set it (since 2026-11-09): those stay in Postgres.
+ *
+ * Cross-replica cache invalidation does NOT use this module: it has its own pub/sub-only connections and variable
+ * (CACHE_BUS_REDIS_URL, src/lib/cache-bus.ts), so enabling it never moves sessions or rate limits into Redis.
  */
-const g = globalThis as unknown as { __redis?: Promise<Redis | null>; __redisSub?: Promise<Redis | null> };
+const g = globalThis as unknown as { __redis?: Promise<Redis | null> };
 
 async function connect(): Promise<Redis | null> {
   const url = process.env.REDIS_URL;
@@ -25,10 +28,4 @@ async function connect(): Promise<Redis | null> {
 export function getRedis(): Promise<Redis | null> {
   g.__redis ??= connect();
   return g.__redis;
-}
-
-/** A second connection for SUBSCRIBE (a subscribing connection cannot run other commands). */
-export function getRedisSubscriber(): Promise<Redis | null> {
-  g.__redisSub ??= connect();
-  return g.__redisSub;
 }

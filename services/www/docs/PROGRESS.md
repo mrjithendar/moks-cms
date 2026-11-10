@@ -1,5 +1,52 @@
 # Progress log — jithendar.com
 
+## Cache bus: cross-replica cache invalidation over the shared Valkey, pub/sub only (2026-11-10, owner request)
+
+Edits now reach both replicas within about a second instead of up to the cache TTL. `src/lib/cache-bus.ts` has its own
+publisher and subscriber connections for a new variable, `CACHE_BUS_REDIS_URL` (Secret
+`redis-site-cachebus-credentials`, key `uri`, explicit `env` entry with `optional: true`); `REDIS_URL` stays unset, so
+sessions, rate limits and API keys stay in Postgres. No data in Valkey: messages are `{kind, origin}`. Valkey down or
+unset = TTL-only caches as before; requests never wait on it. 5-minute PING keeps quiet connections inside HAProxy's and
+Envoy's 1 h idle timeouts; SUBSCRIBE is redone on every reconnect and retried with backoff if refused.
+`getRedis()` is unchanged; the unused `getRedisSubscriber()` is removed. Metrics `cache_bus_{published,received}_total{kind}`,
+`cache_bus_errors_total{role}`, `cache_bus_connected{role}`; System status row "Cache bus (Valkey pub/sub)" (never
+"down"; `/api/health` does not look at it); alert `CacheBusDisconnected` (warning) in new source
+`docs/cache-bus/prometheus-alerts.yml` (added to `scripts/build-alerts.py`); Overview dashboard row "Cache bus & shared
+Valkey". Manifests: env entry and an additive NetworkPolicy `jithendar-com-cache-bus` (namespace `redis`, Valkey pods,
+pod port 6380 only). Handoff: `docs/redis-site-cachebus.md` (Terraform for the miniKube repo, ACL check, rollback).
+
+- **Files:** `src/lib/{cache-bus,redis,health,metrics}.ts`, `tests/{cache-bus,cache-bus-env,cache-bus-redis,health-redis}.test.ts`,
+  `.env.example`, `docs/{redis-site-cachebus,DEPLOYMENT,OBSERVABILITY}.md`, `docs/cache-bus/prometheus-alerts.yml`,
+  `docs/seo/alerts-for-minikube-repo.yaml` (regenerated), root `minikube/{30-jithendar-com.yaml,kustomization.yaml,README.md}`,
+  `scripts/build-alerts.py`, `services/grafana/jithendar-com-overview.json`. No new dependency (ioredis 6.0.0 was installed).
+- **Checked:** `npm run lint` (pass), `npm run typecheck` (pass), `npm test` (73 files passed, 1 skipped; 832 passed,
+  1 skipped: the real-server test, which needs its env vars), `npm run build` (pass); `tests/cache-bus-redis.test.ts`
+  against a local `redis-server` 8.10.2 with the proposed ACL user and the real ioredis client: 200 invalidations
+  p50 1.35 ms, p99 1.54 ms, max 1.82 ms (one process, loopback, ~1 ms polling resolution); back 0.42–0.50 s after
+  `CLIENT KILL USER site-cachebus`; with the server down at start, broadcast returned in < 20 ms, 2 warnings in 3 s,
+  connected 3.7 s after the server came up. ACL on Redis 8.10.2: WHOAMI, PUBLISH `jithendar:*` allowed; other
+  channels, SET/GET/KEYS/SELECT/INFO/CONFIG/FLUSHALL/CLIENT LIST denied. Memory: 2.3 KB per connection (`tot-mem`),
+  13 KB `used_memory` for four. `scripts/manifests.sh site | python3 scripts/ci-app-manifests.py` (pass, the new
+  NetworkPolicy is a CI-applied kind); `kubectl create --dry-run=client` of the rendered site group with
+  `KUBE_CONTEXT=mk4` (pass, all 22 objects); `scripts/build-alerts.py --check` (pass); `scripts/check-dashboards.py` (pass).
+- **Read-only on mk4 (2026-11-10):** HAProxy `timeout tunnel 1h` present in `valkey-0`; `maxmemory 512mb`,
+  `volatile-lru`; 2 Valkey pods (not 3 as in the article); exporter series present: memory used/max (19 MB / 512 MB),
+  evicted keys 0, hits/misses, connected clients (21 + 6), pub/sub channels; no per-ACL-user client series; no
+  Postgres exporter.
+- **Not checked:** `promtool check rules` (Docker not running locally; CI runs it); Valkey 9.1 itself (ACL and memory
+  were measured on Redis 8.10.2); anything on mk4 with the new tenant (needs the miniKube Terraform first);
+  the Grafana panels against live Grafana.
+- **Phase 5 (rate limits to Valkey): not needed.** `pg_stat_user_tables` for `rate_limit` (read-only, primary
+  `postgres-cluster-1`, counters since its start at 2026-11-10 08:55 UTC, about 8 h): 38 inserts, 261 updates (all HOT),
+  33 deletes, 5 live and 25 dead tuples, 3 autovacuums, 80 kB. About 41 writes/hour. A week of production data does
+  not exist yet (rate limits moved to Postgres on 2026-11-09; no Postgres exporter keeps history). Re-measure after a week.
+- **Manual (owner):** the Terraform in `docs/redis-site-cachebus.md` in the miniKube repo, `terraform apply`, check the
+  Secret, `KUBE_CONTEXT=mk4 ./deploy.sh`, the ACL check there; copy the regenerated alerts file into the miniKube repo;
+  optionally the exporter client-list change described there.
+- **Deviations from the brief:** ACL user `site-cachebus` (tenant keys cannot contain `_`, and the key names the Secret);
+  `+acl|whoami` added so the requested check works; rule order `-@all` first; `CACHE_BUS_REDIS_URL` falls back to
+  `REDIS_URL` when only that is set (keeps the previous behaviour of such setups; production sets neither today).
+
 ## Push MDX drafts through the API, no image build (2026-11-06, owner request)
 
 New `scripts/push-post.ts` (`npm run push-post -- <file.mdx>… [--dry-run] [--update-live]`) sends

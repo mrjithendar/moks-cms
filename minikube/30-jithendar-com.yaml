@@ -85,8 +85,18 @@ spec:
           value: '1'
         - name: GEMINI_IMAGE_DAILY_LIMIT
           value: '50'
-        # No REDIS_URL (removed 2026-11-09): sessions and rate limits live in Postgres, caches are per process
-        # (src/lib/redis.ts). Do not add it back to jithendar-com-env either: envFrom would pick it up.
+        # No REDIS_URL (removed 2026-11-09): sessions, rate limits and API keys live in Postgres (src/lib/redis.ts).
+        # Do not add it back to jithendar-com-env either: envFrom would pick it up. Still true with the cache bus below.
+        # Cache bus: cross-replica cache invalidation over the shared Valkey, PUBLISH/SUBSCRIBE only (ACL user
+        # site-cachebus, channel jithendar:*, no key access; src/lib/cache-bus.ts, docs/redis-site-cachebus.md). Its own
+        # Secret, written by Terraform in the miniKube repo, and an explicit env entry, never envFrom. optional: the site
+        # starts before the Secret exists and then keeps per-process caches with their TTL, as without it.
+        - name: CACHE_BUS_REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-site-cachebus-credentials
+              key: uri
+              optional: true
         # Shared CloudNativePG cluster (namespace postgres-db, role and database jithendar), through its PgBouncer
         # pooler (session mode, so the migrations' advisory lock works). Secret written by Terraform in the miniKube
         # repo (minikube-infrastructure/postgres.tf, postgres_databases.jithendar); env wins over the stale
@@ -373,3 +383,30 @@ spec:
   policyTypes:
   - Ingress
   - Egress
+---
+# Cache bus egress (additive: NetworkPolicies are a union, so this only adds to jithendar-com above). The shared
+# Valkey in namespace redis, Valkey pods only, pod port 6380: Service valkey-master listens on 6379 but targets the
+# HAProxy master proxy on 6380, and a NetworkPolicy sees the pod port after Service translation. 6379 is not needed.
+# Ingress to those pods is the miniKube repo's (redis access chart: namespace jithendar is already a client).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jithendar-com-cache-bus
+  namespace: jithendar
+spec:
+  podSelector:
+    matchLabels:
+      app: jithendar-com
+  policyTypes:
+  - Egress
+  egress:
+  - ports:
+    - port: 6380
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: redis
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: valkey

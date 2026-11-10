@@ -263,6 +263,48 @@ async function seoGauges(db: Awaited<ReturnType<typeof import("@/db").getDb>>, s
   }
 }
 
+// --- Cache bus (src/lib/cache-bus.ts) -----------------------------------------------------------------
+// Fixed labels only: kind (5 cache kinds) and role (publisher | subscriber). cache_bus_connected exists only once the
+// bus is configured (CACHE_BUS_REDIS_URL) and has created a connection, so the CacheBusDisconnected alert
+// (max(...{role="subscriber"}) == 0) cannot fire on a deployment that runs without it.
+
+type CacheBusRegistry = { published: Counter; received: Counter; errors: Counter; connected: Map<string, number> };
+const gc = globalThis as unknown as { __cacheBusMetrics?: CacheBusRegistry };
+function cacheBusRegistry(): CacheBusRegistry {
+  gc.__cacheBusMetrics ??= {
+    published: new Counter("cache_bus_published_total", "Cache invalidations published to the other replicas, by cache kind."),
+    received: new Counter("cache_bus_received_total", "Cache invalidations received from another replica and applied, by cache kind."),
+    errors: new Counter("cache_bus_errors_total", "Cache bus connection or publish errors, by role (publisher | subscriber)."),
+    connected: new Map(),
+  };
+  return gc.__cacheBusMetrics;
+}
+
+export function recordCacheBusPublished(kind: string) {
+  cacheBusRegistry().published.inc({ kind });
+}
+
+export function recordCacheBusReceived(kind: string) {
+  cacheBusRegistry().received.inc({ kind });
+}
+
+export function recordCacheBusError(role: "publisher" | "subscriber") {
+  cacheBusRegistry().errors.inc({ role });
+}
+
+export function setCacheBusConnected(role: "publisher" | "subscriber", up: boolean) {
+  cacheBusRegistry().connected.set(role, up ? 1 : 0);
+}
+
+export function renderCacheBus(): string[] {
+  const r = cacheBusRegistry();
+  const parts = [r.published.render(), r.received.render(), r.errors.render()];
+  if (r.connected.size) {
+    parts.push(gauge("cache_bus_connected", "1 while the cache bus connection to Valkey is up, by role.", [...r.connected].map(([role, value]) => ({ labels: { role }, value }))));
+  }
+  return parts;
+}
+
 // --- Exposition --------------------------------------------------------------------------------------
 
 export async function renderMetrics(): Promise<string> {
@@ -283,6 +325,7 @@ export async function renderMetrics(): Promise<string> {
     r.mail.render(),
     r.comments.render(),
     ...renderSeo(),
+    ...renderCacheBus(),
     await databaseGauges(),
   ];
   r.loop.reset();
