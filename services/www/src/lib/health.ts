@@ -4,6 +4,7 @@ import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { emailSummary } from "./mail";
 import { getRedis } from "./redis";
+import { cacheBusStatus, type BusStatus } from "./cache-bus";
 import { indexNowKey } from "./indexnow-key";
 import { resolveGeminiImageConfig } from "./integrations";
 import { generationUsage } from "./image-generation";
@@ -30,12 +31,34 @@ async function timed(name: string, fn: () => Promise<Omit<Check, "name" | "ms">>
  * missing setting. Only a Redis that is configured but unreachable is a problem (the site still falls back to Postgres).
  */
 export async function redisCheck(env: Record<string, string | undefined> = process.env, connect: typeof getRedis = getRedis): Promise<Omit<Check, "name" | "ms">> {
-  if (!env.REDIS_URL?.trim()) return { status: "ok", detail: "Not used (by design): sessions and rate limits are in Postgres, caches are per pod. Set REDIS_URL only to share caches across pods." };
+  if (!env.REDIS_URL?.trim()) return { status: "ok", detail: "Not used (by design): sessions and rate limits are in Postgres, caches are per pod. Cross-pod cache invalidation uses its own pub/sub-only connection (CACHE_BUS_REDIS_URL), not REDIS_URL." };
   const redis = await connect();
   if (!redis) return { status: "degraded", detail: "REDIS_URL is set but Redis is unreachable; falling back to Postgres and per-pod caches" };
   await redis.ping();
   const used = (await redis.info("memory")).match(/used_memory_human:(\S+)/)?.[1];
   return { status: "ok", detail: `PONG · ${used ?? "?"} used` };
+}
+
+/**
+ * Cross-replica cache invalidation (src/lib/cache-bus.ts). Reads the bus's in-memory connection state only: no Redis
+ * command, so this check is instant and cannot hang. Never "down": without the bus the site works and each pod's
+ * caches converge within their TTL. Readiness (/api/health) does not look at it at all.
+ */
+export function cacheBusCheck(s: BusStatus = cacheBusStatus()): Omit<Check, "name" | "ms"> {
+  const via = s.source === "REDIS_URL" ? " (via REDIS_URL)" : "";
+  switch (s.state) {
+    case "not configured":
+      return { status: "not configured", detail: "cache bus: not configured (CACHE_BUS_REDIS_URL unset): an edit shows on the other pod after the cache TTL" };
+    case "connected":
+      return { status: "ok", detail: `cache bus: connected${via} · publisher and subscriber on Valkey pub/sub: edits reach every pod within about a second` };
+    case "connecting":
+      return { status: "degraded", detail: `cache bus: connecting${via}` };
+    default:
+      return {
+        status: "degraded",
+        detail: `cache bus: disconnected${via} (publisher ${s.publisher ? "up" : "down"}, subscriber ${s.subscriber ? "up" : "down"}); reconnecting with backoff, caches fall back to their TTL`,
+      };
+  }
 }
 
 async function reachable(url: string): Promise<Omit<Check, "name" | "ms">> {
@@ -77,6 +100,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
       return { status: "ok", detail: `v${r?.version} · ${r?.size} · ${r?.conns} connections · ${m?.n} migrations` };
     }),
     timed("Redis (optional)", () => redisCheck()),
+    timed("Cache bus (Valkey pub/sub)", async () => cacheBusCheck()),
     timed("Media storage (Cloudflare R2)", checkStorage),
     timed("Scheduled publishing & IndexNow", async () => {
       const db = await getDb();

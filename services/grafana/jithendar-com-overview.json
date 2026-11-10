@@ -18,7 +18,7 @@
   },
   "links": [
     {
-      "title": "Jithendar.com · Observability",
+      "title": "Jithendar.com \u00b7 Observability",
       "type": "link",
       "url": "/grafana/d/jithendar-com-observability",
       "targetBlank": false,
@@ -1454,6 +1454,561 @@
           }
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Cache bus & shared Valkey",
+      "collapsed": false,
+      "id": 29,
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Cache bus subscribers",
+      "description": "Site pods whose cache-bus subscriber is connected to Valkey (src/lib/cache-bus.ts). No data = CACHE_BUS_REDIS_URL not configured; 0 for 15 min fires CacheBusDisconnected.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum(cache_bus_connected{job=\"jithendar-com\", role=\"subscriber\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "not configured"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "id": 30,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Cache bus publishers",
+      "description": "Site pods whose cache-bus publisher is connected. The publisher connects at start; a pod with 0 still clears its own caches, the others wait for the TTL.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum(cache_bus_connected{job=\"jithendar-com\", role=\"publisher\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "not configured"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "id": 31,
+      "gridPos": {
+        "x": 4,
+        "y": 58,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Valkey memory",
+      "description": "Used memory of the fullest Valkey pod as a share of maxmemory (512 MB). volatile-lru: at 100 % only keys with a TTL are evicted, writes of keys without one fail (OOM).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "max(redis_memory_used_bytes{job=\"redis\"} / redis_memory_max_bytes{job=\"redis\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.85
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "id": 32,
+      "gridPos": {
+        "x": 8,
+        "y": 58,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Valkey evicted keys",
+      "description": "Keys evicted since the pods started. Must stay 0: an eviction means memory was full.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum(redis_evicted_keys_total{job=\"redis\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "id": 33,
+      "gridPos": {
+        "x": 12,
+        "y": 58,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Valkey keyspace hit ratio",
+      "description": "Key lookups that found the key, 1 hour, all tenants (the cache bus does no key lookups).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum(rate(redis_keyspace_hits_total{job=\"redis\"}[1h])) / clamp_min(sum(rate(redis_keyspace_hits_total{job=\"redis\"}[1h])) + sum(rate(redis_keyspace_misses_total{job=\"redis\"}[1h])), 1e-9)",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "id": 34,
+      "gridPos": {
+        "x": 16,
+        "y": 58,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Valkey pub/sub channels",
+      "description": "Active pub/sub channels on the primary (jithendar:invalidate counts once however many pods subscribe).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "max(redis_pubsub_channels{job=\"redis\"})",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "value"
+      },
+      "id": 35,
+      "gridPos": {
+        "x": 20,
+        "y": 58,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache invalidations / s",
+      "description": "Published by a pod (left on that pod) and received from another pod and applied, by cache kind. Received \u2248 published \u00d7 (pods \u2212 1).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum by (kind) (rate(cache_bus_published_total{job=\"jithendar-com\"}[5m]))",
+          "legendFormat": "published {{kind}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum by (kind) (rate(cache_bus_received_total{job=\"jithendar-com\"}[5m]))",
+          "legendFormat": "received {{kind}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 36,
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache bus errors",
+      "description": "Connection and publish errors by role, per 5 minutes. A failed publish means that invalidation reaches the other pods only after the cache TTL.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "sum by (role) (increase(cache_bus_errors_total{job=\"jithendar-com\"}[5m]))",
+          "legendFormat": "{{role}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 37,
+      "gridPos": {
+        "x": 12,
+        "y": 62,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Valkey memory used vs maxmemory",
+      "description": "Per pod. maxmemory is 512 MB (deploy/minikube/redis/values.yaml in the miniKube repo).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "redis_memory_used_bytes{job=\"redis\"}",
+          "legendFormat": "used {{pod}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "max(redis_memory_max_bytes{job=\"redis\"})",
+          "legendFormat": "maxmemory"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 38,
+      "gridPos": {
+        "x": 0,
+        "y": 70,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Valkey connected clients",
+      "description": "Per pod, all tenants. redis_exporter does not split this per ACL user; per user: valkey-cli CLIENT LIST (docs/redis-site-cachebus.md).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "roboshop-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "roboshop-prometheus"
+          },
+          "expr": "redis_connected_clients{job=\"redis\"}",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 39,
+      "gridPos": {
+        "x": 12,
+        "y": 70,
+        "w": 12,
+        "h": 8
+      }
     }
   ]
 }

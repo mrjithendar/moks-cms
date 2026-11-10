@@ -22,10 +22,38 @@ one page.
 - `jithendar_mail_sent_total{provider, outcome}`, `jithendar_comments_submitted_total{status}`.
 - From the database at scrape time (cached 30 s): `jithendar_posts_published`, `jithendar_users`,
   `jithendar_comments_pending`, `jithendar_comments_reported`, `jithendar_jobs{status}`, `jithendar_database_up`.
+- Cache bus (`src/lib/cache-bus.ts`, see "Cache bus and shared Valkey" below): `cache_bus_published_total{kind}`,
+  `cache_bus_received_total{kind}`, `cache_bus_errors_total{role}`, `cache_bus_connected{role}`.
 
 Port 9464 is not in the public Service or ingress; the NetworkPolicy admits only the Prometheus pod
 (`monitoring`, `app=roboshop-prometheus`). `METRICS_PORT=0` turns the listener off. Counters are per pod and reset
 on restart (Prometheus `rate()`/`increase()` handle that).
+
+## Cache bus and shared Valkey
+
+The cache bus clears the per-process caches on every site pod over Valkey pub/sub (`docs/redis-site-cachebus.md`).
+Labels are fixed: `kind` is one of `content`, `categories`, `settings`, `integrations`, `practice`; `role` is
+`publisher` or `subscriber`.
+
+| Metric | Read it as |
+|---|---|
+| `cache_bus_connected{role}` | 1 while that connection is up. **Absent** when `CACHE_BUS_REDIS_URL` is not set, so "no data" means not configured, 0 means configured but down |
+| `cache_bus_published_total{kind}` | Invalidations this pod sent (an edit on this pod) |
+| `cache_bus_received_total{kind}` | Invalidations from another pod that this pod applied. Summed over pods it should be about published × (pods − 1); much less means a subscriber missed messages while disconnected (those caches waited for their TTL) |
+| `cache_bus_errors_total{role}` | Connection errors and failed publishes. Logged at most once a minute per role (`event` `cache_bus_publisher` / `cache_bus_subscriber`) |
+
+Valkey itself, from the miniKube repo's `redis_exporter` (Prometheus job `redis`, one series per Valkey pod; only the
+primary has client traffic):
+
+| Question | PromQL | Healthy |
+|---|---|---|
+| Memory vs `maxmemory` (512 MB) | `max(redis_memory_used_bytes{job="redis"} / redis_memory_max_bytes{job="redis"})` | Well below 0.85 (`ValkeyMemoryHigh` fires there). 19 MB used on 2026-11-10 |
+| Evicted keys | `sum(redis_evicted_keys_total{job="redis"})` | **0**. With `volatile-lru`, any eviction means memory was full |
+| Keyspace hits / misses | `sum(rate(redis_keyspace_hits_total{job="redis"}[1h]))`, same for `_misses_` | Other tenants only: the cache bus reads no keys |
+| Connected clients | `redis_connected_clients{job="redis"}` | Per pod, all tenants. The exporter has no per-ACL-user split; use `CLIENT LIST` (`docs/redis-site-cachebus.md` section 2) or enable its client list (section 6 there) |
+| Pub/sub channels | `max(redis_pubsub_channels{job="redis"})` | `jithendar:invalidate` counts once however many pods subscribe |
+
+All of these are on *Jithendar.com · Overview*, row **Cache bus & shared Valkey**.
 
 ## Logs
 
@@ -88,6 +116,8 @@ Site: `JithendarComDown` (no pod scraped for 5 min), `JithendarComHighErrorRatio
 least 3 failures), `JithendarComSlow` (p95 > 2 s for 10 min). `/api/health` is excluded from both ratios.
 Pipeline: `ObservabilityTargetDown` (Loki, Alloy, collector or Jaeger not scraped), `LogShippingDropped` (Alloy gave
 up on log lines), `TraceSpansLost` (collector or Jaeger refusing/failing spans), `JaegerMemoryNearLimit` (> 90 %).
+Cache bus: `CacheBusDisconnected` (warning): no site pod has a connected subscriber for 15 minutes, while the bus is
+configured (`docs/cache-bus/prometheus-alerts.yml`; the site still works, edits converge only after the cache TTL).
 They show in Prometheus → Alerts; no Alertmanager delivers them. Each has a `runbook_url` pointing at a section below.
 
 Until the 2026-11-04 fix in tools, `TraceSpansLost` never evaluated: Jaeger's refused and failed counters have

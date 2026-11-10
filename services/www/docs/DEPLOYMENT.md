@@ -16,12 +16,13 @@
 | Service | Manifest | Notes |
 |---|---|---|
 | PostgreSQL 18 (shared CloudNativePG) | miniKube repo, `minikube-infrastructure/postgres.tf` | Database and role `jithendar` on `postgres-db/postgres-cluster` (3 instances, PgBouncer pooler in session mode). `DATABASE_URL` comes from Secret `postgres-db-credentials` (key `uri`), written by Terraform. Moved from the old `jithendar-postgres` StatefulSet on 2026-11-09. |
-| Redis | none | The site runs without Redis since 2026-11-09 (no `REDIS_URL`): Better Auth sessions and rate limits are in Postgres, caches are per process, so a change can take up to the cache TTL to show on the other replica. The practice executor still uses the shared Valkey (`redis-practice-credentials`). |
+| Redis | shared Valkey (namespace `redis`), **pub/sub only** | No `REDIS_URL` since 2026-11-09: Better Auth sessions, rate limits and API keys stay in Postgres. Caches are per process; the **cache bus** (`src/lib/cache-bus.ts`) tells the other replica to clear them over Valkey pub/sub, so an edit shows on both within about a second. It reads only `CACHE_BUS_REDIS_URL`, from Secret `redis-site-cachebus-credentials` (key `uri`, ACL user `site-cachebus`: PUBLISH/SUBSCRIBE on `jithendar:*`, no keys), written by Terraform in the miniKube repo (`docs/redis-site-cachebus.md`). The env entry is optional: without the Secret, or with Valkey down, a change shows on the other replica after the cache TTL, as before. The practice executor uses its own tenant (`redis-practice-credentials`). |
 
 Secrets (never in Git), created once by `scripts/create-secrets.sh`:
 
 | Secret | Keys |
 |---|---|
+| `redis-site-cachebus-credentials` | `uri` (and `host`, `port`, `username`, `password`): written by Terraform in the miniKube repo (`docs/redis-site-cachebus.md`), not by this script; optional |
 | `postgres-db-credentials` | `uri` (and `host`, `port`, `dbname`, `username`, `password`, `direct-host`, `direct-uri`): written by Terraform in the miniKube repo, not by this script |
 | `jithendar-com-env` | `BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `ADMIN_BOOTSTRAP_TOKEN`, `METRICS_TOKEN`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, optional `SMTP_URL`, `MAIL_FROM` (fallback until email is configured in the admin, see `docs/EMAIL.md`); media: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, optional `R2_PUBLIC_BASE_URL`; optional `GEMINI_API_KEY`, `GEMINI_IMAGE_MODEL` (added with `scripts/set-media-config.sh`) |
 
