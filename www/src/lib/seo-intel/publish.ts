@@ -99,7 +99,7 @@ async function publishDraft(db: Db, draftId: string, actor: Actor, now: Date) {
   if (substantive) patch.updatedAt = toIsoOffset(now);
   let row;
   try {
-    row = await updatePost(actor, d.article_id, patch, { baseVersion: d.base_version, reason: "seo-draft" });
+    row = await updatePost(actor, d.article_id, patch, { baseVersion: d.base_version, reason: "seo-draft", notifySearchEngines: false });
   } catch (e) {
     await db.execute(sql`update seo_drafts set status = 'ready_for_review', updated_at = now() where id = ${draftId}`);
     const err = e as { status?: number; message: string; issues?: string[] };
@@ -247,7 +247,7 @@ export async function rollbackDraft(draftId: string, actor: Actor, now = new Dat
   const snap = d.base_snapshot;
   const prev: Record<string, unknown> = revs.length ? ((await getRevision("post", d.article_id, revs[0]!.id)).payload as Record<string, unknown>) : { body: snap.body, seoTitle: snap.seoTitle, seoDescription: snap.seoDescription, updatedAt: snap.updatedAt ?? null };
   const iso = (v: unknown) => (v ? toIsoOffset(new Date(String(v))) : null);
-  const row = await updatePost(actor, d.article_id, { body: prev.body, seoTitle: prev.seoTitle ?? null, seoDescription: prev.seoDescription ?? null, updatedAt: iso(prev.updatedAt) }, { baseVersion: Number(d.published_version), reason: "seo-rollback" });
+  const row = await updatePost(actor, d.article_id, { body: prev.body, seoTitle: prev.seoTitle ?? null, seoDescription: prev.seoDescription ?? null, updatedAt: iso(prev.updatedAt) }, { baseVersion: Number(d.published_version), reason: "seo-rollback", notifySearchEngines: false });
   await db.execute(sql`update seo_drafts set status = 'rolled_back', verification = ${JSON.stringify({ state: "pending", attempts: 0, reason: "rollback" })}::jsonb, updated_at = now() where id = ${draftId}`);
   if (d.recommendation_ids.length) await db.execute(sql`update seo_recommendations set implementation_status = 'not_started', implemented_at = null, updated_at = now() where id = any(${`{${d.recommendation_ids.join(",")}}`}::uuid[])`);
   await audit(actor, "seo.draft.rollback", d.article_id, { draftId, restoredVersion: Number(d.previous_version), newVersion: row.version });

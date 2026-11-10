@@ -149,7 +149,7 @@ was needed). Decisions D-21 … in DECISIONS.md.
 |---|---|
 | 1 Claude API draft automation | done (mock-tested; live API needs credentials) |
 | 2 Review & approve (mobile-first) | done (mock-tested; live publish verified only against local fakes) |
-| 3 Search-engine submission | pending |
+| 3 Search-engine submission | done (mock-tested; live IndexNow/Google need production + credentials) |
 | 4 Automated internal linking | pending |
 | 5 Content optimization popovers | pending |
 | 6 Keyword opportunities | pending |
@@ -206,3 +206,21 @@ was needed). Decisions D-21 … in DECISIONS.md.
 - Tests: `tests/seo-v2-review.test.ts` (12): accepted/edited/rejected → exact post fields + revision + audit,
   metadata-only keeps lastmod, guards, duplicate-title block, scheduling (+ demoted approver), verification pass /
   retry / fail-without-submit, `verifyHtml`, rollback (+ refused after later edits), queue/reject, outcomes.
+
+## v2 Phase 3 notes
+
+- `submission.ts` + migration `0013_seo_submissions.sql` (+ rollback; up/down/up tested). Details: SUBMISSION.md.
+- IndexNow: queued rows → one debounced, deduplicated, sorted batch POST per minute; 429/5xx re-queue + job backoff;
+  4xx terminal. Key auto-generated on first SEO submission unless an admin turned IndexNow off.
+- Google: no Indexing API (a test asserts no request ever goes to `indexing.googleapis.com`). Sitemap resubmission via
+  `sitemaps.submit` with the write scope, once per hour per sitemap (+ news sitemap for news); URL Inspection
+  scheduled +60 h, stored as Google's last-known state; timeline on the article panel (submitted → crawled → indexed).
+- CMS changes (small, in `posts.ts` / `indexnow.ts`): `visibleChange()` — a save that changes no visible field no
+  longer pings IndexNow; `updatePost(..., { notifySearchEngines: false })` lets the SEO path submit only after
+  verification; the editor's IndexNow queue now goes through the batched log. Legacy per-URL `indexnow` jobs still
+  drain through the old handler. `tests/seo-integrations.test.ts` expectation updated accordingly (same guarantees).
+- `googleJson` accepts PUT / empty bodies; `SCOPES.searchConsoleWrite`.
+- Rollbacks must run newest first (0013 references `seo_drafts`); the 0012 test now does that.
+- Tests: `tests/seo-v2-submission.test.ts` (12): kill switch, payload, batching/debounce/dedupe, retry vs terminal,
+  automatic key (and respecting "off"), sitemap queue incl. news, write scope + PUT URL, hourly dedupe, missing
+  credentials and 403 hint, inspection result + timeline, lastmod only on substantive change, migration.

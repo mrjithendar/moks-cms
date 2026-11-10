@@ -130,10 +130,17 @@ describe("migration 0012", () => {
     const tables = async () => rowsOf<{ t: string }>(await clean.execute(sql`select table_name as t from information_schema.tables where table_schema = 'public' order by 1`)).map((r) => r.t);
     const before = await tables();
     expect(before).toEqual(expect.arrayContaining(["seo_drafts", "seo_llm_usage", "seo_llm_batches"]));
-    const down = fs.readFileSync(path.resolve(migrationsDir(), "../rollback/0012_seo_drafts.down.sql"), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean);
-    for (const stmt of down) await clean.execute(sql.raw(stmt));
-    expect(await tables()).toEqual(before.filter((t) => !["seo_drafts", "seo_llm_usage", "seo_llm_batches"].includes(t)));
-    expect(await migrateDb(clean)).toEqual(["0012_seo_drafts.sql"]);
+    // Rollbacks run newest first: later v2 migrations reference seo_drafts.
+    const later = fs.readdirSync(path.resolve(migrationsDir(), "../rollback")).filter((f) => f > "0012_seo_drafts.down.sql").sort().reverse();
+    const v2 = ["seo_drafts", "seo_llm_usage", "seo_llm_batches"];
+    const laterTables = new Set<string>();
+    for (const f of later) for (const m of fs.readFileSync(path.resolve(migrationsDir(), "../rollback", f), "utf8").matchAll(/DROP TABLE IF EXISTS "([a-z_]+)"/g)) laterTables.add(m[1]!);
+    for (const f of [...later, "0012_seo_drafts.down.sql"]) {
+      const down = fs.readFileSync(path.resolve(migrationsDir(), "../rollback", f), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean);
+      for (const stmt of down) await clean.execute(sql.raw(stmt));
+    }
+    expect(await tables()).toEqual(before.filter((t) => !v2.includes(t) && !laterTables.has(t)));
+    expect((await migrateDb(clean))[0]).toBe("0012_seo_drafts.sql");
     expect(await tables()).toEqual(before);
     await pg.close();
   });

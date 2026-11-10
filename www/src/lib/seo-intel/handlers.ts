@@ -41,3 +41,4 @@ registerSeoHandler("drafts_digest", async (ctx) => {
 export { seoJobHandler, runSeoJob } from "./jobs";
 export { draftJobHandler } from "./drafts";
 export { verifyJobHandler } from "./publish";
+export { submissionJobHandler } from "./submission";

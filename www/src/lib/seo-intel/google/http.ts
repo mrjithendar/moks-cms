@@ -23,7 +23,7 @@ export type RunStats = { apiRequests: number; retries: number };
 export type ApiContext = {
   sa: ServiceAccount;
   scope: string;
-  provider: "gsc" | "ga4" | "url_inspection" | "psi";
+  provider: "gsc" | "ga4" | "url_inspection" | "psi" | "gsc_sitemaps";
   stats: RunStats;
   /** Stop before exceeding this many requests in the run (quota protection). */
   maxRequests: number;
@@ -52,7 +52,7 @@ async function errorMessage(res: Response): Promise<string> {
   }
 }
 
-export async function googleJson<T>(ctx: ApiContext, url: string, body: unknown, method: "POST" | "GET" = "POST"): Promise<T> {
+export async function googleJson<T>(ctx: ApiContext, url: string, body: unknown, method: "POST" | "GET" | "PUT" = "POST"): Promise<T> {
   const fetchImpl = ctx.fetchImpl ?? fetch;
   const sleep = ctx.sleep ?? defaultSleep;
   const maxRetries = ctx.maxRetries ?? 4;
@@ -79,7 +79,11 @@ export async function googleJson<T>(ctx: ApiContext, url: string, body: unknown,
     }
     const status = res?.status ?? 0;
     recordSeoApiRequest(ctx.provider, res?.ok ? "ok" : status === 0 ? "network" : status === 429 ? "rate_limited" : status >= 500 ? "server_error" : "client_error");
-    if (res?.ok) return (await res.json()) as T;
+    if (res?.ok) {
+      // sitemaps.submit (PUT) answers 204 / an empty body.
+      const text = await res.text();
+      return (text ? JSON.parse(text) : {}) as T;
+    }
     const retryable = !res || status === 429 || status >= 500;
     if (retryable && attempt < maxRetries) {
       ctx.stats.retries++;

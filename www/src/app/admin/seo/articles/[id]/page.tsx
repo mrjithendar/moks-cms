@@ -6,8 +6,11 @@ import { ApiButton } from "@/components/seo/ApiButton";
 import { TrendLine } from "@/components/seo/Charts";
 import { SideBySide } from "@/components/seo/Diff";
 import { Empty, fmtInt, fmtPct, fmtPos, Section } from "@/components/seo/ui";
+import { getDb } from "@/db";
 import { articlePanel } from "@/lib/seo-intel/article-panel";
+import { openDraft } from "@/lib/seo-intel/drafts";
 import { UUID } from "@/lib/seo-intel/http";
+import { listSubmissions, timelineSummary } from "@/lib/seo-intel/submission";
 
 export const metadata = { title: "Article SEO" };
 
@@ -16,6 +19,9 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
   if (!UUID.test(id)) notFound();
   const p = await articlePanel(id);
   if (!p) notFound();
+  const db = await getDb();
+  const [submissions, draft] = await Promise.all([listSubmissions(db, { articleId: id }), openDraft(db, id)]);
+  const tl = timelineSummary(submissions);
   const a = p.article;
   const proposals = p.optimizations.filter((o) => o.status === "proposed");
   const decided = p.optimizations.filter((o) => o.status !== "proposed");
@@ -32,6 +38,21 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
         <Card className="!p-4"><p className="text-sm text-fg-subtle">Sessions (GA4, landing)</p><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtInt(p.ga4.sessions)}</p><p className="text-xs text-fg-subtle">{fmtInt(p.ga4.organic)} from organic search</p></Card>
         <Card className="!p-4"><p className="text-sm text-fg-subtle">Engagement (GA4)</p><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtPct(p.ga4.engagementRate)}</p><p className="text-xs text-fg-subtle">{p.ga4.avgEngagementSeconds === null ? "—" : `${Math.round(p.ga4.avgEngagementSeconds)} s per session`}</p></Card>
       </div>
+      <Section title="Search engines" description="Submitting is a crawl hint, not an indexing guarantee. Google's state comes from the URL Inspection API (its last-known state, not live).">
+        <Card>
+          <ol className="grid gap-3 text-sm sm:grid-cols-3" aria-label="Submission timeline">
+            <li><p className="text-xs text-fg-subtle">1 · Submitted</p><p className="font-medium text-fg">{tl.submittedAt ? new Date(tl.submittedAt).toLocaleString() : "not yet"}</p></li>
+            <li><p className="text-xs text-fg-subtle">2 · Crawled (Google)</p><p className="font-medium text-fg">{tl.crawledAt ? new Date(tl.crawledAt).toLocaleString() : tl.pendingInspection ? "check scheduled" : "unknown"}</p></li>
+            <li><p className="text-xs text-fg-subtle">3 · Index status (Google&apos;s last-known state)</p><p className="font-medium text-fg">{tl.indexState ?? (tl.pendingInspection ? "check scheduled" : "unknown")}</p></li>
+          </ol>
+          {submissions.length > 0 && (
+            <details className="mt-3 text-sm"><summary className="cursor-pointer text-fg-muted">All {submissions.length} submission events</summary>
+              <ul className="mt-2 space-y-1 text-fg-muted">{submissions.map((s, i) => <li key={i}>{new Date(s.requestedAt).toLocaleString()} · <span className="font-medium text-fg">{s.engine}</span> {s.kind} · {s.status}{s.responseCode ? ` (HTTP ${s.responseCode})` : ""}{s.error ? ` — ${s.error}` : ""}</li>)}</ul>
+            </details>
+          )}
+          {draft && <p className="mt-3 text-sm"><Link className="underline" href={`/admin/seo/review/${draft.id}`}>Open draft ({draft.status.replace(/_/g, " ")}, {draft.changes.length} changes)</Link></p>}
+        </Card>
+      </Section>
       <Section title="Clicks per day (90 days)"><Card><TrendLine label="Clicks" data={p.gscTrend.map((t) => ({ date: t.date, value: t.clicks }))} /></Card></Section>
 
       <Section title={`Proposals (${proposals.length})`} description="Each shows the current value next to the proposal. Accept → your working copy; Reject → dismissed. AI proposals are labelled and must be checked for accuracy.">

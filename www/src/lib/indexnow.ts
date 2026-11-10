@@ -1,6 +1,6 @@
 import { isProductionEnv, PRODUCTION_HOST, siteUrl } from "@/config/site";
 import { indexNowKey } from "./indexnow-key";
-import { enqueue, PermanentJobError } from "./jobs";
+import { PermanentJobError } from "./jobs";
 import { log } from "./log";
 
 /**
@@ -25,22 +25,33 @@ export async function submitIndexNow(urls: string[], opts: { key: string; host?:
   throw new Error(`IndexNow HTTP ${res.status}`);
 }
 
-/** Queue canonical public URLs on this site (deduplicated while pending). No-op unless production and configured. */
+/**
+ * Queue canonical public URLs on this site. No-op unless production, configured, and not switched off with
+ * SEO_SUBMISSION_ENABLED=false. URLs go into the submission log (`seo_search_submissions`) and are sent in one
+ * batched, deduplicated POST per minute (src/lib/seo-intel/submission.ts).
+ */
 export async function queueIndexNow(paths: string[]): Promise<number> {
   const key = await indexNowKey();
   if (!key || !isProductionEnv()) return 0;
+  const { submissionEnabled } = await import("./seo-intel/settings");
+  if (!submissionEnabled()) return 0;
+  const { queueIndexNowUrl } = await import("./seo-intel/submission");
+  const { getDb } = await import("@/db");
+  const db = await getDb();
   let queued = 0;
   for (const path of new Set(paths)) {
     if (!path.startsWith("/") || path.startsWith("//")) continue;
-    const url = `${siteUrl()}${path}`;
     try {
-      if (await enqueue("indexnow", { url }, { dedupeKey: `indexnow:${url}`, maxAttempts: 6 })) queued++;
+      if (await queueIndexNowUrl(db, { draftId: null, articleId: null, path, reason: "edit" })) queued++;
     } catch (error) {
-      log.warn("could not queue IndexNow submission", { url, err: error });
+      log.warn("could not queue IndexNow submission", { path, err: error });
     }
   }
   return queued;
 }
+
+/** Legacy per-URL jobs queued before the batched log existed still run through indexNowHandler below. */
+export const LEGACY_INDEXNOW_KIND = "indexnow";
 
 export const indexNowHandler = async (payload: Record<string, unknown>) => {
   const key = await indexNowKey();

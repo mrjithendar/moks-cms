@@ -282,8 +282,15 @@ describe("IndexNow", () => {
     });
     expect(await db.select().from(schema.job)).toHaveLength(0); // drafts are not submitted
     await publishPost(author, p.id, {});
+    // v2: one debounced batch job; the URL waits in the submission log (docs/seo/SUBMISSION.md).
     const jobs = await db.select().from(schema.job);
-    expect(jobs.map((j) => j.payload)).toEqual([{ url: "https://jithendar.com/blog/fresh" }]);
+    expect(jobs.map((j) => [j.kind, j.payload])).toEqual([["seo_submit", { kind: "indexnow" }]]);
+    const { rowsOf } = await import("@/db/rows");
+    const queued = rowsOf<{ url: string; status: string }>(await db.execute((await import("drizzle-orm")).sql`select url, status from seo_search_submissions`));
+    expect(queued).toEqual([{ url: "https://jithendar.com/blog/fresh", status: "queued" }]);
+    // Saving again without a visible change does not queue the URL again.
+    await updatePost(author, p.id, {});
+    expect(rowsOf(await db.execute((await import("drizzle-orm")).sql`select 1 from seo_search_submissions`))).toHaveLength(1);
 
     // Break the queue: publishing must still work.
     await db.execute((await import("drizzle-orm")).sql`drop table job`);

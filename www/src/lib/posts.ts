@@ -191,9 +191,20 @@ function visiblePath(row: PostRow, now = Date.now()): string | null {
   return live ? `/${row.collection}/${row.slug}` : null;
 }
 
-/** After a committed change: refresh caches everywhere and tell IndexNow engines. Never throws. */
-async function afterChange(before: PostRow | null, after: PostRow | null) {
+/** Fields readers or search engines can see. A save that changes none of them is not worth a search-engine ping. */
+const VISIBLE_FIELDS = ["collection", "slug", "title", "description", "body", "category", "tags", "contentType", "status", "publishedAt", "updatedAt", "canonicalUrl", "featuredImage", "sources", "corrections", "sponsored", "sponsor", "related", "seoTitle", "seoDescription", "socialTitle", "socialDescription", "socialImage", "noindex", "deletedAt"] as const;
+export function visibleChange(before: PostRow, after: PostRow): boolean {
+  return VISIBLE_FIELDS.some((f) => JSON.stringify(before[f] ?? null) !== JSON.stringify(after[f] ?? null));
+}
+
+/**
+ * After a committed change: refresh caches everywhere and tell IndexNow engines — only when something visible
+ * changed, and not when the caller submits itself after verifying the live page (SEO drafts). Never throws.
+ */
+async function afterChange(before: PostRow | null, after: PostRow | null, opts: { notifySearchEngines?: boolean } = {}) {
   invalidateContent();
+  if (opts.notifySearchEngines === false) return;
+  if (before && after && !visibleChange(before, after)) return;
   const paths = [before && visiblePath(before), after && visiblePath(after)].filter((p): p is string => Boolean(p));
   if (paths.length) await queueIndexNow(paths).catch((err) => log.warn("IndexNow queueing failed", { err }));
 }
@@ -271,7 +282,7 @@ const snapshot = (row: PostRow) => {
  * Partial update: fields not supplied keep their current values. With `baseVersion`, the save only
  * succeeds if nobody committed since the editor loaded that version (optimistic concurrency).
  */
-export async function updatePost(actor: Actor, id: string, patch: unknown, opts: { baseVersion?: number; reason?: string; incompleteDrafts?: boolean } = {}): Promise<SavedPost> {
+export async function updatePost(actor: Actor, id: string, patch: unknown, opts: { baseVersion?: number; reason?: string; incompleteDrafts?: boolean; notifySearchEngines?: boolean } = {}): Promise<SavedPost> {
   const current = await getPostRow(actor, id);
   if (current.deletedAt) throw new PostError("This post is in the trash. Restore it first.", 409);
   if (opts.baseVersion !== undefined && opts.baseVersion !== current.version) throw new ConflictError({ version: current.version, savedAt: current.savedAt.toISOString() });
@@ -300,7 +311,7 @@ export async function updatePost(actor: Actor, id: string, patch: unknown, opts:
     await recordRevision(db, "post", id, row.version, opts.reason ?? (row.status === "published" ? "update" : "save"), snapshot(row), actor.id);
     await clearAutosave(actor, "post", id);
     await audit(actor, "post.update", id, { slug: row.slug, status: row.status, version: row.version });
-    await afterChange(current, row);
+    await afterChange(current, row, { notifySearchEngines: opts.notifySearchEngines });
     return Object.assign(row, { warnings });
   } catch (error) {
     if (uniqueViolation(error)) throw new PostError(`A ${merged.collection} post with slug "${data.slug}" already exists.`, 409);

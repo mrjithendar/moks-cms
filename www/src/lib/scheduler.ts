@@ -13,8 +13,8 @@ import { publishDuePosts } from "./posts";
 export async function workerTick(now = new Date()) {
   const published = await publishDuePosts(now);
   if (published.length) log.info("scheduled posts published", { count: published.length, ids: published });
-  const { seoJobHandler, draftJobHandler, verifyJobHandler } = await import("./seo-intel/handlers");
-  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler }, now);
+  const { seoJobHandler, draftJobHandler, verifyJobHandler, submissionJobHandler } = await import("./seo-intel/handlers");
+  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler }, now);
   if (jobs.done || jobs.retried || jobs.failed) log.info("jobs processed", jobs);
   await practiceTick(now);
   await seoDraftTick(now);
