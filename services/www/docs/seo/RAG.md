@@ -14,7 +14,7 @@ answers the public MCP tool `ask_blog` ([MCP.md](MCP.md)), with the same guards,
 flowchart LR
   S([question]) --> GI[guard_input]
   GI -->|refused| R([refusal message])
-  GI --> RT["retrieve (pgvector, top-k)"] --> GR["grade_relevance (SEO_CLASSIFY_MODEL)"]
+  GI --> RT["retrieve (vector or hybrid, top-k)"] --> GR["grade_relevance + pick excerpts (SEO_CLASSIFY_MODEL)"]
   GR -->|relevant| AN["answer_with_citations (SEO_DRAFT_MODEL, streamed)"] --> GO[guard_output]
   GR -->|not relevant| FB["fallback: 'no article on this yet' + related links"]
   GO -->|uncited or NO_ANSWER| FB
@@ -31,10 +31,12 @@ flowchart LR
 - **Retrieval input:** the question is embedded as asked (whitespace collapsed). The normalized form (lower-case,
   punctuation stripped) is used only for the cache key and the gap log, because `/`, `:`, `=` and quotes carry meaning
   in technical queries.
-- **Score floor:** chunks below `ASK_BLOG_MIN_SCORE` (default 0.15) are dropped before grading. bge-small scores even
-  unrelated text fairly high, so calibrate it from `seo_ask_log` (scores of answered vs fallback questions).
+- **Score floor:** `ASK_BLOG_MIN_SCORE` (default **0.66** since v5; was 0.15) is a cosine pre-filter on every candidate,
+  applied before fusion. See "Score calibration" below.
 - **Grader and answer see the same excerpt text** (1,500 characters each), so a fact the grader never saw can't be
-  the reason for a fallback.
+  the reason for a fallback. Since `ask-blog-v3` the grader also returns `relevant_excerpts` (the numbers of the excerpts
+  that answer the question; optional in the schema, so an older answer means "all") and the answer step gets **only
+  those**, renumbered: a smaller, less noisy prompt.
 - **Citations** are accepted as `[1]`, `[1][2]`, `[1, 2]` or `[1; 2]`.
 - **Output guards:** links are stripped unless they point to this site or an allowlisted documentation domain.
 - **Streaming:** server-sent events: `delta` events while the answer streams, then one `final` event with the guarded
@@ -69,16 +71,34 @@ opportunities → Content gaps → "Asked on site"**, with their own source labe
 that look like they contain personal data are never shown. "Send to editorial calendar" creates an idea that the
 crew can then draft.
 
-## Chunking
+## Chunking (v5: token budget)
 
-The splitter in `services/seo-agent/app/embeddings.py` is fence-aware. It splits by h1–h3. Sections longer than
-~1,800 characters are cut at paragraph boundaries that are **never inside a code block**, so code blocks stay whole.
-Each chunk keeps its heading path (`Setup › Install`) and the anchor of its heading. Anchors follow
-**rehype-slug / github-slugger**, as on the site, including `-1`/`-2` for repeated headings. A test compares the
-anchors with the real github-slugger. The chunk hash covers the heading path and the text.
+The splitter in `services/seo-agent/app/embeddings.py` is fence-aware. It splits by h1–h3, then packs paragraphs to a
+**token** budget measured with the embedding model's own tokenizer (ONNX: `tokenizer.json`; ollama/api/hash: ≈ 4
+characters per token). The budget counts the **title + heading-path prefix** embedded with every chunk:
 
-LangChain's `MarkdownHeaderTextSplitter` was tried first and dropped. It removes blank lines (so paragraph
-boundaries are lost) and can't tell two sections with the same heading apart (D-45).
+| | Tokens (prefix included) |
+|---|---|
+| Target | ~350 |
+| Hard maximum | 480 (bge-small truncates at 512 including `[CLS]`/`[SEP]`) |
+| Code window | ~400, overlapping by the previous window's last 2 lines |
+
+- Paragraph boundaries are never inside a code block. A code block that doesn't fit stays **whole** in the stored
+  `content` (what citations and the widget show) but is embedded as several **windows**, split at blank lines inside the
+  block: one row per window, same heading path and anchor, `part` 0…n−1. Retrieval de-duplicates windows of one block.
+  Oversized prose is split at lines, then sentences, then words.
+- Each chunk keeps its heading path (`Setup › Install`) and the anchor of its heading. Anchors follow
+  **rehype-slug / github-slugger**, as on the site, including `-1`/`-2` for repeated headings (a test compares them with
+  the real github-slugger, and another checks the v5 chunker yields exactly v4's anchors on every article).
+- Measured 2026-11-10 (36 articles, bge tokenizer): v4 made 1,221 chunks and **198 (16 %) of its embedded inputs
+  were over 512 tokens**, longest 1,011, so their tails were never embedded. v5 makes 1,790 chunks, longest 471, **none
+  over the limit**. Metrics: `seo_rag_chunk_tokens` (histogram) and `seo_rag_chunks_truncated_total` (must stay 0;
+  alert `SeoRagChunksTruncated`).
+- **Deploying v5 re-embeds every chunk once:** the chunker version is part of the stored hash, so the first reindex after
+  the deploy (the weekly `seo-flow-reindex`, or `POST /api/admin/seo/agent/reindex {full:false}`) embeds ~1.8k chunks,
+  like a full reindex.
+
+LangChain's `MarkdownHeaderTextSplitter` was tried in v3 and dropped (D-45).
 
 ## Embeddings (`EMBEDDINGS_PROVIDER`)
 
@@ -113,11 +133,111 @@ data only), and the next reindex rebuilds it.
 - **Direct SQL, not `langchain-postgres`:** its vector store owns its table layout, while this table needs the article
   foreign key, heading path, anchor and content hash (D-45).
 
+## Retrieval (v5): vector or hybrid
+
+`RAG_MODE=vector|hybrid` (default **vector**, see "Defaults"). One retriever serves Ask the Blog, the public MCP
+`search_articles`, the crews' `vector_search` and the news desk's novelty check; internal linking uses
+`similar_articles` (mean chunk embedding), unchanged.
+
+- **vector:** pgvector cosine top-N (N = `RAG_CANDIDATES`, 20), ordered by cosine.
+- **hybrid:** three candidate lists from Postgres, fused in Python (`app/retrieval.py`):
+  - pgvector cosine top-N;
+  - full-text top-N on a generated `tsvector` column (`english`; title weight A, heading path B, content D; GIN index):
+    the question's lexemes OR-ed (`plainto_tsquery` ANDs them, which almost never matches a whole question), ranked by
+    `ts_rank(…, 1)`;
+  - exact identifiers: `identifiers text[]` per chunk (CLI command + subcommand such as `kubectl rollout`, long flags,
+    `set -o pipefail`, CVE ids, version strings, env var names, multi-word Kubernetes kinds, camelCase keys, distinctive
+    inline code; lower-cased and normalised) matched with `&&` against the question's identifiers and 1–3-word n-grams.
+  - **RRF:** `Σ 1/(k + rank)` over the vector and text lists, `k` = `RAG_RRF_K` (60), plus `RAG_IDENTIFIER_BOOST`
+    (1/61, worth a rank-1 hit) per matched identifier, at most 2.
+- Both modes merge the windows of one code block and **diversify**: at most `RAG_MAX_PER_ARTICLE` (default **3**)
+  chunks per article in the final top-k.
+- `Hit.score` is always the chunk's **cosine** (the floor, the news desk's 0.86 novelty threshold and the MCP `score`
+  keep their meaning); `Hit.fused` is the ranking score. The news desk now takes the best-cosine hit, not the first.
+- The columns are added by `ensure_schema` (`seo-agent` owns the table), additive and idempotent: `title`, `part`,
+  `parts`, `embed_text` (the window that was embedded; null = `content`), `identifiers`, `tsv`, and two GIN indexes.
+  Adding the generated column rewrites the table once (~1–2k rows).
+- `seo_rag_retrieval_mode{mode}` shows the mode in use.
+
+## Evaluation
+
+The question set `services/seo-agent/tests/fixtures/rag_eval.yaml`: **55 questions** written from the published
+articles (14 concept, 12 how-to, 11 exact-term, 10 troubleshooting, **8 no-answer**), each with its expected article(s)
+and acceptable section anchors. `scripts/rag_eval.py` reports Recall@1/3/6, MRR, section-anchor hit rate, the
+no-answer false-positive rate (a no-answer question whose top 6 contain a chunk over the floor would reach the grader),
+the calibrated floor and latency, into `docs/seo/rag-eval/<date>-<config>.md` plus a `-summary.md`.
+
+- **CI:** pytest runs it with hashed embeddings (in memory and on Postgres) and the `ci-seo-agent` job runs the script
+  once: a smoke test that it runs; the numbers mean nothing.
+- **For real:** locally (ONNX model + any Postgres for full text; no pgvector needed, the vector list is exact cosine,
+  ≈ HNSW at this size), or the manual workflow **RAG eval** (`rag-eval.yml`), which fetches the model at the image's
+  pinned revision and checksums.
+
+```bash
+cd services/seo-agent
+uv run python scripts/rag_eval.py --model-dir /path/to/bge-small-en-v1.5 --dsn postgresql://…/scratch   # all configs
+```
+
+### Results 2026-11-10 (bge-small ONNX, 36 articles, Postgres 17 full text)
+
+| Config | Chunks | > 512 tok | Recall@1 | Recall@3 | Recall@6 | MRR | Anchor hit | p95 ms |
+|---|---|---|---|---|---|---|---|---|
+| **baseline** (v4 chunker, cosine) | 1,221 | 198 | 97.9 | 100 | 100 | 0.989 | 97.9 | 12 |
+| token chunker, cosine | 1,790 | 0 | 93.6 | 100 | 100 | 0.968 | 97.9 | 0.7 |
+| + ≤ 3 per article (**default**, `RAG_MODE=vector`) | 1,790 | 0 | 93.6 | 100 | 100 | 0.968 | 95.7 | 0.7 |
+| + ≤ 2 per article (the brief's number) | 1,790 | 0 | 93.6 | 100 | 100 | 0.968 | 87.2 | |
+| hybrid, no identifier boost, ≤ 3 | 1,790 | 0 | 95.7 | 95.7 | 100 | 0.968 | 89.4 | 7 |
+| hybrid, ≤ 3 (`RAG_MODE=hybrid`) | 1,790 | 0 | 95.7 | 95.7 | 100 | 0.968 | 91.5 | 11 |
+| hybrid, ≤ 2 | 1,790 | 0 | 95.7 | 100 | 100 | 0.972 | 85.1 | |
+
+No-answer false positives: 100 % at the old 0.15 floor in every config, 62.5 % at the calibrated 0.66. Latency is the
+local search call (embedding the question + candidate lists + fusion), not Minikube. Internal linking: each article's
+top-5 similar articles overlap 0.78 (Jaccard) between v4 and v5 chunking, so related-article candidates stay similar.
+
+**Reading it honestly:** article-level Recall@3 is at the ceiling (100 %) for nearly every config, because most
+questions name their topic plainly; the set discriminates through Recall@1, MRR and anchor hits. The token chunker costs
+two rank-1 hits (smaller chunks of the same article compete) but removes the 16 % truncation, which this set can't
+reward because the truncated tails are mostly code. A harder set (vaguer questions, cross-article questions) is the
+first thing to add (PROGRESS.md "Known limitations").
+
+### Defaults
+
+- **`RAG_MODE=vector`.** Hybrid had to beat vector on Recall@3 and MRR without a worse no-answer rate. It doesn't:
+  Recall@3 95.7 vs 100 at the default diversification (it ties at ≤ 2 per article, where its MRR is 0.972 vs 0.968:
+  one question) and anchor hits are lower in every setting. RRF k = 20 was also tried (`2026-11-10-summary.k20.md`): no
+  change in the decision. Hybrid stays one variable away (`RAG_MODE=hybrid`) for when the corpus or the eval set grows.
+- **`RAG_MAX_PER_ARTICLE=3`**, not the brief's 2: on this set 2 costs 10.7 points of anchor hits (the right section of
+  the right article falls out of the top 6), 3 costs 2.2. Set it to 2 to follow the brief literally (D-71).
+
+## Score calibration
+
+The floor is a cheap pre-filter on cosine only; the grader is the real relevance check. **Default 0.66** for
+bge-small: the highest floor that loses no expected answer on the eval set (the lowest "best expected-article cosine"
+over 47 answerable questions, rounded down). It halves nothing for answerable questions and stops 3 of 8 no-answer
+questions before the grader (62.5 % still reach it). Other embedding providers have other score scales: recalibrate.
+
+- **From the eval set:** `scripts/rag_eval.py` prints the calibrated floor and a floor table (answers lost, no-answer
+  rate per floor).
+- **From traffic:** `scripts/rag_calibrate.py` (read-only, prints a suggestion, never changes config) reads
+  `seo_ask_log.retrieval` (migration 0018: per excerpt its cosine, whether the grader kept it and whether the answer
+  cited it). Safe floor = the lowest cited cosine among answered questions; it also counts the fallbacks that would have
+  skipped the grader. It needs ≥ 20 answered questions.
+- Apply the lower of the two by hand: `ASK_BLOG_MIN_SCORE` in `seo-agent-config`, then restart seo-agent.
+
+## Reranker (optional, off)
+
+`app/reranker.py`: a cross-encoder (e.g. `bge-reranker-base` exported to ONNX, CPU only) over the fused top-20 → top-k,
+behind `RAG_RERANKER_ENABLED=false` + `RAG_RERANKER_DIR` (not in the image). Its activation rule is +3 points of
+Recall@3 and p95 under 400 ms on Minikube. **It can't pass on this eval set:** Recall@3 is already 100 % without it, so
+there is nothing to gain. The model was therefore not downloaded, and its memory and latency were not measured. The
+code and the `token-hybrid-rerank` eval config stay for re-testing on a harder set.
+
 ## Operations
 
 - <a id="operations"></a>Error rate alert: `AskBlogErrorRate`. First response: `ASK_BLOG_ENABLED=false` (the web
   ConfigMap/Secret plus the agent ConfigMap), then restart.
-- Check retrieval quality after a model change: a full reindex, then ask the questions in the test fixture.
+- Check retrieval quality after a model or chunker change: run the eval (above), then a full reindex.
+- Roll back retrieval: `RAG_MODE=vector` (already the default), `RAG_MAX_PER_ARTICLE=0` for v4's undiversified top-k.
 - Measured with the real model on 2026-11-10 (37 articles): "strict mTLS with Istio on minikube" → the Istio article
   (`#61-permissive-to-strict-without-guessing` among the top 3); "authenticate GitHub Actions to a minikube cluster"
   → the GitHub Actions article; "Valkey replace Redis" → the Valkey article.

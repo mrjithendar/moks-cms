@@ -1,0 +1,296 @@
+# Retrieval evaluation set for Ask the Blog / search_articles / vector_search (docs/seo/RAG.md "Evaluation").
+#
+# Each question was written from the published articles in services/www/content/blog (2026-11-10, 37 articles).
+#   slugs:   the article(s) that answer it (any one counts as a hit)
+#   anchors: acceptable section anchors (github-slugger ids, as on the site); a hit in one of these is a
+#            "section-anchor hit". Empty for no-answer questions.
+#   type:    concept | how-to | exact-term (a command, flag, config key, error string or version) | troubleshooting |
+#            no-answer (not covered on the site: retrieval should give the grader nothing convincing)
+# Rules for editing: keep at least 40 questions and at least 6 no-answer; don't tune questions to a retriever (write
+# them the way a reader would ask); when an article is renamed or restructured, fix its slugs/anchors here.
+version: 1
+questions:
+  # --- concept ---
+  - id: c01
+    question: What is the difference between Helm and Kustomize?
+    type: concept
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-1]
+    anchors: [helm-or-kustomize, 4-kustomize-configuration-without-templates, 1-helm-the-kubernetes-package-manager]
+  - id: c02
+    question: Should I use KEDA or the Horizontal Pod Autoscaler?
+    type: concept
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-2]
+    anchors: [keda-or-hpa, 9-keda-event-driven-autoscaling]
+  - id: c03
+    question: Why run one shared PostgreSQL cluster for all apps instead of a database per app?
+    type: concept
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [what-we-had, the-incident-that-forced-the-issue, what-we-wanted, why-an-operator-at-all]
+  - id: c04
+    question: Why did you choose Valkey instead of Redis?
+    type: concept
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [why-valkey-instead-of-redis]
+  - id: c05
+    question: What is the difference between an HTTP API and an agent tool exposed over MCP?
+    type: concept
+    slugs: [fastapi-and-fastmcp-ai-projects]
+    anchors: [an-http-api-and-an-agent-tool-are-different-contracts, discovery-is-not-authorization]
+  - id: c06
+    question: How does a cross-encoder reranker differ from the embedding retrieval step in MOKS?
+    type: concept
+    slugs: [pytorch-rag-reranking-moks-sre-agent]
+    anchors: [the-problem-related-is-not-the-same-as-the-best-evidence, where-pytorch-fits, the-actual-model, the-short-version]
+  - id: c07
+    question: Where did Kubernetes come from and what was its codename?
+    type: concept
+    slugs: [kubernetes-history-origins-evolution-milestones]
+    anchors: [the-founders-and-the-codename, google-had-already-lived-this-problem]
+  - id: c08
+    question: How do MOKS skills (SKILL.md playbooks) differ from RAG?
+    type: concept
+    slugs: [moks-rag-and-skills-design]
+    anchors: [how-skills-work, why-the-split-matters-prompt-injection, the-short-version]
+  - id: c09
+    question: When is Python a better choice than a shell script?
+    type: concept
+    slugs: [shell-scripting-vs-python]
+    anchors: [shell-scripting-vs-python-the-short-answer]
+  - id: c10
+    question: How does the RoboShop AI gateway differ from an ingress or an API gateway?
+    type: concept
+    slugs: [roboshop-ai-gateway]
+    anchors: [how-it-differs-from-an-ingress-a-proxy-and-an-api-gateway]
+  - id: c11
+    question: Monolith or microservices, which should a new system start with?
+    type: concept
+    slugs: [system-design-evolution-1990s-to-microservices, roboshop-ai-microservices, roboshop-ai-architecture]
+    anchors: [monolith-or-microservices, what-the-boundaries-cost, why-microservices-and-what-they-cost]
+  - id: c12
+    question: Is Istio or Linkerd the better service mesh?
+    type: concept
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-2]
+    anchors: [istio-or-linkerd, 11-linkerd-the-lightweight-service-mesh, 10-istio-the-full-featured-service-mesh]
+  - id: c13
+    question: Why is None in Python not the same as null and undefined in TypeScript?
+    type: concept
+    slugs: [python-vs-typescript]
+    anchors: [why-none-is-not-the-same-as-null-and-undefined]
+  - id: c14
+    question: What does "the model proposes, code decides" mean for the AI systems on your cluster?
+    type: concept
+    slugs: [four-ai-systems-one-cluster]
+    anchors: [shared-patterns, the-platform]
+
+  # --- how-to ---
+  - id: h01
+    question: How do I authenticate GitHub Actions to a minikube cluster?
+    type: how-to
+    slugs: [github-actions-authenticate-minikube]
+    anchors: [1-the-short-version, 4-the-identity-one-serviceaccount-one-role, 5-the-token, 7-building-the-kubeconfig-in-the-job]
+  - id: h02
+    question: How do I move Istio from PERMISSIVE to STRICT mTLS safely on minikube?
+    type: how-to
+    slugs: [istio-service-mesh-minikube-features-setup-troubleshooting]
+    anchors: [61-permissive-to-strict-without-guessing, 6-mtls-and-authorization]
+  - id: h03
+    question: How do I add Cloudflare Turnstile to a Next.js contact form and verify the token on the server?
+    type: how-to
+    slugs: [cloudflare-turnstile-nextjs-bot-protection]
+    anchors: [7-backend-verification, path-1-the-contact-form, rendering-the-widget-and-receiving-the-token, using-the-component-in-a-form]
+  - id: h04
+    question: How can I render Mermaid diagrams on a Next.js blog?
+    type: how-to
+    slugs: [mermaid-diagrams-on-jithendar-com]
+    anchors: [how-i-implemented-it, step-1-send-mermaid-blocks-to-their-own-component, step-2-draw-the-diagram-in-the-browser, three-ways-to-render-mermaid]
+  - id: h05
+    question: How do I reduce the number of Dependabot pull requests?
+    type: how-to
+    slugs: [dependabot-setup-five-repositories]
+    anchors: [how-do-i-stop-getting-so-many-prs, 4-groups-fewer-prs-but-only-the-right-ones-together, 5-cooldown-let-new-releases-settle-first]
+  - id: h06
+    question: How do I deploy a microservices app on EKS with Terraform and Argo CD?
+    type: how-to
+    slugs: [deploy-roboshop-ai-amazon-eks]
+    anchors: [step-1-create-the-aws-layer-with-terraform, step-2-register-the-cluster-with-the-argo-cd-hub, how-the-pieces-connect]
+  - id: h07
+    question: How do I rotate a database password for one application on CloudNativePG?
+    type: how-to
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [how-do-i-rotate-an-applications-password]
+  - id: h08
+    question: How do I validate API responses at runtime in TypeScript?
+    type: how-to
+    slugs: [learning-typescript-real-project-jithendar-com]
+    anchors: [runtime-validation-with-zod, declaring-a-type-is-not-checking-the-data]
+  - id: h09
+    question: How do I correlate logs and traces in a Next.js app with OpenTelemetry?
+    type: how-to
+    slugs: [logging-tracing-observability-jithendar-com]
+    anchors: [5-how-logs-and-traces-are-correlated, initialization]
+  - id: h10
+    question: How are tools registered in a FastMCP server?
+    type: how-to
+    slugs: [fastapi-and-fastmcp-ai-projects, roboshop-ai-mcp-server]
+    anchors: [how-tools-are-registered, how-tools-are-defined]
+  - id: h11
+    question: How do I prepare for a DevOps interview in a few weeks?
+    type: how-to
+    slugs: [devops-interview-preparation-guide]
+    anchors: [a-7-week-roadmap, how-to-use-this-devops-interview-preparation-guide, how-long-does-devops-interview-preparation-take]
+  - id: h12
+    question: How do I set up Kiali to observe an Istio mesh on minikube?
+    type: how-to
+    slugs: [kiali-minikube-service-mesh-observability]
+    anchors: [4-kiali-values, 3-prometheus-so-kiali-has-data, 5-auth-and-exposure, 1-istio-crds-cni-agent-and-istiod]
+
+  # --- exact-term (commands, flags, config keys, error strings, versions) ---
+  - id: e01
+    question: What does versioning-strategy increase do in dependabot.yml?
+    type: exact-term
+    slugs: [dependabot-setup-five-repositories]
+    anchors: [what-is-versioning-strategy-increase]
+  - id: e02
+    question: What does set -o pipefail change in a bash script?
+    type: exact-term
+    slugs: [shell-scripting-vs-python]
+    anchors: [set--e-set--u-and-set--o-pipefail-one-at-a-time]
+  - id: e03
+    question: What does the Envoy response flag UH mean?
+    type: exact-term
+    slugs: [istio-service-mesh-minikube-features-setup-troubleshooting, kiali-minikube-service-mesh-observability]
+    anchors: [envoy-response-flags, what-to-check-in-kiali-an-operational-checklist]
+  - id: e04
+    question: Does sensitive = true keep a Terraform variable out of the state file?
+    type: exact-term
+    slugs: [learning-terraform-real-project-tools-repository]
+    anchors: [sensitive--true-does-not-keep-a-value-out-of-state, common-beginner-mistakes]
+  - id: e05
+    question: How do I use a moved block to rename a Terraform resource?
+    type: exact-term
+    slugs: [learning-terraform-real-project-tools-repository]
+    anchors: [refactoring-with-moved]
+  - id: e06
+    question: What do the @dependabot recreate and @dependabot rebase comments do?
+    type: exact-term
+    slugs: [dependabot-setup-five-repositories]
+    anchors: [what-are-the-useful-pr-comment-commands, will-grouping-hide-a-broken-update]
+  - id: e07
+    question: FATAL too many connections for role
+    type: exact-term
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [fatal-too-many-connections-for-role]
+  - id: e08
+    question: What does "known after apply" mean in a terraform plan?
+    type: exact-term
+    slugs: [learning-terraform-real-project-tools-repository]
+    anchors: [known-after-apply]
+  - id: e09
+    question: Which maxMemoryPolicy does the shared Valkey use?
+    type: exact-term
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [43-memory-durability-and-a-shared-server]
+  - id: e10
+    question: Why is shell=True dangerous in Python subprocess?
+    type: exact-term
+    slugs: [shell-scripting-vs-python]
+    anchors: [why-shelltrue-and-eval-change-the-rules]
+  - id: e11
+    question: terraform import -var-file example
+    type: exact-term
+    slugs: [learning-terraform-real-project-tools-repository]
+    anchors: [import-adopting-something-that-already-exists]
+
+  # --- troubleshooting ---
+  - id: t01
+    question: Argo CD application stays OutOfSync, what should I check?
+    type: troubleshooting
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-1]
+    anchors: [argo-cd-application-is-outofsync]
+  - id: t02
+    question: Calls between services fail after I enabled STRICT mTLS in Istio
+    type: troubleshooting
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-2, istio-service-mesh-minikube-features-setup-troubleshooting]
+    anchors: [istio-calls-fail-after-enabling-strict-mtls, 61-permissive-to-strict-without-guessing, common-issues-and-fixes]
+  - id: t03
+    question: My app breaks behind PgBouncer, why?
+    type: troubleshooting
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [an-application-breaks-behind-pgbouncer, why-session-mode-pgbouncer]
+  - id: t04
+    question: Queue workers disconnect from Valkey every 30 seconds
+    type: troubleshooting
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [queue-workers-or-subscribers-disconnect-every-30-seconds]
+  - id: t05
+    question: Karpenter does not create nodes and pods stay Pending
+    type: troubleshooting
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-2]
+    anchors: [karpenter-cannot-provision-nodes-for-pending-pods]
+  - id: t06
+    question: cert-manager fails to issue or renew my certificate
+    type: troubleshooting
+    slugs: [15-essential-kubernetes-tools-devops-engineers-2026-part-2]
+    anchors: [cert-manager-fails-to-issue-or-renew-a-certificate, how-does-cert-manager-renew-certificates]
+  - id: t07
+    question: RoboShop chat returns 503 feature-unavailable
+    type: troubleshooting
+    slugs: [roboshop-ai-gateway]
+    anchors: [chat-fails-with-503-feature-unavailable]
+  - id: t08
+    question: A Kubernetes rollout is stuck and pods are in CrashLoopBackOff
+    type: troubleshooting
+    slugs: [devops-interview-preparation-guide]
+    anchors: [scenario-a-rollout-is-stuck-and-pods-are-crash-looping, lab-a-failure-zoo-on-minikube]
+  - id: t09
+    question: Why didn't Dependabot open a PR for my security alert?
+    type: troubleshooting
+    slugs: [dependabot-setup-five-repositories]
+    anchors: [why-didnt-dependabot-open-a-pr-for-my-alert]
+  - id: t10
+    question: psql says the server certificate does not match the host name
+    type: troubleshooting
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [psql-fails-with-server-certificate-does-not-match-host-name]
+
+  # --- no-answer (not covered on the site) ---
+  - id: n01
+    question: How do I configure Kafka consumer group rebalancing?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n02
+    question: What is the best sourdough bread recipe?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n03
+    question: How do I set up Azure Front Door with WAF rules?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n04
+    question: How do I write a Rust async web server with Axum?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n05
+    question: How do I tune Elasticsearch shard allocation?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n06
+    question: What are the iOS SwiftUI navigation best practices?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n07
+    question: How do I migrate a Jenkins pipeline to GitLab CI?
+    type: no-answer
+    slugs: []
+    anchors: []
+  - id: n08
+    question: Explain CVE-2021-44228 Log4Shell mitigation in Java
+    type: no-answer
+    slugs: []
+    anchors: []

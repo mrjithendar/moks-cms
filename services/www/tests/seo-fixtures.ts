@@ -81,6 +81,10 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
       const rowLimit = Number(body.rowLimit);
       const startRow = Number(body.startRow ?? 0);
       const type = String(body.type);
+      // Like Google: Discover cannot be grouped by device (or query).
+      if (type === "discover" && (dims.includes("device") || dims.includes("query"))) {
+        return Response.json({ error: { code: 400, message: "Requests for Discover cannot be grouped by device.", status: "INVALID_ARGUMENT" } }, { status: 400 });
+      }
       const typeFactor = type === "web" ? 1 : 0.1;
       const rows: { keys: string[]; clicks: number; impressions: number; ctr: number; position?: number }[] = [];
       for (const day of days) {
@@ -101,8 +105,10 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
                 if ((qi + p.base) % 2 !== 0) continue;
                 rows.push({ keys: [day, p.raw, q, device, "ind"], clicks: Math.max(0, clicks - qi), impressions: impressions + qi * 10, ctr: 0, position: 4 + qi * 3 });
               }
-            } else {
+            } else if (dims.includes("device")) {
               rows.push({ keys: [day, p.raw, device, "ind"], clicks, impressions, ctr: clicks / impressions, position: 6.5 });
+            } else {
+              rows.push({ keys: [day, p.raw, "ind"], clicks, impressions, ctr: clicks / impressions, position: 6.5 });
             }
           }
         }

@@ -89,7 +89,9 @@ class Settings:
     docs_allowlist: tuple[str, ...] = field(default=DEFAULT_DOCS_ALLOWLIST)
     ask_cache_ttl_s: int = 900
     ask_top_k: int = 6
-    ask_min_score: float = 0.15  # cosine floor for retrieved chunks; calibrate from seo_ask_log (RAG.md)
+    # Cosine pre-filter for retrieved chunks (bge-small). v5: calibrated on the eval set = the highest floor that loses
+    # no expected answer (RAG.md "Score calibration"); was 0.15. Other embedding providers need their own value.
+    ask_min_score: float = 0.66
     ask_retention_days: int = 30
     production: bool = False
     otel_endpoint: str = ""

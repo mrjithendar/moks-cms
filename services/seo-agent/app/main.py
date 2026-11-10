@@ -219,6 +219,9 @@ async def _gauges(c: Container) -> None:
 
 
 async def startup(c: Container) -> None:
+    mode = getattr(getattr(c.index, "config", None), "mode", "vector")
+    for m in metrics.RAG_MODES:
+        metrics.RAG_RETRIEVAL_MODE.labels(mode=m).set(1 if m == mode else 0)
     try:
         await c.runner.recover()
     except Exception as e:  # e.g. the web app's migration 0016 not applied yet: start, report on /readyz

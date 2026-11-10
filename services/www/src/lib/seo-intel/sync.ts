@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { GA4_REPORTS, ga4Date, quotaLow, runReport, type PropertyQuota } from "./google/ga4";
-import { QUERY_SEARCH_TYPES, queryAll, type GscRow } from "./google/gsc";
+import { DEVICE_SEARCH_TYPES, NO_DEVICE, QUERY_SEARCH_TYPES, queryAll, type GscRow } from "./google/gsc";
 import { GoogleApiError, type ApiContext } from "./google/http";
 import type { SearchType } from "./settings";
 import { upsertRows } from "./sqlutil";
@@ -59,13 +59,15 @@ export async function syncGscWindow(db: Db, ctx: ApiContext, property: string, s
     );
     await prune(db, "seo_gsc_daily_totals", window, type, now);
 
-    // 2. Pages (date × page × device × country): page totals.
-    const pages = await queryAll(ctx, property, { startDate: window.start, endDate: window.end, dimensions: ["date", "page", "device", "country"], type }, rowLimit);
+    // 2. Pages (date × page × device × country): page totals. Discover has no device breakdown (NO_DEVICE).
+    const byDevice = DEVICE_SEARCH_TYPES.includes(type);
+    const pages = await queryAll(ctx, property, { startDate: window.start, endDate: window.end, dimensions: byDevice ? ["date", "page", "device", "country"] : ["date", "page", "country"], type }, rowLimit);
     const pageAgg = aggregate(pages.rows, (r) => {
       const n = normalizeUrl(r.keys[1] ?? "");
       if (!n) return null;
       urls.push(n);
-      return [r.keys[0]!, n.url, (r.keys[2] ?? "").toLowerCase(), (r.keys[3] ?? "").toLowerCase()];
+      const [device, country] = byDevice ? [(r.keys[2] ?? "").toLowerCase(), r.keys[3]] : [NO_DEVICE, r.keys[2]];
+      return [r.keys[0]!, n.url, device, (country ?? "").toLowerCase()];
     });
     rows += await upsertRows(
       db,

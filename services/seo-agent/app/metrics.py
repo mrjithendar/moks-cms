@@ -49,6 +49,15 @@ ASK_BUDGET_RATIO = Gauge("seo_ask_budget_used_ratio", "Today's Ask-the-Blog spen
 LAST_SUCCESS = Gauge("seo_flow_last_success_timestamp_seconds", "Last succeeded run per flow (from seo_flow_runs).", ["flow"], registry=REGISTRY)
 MCP_REQUESTS = Counter("seo_mcp_requests_total", "MCP tool/resource/prompt calls.", ["server", "tool", "status"], registry=REGISTRY)
 MCP_AUTH_FAILURES = Counter("seo_mcp_auth_failures_total", "Rejected MCP bearer tokens (missing, invalid, expired, revoked, wrong audience).", ["server"], registry=REGISTRY)
+# v5 RAG quality (docs/seo/RAG.md). Labels: `mode` ∈ {vector, hybrid}.
+RAG_CHUNK_TOKENS = Histogram(
+    "seo_rag_chunk_tokens", "Tokens of each embedded chunk input (title + heading path + text), at reindex.", buckets=(32, 64, 128, 192, 256, 320, 384, 448, 480, 512, 1024), registry=REGISTRY
+)
+RAG_CHUNKS_TRUNCATED = Counter("seo_rag_chunks_truncated_total", "Embedded inputs longer than the model's 512 tokens (their tail is not embedded). Must stay 0.", registry=REGISTRY)
+RAG_RETRIEVAL_MODE = Gauge("seo_rag_retrieval_mode", "1 for the retrieval mode in use (RAG_MODE).", ["mode"], registry=REGISTRY)
+RAG_EVAL_RECALL3 = Gauge("seo_rag_eval_recall_at_3", "Recall@3 of the latest retrieval evaluation run against the live index.", registry=REGISTRY)
+RAG_MODES = {"vector", "hybrid"}
+
 MCP_DURATION = Histogram("seo_mcp_request_duration_seconds", "MCP call duration.", ["server", "tool"], buckets=_BUCKETS, registry=REGISTRY)
 
 ASK_OUTCOMES = {"answered", "fallback", "refused", "cached", "rate_limited", "disabled", "budget", "error"}

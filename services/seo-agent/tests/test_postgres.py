@@ -33,7 +33,8 @@ create table seo_flow_runs (run_id uuid primary key, flow_name text not null, ta
   triggered_by text not null check (triggered_by in ('cron','manual','approval','flow','mcp')), correlation_id text, actor text);
 create unique index seo_flow_runs_one_active on seo_flow_runs (flow_name, target_id) where status in ('queued','running');
 create table seo_ask_log (id bigserial primary key, at timestamptz not null default now(), question text not null, normalized text not null, ip_hash text,
-  outcome text not null, citations jsonb not null default '[]', cached boolean not null default false, cost_usd double precision not null default 0, index_version text);
+  outcome text not null, citations jsonb not null default '[]', cached boolean not null default false, cost_usd double precision not null default 0, index_version text,
+  retrieval jsonb, prompt_version text);
 create table seo_ask_gaps (id bigserial primary key, normalized text not null unique, sample_question text not null, asked int not null default 1,
   first_seen timestamptz not null default now(), last_seen timestamptz not null default now(), status text not null default 'open');
 """
@@ -247,3 +248,93 @@ async def test_ask_log_records_without_ip_and_gaps_count_up(pool) -> None:
         g = await (await c.execute("select asked from seo_ask_gaps where normalized = 'volcano gpu'")).fetchone()
         cols = [r["column_name"] for r in await (await c.execute("select column_name from information_schema.columns where table_name = 'seo_ask_log'")).fetchall()]
     assert g["asked"] == 2 and "ip" not in cols
+
+
+# --- v5: hybrid retrieval ---------------------------------------------------------------------------------------------
+
+
+def _need_vector() -> None:
+    if os.environ.get("SEO_AGENT_TEST_NO_VECTOR"):
+        pytest.skip("pgvector is not installed on this PostgreSQL (CI runs pgvector/pgvector:0.8.1-pg18)")
+
+
+async def test_hybrid_search_uses_full_text_and_exact_identifiers(pool) -> None:
+    _need_vector()
+    from app.embeddings import HashEmbeddings
+    from app.index import PgVectorIndex
+    from app.retrieval import RetrievalConfig
+
+    ids = [str(uuid.uuid4()) for _ in range(3)]
+    async with pool.connection() as c:
+        await c.execute(
+            "insert into post values (%s, 'blog', 'rollouts', 'Kubernetes rollouts', 'published', null, 'kubernetes'), (%s, 'blog', 'helm', 'Helm releases', 'published', null, 'kubernetes'), (%s, 'blog', 'long', 'A long article', 'published', null, 'kubernetes')",
+            ids,
+        )
+    idx = PgVectorIndex(pool, HashEmbeddings(), RetrievalConfig(mode="hybrid", max_per_article=2))
+    assert await idx.ensure_schema() is True
+    long_body = "\n\n".join(f"## Section {i}\n\nDeployments and rollouts of services, part {i}." for i in range(8))
+    arts = [
+        {"id": ids[0], "title": "Kubernetes rollouts", "body": "## Going back\n\nRun `kubectl rollout undo deploy/web` to return to the previous ReplicaSet.\n\n## Watching\n\nWatch progress."},
+        {"id": ids[1], "title": "Helm releases", "body": "## Rollback\n\nUse `helm rollback web 3` when a release fails."},
+        {"id": ids[2], "title": "A long article", "body": long_body},
+    ]
+    await idx.reindex(arts)
+    async with pool.connection() as c:
+        row = await (await c.execute("select title, identifiers, tsv is not null as has_tsv from seo_article_chunks where anchor = 'going-back'")).fetchone()
+    assert row["title"] == "Kubernetes rollouts" and "kubectl rollout" in row["identifiers"] and row["has_tsv"]
+    hits = await idx.search("kubectl rollout undo", k=3)
+    assert hits[0].url == "/blog/rollouts#going-back" and hits[0].ranks["ids"] >= 1 and hits[0].ranks["text"] is not None
+    assert 0 <= hits[0].score <= 1  # Hit.score stays cosine in hybrid mode
+    many = await idx.search("deployments and rollouts of services", k=6)
+    assert sum(1 for h in many if h.path == "/blog/long") <= 2  # diversification
+    assert await idx.search("the and of", k=3) is not None  # stop-word-only question: no text list, no error
+    floor = await idx.search("kubectl rollout undo", k=3, min_score=0.99)
+    assert all(h.score >= 0.99 for h in floor)
+
+
+async def test_tsvector_columns_are_added_to_an_existing_v4_table(pool) -> None:
+    _need_vector()
+    from app.embeddings import HashEmbeddings
+    from app.index import PgVectorIndex
+
+    a1 = str(uuid.uuid4())
+    async with pool.connection() as c:
+        await c.execute("insert into post values (%s, 'blog', 'old', 'Old article', 'published', null, '')", (a1,))
+        # exactly the v4 table, with one row embedded by v4
+        await c.execute(
+            """create table seo_article_chunks (id bigserial primary key, article_id uuid not null references post(id) on delete cascade, chunk_index integer not null,
+                 heading_path text not null default '', anchor text, content text not null, content_hash text not null, embedding vector(384) not null,
+                 model text not null, updated_at timestamptz not null default now(), unique (article_id, chunk_index))"""
+        )
+        await c.execute("insert into seo_article_chunks (article_id, chunk_index, heading_path, anchor, content, content_hash, embedding, model) values (%s, 0, 'Intro', 'intro', 'Valkey sentinel failover', 'v4hash', %s::vector, 'hash:384')", (a1, "[" + ",".join(["0"] * 383 + ["1"]) + "]"))
+    idx = PgVectorIndex(pool, HashEmbeddings())
+    assert await idx.ensure_schema() and await idx.ensure_schema()  # idempotent
+    async with pool.connection() as c:
+        r = await (await c.execute("select content, title, part, parts, identifiers, tsv @@ plainto_tsquery('english', 'sentinel failover') as m from seo_article_chunks")).fetchone()
+        n = await (await c.execute("select count(*) as n from pg_indexes where tablename = 'seo_article_chunks' and indexname in ('seo_article_chunks_tsv_idx', 'seo_article_chunks_identifiers_idx')")).fetchone()
+    assert r["content"] == "Valkey sentinel failover" and r["m"] is True and (r["part"], r["parts"], r["identifiers"], r["title"]) == (0, 1, [], "")
+    assert n["n"] == 2
+    # the next reindex re-embeds the old row once (the chunker version is part of the stored hash)
+    s = await idx.reindex([{"id": a1, "title": "Old article", "body": "## Intro\n\nValkey sentinel failover"}])
+    assert s["embedded"] == 1
+
+
+async def test_rag_eval_smoke_on_postgres(pool) -> None:
+    """The evaluation harness against the production index code (PgVectorIndex, hybrid) on the real articles."""
+    _need_vector()
+    from app.embeddings import HashEmbeddings
+    from app.index import PgVectorIndex
+    from app.rag_eval import evaluate, load_articles, load_eval_set
+    from app.retrieval import RetrievalConfig
+    from tests.test_rag_v5 import BLOG
+
+    arts = load_articles(BLOG)
+    async with pool.connection() as c:
+        for a in arts:
+            await c.execute("insert into post values (%s, 'blog', %s, %s, 'published', null, %s)", (a["id"], a["slug"], a["title"], a["category"]))
+    idx = PgVectorIndex(pool, HashEmbeddings(), RetrievalConfig(mode="hybrid"))
+    assert await idx.ensure_schema()
+    stats = await idx.reindex(arts)
+    assert stats["articles"] == len(arts) and stats["embedded"] > 500
+    res = await evaluate("pg-smoke", lambda q, k: idx.search(q, k), load_eval_set())
+    assert res.n >= 40 and res.metrics["recall@6"] > 0.3  # hashed embeddings + Postgres full text: it runs and finds things

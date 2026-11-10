@@ -497,7 +497,7 @@ plain Python steps inside flows and writes Postgres tables that the TypeScript r
 | Phase | Status | Commit |
 |---|---|---|
 | 1 Safety and housekeeping | done | (this commit) |
-| 2 RAG quality | not started | |
+| 2 RAG quality | done (eval measured with the real model; pgvector tests run in CI only) | (phase 2 commit) |
 | 3 SEO-side ML | not started | |
 | 4 Deployment and observability | not started | |
 | 5 Tests, docs, PR | not started | |
@@ -518,3 +518,21 @@ plain Python steps inside flows and writes Postgres tables that the TypeScript r
   `seo-v4-agent.test.ts` "budgets"); COSTS.md updated.
 - **Alerts handoff:** `docs/seo/alerts-for-minikube-repo.yaml` (generated, D-69); copy step in OPERATIONS.md#alerts.
 - **Image size:** `scripts/image-size.sh` + baselines (D-68); the baselines are empty until the first CI run.
+
+## Phase 2 notes
+
+- **Eval set** `services/seo-agent/tests/fixtures/rag_eval.yaml`: 55 questions (8 no-answer); every slug and anchor is
+  checked against the chunker in a test. Baseline recorded first (`baseline-v4` = v4 chunker + cosine, exact).
+- **Results** (RAG.md "Results"; files in `docs/seo/rag-eval/`): v4 had 198/1,221 inputs over 512 tokens → v5 0/1,790.
+  Recall@3 100 % → 100 % (vector default), MRR 0.989 → 0.968, anchor hits 97.9 → 95.7. Hybrid not adopted (D-71).
+- **Floor** 0.15 → 0.66 (calibrated); no-answer questions reaching the grader 100 % → 62.5 %.
+- **Grader-selected excerpts** (ask-blog-v3), retrieval logged per question (migration 0018), `rag_calibrate.py`.
+- **Reranker** off and unmeasured: its gate can't be met on this set (D-74).
+- **Internal linking** check: top-5 similar-article overlap 0.78 between v4 and v5 chunking.
+- **Tests:** seo-agent 242 passed, 9 skipped locally (the 5 new + 4 old pgvector tests need CI's pgvector image; the
+  non-vector Postgres tests, incl. the new ask-log columns, pass on a local PostgreSQL 17). The hybrid SQL was also
+  checked by hand on PostgreSQL 17 with the vector expression stubbed (DDL on an existing table, idempotency, empty
+  identifier arrays, stop-word-only questions).
+- **Environment:** LightGBM needs libomp on macOS; this Mac has none, so local test runs set
+  `DYLD_LIBRARY_PATH` to scikit-learn's bundled `sklearn/.dylibs` (no system change). The ONNX model came from an earlier
+  session's scratch copy, verified against the Dockerfile's sha256 pins.

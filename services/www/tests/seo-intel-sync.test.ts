@@ -180,9 +180,12 @@ describe("Search Console sync", () => {
     const pageCalls = g.calls.filter((c) => (c.body.dimensions as string[] | undefined)?.length === 4 && c.body.type === "web");
     expect(pageCalls.map((c) => c.body.startRow)).toEqual([0, 100, 200]);
     expect(g.calls.some((c) => c.body.type === "discover" && (c.body.dimensions as string[]).includes("query"))).toBe(false);
-    // Discover has no position: stored as NULL, not 0.
-    const disc = rowsOf<{ position: number | null }>(await db.execute(sql`select position from seo_gsc_page_daily where search_type = 'discover' limit 1`))[0]!;
+    expect(g.calls.some((c) => c.body.type === "discover" && (c.body.dimensions as string[]).includes("device"))).toBe(false);
+    // Discover has no position (stored as NULL, not 0) and no device breakdown.
+    const disc = rowsOf<{ position: number | null; device: string; country: string }>(await db.execute(sql`select position, device, country from seo_gsc_page_daily where search_type = 'discover' limit 1`))[0]!;
     expect(disc.position).toBeNull();
+    expect(disc.device).toBe("(not set)");
+    expect(disc.country).toBe("ind");
   });
 
   it("records retries and stops cleanly on an auth error", async () => {

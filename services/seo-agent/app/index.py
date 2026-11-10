@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from . import metrics
-from .embeddings import Embeddings, chunk_markdown
+from .embeddings import MODEL_MAX_TOKENS, SPECIAL_TOKENS, Embeddings, chunk_markdown, embed_input, question_identifiers, token_counter
+from .retrieval import Candidate, RetrievalConfig, diversify, fuse
 
 
 @dataclass
@@ -27,8 +28,10 @@ class Hit:
     heading_path: str
     anchor: str | None
     content: str
-    score: float
+    score: float  # cosine similarity of the chunk, in every mode
     category: str = ""
+    fused: float = 0.0  # hybrid ranking score (RRF + identifier boost); = score in vector mode
+    ranks: dict[str, Any] | None = None  # {"vector": r, "text": r, "ids": n}: why it ranked (eval, debugging)
 
     @property
     def url(self) -> str:
@@ -38,7 +41,7 @@ class Hit:
 class Retriever(Protocol):
     available: bool
 
-    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None) -> list[Hit]: ...
+    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]: ...
     async def similar_articles(self, article_id: str, k: int = 8) -> list[tuple[str, str, float]]: ...
     async def version(self) -> str: ...
 
@@ -69,10 +72,82 @@ def _vec(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
 
 
+# One row shape for every candidate list. `id_matches` counts exact identifiers shared with the question.
+CHUNK_SELECT = """select ch.id, ch.article_id::text as article_id, p.title, '/' || p.collection || '/' || p.slug as path, ch.heading_path, ch.anchor,
+         ch.content, ch.content_hash, 1 - (ch.embedding <=> %(v)s::vector) as vscore, p.category,
+         cardinality(array(select unnest(ch.identifiers) intersect select unnest(%(ids)s::text[]))) as id_matches
+       from seo_article_chunks ch join post p on p.id = ch.article_id
+       where p.status = 'published' and p.deleted_at is null and (%(ex)s::text is null or ch.article_id::text <> %(ex)s)"""
+
+
+def _cand(r: dict[str, Any], vector_rank: int | None = None, text_rank: int | None = None) -> Candidate:
+    # Windows of one code block share `content` (the whole block): de-duplicate on the article + content.
+    key = _key(r["article_id"], hashlib.sha256(str(r["content"]).encode()).hexdigest()[:16])
+    return Candidate(key, r["article_id"], r["title"], r["path"], r["heading_path"], r["anchor"], r["content"], float(r["vscore"]), r["category"] or "", vector_rank, text_rank, int(r["id_matches"] or 0))
+
+
+def to_hit(c: Candidate) -> Hit:
+    return Hit(c.article_id, c.title, c.path, c.heading_path, c.anchor, c.content, round(c.vector_score, 6), c.category, round(c.fused, 6), {"vector": c.vector_rank, "text": c.text_rank, "ids": c.id_matches})
+
+
+def replace_cfg(cfg: RetrievalConfig, min_score: float) -> RetrievalConfig:
+    from dataclasses import replace
+
+    return replace(cfg, min_vector_score=max(cfg.min_vector_score, min_score))
+
+
+def observe_chunk_tokens(counter: Any, chunks: list[Any], inputs: list[str]) -> None:
+    """seo_rag_chunk_tokens (embedded input length) and seo_rag_chunks_truncated_total (inputs the model would cut at
+    512 tokens: must stay 0; only possible with the ≈ chars/4 counter on unusual text)."""
+    for _ch, text in zip(chunks, inputs, strict=True):
+        n = counter.count(text)
+        metrics.RAG_CHUNK_TOKENS.observe(n)
+        if n + SPECIAL_TOKENS > MODEL_MAX_TOKENS:
+            metrics.RAG_CHUNKS_TRUNCATED.inc()
+
+
+# v5 hybrid retrieval: additive and idempotent (this service owns the table). On an existing table the generated column
+# is computed for every row when it is added (one table rewrite; ~1–2k rows here). Old rows get title '' and no
+# identifiers until the next reindex, which re-embeds every chunk once anyway (CHUNKER_VERSION is in the stored hash).
+HYBRID_DDL = (
+    "alter table seo_article_chunks add column if not exists title text not null default ''",
+    "alter table seo_article_chunks add column if not exists part integer not null default 0",
+    "alter table seo_article_chunks add column if not exists parts integer not null default 1",
+    "alter table seo_article_chunks add column if not exists embed_text text",
+    "alter table seo_article_chunks add column if not exists identifiers text[] not null default '{}'",
+    """alter table seo_article_chunks add column if not exists tsv tsvector generated always as (
+         setweight(to_tsvector('english'::regconfig, coalesce(title, '')), 'A')
+         || setweight(to_tsvector('english'::regconfig, coalesce(heading_path, '')), 'B')
+         || to_tsvector('english'::regconfig, coalesce(content, ''))) stored""",
+    "create index if not exists seo_article_chunks_tsv_idx on seo_article_chunks using gin (tsv)",
+    "create index if not exists seo_article_chunks_identifiers_idx on seo_article_chunks using gin (identifiers)",
+)
+
+# Full-text candidates: the question's lexemes OR-ed (plainto_tsquery ANDs them, which almost never matches a whole
+# natural-language question), ranked by ts_rank with length normalisation. Shared by PgVectorIndex and the evaluation.
+TEXT_QUERY_CTE = "with tq as (select nullif(replace(plainto_tsquery('english'::regconfig, %(q)s)::text, ' & ', ' | '), '')::tsquery as q)"
+
+
+async def ensure_hybrid_columns(conn: Any) -> None:
+    for ddl in HYBRID_DDL:
+        await conn.execute(ddl)
+
+
+def _key(article_id: str, content_hash: str) -> str:
+    return f"{article_id}:{content_hash}"
+
+
 class PgVectorIndex:
-    def __init__(self, pool: Any, embeddings: Embeddings):
+    def __init__(self, pool: Any, embeddings: Embeddings, config: RetrievalConfig | None = None):
         self.pool = pool
         self.emb = embeddings
+        self.config = config or RetrievalConfig.from_env()
+        self.counter = token_counter(embeddings)
+        self.reranker: Any = None
+        if self.config.reranker_dir:
+            from .reranker import CrossEncoderReranker
+
+            self.reranker = CrossEncoderReranker(self.config.reranker_dir)
         self.available = False
         self.reason = "not checked"
         self.pgvector_version: str | None = None
@@ -111,6 +186,7 @@ class PgVectorIndex:
             major, minor = (int(x) for x in self.pgvector_version.split(".")[:2])
             method = "hnsw" if (major, minor) >= (0, 5) else "ivfflat"
             await c.execute(f"create index if not exists seo_article_chunks_embedding_idx on seo_article_chunks using {method} (embedding vector_cosine_ops)")
+            await ensure_hybrid_columns(c)
         self.available, self.reason = True, "ok"
         return True
 
@@ -135,7 +211,7 @@ class PgVectorIndex:
                 if only is not None and a["id"] not in only:
                     continue
                 stats["articles"] += 1
-                chunks = chunk_markdown(str(a.get("body", "")), str(a.get("title", "")))
+                chunks = chunk_markdown(str(a.get("body", "")), str(a.get("title", "")), self.counter)
                 cur = await c.execute("select chunk_index, content_hash, model from seo_article_chunks where article_id = %s", (a["id"],))
                 have = {r["chunk_index"]: (r["content_hash"], r["model"]) for r in await cur.fetchall()}
                 title = str(a.get("title", ""))
@@ -144,15 +220,19 @@ class PgVectorIndex:
                 stats["unchanged"] += len(chunks) - len(todo)
                 if todo:
                     # Title + heading path are embedded with the text: they carry most of the topical signal.
-                    vecs = await self.emb.embed([f"{a.get('title', '')}\n{ch.heading_path}\n\n{ch.content}" for ch in todo])
+                    inputs = [embed_input(title, ch) for ch in todo]
+                    observe_chunk_tokens(self.counter, todo, inputs)
+                    vecs = await self.emb.embed(inputs)
                     for ch, v in zip(todo, vecs, strict=True):
                         await c.execute(
-                            """insert into seo_article_chunks (article_id, chunk_index, heading_path, anchor, content, content_hash, embedding, model, updated_at)
-                               values (%s, %s, %s, %s, %s, %s, %s::vector, %s, now())
+                            """insert into seo_article_chunks (article_id, chunk_index, heading_path, anchor, content, content_hash, embedding, model, updated_at,
+                                 title, part, parts, embed_text, identifiers)
+                               values (%s, %s, %s, %s, %s, %s, %s::vector, %s, now(), %s, %s, %s, %s, %s)
                                on conflict (article_id, chunk_index) do update set heading_path = excluded.heading_path, anchor = excluded.anchor,
                                  content = excluded.content, content_hash = excluded.content_hash, embedding = excluded.embedding,
-                                 model = excluded.model, updated_at = now()""",
-                            (a["id"], ch.index, ch.heading_path, ch.anchor, ch.content, hashes[ch.index], _vec(v), self.emb.name),
+                                 model = excluded.model, updated_at = now(), title = excluded.title, part = excluded.part, parts = excluded.parts,
+                                 embed_text = excluded.embed_text, identifiers = excluded.identifiers""",
+                            (a["id"], ch.index, ch.heading_path, ch.anchor, ch.content, hashes[ch.index], _vec(v), self.emb.name, title, ch.part, ch.parts, ch.embed_text, ch.identifiers),
                         )
                     stats["embedded"] += len(todo)
                     metrics.REINDEX_CHUNKS.inc(len(todo))
@@ -161,20 +241,47 @@ class PgVectorIndex:
         self._version_cache = None
         return stats
 
-    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None) -> list[Hit]:
+    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]:
+        """Hybrid (or vector) retrieval: candidate lists from Postgres, fusion in app/retrieval.py. `min_score` is a
+        cosine pre-filter on every candidate (Ask the Blog's ASK_BLOG_MIN_SCORE)."""
         if not self.available or not query.strip():
             return []
+        cfg = self.config
         [v] = await self.emb.embed([query], query=True)
+        qids = question_identifiers(query) if cfg.mode == "hybrid" else []
         async with self.pool.connection() as c:
-            cur = await c.execute(
-                """select ch.article_id::text as article_id, p.title, '/' || p.collection || '/' || p.slug as path, ch.heading_path, ch.anchor,
-                          ch.content, 1 - (ch.embedding <=> %s::vector) as score, p.category
-                   from seo_article_chunks ch join post p on p.id = ch.article_id
-                   where p.status = 'published' and p.deleted_at is null and (%s::text is null or ch.article_id::text <> %s)
-                   order by ch.embedding <=> %s::vector limit %s""",
-                (_vec(v), exclude_article, exclude_article, _vec(v), k),
-            )
-            return [Hit(r["article_id"], r["title"], r["path"], r["heading_path"], r["anchor"], r["content"], float(r["score"]), r["category"] or "") for r in await cur.fetchall()]
+            cands = await self.candidates(c, query, _vec(v), qids, cfg.candidates, exclude_article)
+        fused = fuse(cands, replace_cfg(cfg, min_score))
+        if self.reranker is not None:
+            top = [to_hit(x) for x in diversify(fused, cfg.candidates, cfg.max_per_article)]
+            return list(await self.reranker.rerank(query, top, k))
+        return [to_hit(x) for x in diversify(fused, k, cfg.max_per_article)]
+
+    async def candidates(self, c: Any, query: str, qvec: str, qids: list[str], n: int, exclude_article: str | None) -> list[Candidate]:
+        """vector top-N (+ full-text top-N and exact-identifier matches in hybrid mode), each with its cosine."""
+        params = {"v": qvec, "n": n, "ex": exclude_article, "q": query, "ids": qids}
+        out: list[Candidate] = []
+        rows = await (await c.execute(f"{CHUNK_SELECT} order by ch.embedding <=> %(v)s::vector limit %(n)s", params)).fetchall()
+        out.extend(_cand(r, vector_rank=i) for i, r in enumerate(rows, start=1))
+        if self.config.mode == "hybrid":
+            rows = await (
+                await c.execute(
+                    f"""{TEXT_QUERY_CTE} {CHUNK_SELECT.replace("from seo_article_chunks ch", "from tq, seo_article_chunks ch")}
+                          and tq.q is not null and ch.tsv @@ tq.q order by ts_rank(ch.tsv, tq.q, 1) desc, ch.id limit %(n)s""",
+                    params,
+                )
+            ).fetchall()
+            out.extend(_cand(r, text_rank=i) for i, r in enumerate(rows, start=1))
+            if qids:
+                rows = await (
+                    await c.execute(
+                        f"""{CHUNK_SELECT} and ch.identifiers && %(ids)s::text[]
+                              order by cardinality(array(select unnest(ch.identifiers) intersect select unnest(%(ids)s::text[]))) desc, ch.id limit %(n)s""",
+                        params,
+                    )
+                ).fetchall()
+                out.extend(_cand(r) for r in rows)
+        return out
 
     async def similar_articles(self, article_id: str, k: int = 8) -> list[tuple[str, str, float]]:
         """Article-level similarity: mean chunk embedding of the source vs every other article's chunks (best match)."""
@@ -213,7 +320,7 @@ class MemoryRetriever:
         self.available = available
         self.queries: list[str] = []
 
-    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None) -> list[Hit]:
+    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]:
         self.queries.append(query)
         words = {w for w in query.lower().split() if len(w) > 2}
         scored = []

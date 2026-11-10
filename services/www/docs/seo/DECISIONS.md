@@ -475,3 +475,30 @@ has no container runtime, so no size was invented.
 `scripts/build-alerts.py` combines the SEO and news groups into `docs/seo/alerts-for-minikube-repo.yaml`; the sources
 stay where they were (D-12). CI checks staleness and runs `promtool check rules` from the pinned `prom/prometheus:v3.5.0`
 image; promtool isn't installed on this machine (and downloading it was not allowed), so local runs do structural checks.
+
+## D-70 Token chunking with code windows; one row per window
+The chunker budgets tokens with the model's tokenizer (target 350, hard max 480, prefix included). An oversized code
+block keeps one display copy (`content`) and is embedded as overlapping windows, one row each (`part`, `embed_text`),
+so `similar_articles`' mean embedding and the HNSW index need no change; retrieval merges windows by content. The
+chunker version is in the stored hash, so the first reindex after deploying re-embeds everything once. Measured: v4 had
+16 % of inputs over 512 tokens; v5 has none.
+
+## D-71 Retrieval defaults decided by the eval set: vector, ≤ 3 per article
+Hybrid (RRF over pgvector + `tsvector` + exact identifiers) is built and tested but not the default: on the 55-question
+set it does not beat vector on Recall@3 (95.7 vs 100 at ≤ 3 per article; a tie at ≤ 2) and has fewer anchor hits.
+Diversification is 3 per article, not the brief's 2: 2 cost 10.7 points of section-anchor hits for no recall gain.
+Both are one environment variable (`RAG_MODE`, `RAG_MAX_PER_ARTICLE`). The eval set saturates article-level Recall@3,
+so a harder set should come before revisiting this (RAG.md "Reading it honestly").
+
+## D-72 ASK_BLOG_MIN_SCORE 0.66, applied to cosine before fusion; retrieval logged per question
+The floor is calibrated on the eval set (highest floor losing no expected answer) and stays a cosine pre-filter in
+both modes; `Hit.score` keeps meaning cosine everywhere. `seo_ask_log` gains `retrieval` and `prompt_version`
+(migration 0018) so `scripts/rag_calibrate.py` can check the floor against real traffic. It prints, never applies.
+
+## D-73 The grader names the relevant excerpts (ask-blog-v3)
+`Relevance.relevant_excerpts` is optional (default `[]` = all), so an older or cached grader answer and the fake model in
+tests keep v4 behaviour. The answer step sees only the named excerpts, renumbered; citations map back to them.
+
+## D-74 Reranker left off without downloading a model
+Its gate (+3 points of Recall@3) is unreachable when Recall@3 is already 100 %. Downloading and measuring a 280 MB model
+that cannot be enabled was skipped; the code and eval config stay for a harder set.
