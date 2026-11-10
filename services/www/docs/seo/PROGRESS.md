@@ -572,3 +572,17 @@ plain Python steps inside flows and writes Postgres tables that the TypeScript r
 - Alerts (group `jithendar-com-seo-ml`): `SeoMlFlowFailing`, `SeoMlModelFellBackToRule`, `SeoRagChunksTruncated`;
   handoff file regenerated (4 groups, 20 rules).
 - Grafana: "ML & RAG" row on the SEO agents dashboard (8 panels); `check-dashboards.py` passes.
+
+## After merge (#34 merged 2026-11-10 14:48 UTC)
+
+- Every seo-agent CI run since #33 failed at `uv sync --frozen`: the #33 squash merge appended identical copies of the
+  scikit-learn and scipy lock entries. Fixed in #35 (lock-only; `uv lock --check` passes).
+- With CI installing again, the pgvector tests ran for the first time: **276 passed, 2 skipped**, incl. the v5 hybrid
+  search, the tsvector migration on a v4 table and the RAG eval smoke on Postgres. One older test failed, and it
+  exposed a real bug from `0ea52e4`: `reindex(force=true)` skipped the deletion of unpublished articles' chunks. Fixed
+  in #35.
+- promtool on the generated alerts file: SUCCESS, 20 rules.
+- **Image size** (seo-agent, amd64, first measurement): 381.5 MB per `docker image inspect`, 379.9 MB saved and
+  gzipped. The two are nearly equal because the runner's containerd store already holds compressed layers. Recorded as
+  the baseline (`services/seo-agent/image-size-baseline.json`); the web image's baseline is filled from its first
+  release run.
