@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
+import { AdminHeader, StatusPill } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
+import { RecommendationItem } from "@/components/seo/RecommendationItem";
 import { TrendChart } from "@/components/seo/TrendChart";
 import { Empty, Pager } from "@/components/seo/ui";
-import { listRecommendations } from "@/lib/seo-intel/recommendations";
+import { listRecommendations, recommendationStatusCounts } from "@/lib/seo-intel/recommendations";
 
 export const metadata = { title: "Recommendations" };
 
@@ -13,7 +14,7 @@ const fmtVal = (metric: string, v: number | null) => (v === null ? "—" : /ctr|
 
 export default async function RecommendationsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
-  const d = await listRecommendations(sp);
+  const [d, counts] = await Promise.all([listRecommendations(sp), recommendationStatusCounts()]);
   const base = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]);
   const filterLink = (k: string, v: string) => { const p = new URLSearchParams(base); if (v) p.set(k, v); else p.delete(k); p.delete("offset"); return `?${p}`; };
   const status = sp.status ?? "pending";
@@ -26,7 +27,7 @@ export default async function RecommendationsPage({ searchParams }: { searchPara
       />
       <nav aria-label="Filter recommendations" className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
         <span className="text-fg-subtle">Status:</span>
-        {["pending", "approved", "rejected", "all"].map((s) => <Link key={s} href={filterLink("status", s)} aria-current={status === s ? "true" : undefined} className={status === s ? "font-semibold text-fg" : "underline"}>{s}</Link>)}
+        {["pending", "approved", "rejected", "all"].map((s) => <Link key={s} href={filterLink("status", s)} aria-current={status === s ? "true" : undefined} className={status === s ? "font-semibold text-fg" : "underline"}>{s} <span className="tabular-nums text-fg-subtle">({counts[s as keyof typeof counts] ?? 0})</span></Link>)}
         <span className="text-fg-subtle">Category:</span>
         <Link href={filterLink("category", "")} className={!sp.category ? "font-semibold text-fg" : "underline"}>all</Link>
         {CATEGORIES.map((c) => <Link key={c} href={filterLink("category", c)} aria-current={sp.category === c ? "true" : undefined} className={sp.category === c ? "font-semibold text-fg" : "underline"}>{label(c)}</Link>)}
@@ -36,14 +37,12 @@ export default async function RecommendationsPage({ searchParams }: { searchPara
           {d.rows.map((r) => {
             const si = r.scoreInputs as { used?: string[]; missing?: string[]; renormalized?: boolean };
             return (
-              <li key={r.id}>
-                <Card>
+              <RecommendationItem key={r.id} id={r.id} filter={status} reviewStatus={r.reviewStatus as "pending" | "approved" | "rejected"} implementationStatus={r.implementationStatus as "not_started" | "in_progress" | "implemented" | "dismissed"}>
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <StatusPill status={r.priorityBand === "high" ? "critical" : r.priorityBand === "medium" ? "warning" : "info"} />
                     <span className="font-semibold text-fg">{r.priorityBand} priority · {(r.priorityScore * 100).toFixed(0)}/100</span>
                     <span className="text-fg-subtle">· {label(r.category)} · confidence {r.confidence} · analysed {r.analysisDate}</span>
                     <StatusPill status={r.reviewStatus} />
-                    {r.implementationStatus !== "not_started" && <span className="text-xs text-fg-subtle">implementation: {r.implementationStatus.replace("_", " ")}</span>}
                   </div>
                   <h2 className="mt-2 font-semibold text-fg [overflow-wrap:anywhere]">
                     {r.articleId ? <Link className="underline" href={`/admin/seo/articles/${r.articleId}`}>{r.articleTitle}</Link> : r.url ? new URL(r.url).pathname : "Site-wide"}
@@ -77,14 +76,7 @@ export default async function RecommendationsPage({ searchParams }: { searchPara
                     <p className="mt-2 text-xs text-fg-subtle">Inputs used: {si.used?.join(", ") || "none"}{si.missing?.length ? `; missing (excluded, weights renormalised): ${si.missing.join(", ")}` : ""}.</p>
                   </details>
                   {r.baseline != null && <p className="mt-2 text-xs text-fg-subtle">Baseline (28 days before): {JSON.stringify(r.baseline)}{r.after28 != null ? ` · +28 days: ${JSON.stringify(r.after28)}` : ""}{r.after56 != null ? ` · +56 days: ${JSON.stringify(r.after56)}` : ""}</p>}
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {r.reviewStatus !== "approved" && <ApiButton url={`/api/admin/seo/recommendations/${r.id}`} method="PATCH" body={{ reviewStatus: "approved" }} label="Approve" variant="primary" />}
-                    {r.reviewStatus !== "rejected" && <ApiButton url={`/api/admin/seo/recommendations/${r.id}`} method="PATCH" body={{ reviewStatus: "rejected" }} label="Reject" />}
-                    {r.reviewStatus === "approved" && r.implementationStatus === "not_started" && <ApiButton url={`/api/admin/seo/recommendations/${r.id}`} method="PATCH" body={{ implementationStatus: "in_progress" }} label="Mark in progress" />}
-                    {r.reviewStatus === "approved" && r.implementationStatus !== "implemented" && <ApiButton url={`/api/admin/seo/recommendations/${r.id}`} method="PATCH" body={{ implementationStatus: "implemented" }} label="Mark implemented" confirm="Mark as implemented? Baseline metrics are captured now; outcomes are measured after 28 and 56 days." />}
-                  </div>
-                </Card>
-              </li>
+              </RecommendationItem>
             );
           })}
         </ol>

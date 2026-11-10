@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AdminHeader, Card } from "@/components/admin/ui";
 import { LabelTasks } from "@/components/seo/LabelTasks";
-import { listLabels } from "@/lib/seo-intel/ml-admin";
+import { listLabels, pendingLabelCounts } from "@/lib/seo-intel/ml-admin";
 
 export const metadata = { title: "Labelling" };
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function LabelsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const task = sp.task === "intent_check" ? "intent_check" : "cluster";
-  const { rows, counts, groups } = await listLabels(task);
+  const [{ rows, counts, groups }, waiting] = await Promise.all([listLabels(task), pendingLabelCounts()]);
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   return (
     <>
@@ -22,8 +22,8 @@ export default async function LabelsPage({ searchParams }: { searchParams: Promi
         }
       />
       <nav className="mb-4 flex gap-4 text-sm" aria-label="Labelling tasks">
-        <Link href="/admin/seo/models/labels?task=cluster" aria-current={task === "cluster" ? "page" : undefined} className={task === "cluster" ? "font-semibold text-fg" : "text-fg-muted underline"}>Query groupings</Link>
-        <Link href="/admin/seo/models/labels?task=intent_check" aria-current={task === "intent_check" ? "page" : undefined} className={task === "intent_check" ? "font-semibold text-fg" : "text-fg-muted underline"}>Intent disagreements</Link>
+        <Link href="/admin/seo/models/labels?task=cluster" aria-current={task === "cluster" ? "page" : undefined} className={task === "cluster" ? "font-semibold text-fg" : "text-fg-muted underline"}>Query groupings <span className="tabular-nums text-fg-subtle">({waiting.cluster} waiting)</span></Link>
+        <Link href="/admin/seo/models/labels?task=intent_check" aria-current={task === "intent_check" ? "page" : undefined} className={task === "intent_check" ? "font-semibold text-fg" : "text-fg-muted underline"}>Intent disagreements <span className="tabular-nums text-fg-subtle">({waiting.intent_check} waiting)</span></Link>
         <Link href="/admin/seo/models" className="ml-auto text-fg-muted underline">ML models</Link>
       </nav>
       <Card>

@@ -121,6 +121,14 @@ export async function listLabels(task: "cluster" | "intent_check", status?: stri
   return { rows: rows.map((r) => ({ id: Number(r.id), task: String(r.task), item: String(r.item), suggestion: j(r.suggestion), label: r.label ? j(r.label) : null, status: String(r.status), labelledBy: (r.labelled_by as string | null) ?? null })), counts, groups };
 }
 
+/** Pending tasks per labelling task, for the Labelling tabs. */
+export async function pendingLabelCounts(): Promise<{ cluster: number; intent_check: number }> {
+  const db = await getDb();
+  const rows = await tryRows<{ task: string; n: number }>(db, sql`select task, count(*)::int as n from seo_ml_labels where status = 'pending' group by task`);
+  const by = Object.fromEntries(rows.map((r) => [r.task, Number(r.n)]));
+  return { cluster: by.cluster ?? 0, intent_check: by.intent_check ?? 0 };
+}
+
 export async function saveLabel(p: z.infer<typeof labelPatchSchema>, actor: string) {
   const db = await getDb();
   const [row] = rowsOf<{ task: string; suggestion: unknown }>(await db.execute(sql`select task, suggestion from seo_ml_labels where id = ${p.id}`));
