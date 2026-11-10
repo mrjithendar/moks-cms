@@ -3,6 +3,7 @@ import { log } from "../log";
 import { DraftError } from "../seo-intel/drafts";
 import * as cb from "./callbacks";
 import * as v4 from "./callbacks-v4";
+import * as news from "../news/callbacks";
 import { callbackPort, callbackToken } from "./config";
 
 /**
@@ -15,6 +16,15 @@ import { callbackPort, callbackToken } from "./config";
 export type CallbackResponse = { status: number; body: unknown };
 
 const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, body: unknown, q: URLSearchParams) => Promise<unknown>][] = [
+  // News desk (docs/news/ARCHITECTURE.md): fetch, draft creation, covers, notifications. Never publishing.
+  ["POST", /^\/news\/fetch$/, (_m, b) => news.newsFetch(b)],
+  ["POST", /^\/news\/drafts$/, (_m, b) => news.newsSaveDraft(b)],
+  ["POST", /^\/news\/drafts\/([^/]+)\/image$/, (m, b) => news.newsUpdateDraftImage(m[1]!, b)],
+  ["POST", /^\/news\/media$/, (_m, b) => news.newsStoreMedia(b)],
+  ["POST", /^\/news\/images\/generate$/, (_m, b) => news.newsGenerateImage(b)],
+  ["GET", /^\/news\/site-signals$/, () => news.newsSiteSignals()],
+  ["POST", /^\/news\/notify$/, (_m, b) => news.newsNotify(b)],
+  ["POST", /^\/news\/performance$/, () => news.newsCollectPerformance()],
   // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns
   ["POST", /^\/jobs\/run$/, (_m, b) => v4.runJob(b)],
   ["GET", /^\/drafts\/open-articles$/, (_m, _b, q) => v4.openDraftArticles(q)],
@@ -80,8 +90,8 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
 }
 
 const MAX_BODY = 1_000_000;
-/** Report PDFs (base64) are the one large body: up to ~10 MB of PDF. */
-const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/reports\/[^/]+\/pdf$/.test((url ?? "").split("?")[0]!) ? 14_000_000 : MAX_BODY);
+/** Report PDFs and news cover uploads (base64) are the large bodies: up to ~10 MB. */
+const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/(reports\/[^/]+\/pdf|news\/media)$/.test((url ?? "").split("?")[0]!) ? 14_000_000 : MAX_BODY);
 
 /** Start the listener once per process (instrumentation.ts). Returns the port, or null when off. */
 export async function startCallbackServer(env: Record<string, string | undefined> = process.env): Promise<number | null> {

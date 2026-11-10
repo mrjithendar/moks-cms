@@ -5,6 +5,8 @@ import { rowsOf } from "@/db/rows";
 import { AgentRunStatus } from "@/components/seo/AgentRunStatus";
 import { DiffReview, type SubmissionRow } from "@/components/seo/DiffReview";
 import { NewArticleReview, type NewArticleDoc } from "@/components/seo/NewArticleReview";
+import { NewsReview } from "@/components/news/NewsReview";
+import { newsArticleForDraft } from "@/lib/news/service";
 import { markdownToHtml } from "@/lib/mdx/html";
 import { getDraft } from "@/lib/seo-intel/drafts";
 import { UUID } from "@/lib/seo-intel/http";
@@ -12,6 +14,8 @@ import { listSubmissions } from "@/lib/seo-intel/submission";
 import { siteOrigin } from "@/lib/seo-intel/urls";
 
 export const metadata = { title: "Review draft" };
+
+const hoursSince = (v: unknown) => Math.round((Date.now() - new Date(String(v)).getTime()) / 3_600_000);
 
 export default async function DraftPage({ params }: { params: Promise<{ draftId: string }> }) {
   const { draftId } = await params;
@@ -34,6 +38,25 @@ export default async function DraftPage({ params }: { params: Promise<{ draftId:
   const runStrip = run ? <AgentRunStatus threadId={d.id} initial={{ status: run.status, outcome: run.outcome, currentNode: run.current_node, error: run.error, costUsd: Number(run.cost_usd) }} /> : null;
   if (d.kind === "new_article") {
     const doc = (typeof d.document === "string" ? JSON.parse(d.document) : d.document) as NewArticleDoc | null;
+    // News desk drafts get the news review (sources/claims, similarity, gates, score breakdown, cover, slots).
+    const news = doc && (doc as { news?: unknown }).news ? await newsArticleForDraft(d.id, db) : null;
+    if (news && doc) {
+      const categories = rowsOf<{ slug: string; label: string }>(await db.execute(sql`select slug, label from category order by sort, slug`));
+      return (
+        <>
+          {runStrip}
+          <NewsReview
+            draft={{ id: d.id, status: d.status, flags: d.flags, failureReason: (d.failure_reason as string | null) ?? null, ageHours: hoursSince(d.created_at) }}
+            doc={doc as never}
+            html={doc.body_mdx ? await markdownToHtml(doc.body_mdx.slice(0, 200_000)) : ""}
+            news={JSON.parse(JSON.stringify(news))}
+            categories={categories}
+            editorUrl={`/admin/posts/${d.article_id}`}
+            livePath={d.status === "published" ? d.article.path : null}
+          />
+        </>
+      );
+    }
     return (
       <>
         {runStrip}

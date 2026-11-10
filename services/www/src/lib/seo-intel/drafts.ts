@@ -435,7 +435,8 @@ export async function reviewQueue(f: QueueFilter = {}) {
           (select json_build_object('status', ar.status, 'node', ar.current_node, 'outcome', ar.outcome) from seo_agent_runs ar where ar.thread_id = d.thread_id)
         ) as agent_run,
         (select max(r.priority_score) from seo_recommendations r where r.id = any(d.recommendation_ids)) as priority,
-        (select json_agg(json_build_object('problem', r.problem, 'band', r.priority_band, 'category', r.category) order by r.priority_score desc) from seo_recommendations r where r.id = any(d.recommendation_ids)) as recs
+        (select json_agg(json_build_object('problem', r.problem, 'band', r.priority_band, 'category', r.category) order by r.priority_score desc) from seo_recommendations r where r.id = any(d.recommendation_ids)) as recs,
+        (select json_build_object('job', j.name, 'jobId', a.job_id, 'score', a.score, 'reviewPriority', j.review_priority, 'status', a.status, 'mode', a.mode) from news_articles a left join news_jobs j on j.id = a.job_id where a.draft_id = d.id order by a.created_at desc limit 1) as news
       from seo_drafts d join post p on p.id = d.article_id
       where d.status in ${f.done ? sql`('published', 'rolled_back')` : sql`('ready_for_review', 'generation_failed', 'generating', 'scheduled')`}
         ${f.collection ? sql`and d.collection = ${f.collection}` : sql``}
@@ -446,7 +447,10 @@ export async function reviewQueue(f: QueueFilter = {}) {
     const d = normalize(r);
     const recs = (typeof r.recs === "string" ? JSON.parse(r.recs) : r.recs ?? []) as { problem: string; band: string; category: string }[];
     const sum = summarize(d.base_snapshot, d.changes.filter(isActive));
-    const priority = r.priority === null || r.priority === undefined ? 0 : Number(r.priority);
+    // News desk drafts: score × freshness (news goes stale; half-life 24 h) × the job's review priority.
+    const news = (typeof r.news === "string" ? JSON.parse(r.news) : r.news ?? null) as { job: string | null; jobId: string; score: number | null; reviewPriority: number | null; status: string; mode: string } | null;
+    const ageHours = (Date.now() - new Date(String(r.created_at)).getTime()) / 3_600_000;
+    const priority = news ? Number(news.score ?? 0.5) * 0.5 ** (ageHours / 24) * (0.5 + Number(news.reviewPriority ?? 50) / 100) : r.priority === null || r.priority === undefined ? 0 : Number(r.priority);
     const band = priority >= 0.66 ? "high" : priority >= 0.4 ? "medium" : "low";
     return {
       id: d.id,
@@ -470,6 +474,7 @@ export async function reviewQueue(f: QueueFilter = {}) {
       errorFlags: d.changes.flatMap((c) => c.flags).filter((x) => x.severity === "error").length,
       inBatch: Boolean(r.batch_id),
       kind: String(r.kind ?? "optimize"),
+      news: news ? { job: news.job ?? "deleted job", score: news.score === null ? null : Number(news.score), mode: news.mode, ageHours: Math.round(ageHours) } : null,
       agent: (typeof r.agent_run === "string" ? JSON.parse(r.agent_run) : r.agent_run ?? null) as { status: string; node: string | null; outcome: string | null } | null,
     };
   });

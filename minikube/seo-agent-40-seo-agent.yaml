@@ -46,6 +46,12 @@ data:
   PUBLIC_MCP_DAILY_CALLS: "5000"
   ADMIN_MCP_RPM_PER_TOKEN: "120"
   ADMIN_MCP_KICKOFFS_PER_HOUR: "10"
+  # News desk (services/www/docs/news). Off until a person switches it on (MANUAL_SETUP §3); the web app reads its own
+  # NEWS_DESK_ENABLED too. Image provider: template (free) unless configured (IMAGES.md); OpenAI also needs
+  # OPENAI_API_KEY in Secret seo-agent-env.
+  NEWS_DESK_ENABLED: "false"
+  NEWS_IMAGE_PROVIDER: template
+  NEWS_OPENAI_IMAGE_MODEL: gpt-image-1
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability:4318
   OTEL_SERVICE_NAME: seo-agent
   LOG_LEVEL: INFO
