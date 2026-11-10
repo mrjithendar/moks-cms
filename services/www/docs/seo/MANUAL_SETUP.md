@@ -35,7 +35,7 @@ Steps only a person can do. Until they are done, `/admin/seo` shows **Disconnect
 cd jithendar.com
 scripts/set-seo-config.sh ~/Downloads/jithendar-seo-reader-key.json      # context mk4 by default
 # prompts: Search Console property, GA4 property id, optional PageSpeed key
-kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com
+kubectl -n jithendar rollout restart deployment/jithendar-com
 rm ~/Downloads/jithendar-seo-reader-key.json                              # the Secret now holds it
 ```
 The script merges `GOOGLE_SEO_SERVICE_ACCOUNT_JSON` (+ `PAGESPEED_API_KEY`) into Secret `jithendar-com-env` and
@@ -71,14 +71,14 @@ Admin → SEO intelligence → Settings (which then win).
 2. Store it as a secret reference only — it is never saved in the database:
    ```bash
    cd jithendar.com
-   read -rs KEY && kubectl --context mk4 -n jithendar patch secret jithendar-com-env --type merge \
+   read -rs KEY && kubectl -n jithendar patch secret jithendar-com-env --type merge \
      -p "{\"stringData\":{\"ANTHROPIC_API_KEY\":\"$KEY\"}}" && unset KEY
    ```
 3. Budget and models (non-secret) in ConfigMap `jithendar-com-public`:
    ```bash
-   kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge \
+   kubectl -n jithendar patch configmap jithendar-com-public --type merge \
      -p '{"data":{"SEO_LLM_MONTHLY_BUDGET_USD":"10","SEO_DRAFT_MODEL":"claude-sonnet-5-5","SEO_CLASSIFY_MODEL":"claude-haiku-5-5"}}'
-   kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com
+   kubectl -n jithendar rollout restart deployment/jithendar-com
    ```
    The budget is a hard cap on month-to-date spend (UTC month) across all SEO Claude calls; Settings can lower it but
    not raise it. When reached, jobs pause and every `/admin/seo` page shows a banner.
@@ -116,9 +116,9 @@ The cluster's CloudNativePG image (`ghcr.io/cloudnative-pg/postgresql:18`) ships
 isn't marked *trusted*, so the app's role (`jithendar`) can't create it. This was checked read-only on 2026-11-10. Run
 this once on the **primary**, as the superuser:
 ```bash
-P=$(kubectl --context mk4 -n postgres-db get pod -l cnpg.io/cluster=postgres-cluster,cnpg.io/instanceRole=primary -o name)
-kubectl --context mk4 -n postgres-db exec -it "$P" -c postgres -- psql -d jithendar -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-kubectl --context mk4 -n postgres-db exec -it "$P" -c postgres -- psql -d jithendar -c "select extversion from pg_extension where extname = 'vector';"
+P=$(kubectl -n postgres-db get pod -l cnpg.io/cluster=postgres-cluster,cnpg.io/instanceRole=primary -o name)
+kubectl -n postgres-db exec -it "$P" -c postgres -- psql -d jithendar -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+kubectl -n postgres-db exec -it "$P" -c postgres -- psql -d jithendar -c "select extversion from pg_extension where extname = 'vector';"
 ```
 To keep it declarative, add it to the database in the miniKube repo instead: a CloudNativePG `Database` resource with
 `spec.extensions: [{name: vector, ensure: present}]` (minikube-infrastructure). No image change is needed. Without
@@ -139,9 +139,9 @@ Rotate by running the script again and restarting both Deployments.
    routed by the VirtualService) and the NetworkPolicy rules. It's harmless before step 5.
 3. Apply the agent group (a person, once; CI only renders it):
    ```bash
-   scripts/manifests.sh seo-agent | kubectl --context mk4 apply -f -
-   kubectl --context mk4 -n jithendar rollout status deploy/seo-agent
-   kubectl --context mk4 -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
+   scripts/manifests.sh seo-agent | kubectl apply -f -
+   kubectl -n jithendar rollout status deploy/seo-agent
+   kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
    ```
 4. RBAC: `minikube/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. A person applies it (`./deploy.sh`). To let
    CI restart the agent after each release, set the repository variable `SEO_AGENT_DEPLOY=true`.
@@ -162,8 +162,8 @@ Rotate by running the script again and restarting both Deployments.
 > v4 removed LangGraph. `SEO_ORCHESTRATOR=langgraph` is now an alias of `crewai`; follow §20–§28 instead.
 
 ```bash
-kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"langgraph"}}'
-kubectl --context mk4 -n jithendar rollout restart deploy/jithendar-com
+kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"langgraph"}}'
+kubectl -n jithendar rollout restart deploy/jithendar-com
 ```
 Check: on an article's SEO panel, **Draft with Claude**. The review page shows "LangGraph run · Agent working…", then
 "Waiting for your review". Approve one change: the run publishes, verifies and submits, and the strip shows
@@ -175,9 +175,9 @@ approval needs the agent; reject them, or regenerate them under legacy.
 ## 18. Ask the Blog (optional; off by default)
 Turn it on in **both** places: the widget and `/api/ask` live in the web app; answering lives in the agent.
 ```bash
-kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true"}}'
-kubectl --context mk4 -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true","ASK_BLOG_DAILY_BUDGET_USD":"1"}}'
-kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true"}}'
+kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true","ASK_BLOG_DAILY_BUDGET_USD":"1"}}'
+kubectl -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
 ```
 Run a reindex first so there's something to retrieve: Admin → SEO → (API) `POST /api/admin/seo/agent/reindex {"full": true}`,
 or wait for the Sunday CronJob. Turn it off the same way with `"false"`.
@@ -203,18 +203,18 @@ needed. Status of each item: PROGRESS.md "v4".
    NetworkPolicy (the trigger pods' sidecars need istiod and DNS). CI applies that NetworkPolicy too.
 3. Apply the agent group and remove the v3 CronJob (it is no longer in the manifests):
    ```bash
-   kubectl --context mk4 -n jithendar delete cronjob seo-agent-reindex --ignore-not-found
-   kubectl --context mk4 -n jithendar delete networkpolicy seo-agent-reindex --ignore-not-found
-   scripts/manifests.sh seo-agent | kubectl --context mk4 apply -f -
-   kubectl --context mk4 -n jithendar rollout status deploy/seo-agent
-   kubectl --context mk4 -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode()); print(u.urlopen('http://127.0.0.1:8090/healthz').read().decode())"
+   kubectl -n jithendar delete cronjob seo-agent-reindex --ignore-not-found
+   kubectl -n jithendar delete networkpolicy seo-agent-reindex --ignore-not-found
+   scripts/manifests.sh seo-agent | kubectl apply -f -
+   kubectl -n jithendar rollout status deploy/seo-agent
+   kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode()); print(u.urlopen('http://127.0.0.1:8090/healthz').read().decode())"
    ```
    The CronJobs (`seo-flow-*`) are created by this apply. They only call the agent; until §22 the agent's callbacks are
    off (the web app's callback listener starts only with `SEO_ORCHESTRATOR=crewai`), so a trigger before the switch
    fails harmlessly. To keep them quiet until then, suspend them:
    ```bash
-   for c in $(kubectl --context mk4 -n jithendar get cronjob -l app=seo-agent-trigger -o name); do
-     kubectl --context mk4 -n jithendar patch "$c" -p '{"spec":{"suspend":true}}'
+   for c in $(kubectl -n jithendar get cronjob -l app=seo-agent-trigger -o name); do
+     kubectl -n jithendar patch "$c" -p '{"spec":{"suspend":true}}'
    done
    ```
 
@@ -225,8 +225,8 @@ create or rotate. R2 credentials are the site's existing ones (Admin → Storage
 
 ## 22. Switch to the CrewAI flows
 ```bash
-kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"crewai"}}'
-kubectl --context mk4 -n jithendar rollout restart deploy/jithendar-com
+kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"crewai"}}'
+kubectl -n jithendar rollout restart deploy/jithendar-com
 # if the CronJobs were suspended in §20: set "suspend": false again
 ```
 From now on the web app's in-process scheduler skips gsc/ga4 sync, technical scan, recommendations, weekly drafts,
@@ -252,17 +252,17 @@ delivery domain, the random UUID makes keys unguessable, but consider an R2 rule
 
 ## 25. The public MCP server (optional)
 ```bash
-kubectl --context mk4 -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
-kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
-kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
+kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
+kubectl -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
 ```
 The site then shows `/ai-assistants` and a footer link. Needs the gateway route (§27) and a reindex (§18).
 
 ## 26. The admin MCP server and OAuth (after verifying it)
 ```bash
-kubectl --context mk4 -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
-kubectl --context mk4 -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
-kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
+kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
+kubectl -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
 ```
 No client registration is needed: Claude and MCP Inspector register themselves (RFC 7591). Verify, in order:
 1. `curl -s https://jithendar.com/.well-known/oauth-protected-resource/mcp/admin` and `…/.well-known/oauth-authorization-server`.

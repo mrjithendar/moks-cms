@@ -79,7 +79,7 @@ class ReindexFlow(SeoFlow[ReindexState]):
         async with self.step("chunk_and_embed"):
             if self.deps.reindex is None:
                 raise RuntimeError("reindex is not configured")
-            self.state.result = await self.deps.reindex(self.state.article_ids, self.state.full)
+            self.state.result = await self.deps.reindex(self.state.article_ids, self.state.full, self.state.force)
             self.state.outcome = "done"
 
 

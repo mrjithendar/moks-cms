@@ -1,6 +1,6 @@
 # News desk: manual setup
 
-Everything is off by default. These steps are for a person with cluster access (`kubectl --context mk4`). Nothing here
+Everything is off by default. These steps are for a person with cluster access (`kubectl`). Nothing here
 is applied by CI.
 
 ## 1. Prerequisites
@@ -14,15 +14,15 @@ want covers stored. pgvector is optional (novelty vs the site is skipped without
 1. Merge, let CI build both images, restart the web app (`./deploy.sh`), which applies migration `0017_news_desk.sql`
    on start-up.
 2. Apply the agent group (the ConfigMap now has `NEWS_DESK_ENABLED: "false"`, and three news CronJobs):
-   `scripts/manifests.sh seo-agent | kubectl --context mk4 apply -f -`
-3. Check: `kubectl --context mk4 -n jithendar get cronjob news-dispatch news-train news-style-review`.
+   `scripts/manifests.sh seo-agent | kubectl apply -f -`
+3. Check: `kubectl -n jithendar get cronjob news-dispatch news-train news-style-review`.
 
 ## 3. Enable the desk
 
 Both sides read `NEWS_DESK_ENABLED`:
 
-- seo-agent: `kubectl --context mk4 -n jithendar patch configmap seo-agent-config -p '{"data":{"NEWS_DESK_ENABLED":"true"}}'`
-  then `kubectl --context mk4 -n jithendar rollout restart deploy/seo-agent`.
+- seo-agent: `kubectl -n jithendar patch configmap seo-agent-config -p '{"data":{"NEWS_DESK_ENABLED":"true"}}'`
+  then `kubectl -n jithendar rollout restart deploy/seo-agent`.
 - web app: add `NEWS_DESK_ENABLED=true` to ConfigMap `jithendar-com-public` (or the `jithendar-com-env` Secret), then
   restart the web Deployment. While it is off, Admin → News desk shows a banner and "Run now" is refused.
 
@@ -39,7 +39,7 @@ dry run, inspect the candidates, enable.
 - **Gemini**: configure Admin → Integrations → Gemini image generation (the same integration the editor uses). Set the
   job's or profile's provider to `gemini` and Settings → image price. Covers are stored in the media library (R2 needed).
 - **OpenAI**: add `OPENAI_API_KEY` to Secret `seo-agent-env`
-  (`kubectl --context mk4 -n jithendar patch secret seo-agent-env -p '{"stringData":{"OPENAI_API_KEY":"…"}}'`), optionally
+  (`kubectl -n jithendar patch secret seo-agent-env -p '{"stringData":{"OPENAI_API_KEY":"…"}}'`), optionally
   `NEWS_OPENAI_IMAGE_MODEL`, restart seo-agent. The agent's NetworkPolicy already allows 443 to public IPs (core
   NetworkPolicy cannot restrict by domain; an Istio egress gateway would be needed for that).
 - `NEWS_IMAGE_PROVIDER` (ConfigMap) overrides Settings for every job without a provider override.

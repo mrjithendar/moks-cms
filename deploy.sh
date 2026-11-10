@@ -11,8 +11,7 @@ if [ -z "${BASH_VERSION:-}" ] || case ":${SHELLOPTS:-}:" in *:posix:*) true ;; *
 fi
 set -euo pipefail
 
-CONTEXT="${KUBE_CONTEXT:-mk4}"
-k() { kubectl --context "$CONTEXT" "$@"; }
+k() { kubectl "$@"; }
 
 cd "$(dirname -- "${BASH_SOURCE[0]}")"
 

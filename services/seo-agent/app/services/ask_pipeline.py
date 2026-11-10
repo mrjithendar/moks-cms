@@ -21,8 +21,12 @@ from ..llm import BudgetExceeded, CallSpec, InvalidOutput
 from ..schemas import Relevance
 from ..tools import EMAIL, PHONE, SECRETISH, data_block
 
-PROMPT_VERSION = "ask-blog-v1"
+# v2: raw-question retrieval, ASK_BLOG_MIN_SCORE floor, grader sees the full excerpt (keep runs separable in seo_ask_log).
+PROMPT_VERSION = "ask-blog-v2"
 MAX_QUESTION = 500
+# The grader and the answer model must see the same text: a fact the grader never saw can't make it "relevant".
+EXCERPT_CHARS = 1500
+_CITE = re.compile(r"\[(\d{1,2}(?:\s*[,;]\s*\d{1,2})*)\]")
 NO_ANSWER = "NO_ANSWER"
 
 INJECTION = re.compile(
@@ -115,6 +119,17 @@ def guard_answer(text: str, allowed_hosts: set[str]) -> str:
     return text.strip()
 
 
+def cited_numbers(text: str, n_hits: int) -> list[int]:
+    """Excerpt numbers the answer cites: [1], [1][2], [1, 2] and [1; 3] all count. Out-of-range numbers are ignored."""
+    used: set[int] = set()
+    for group in _CITE.findall(text):
+        for part in re.split(r"[,;]", group):
+            k = int(part.strip())
+            if 0 < k <= n_hits:
+                used.add(k)
+    return sorted(used)
+
+
 class AskPipeline:
     """`await AskPipeline(deps).ainvoke({"question": ..., "ip_hash": ..., "stream": queue?})` → the final state."""
 
@@ -131,13 +146,17 @@ class AskPipeline:
             return {"refused": why, "normalized": normalize_question(s["question"]), "outcome": "refused" if why else "pending", "cost_usd": 0.0}
 
         async def retrieve(s: dict[str, Any]) -> dict[str, Any]:
-            hits = await deps.retriever.search(s["normalized"], k=deps.settings.ask_top_k)
-            return {"hits": [{"title": h.title, "path": h.path, "url": h.url, "section": h.heading_path, "content": h.content[:1500], "score": h.score, "article_id": h.article_id} for h in hits if h.score > 0.15]}
+            # Embed the question as asked: normalize_question() strips "/", ":", "=", quotes… which carry meaning in
+            # technical queries (paths, flags, ports). The normalized form is only for the cache key and the gap log.
+            q = " ".join(s["question"].split())[:MAX_QUESTION]
+            hits = await deps.retriever.search(q, k=deps.settings.ask_top_k)
+            floor = getattr(deps.settings, "ask_min_score", 0.15)
+            return {"hits": [{"title": h.title, "path": h.path, "url": h.url, "section": h.heading_path, "content": h.content[:EXCERPT_CHARS], "score": h.score, "article_id": h.article_id} for h in hits if h.score > floor]}
 
         async def grade_relevance(s: dict[str, Any]) -> dict[str, Any]:
             if not s.get("hits"):
                 return {"relevant": False}
-            excerpts = [{"n": i + 1, "title": h["title"], "section": h["section"], "text": h["content"][:600]} for i, h in enumerate(s["hits"])]
+            excerpts = [{"n": i + 1, "title": h["title"], "section": h["section"], "text": h["content"]} for i, h in enumerate(s["hits"])]
             spec = CallSpec(model=deps.settings.classify_model, purpose="ask_grade", prompt_version=PROMPT_VERSION, cached_system=[GRADE_RULES], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=200)
             try:
                 r, u = await deps.llm.structured(spec, Relevance)
@@ -166,7 +185,7 @@ class AskPipeline:
             text = "".join(parts).strip()
             if text.startswith(NO_ANSWER) or not text:
                 return {"relevant": False, "answer": ""}
-            used = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", text) if 0 < int(n) <= len(s["hits"])})
+            used = cited_numbers(text, len(s["hits"]))
             cites, seen = [], set()
             for n in used:
                 h = s["hits"][n - 1]
@@ -211,4 +230,4 @@ class AskPipeline:
         return state
 
 
-__all__ = ["REFUSALS", "AskPipeline", "BudgetExceeded", "check_input", "guard_answer", "normalize_question"]
+__all__ = ["REFUSALS", "AskPipeline", "BudgetExceeded", "check_input", "cited_numbers", "guard_answer", "normalize_question"]

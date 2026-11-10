@@ -151,7 +151,7 @@ deployment still overrides the admin setting.
    incomplete multipart uploads after 1 day — or `aws s3api put-bucket-lifecycle-configuration … --lifecycle-configuration file://www/deploy/r2/lifecycle.json` (same endpoint flags).
 5. **Public domain** (optional, recommended for video): bucket → Settings → Custom domains → e.g. `media.jithendar.com`.
 6. **Secret**: `scripts/set-media-config.sh mk4` (prompts; values never echoed), then
-   `kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com` — or deploy normally.
+   `kubectl -n jithendar rollout restart deployment/jithendar-com` — or deploy normally.
 7. **Verify**: Admin → System status shows "Media storage (Cloudflare R2): ok" and "Image generation (Gemini)".
    Upload an image and a short MP4 in Admin → Media; generate a cover in a draft post.
 

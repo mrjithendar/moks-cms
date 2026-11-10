@@ -8,7 +8,7 @@ ssh <user>@<mk4-host> bash /tmp/install-gvisor-mk4.sh
 ssh <user>@<mk4-host> bash /tmp/install-gvisor-mk4.sh --apply
 
 # 2. Back on the Mac. Every line must be PASS; stop here if not.
-kubectl --context mk4 -n jithendar delete pod -l practice.jithendar.com/verify=true
+kubectl -n jithendar delete pod -l practice.jithendar.com/verify=true
 scripts/verify-practice-sandbox.sh
 
 # 3. Site: new executor URL + network rule + CI account rights, then restart

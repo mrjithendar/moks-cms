@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create (or rotate) the executor's Secret in namespace jithendar and give the site the matching token.
-#   scripts/create-practice-executor-secrets.sh [context]
+#   scripts/create-practice-executor-secrets.sh
 # Writes:
 #   jithendar/practice-executor-env   EXECUTOR_API_TOKEN
 #     (the queue is the shared Valkey: EXECUTOR_REDIS_URL comes from redis-practice-credentials, written by Terraform
@@ -8,9 +8,8 @@
 #   jithendar/jithendar-com-env       PRACTICE_EXECUTOR_URL, PRACTICE_EXECUTOR_TOKEN (other keys are kept)
 # Nothing is printed, written to disk or committed. Then restart the executor and the site (printed at the end).
 set -euo pipefail
-CTX="${1:-mk4}"
 NS=jithendar
-k() { kubectl --context "$CTX" -n "$NS" "$@"; }
+k() { kubectl -n "$NS" "$@"; }
 
 k get secret jithendar-com-env >/dev/null
 token=$(openssl rand -hex 32)
@@ -27,5 +26,5 @@ TOKEN="$token" python3 -c 'import json, os; print(json.dumps({"stringData": {
 unset token
 
 echo "Stored practice-executor-env and the site's PRACTICE_EXECUTOR_URL/TOKEN in $NS. Now restart both:"
-echo "  kubectl --context $CTX -n $NS rollout restart deploy/practice-executor-api deploy/practice-dispatcher"
-echo "  kubectl --context $CTX -n $NS rollout restart deploy/jithendar-com"
+echo "  kubectl -n $NS rollout restart deploy/practice-executor-api deploy/practice-dispatcher"
+echo "  kubectl -n $NS rollout restart deploy/jithendar-com"

@@ -108,7 +108,7 @@ does not touch them.
   group `jithendar-com`), standard Prometheus rule YAML with `runbook_url` annotations.
 - Ingress: Istio gateway + `VirtualService` (`minikube/60-istio-routing.yaml`). Not touched.
 
-## Minikube capacity (read-only `kubectl --context mk4`, 2026-11-09)
+## Minikube capacity (read-only `kubectl`, 2026-11-09)
 
 8 nodes × 16 CPU / ~30 GiB allocatable. Requests per node: 0.8–1.3 CPU (5–8 %), 1.3–3.8 GiB (4–12 %).
 Limits are overcommitted on CPU (up to 178 %) but not on memory (≤ 30 %). Namespace `jithendar`: Deployments

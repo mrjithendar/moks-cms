@@ -98,7 +98,7 @@ identical labels, so one `rate()` over both failed with "vector cannot contain m
 
 ### Site down
 
-1. `kubectl --context mk4 -n jithendar get pods -l app=jithendar-com` — `ImagePullBackOff` with 401 from
+1. `kubectl -n jithendar get pods -l app=jithendar-com` — `ImagePullBackOff` with 401 from
    registry.jithendar.com means the `harbor-pull` Secret is wrong or its robot was removed (see `docs/DEPLOYMENT.md`); `OOMKilled` means memory (limit 1Gi).
 2. `curl -s https://jithendar.com/api/health` — answers `{status, version}`; `version` is the running commit.
 3. If pods are up but the alert fires, the metrics port is the problem: Prometheus → Status → Targets, job
@@ -112,10 +112,10 @@ identical labels, so one `rate()` over both failed with "vector cannot contain m
 2. Loki: `{namespace="jithendar", container="web", level="error"} | logfmt` — `error_type`, `error_code` (the
    digest a visitor sees) and `trace_id`. A visitor's "Reference: <id>" is the trace id:
    `{namespace="jithendar"} |= "trace_id=<id>"`.
-3. The full line with `msg` and the stack is only in the pod: `kubectl --context mk4 -n jithendar logs
+3. The full line with `msg` and the stack is only in the pod: `kubectl -n jithendar logs
    deploy/jithendar-com | grep <trace id>` (try both pods: `-l app=jithendar-com --max-log-requests=4`).
 4. The trace: paste the id into **Trace id** on the Observability dashboard (or, in Jaeger's own UI,
-   `kubectl --context mk4 -n observability port-forward svc/jaeger 16686`, then http://localhost:16686/trace/<id>).
+   `kubectl -n observability port-forward svc/jaeger 16686`, then http://localhost:16686/trace/<id>).
    Exception text is removed by the collector; the failing span has
    `error.type` and status ERROR. Jaeger keeps the newest 5000 traces in memory, so look soon.
 
@@ -135,7 +135,7 @@ identical labels, so one `rate()` over both failed with "vector cannot contain m
 2. Push this repository (dashboards in `services/grafana/`) and the `tools` repo, then sync `loki`, `prometheus` and
    `grafana` in Argo CD (Alloy patterns, scrape jobs, alerts, the Jaeger data source and the dashboards; the
    `grafana` app reads `services/grafana/` from this repository's `master`).
-3. The collector and Jaeger have no Argo CD Application: `kubectl --context mk4 apply -k
+3. The collector and Jaeger have no Argo CD Application: `kubectl apply -k
    deploy/minikube/observability/otel-collector` and `… -k deploy/minikube/observability/jaeger` from `tools`.
    Jaeger restarts with an empty store (it is in memory).
 4. Check: Prometheus → Targets shows `jithendar-com` (2 up), `otel-collector` and `jaeger` up; Jaeger has no new

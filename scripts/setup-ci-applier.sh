@@ -15,7 +15,6 @@
 set -euo pipefail
 
 REPO="${GITHUB_REPO:-mrjithendar/jithendar.com}"
-CONTEXT="${KUBE_CONTEXT:-mk4}"
 NS="jithendar"
 SA="github-ci-applier"
 TEMPLATE=".github/jithendar-ci-applier.yaml"
@@ -27,7 +26,7 @@ python3 -c "import yaml" 2>/dev/null || { echo "scripts/ci-app-manifests.py need
 MK4_API_SERVER="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')"
 MK4_CA_DATA="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
 [[ -n "$MK4_CA_DATA" ]] || MK4_CA_DATA="$(base64 < "$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority}')" | tr -d '\n')"
-[[ -n "$MK4_API_SERVER" && -n "$MK4_CA_DATA" ]] || { echo "Could not read server/CA of context $CONTEXT." >&2; exit 1; }
+[[ -n "$MK4_API_SERVER" && -n "$MK4_CA_DATA" ]] || { echo "Could not read server/CA of the current kubectl context." >&2; exit 1; }
 
 echo "→ Cluster $MK4_API_SERVER, ServiceAccount $NS/$SA, repository $REPO"
 if [[ "${ROTATE:-0}" == "1" ]]; then
@@ -69,7 +68,7 @@ done
 if [[ "${SKIP_GH:-0}" == "1" ]]; then
   cat <<OUT
 Done. Set these in $REPO → Settings → Secrets and variables → Actions:
-  Secret   MK4_CI_APPLY_TOKEN = copy with: kubectl --context $CONTEXT -n $NS get secret $SA-token -o jsonpath='{.data.token}' | base64 -d | pbcopy
+  Secret   MK4_CI_APPLY_TOKEN = copy with: kubectl -n $NS get secret $SA-token -o jsonpath='{.data.token}' | base64 -d | pbcopy
   Variable MINIKUBE_DEPLOY    = true
 OUT
   exit 0

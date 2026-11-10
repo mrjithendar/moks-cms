@@ -58,8 +58,8 @@ browser ─► jithendar-com (Next.js)                       executor           
    Harbor (tools repository, `deploy/minikube/harbor`). CI's secrets `HARBOR_USERNAME`/`HARBOR_PASSWORD` come from
    the tools repository's `registry.py ci-robots`; merge to `master` so `.github/workflows/ci-practice-executor.yml`
    builds and pushes them.
-3. **Apply the manifests:** `scripts/manifests.sh practice-executor | kubectl --context mk4 apply -f -` (namespace `jithendar`),
-   `kubectl --context mk4 apply -f minikube/80-ci-deployer.yaml` (lets the site's CI account roll out the executor),
+3. **Apply the manifests:** `scripts/manifests.sh practice-executor | kubectl apply -f -` (namespace `jithendar`),
+   `kubectl apply -f minikube/80-ci-deployer.yaml` (lets the site's CI account roll out the executor),
    then `scripts/create-practice-executor-secrets.sh mk4`: it creates `practice-executor-env` and writes
    `PRACTICE_EXECUTOR_URL`/`PRACTICE_EXECUTOR_TOKEN` into `jithendar-com-env` directly (nothing to copy by hand).
    `harbor-pull` must exist in `jithendar` (tools `registry.py pull-secrets`); sandbox pods pull with it too.
@@ -79,7 +79,7 @@ browser ─► jithendar-com (Next.js)                       executor           
 To stop CI deploying, set `PRACTICE_EXECUTOR_DEPLOY` to anything but `true`.
 
 Rollback: switch execution off in the admin (instant; pages keep working), or
-`scripts/manifests.sh practice-executor | kubectl --context mk4 delete -f -` (removes only the executor's objects; the site, its
+`scripts/manifests.sh practice-executor | kubectl delete -f -` (removes only the executor's objects; the site, its
 database and Secrets stay).
 
 ## Operating it

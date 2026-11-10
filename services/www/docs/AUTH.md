@@ -97,7 +97,7 @@ Production:
 
 ```sh
 scripts/set-oauth-config.sh mk4      # prompts; secrets are read silently and never printed
-kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com
+kubectl -n jithendar rollout restart deployment/jithendar-com
 ```
 
 The NetworkPolicy already allows HTTPS egress to the internet (token exchange with `oauth2.googleapis.com`,

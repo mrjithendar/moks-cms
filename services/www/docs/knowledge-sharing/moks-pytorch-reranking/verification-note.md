@@ -9,7 +9,7 @@ For the author, before publishing. Reviewed against MOKS `4928f09` on 2026-11-02
 | `reranker/tests` (pytest, scratch venv with the pinned FastAPI, Pydantic, httpx and pytest; no torch) | 34 passed, 1 failed: `test_a_missing_lock_file_refuses_to_load` needs torch, because `Model.load()` imports torch before it checks the lock file |
 | `backend/tests/test_rerank.py` | **Not run**: needs PostgreSQL. The article cites these tests by name and by what they assert; I read them, I did not run them |
 | `helm template` with `values-minikube.yaml`, `resourceGroup=reranker` | Rendered NetworkPolicy (`egress: []`), ServiceAccount, Service and Deployment with the env values quoted in the article |
-| Read-only `kubectl --context mk4` | `moks-reranker` 1/1 ready, image `moks-reranker:latest`, pod started 04:21 UTC; `kubectl top`: 3m CPU, 443Mi at idle; ConfigMap has `MOKS_RAG_RERANK_ENABLED=true` and the pinned model and revision |
+| Read-only `kubectl` | `moks-reranker` 1/1 ready, image `moks-reranker:latest`, pod started 04:21 UTC; `kubectl top`: 3m CPU, 443Mi at idle; ConfigMap has `MOKS_RAG_RERANK_ENABLED=true` and the pinned model and revision |
 | `verify_article.py` | 11 verbatim excerpts, 26 pinned links, 3 figures: OK |
 | Site tests (`npx vitest run`) | 41 files, 402 tests passed, including schema validation and the visual-editor round trip |
 | External facts | Model card (license, training data, published scores, V100 figure); `config.json` at the pinned revision (6 layers, 384 hidden, 12 heads, 1 label, 512 positions, identity activation); sentence-transformers CrossEncoder docs; PyTorch 2.15 thread docs; safetensors docs |

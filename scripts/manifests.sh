@@ -6,8 +6,8 @@
 #   practice-executor  practice-executor-*.yaml: Python practice runner (applied by hand once gVisor is verified)
 #   seo-agent          seo-agent-*.yaml: SEO v4 agent service + flow-trigger CronJobs (applied by hand, docs/seo/MANUAL_SETUP.md)
 #
-#   scripts/manifests.sh site | kubectl --context mk4 apply -f -
-#   scripts/manifests.sh practice-executor | kubectl --context mk4 diff -f -
+#   scripts/manifests.sh site | kubectl apply -f -
+#   scripts/manifests.sh practice-executor | kubectl diff -f -
 #
 # Only the site uses kustomize (Kustomize allows one kustomization per folder). The other group is plain
 # files, printed in name order, which is the order they must be applied in.

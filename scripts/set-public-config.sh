@@ -2,11 +2,10 @@
 # Create or update ConfigMap jithendar/jithendar-com-public: public identifiers for search-engine
 # verification, Google Analytics 4, Google AdSense, ads.txt and IndexNow. None of these are secrets
 # (they appear in page HTML or public files), but they are account-specific, so they are not in Git.
-#   scripts/set-public-config.sh [kube-context]
+#   scripts/set-public-config.sh
 # Leave a prompt empty to leave that setting unset. Then restart:
-#   kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com
+#   kubectl -n jithendar rollout restart deployment/jithendar-com
 set -euo pipefail
-CONTEXT="${1:-mk4}"
 NS="jithendar"
 
 args=()
@@ -23,6 +22,6 @@ ask CONSENT_DEFAULT "Consent default: regional (deny in EEA/UK/CH) or strict (de
 read -r -p "Generate a new IndexNow key? [y/N]: " gen
 [[ "$gen" == "y" || "$gen" == "Y" ]] && args+=(--from-literal="INDEXNOW_KEY=$(openssl rand -hex 16)")
 
-kubectl --context "$CONTEXT" -n "$NS" create configmap jithendar-com-public "${args[@]}" --dry-run=client -o yaml \
-  | kubectl --context "$CONTEXT" -n "$NS" apply -f -
-echo "ConfigMap $NS/jithendar-com-public updated. Restart: kubectl --context $CONTEXT -n $NS rollout restart deployment/jithendar-com"
+kubectl -n "$NS" create configmap jithendar-com-public "${args[@]}" --dry-run=client -o yaml \
+  | kubectl -n "$NS" apply -f -
+echo "ConfigMap $NS/jithendar-com-public updated. Restart: kubectl -n $NS rollout restart deployment/jithendar-com"

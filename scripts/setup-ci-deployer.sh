@@ -17,7 +17,6 @@
 set -euo pipefail
 
 REPO="${GITHUB_REPO:-mrjithendar/jithendar.com}"
-CONTEXT="${KUBE_CONTEXT:-mk4}"
 NS="jithendar"
 SA="github-ci-deployer"
 TEMPLATE=".github/jithendar-ci-deployer.yaml"
@@ -32,7 +31,7 @@ MK4_CA_DATA="$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].clu
 # if CA is empty, base64 the CA file the context points to instead
 [[ -n "$MK4_CA_DATA" ]] || MK4_CA_DATA="$(base64 < "$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority}')" | tr -d '\n')"
 # if SERVER or CA is empty script should exit
-[[ -n "$MK4_API_SERVER" && -n "$MK4_CA_DATA" ]] || { echo "Could not read server/CA of context $CONTEXT." >&2; exit 1; }
+[[ -n "$MK4_API_SERVER" && -n "$MK4_CA_DATA" ]] || { echo "Could not read server/CA of the current kubectl context." >&2; exit 1; }
 
 echo "→ Cluster $MK4_API_SERVER, ServiceAccount $NS/$SA, repository $REPO"
 if [[ "${ROTATE:-0}" == "1" ]]; then
@@ -71,8 +70,8 @@ if [[ "${SKIP_GH:-0}" == "1" ]]; then
   cat <<EOF
 Done. Set these in $REPO → Settings → Secrets and variables → Actions:
   Variable MK4_API_SERVER = $MK4_API_SERVER
-  Variable MK4_CA_DATA    = output of: kubectl config view --raw --minify --context $CONTEXT -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
-  Secret   MK4_CI_TOKEN   = copy with: kubectl --context $CONTEXT -n $NS get secret $SA-token -o jsonpath='{.data.token}' | base64 -d | pbcopy
+  Variable MK4_CA_DATA    = output of: kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
+  Secret   MK4_CI_TOKEN   = copy with: kubectl -n $NS get secret $SA-token -o jsonpath='{.data.token}' | base64 -d | pbcopy
 EOF
   exit 0
 fi

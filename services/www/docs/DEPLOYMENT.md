@@ -83,7 +83,7 @@ sets variable `MINIKUBE_DEPLOY=true`; until then the deploy job is skipped). Tur
 
 ```bash
 scripts/smoke.sh https://jithendar.com [expected-commit-sha]
-kubectl --context mk4 -n jithendar get certificate jithendar-com   # READY True
+kubectl -n jithendar get certificate jithendar-com   # READY True
 ```
 
 The script checks health (and version), homepage, about, RSS, both sitemaps, robots.txt, 404, the 410 hijack URLs, http→https, www→apex, and that `/argocd/` is unaffected.

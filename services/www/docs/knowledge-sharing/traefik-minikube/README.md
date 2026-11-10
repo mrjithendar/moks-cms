@@ -1,7 +1,7 @@
 # Traefik on Minikube article: evidence and review notes
 
 Draft: `content/blog/traefik-minikube-architecture-implementation.mdx` (status `review`, 2026-11-05).
-Inspected: tools `8413177`, jithendar.com `ba3e851`, moks `9220dc7`, plus read-only `kubectl --context mk4`,
+Inspected: tools `8413177`, jithendar.com `ba3e851`, moks `9220dc7`, plus read-only `kubectl`,
 `helm` and `curl` on 2026-11-05. Nothing was changed in the cluster.
 
 ## SEO

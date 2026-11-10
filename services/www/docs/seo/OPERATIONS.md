@@ -12,7 +12,7 @@ Nothing new runs in the cluster: the platform lives in the `jithendar-com` Deplo
 2. `scripts/set-seo-config.sh /path/to/key.json` (a person, `mk4` context): merges `GOOGLE_SEO_SERVICE_ACCOUNT_JSON`
    (and optional `PAGESPEED_API_KEY`) into Secret `jithendar-com-env`, and `SEO_GSC_PROPERTY` / `SEO_GA4_PROPERTY_ID`
    into ConfigMap `jithendar-com-public`. Both are already loaded with `envFrom`, so no manifest change is needed.
-3. `kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com`.
+3. `kubectl -n jithendar rollout restart deployment/jithendar-com`.
 4. Admin → SEO intelligence → Integrations → **Test connection** (must say "connected" for both).
 5. Sync history → **Backfill** (see below), then **Generate now** on Recommendations.
 6. Alerts: add the group in `services/www/docs/seo/prometheus-alerts.yml` to the miniKube repo's

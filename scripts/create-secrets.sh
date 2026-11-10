@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # One-time creation of the jithendar.com Secrets in namespace jithendar (run by an admin, never by CI).
-#   scripts/create-secrets.sh [kube-context]
+#   scripts/create-secrets.sh
 # Generates every password/key randomly. Prompts only for Cloudflare Turnstile keys and optional SMTP.
 # Refuses to overwrite an existing Secret (SETTINGS_ENCRYPTION_KEY decrypts stored credentials).
 # DATABASE_URL is not here: Terraform in the miniKube repo writes postgres-db-credentials, which
 # minikube/30-jithendar-com.yaml reads. The site runs without Redis (no REDIS_URL).
 set -euo pipefail
 
-CONTEXT="${1:-mk4}"
 NS="jithendar"
-k() { kubectl --context "$CONTEXT" -n "$NS" "$@"; }
+k() { kubectl -n "$NS" "$@"; }
 rand() { openssl rand -base64 48 | tr -d '/+=\n' | cut -c1-"${1:-40}"; }
 
 if k get secret jithendar-com-env >/dev/null 2>&1; then

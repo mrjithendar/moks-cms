@@ -31,7 +31,7 @@ Code runner in namespace `jithendar`, next to the site (`services/www/docs/PYTHO
 installed (`scripts/install-gvisor-mk4.sh`), then prove isolation with `scripts/verify-practice-sandbox.sh`:
 
 ```sh
-scripts/manifests.sh practice-executor | kubectl --context mk4 apply -f -
+scripts/manifests.sh practice-executor | kubectl apply -f -
 ```
 
 | File | Resources |
@@ -92,8 +92,8 @@ Server dry-runs, applies the `site` group, restarts the site so it pulls `:lates
 To apply manifest changes without a new image, review and apply one group directly:
 
 ```sh
-scripts/manifests.sh site | kubectl --context mk4 diff -f -
-scripts/manifests.sh site | kubectl --context mk4 apply -f -
+scripts/manifests.sh site | kubectl diff -f -
+scripts/manifests.sh site | kubectl apply -f -
 ```
 
 (`kubectl apply -k minikube` is the same as the `site` group.) Never `kubectl apply -f minikube/`: it would apply

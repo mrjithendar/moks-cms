@@ -28,6 +28,14 @@ flowchart LR
   prompt-injection patterns ("ignore previous instructions", "system prompt", "you are now", `</data>`…), personal
   data (emails, phone numbers, keys) and obvious off-topic requests. Anything else off-topic fails the relevance
   grade and gets the fallback.
+- **Retrieval input:** the question is embedded as asked (whitespace collapsed). The normalized form (lower-case,
+  punctuation stripped) is used only for the cache key and the gap log, because `/`, `:`, `=` and quotes carry meaning
+  in technical queries.
+- **Score floor:** chunks below `ASK_BLOG_MIN_SCORE` (default 0.15) are dropped before grading. bge-small scores even
+  unrelated text fairly high, so calibrate it from `seo_ask_log` (scores of answered vs fallback questions).
+- **Grader and answer see the same excerpt text** (1,500 characters each), so a fact the grader never saw can't be
+  the reason for a fallback.
+- **Citations** are accepted as `[1]`, `[1][2]`, `[1, 2]` or `[1; 2]`.
 - **Output guards:** links are stripped unless they point to this site or an allowlisted documentation domain.
 - **Streaming:** server-sent events: `delta` events while the answer streams, then one `final` event with the guarded
   answer and citations, which replaces the streamed text in the widget. The start of the stream is held back until
@@ -89,8 +97,14 @@ data only), and the next reindex rebuilds it.
 - **Table** `seo_article_chunks` (article_id → post, chunk_index, heading_path, anchor, content, content_hash,
   embedding `vector(N)`, model, updated_at), with an **HNSW** cosine index (IVFFlat on pgvector < 0.5). It's created
   by `seo-agent` at start-up when the `vector` extension exists, because its column type depends on the model.
-- **Incremental:** a chunk is embedded again only when its `(content_hash, model)` changed. Chunks beyond the new count
-  and chunks of articles that are no longer published are deleted.
+- **Incremental:** a chunk is embedded again only when its `(content_hash, model)` changed. The stored hash covers the
+  article title too (the title is part of the embedded text), so renaming an article re-embeds its chunks.
+  Deploying this change re-embeds every chunk once (the stored hashes change format), so expect the first weekly run
+  after it to take as long as a full reindex.
+- **Safety:** a full or weekly reindex refuses to run (`IndexSafetyError`) when the web app returns no published
+  articles, or (with 10 or more articles indexed) fewer than half of the indexed ones, instead of deleting the index.
+  After checking the list, rerun `reindex_flow` with `{"force": true}`. Single-article reindexes (publish_flow) never
+  run the guard. Chunks beyond the new count and chunks of articles that are no longer published are deleted.
 - **When:** after every publish (publish_flow's `reindex` step, for that article), the weekly CronJob `seo-flow-reindex` (reindex_flow)
   (Sundays 03:17 UTC, `concurrencyPolicy: Forbid`, incremental), and on demand
   (`POST /api/admin/seo/agent/reindex {full}`, admin only, 6 per hour; a full reindex at most every 5 minutes).

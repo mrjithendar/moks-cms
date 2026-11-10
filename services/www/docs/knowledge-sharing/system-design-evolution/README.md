@@ -112,7 +112,7 @@ Every figure's alt text is in the article Markdown and describes the full flow, 
 
 | Claim | Evidence |
 | --- | --- |
-| 11 app Deployments/StatefulSets, all 1 replica; Argo apps `roboshop-*` Synced/Healthy | `kubectl --context mk4 -n roboshop-ai get deploy,statefulset`; `-n argocd get applications` |
+| 11 app Deployments/StatefulSets, all 1 replica; Argo apps `roboshop-*` Synced/Healthy | `kubectl -n roboshop-ai get deploy,statefulset`; `-n argocd get applications` |
 | Traefik ingress `/roboshop` → web, prefix stripped | `argocd-minikube/apps/routing/`; live ingress class `traefik` |
 | NGINX proxies `/api/*`, `/moks/*`; `/api/chat` returns 403 | `services/web/nginx/snippets/routes.conf` |
 | ai-gateway FastAPI 0.159.1, JSON ledger with one writer, outbox via Pika with publisher confirms, Idempotency-Key | `services/ai-gateway/README.md`, `requirements.txt` |

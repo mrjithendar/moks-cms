@@ -50,8 +50,8 @@ Status means the release status the primary source states. "Not labelled" means 
 ## Repository facts used in the article (checked 3 Nov 2026)
 
 - jithendar.com `www/package.json`: next 16.4.3, react 19.3.1, sharp 0.35.5. Dockerfile `node:26-alpine`.
-- `kubectl --context mk4 -n jithendar exec <jithendar-com pod> -- node -v` → `v26.13.0`.
-- `kubectl --context mk4 get nodes`: five nodes, all v1.37.0.
+- `kubectl -n jithendar exec <jithendar-com pod> -- node -v` → `v26.13.0`.
+- `kubectl get nodes`: five nodes, all v1.37.0.
 - MOKS: `backend/moks/skills/builtin/*/SKILL.md`, format in `docs/SKILLS.md` (top-level `triggers`, `steps`, `remediation`, `version`). `backend/moks/llm/providers.py` FALLBACK_MODELS has no Haiku 5.5. `anthropic` SDK in pyproject. Eval datasets: lab, rag, rerank, routing, skills.
 - LiteLLM appears only in `moks/frontend/src/pages/Admin.tsx` as a hint text for OpenAI-compatible servers, and in python-practice content. No dependency.
 - Python base images: MOKS 3.12; roboshop-ai 3.14 (six services) and 3.13 (kafka-bridge); jithendar.com executor 3.13.

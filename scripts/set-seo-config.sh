@@ -2,12 +2,11 @@
 # SEO intelligence platform (services/www/docs/seo/MANUAL_SETUP.md): store the Google service-account key and optional
 # PageSpeed key in Secret jithendar/jithendar-com-env, and the property ids in ConfigMap jithendar-com-public.
 # Both are already loaded by the Deployment (envFrom), so no manifest changes are needed. Run by a person:
-#   scripts/set-seo-config.sh /path/to/service-account.json [kube-context]
+#   scripts/set-seo-config.sh /path/to/service-account.json
 # It MERGES keys into the existing Secret/ConfigMap (other keys are kept) and prints no secret values.
-# Then restart: kubectl --context mk4 -n jithendar rollout restart deployment/jithendar-com
+# Then restart: kubectl -n jithendar rollout restart deployment/jithendar-com
 set -euo pipefail
-KEY_FILE="${1:?usage: $0 /path/to/service-account.json [kube-context]}"
-CONTEXT="${2:-mk4}"
+KEY_FILE="${1:?usage: $0 /path/to/service-account.json}"
 NS="jithendar"
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 [[ -r "$KEY_FILE" ]] || { echo "Cannot read $KEY_FILE" >&2; exit 1; }
@@ -32,5 +31,5 @@ else
   kubectl -n "$NS" create configmap jithendar-com-public --from-literal="SEO_GSC_PROPERTY=$GSC" --from-literal="SEO_GA4_PROPERTY_ID=$GA4" >/dev/null
 fi
 echo "ConfigMap $NS/jithendar-com-public: SEO_GSC_PROPERTY, SEO_GA4_PROPERTY_ID set."
-echo "Restart: kubectl --context $CONTEXT -n $NS rollout restart deployment/jithendar-com"
+echo "Restart: kubectl -n $NS rollout restart deployment/jithendar-com"
 echo "Then: Admin → SEO intelligence → Integrations → Test connection."

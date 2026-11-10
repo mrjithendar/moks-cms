@@ -10,6 +10,7 @@ graphs skip "related articles"; nothing else breaks. Enabling it needs a superus
 
 from __future__ import annotations
 
+import hashlib
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -27,6 +28,7 @@ class Hit:
     anchor: str | None
     content: str
     score: float
+    category: str = ""
 
     @property
     def url(self) -> str:
@@ -39,6 +41,28 @@ class Retriever(Protocol):
     async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None) -> list[Hit]: ...
     async def similar_articles(self, article_id: str, k: int = 8) -> list[tuple[str, str, float]]: ...
     async def version(self) -> str: ...
+
+
+def _embed_hash(title: str, chunk_hash: str) -> str:
+    """The stored hash covers everything that is embedded: the title is part of the embedded text, so renaming an
+    article must re-embed its chunks (Chunk.content_hash alone covers heading path + text)."""
+    return hashlib.sha256(f"{title}\n{chunk_hash}".encode()).hexdigest()
+
+
+class IndexSafetyError(RuntimeError):
+    """Refused a reindex that would delete most of the index (e.g. the web app returned no articles)."""
+
+
+# Below this many indexed articles the "half" rule is skipped: on a small site, unpublishing two of four articles is
+# ordinary editing, not a truncated list. An empty list is always refused.
+GUARD_MIN_INDEXED = 10
+
+
+def refuse_reindex(live: int, indexed: int) -> bool:
+    """True when a full/weekly reindex would most likely delete the index by mistake."""
+    if not indexed:
+        return False
+    return live == 0 or (indexed >= GUARD_MIN_INDEXED and live < indexed * 0.5)
 
 
 def _vec(v: list[float]) -> str:
@@ -90,15 +114,21 @@ class PgVectorIndex:
         self.available, self.reason = True, "ok"
         return True
 
-    async def reindex(self, articles: list[dict[str, Any]], *, full: bool = False, only: set[str] | None = None) -> dict[str, int]:
+    async def reindex(self, articles: list[dict[str, Any]], *, full: bool = False, only: set[str] | None = None, force: bool = False) -> dict[str, int]:
         """Incremental: only chunks whose content_hash (or model) changed are embedded. `articles` = every published
-        article (id, title, body); chunks of articles no longer in the list are removed (unpublished/deleted)."""
+        article (id, title, body); chunks of articles no longer in the list are removed (unpublished/deleted).
+        `force` skips the safety guard below, after a human has checked that the article list is right."""
         if not self.available:
             return {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0}
         stats = {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0}
         live = {a["id"] for a in articles}
         async with self.pool.connection() as c:
-            if only is None:
+            if only is None and not force:
+                # Guard: an empty or truncated article list (web app error, bad deploy) must not wipe the index.
+                cur = await c.execute("select count(distinct article_id) as n from seo_article_chunks")
+                indexed = int((await cur.fetchone())["n"])
+                if refuse_reindex(len(live), indexed):
+                    raise IndexSafetyError(f"refusing reindex: {len(live)} published articles vs {indexed} indexed; check the list, then rerun with force=true")
                 cur = await c.execute("delete from seo_article_chunks where not (article_id::text = any(%s)) returning 1", (list(live),))
                 stats["deleted"] += len(await cur.fetchall())
             for a in articles:
@@ -108,7 +138,9 @@ class PgVectorIndex:
                 chunks = chunk_markdown(str(a.get("body", "")), str(a.get("title", "")))
                 cur = await c.execute("select chunk_index, content_hash, model from seo_article_chunks where article_id = %s", (a["id"],))
                 have = {r["chunk_index"]: (r["content_hash"], r["model"]) for r in await cur.fetchall()}
-                todo = [ch for ch in chunks if full or have.get(ch.index) != (ch.content_hash, self.emb.name)]
+                title = str(a.get("title", ""))
+                hashes = {ch.index: _embed_hash(title, ch.content_hash) for ch in chunks}
+                todo = [ch for ch in chunks if full or have.get(ch.index) != (hashes[ch.index], self.emb.name)]
                 stats["unchanged"] += len(chunks) - len(todo)
                 if todo:
                     # Title + heading path are embedded with the text: they carry most of the topical signal.
@@ -120,7 +152,7 @@ class PgVectorIndex:
                                on conflict (article_id, chunk_index) do update set heading_path = excluded.heading_path, anchor = excluded.anchor,
                                  content = excluded.content, content_hash = excluded.content_hash, embedding = excluded.embedding,
                                  model = excluded.model, updated_at = now()""",
-                            (a["id"], ch.index, ch.heading_path, ch.anchor, ch.content, ch.content_hash, _vec(v), self.emb.name),
+                            (a["id"], ch.index, ch.heading_path, ch.anchor, ch.content, hashes[ch.index], _vec(v), self.emb.name),
                         )
                     stats["embedded"] += len(todo)
                     metrics.REINDEX_CHUNKS.inc(len(todo))
@@ -136,13 +168,13 @@ class PgVectorIndex:
         async with self.pool.connection() as c:
             cur = await c.execute(
                 """select ch.article_id::text as article_id, p.title, '/' || p.collection || '/' || p.slug as path, ch.heading_path, ch.anchor,
-                          ch.content, 1 - (ch.embedding <=> %s::vector) as score
+                          ch.content, 1 - (ch.embedding <=> %s::vector) as score, p.category
                    from seo_article_chunks ch join post p on p.id = ch.article_id
                    where p.status = 'published' and p.deleted_at is null and (%s::text is null or ch.article_id::text <> %s)
                    order by ch.embedding <=> %s::vector limit %s""",
                 (_vec(v), exclude_article, exclude_article, _vec(v), k),
             )
-            return [Hit(r["article_id"], r["title"], r["path"], r["heading_path"], r["anchor"], r["content"], float(r["score"])) for r in await cur.fetchall()]
+            return [Hit(r["article_id"], r["title"], r["path"], r["heading_path"], r["anchor"], r["content"], float(r["score"]), r["category"] or "") for r in await cur.fetchall()]
 
     async def similar_articles(self, article_id: str, k: int = 8) -> list[tuple[str, str, float]]:
         """Article-level similarity: mean chunk embedding of the source vs every other article's chunks (best match)."""

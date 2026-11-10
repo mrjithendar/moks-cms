@@ -19,7 +19,7 @@ pytestmark = pytest.mark.postgres
 # Minimal copies of the web app tables these tests touch (the real DDL is services/www/src/db/migrations/0012, 0016).
 DDL = """
 create extension if not exists vector;
-create table post (id uuid primary key, collection text not null, slug text not null, title text not null, status text not null, deleted_at timestamptz);
+create table post (id uuid primary key, collection text not null, slug text not null, title text not null, status text not null, deleted_at timestamptz, category text not null default '');
 create table seo_drafts (id uuid primary key);
 create table seo_llm_usage (id uuid primary key default gen_random_uuid(), at timestamptz not null default now(), provider text not null, model text not null,
   purpose text not null, prompt_version text not null, mode text not null default 'sync', request_id text, input_tokens int not null default 0,
@@ -182,6 +182,27 @@ async def test_pgvector_index_reindexes_incrementally_and_retrieves_the_right_ar
     idx._version_cache = None
     assert await idx.version() != v1
     assert all(h.path != "/blog/terraform-state" for h in await idx.search("terraform state locking dynamodb", k=5))
+
+
+async def test_reindex_refuses_an_empty_article_list_unless_forced(pool) -> None:
+    if os.environ.get("SEO_AGENT_TEST_NO_VECTOR"):
+        pytest.skip("pgvector is not installed on this PostgreSQL (CI runs pgvector/pgvector:0.8.1-pg18)")
+    from app.embeddings import HashEmbeddings
+    from app.index import IndexSafetyError, PgVectorIndex
+
+    a1 = str(uuid.uuid4())
+    async with pool.connection() as c:
+        await c.execute("insert into post values (%s, 'blog', 'ingress-tls', 'Ingress and TLS on Kubernetes', 'published', null, 'kubernetes')", (a1,))
+    idx = PgVectorIndex(pool, HashEmbeddings())
+    assert await idx.ensure_schema() is True
+    art = {"id": a1, "title": "Ingress and TLS on Kubernetes", "body": "## cert-manager\n\ncert-manager renews certificates."}
+    await idx.reindex([art])
+    with pytest.raises(IndexSafetyError):
+        await idx.reindex([])  # the web app returned nothing: keep the index
+    assert (await idx.reindex([art], only={a1}))["unchanged"] == 1  # a single-article reindex never runs the guard
+    [hit] = await idx.search("cert-manager renews certificates", k=1)
+    assert hit.category == "kubernetes"
+    assert (await idx.reindex([], force=True))["deleted"] == 1  # reviewed by a person: really empty
 
 
 async def test_index_reports_unavailable_without_the_extension(pool) -> None:

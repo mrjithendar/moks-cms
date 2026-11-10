@@ -13,7 +13,7 @@
 
 1. Fastest: Admin → News desk → Settings → **Paused** (no deploy). The dispatcher and every job skip.
 2. `NEWS_DESK_ENABLED=false` in ConfigMap `seo-agent-config` (and the web app's `jithendar-com-public`), restart.
-3. Suspend the CronJobs: `kubectl --context mk4 -n jithendar patch cronjob news-dispatch -p '{"spec":{"suspend":true}}'`
+3. Suspend the CronJobs: `kubectl -n jithendar patch cronjob news-dispatch -p '{"spec":{"suspend":true}}'`
    (same for `news-train`, `news-style-review`).
 4. Code rollback: redeploy the previous image tag / `git revert` the merge; the migration is additive and can stay.
    Removing the tables is a manual, owner-approved step: `src/db/rollback/0017_news_desk.down.sql` (deletes all news

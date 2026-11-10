@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Add (or update) Google / GitHub sign-in credentials in Secret jithendar/jithendar-com-env.
-#   scripts/set-oauth-config.sh [kube-context]
+#   scripts/set-oauth-config.sh
 # Prompts for each value (secrets are read silently and never printed), writes them with a patch file
 # that only this user can read, and deletes it afterwards. Leave a prompt empty to keep the current value.
 # A provider's button appears only when both its client ID and secret are set. See docs/AUTH.md.
 set -euo pipefail
 
-CONTEXT="${1:-mk4}"
 NS="jithendar"
 SECRET="jithendar-com-env"
-kubectl --context "$CONTEXT" -n "$NS" get secret "$SECRET" >/dev/null || { echo "Secret $NS/$SECRET is missing; run scripts/create-secrets.sh first." >&2; exit 1; }
+kubectl -n "$NS" get secret "$SECRET" >/dev/null || { echo "Secret $NS/$SECRET is missing; run scripts/create-secrets.sh first." >&2; exit 1; }
 
 declare -a KEYS=()
 declare -a VALUES=()
@@ -42,6 +41,6 @@ trap 'rm -f "$patch"' EXIT
   done
   printf '}}'
 } > "$patch"
-kubectl --context "$CONTEXT" -n "$NS" patch secret "$SECRET" --type merge --patch-file "$patch" >/dev/null
+kubectl -n "$NS" patch secret "$SECRET" --type merge --patch-file "$patch" >/dev/null
 echo "Updated ${KEYS[*]} in $NS/$SECRET (values not shown)."
-echo "Restart to apply: kubectl --context $CONTEXT -n $NS rollout restart deployment/jithendar-com"
+echo "Restart to apply: kubectl -n $NS rollout restart deployment/jithendar-com"
