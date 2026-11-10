@@ -2,10 +2,16 @@ import Link from "next/link";
 import { getDb } from "@/db";
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { Badge } from "@/components/seo/badges";
+import { ApiButton } from "@/components/seo/ApiButton";
+import { BrokenLinks } from "@/components/seo/BrokenLinks";
+import { KeywordLinks } from "@/components/seo/KeywordLinks";
 import { LinkDecision } from "@/components/seo/LinkDecision";
+import { LocalTime } from "@/components/LocalTime";
 import { Empty, Section } from "@/components/seo/ui";
 import { linkSuggestions } from "@/lib/seo-intel/content";
+import { linkProblems } from "@/lib/seo-intel/broken-links";
 import { linkReport } from "@/lib/seo-intel/internal-links";
+import { listKeywords } from "@/lib/seo-intel/link-keywords";
 import { getSeoSettings } from "@/lib/seo-intel/settings";
 
 export const metadata = { title: "Internal linking" };
@@ -13,20 +19,38 @@ export const metadata = { title: "Internal linking" };
 export default async function LinksPage({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
   const sort = (await searchParams).sort ?? "inbound";
   const s = await getSeoSettings();
-  const [r, v1] = await Promise.all([linkReport(await getDb(), s), linkSuggestions()]);
+  const db = await getDb();
+  const [r, v1, keywords, problems] = await Promise.all([linkReport(db, s), linkSuggestions(), listKeywords(db), linkProblems(db)]);
   const rows = [...r.rows].sort((a, b) => (sort === "outbound" ? b.outbound - a.outbound : sort === "words" ? b.words - a.words : a.inbound - b.inbound));
   const L = s.links;
   return (
     <>
       <AdminHeader
         title="Internal linking"
-        description={`Links are proposed automatically into drafts and reviewed like any other change. Limits: ≤ ${L.maxNewPerDraft} new links per draft, total ≤ 1 per ${L.wordsPerLink} words, ≥ ${L.minWordsBetween} words apart, ≤ ${L.maxInboundPerTargetPerRun} new inbound per target per week, relevance ≥ ${L.minRelevance}. Never in headings, code, captions, the first sentence or existing links. Tune them in Settings (docs/seo/INTERNAL_LINKING.md).`}
+        description={`A weekly job adds and publishes links on its own (${s.links.auto.enabled ? `on: up to ${s.links.auto.maxArticlesPerRun} articles a week, ≤ ${s.links.auto.maxExternalPerArticle} nofollow docs links each` : "off"}); other link changes are reviewed in drafts. Limits: ≤ ${L.maxNewPerDraft} new links per draft, total ≤ 1 per ${L.wordsPerLink} words, ≥ ${L.minWordsBetween} words apart, ≤ ${L.maxInboundPerTargetPerRun} new inbound per target per week, relevance ≥ ${L.minRelevance}. Never in headings, code, captions, the first sentence or existing links. Tune them in Settings (docs/seo/INTERNAL_LINKING.md).`}
       />
       <div className="mb-6 grid gap-3 sm:grid-cols-4">
         {[["Published articles", r.rows.length], ["Orphans (no inbound)", r.orphans.length], ["Over the density cap", r.overLinked.length], ["Pending link changes", r.pending.filter((p) => p.change.decision === "pending").length]].map(([label, n]) => (
           <Card key={String(label)} className="!p-4"><p className="text-sm text-fg-subtle">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{n}</p></Card>
         ))}
       </div>
+
+      <Section title={`Broken links (${problems.broken.length})`} description={problems.lastRun ? undefined : "Not checked yet. The check runs weekly; run it now to start."}>
+        <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-fg-muted">
+          {problems.lastRun && <span>Last checked <LocalTime iso={problems.lastRun} /> · {Object.entries(problems.totals).map(([k, n]) => `${n} ${k}`).join(" · ")}</span>}
+          <ApiButton url="/api/admin/seo/broken-links/check" label="Check links now" />
+        </div>
+        {problems.broken.length ? <BrokenLinks problems={problems.broken} /> : <Empty>No broken links found.</Empty>}
+        {problems.redirected.length > 0 && (
+          <details className="mt-4"><summary className="cursor-pointer text-sm text-fg-muted">Moved links ({problems.redirected.length}): they work through a redirect; point them at the new URL</summary>
+            <div className="mt-3"><BrokenLinks problems={problems.redirected} moved /></div>
+          </details>
+        )}
+      </Section>
+
+      <Section title={`Keyword links (${keywords.length})`} description="Your keyword → URL list. The first mention of a keyword in an article links to its URL, in the weekly run and in the editor's link suggestions, within every limit on this page. External URLs are nofollow.">
+        <KeywordLinks initial={keywords} />
+      </Section>
 
       <Section title="Pending link suggestions" description="From open drafts. Accepting here is the same as accepting in the draft's review page; the article is published only when you approve its draft.">
         {r.pending.length ? (

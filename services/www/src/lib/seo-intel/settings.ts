@@ -132,6 +132,32 @@ const settingsSchema = z.object({
     minRelevance: num(0, 1),
     anchorMinWords: num(1, 6),
     anchorMaxWords: num(2, 10),
+    /**
+     * Automatic link maintenance (owner decision 2026-11-10): a weekly job plans internal links (the limits above) and
+     * official-docs external links for a few published articles and PUBLISHES them without review, through the same
+     * publish → verify → rollback path as an approved draft (docs/seo/INTERNAL_LINKING.md "Automatic publishing").
+     */
+    auto: z.object({
+      enabled: z.boolean(),
+      weekday,
+      hourUtc: hour,
+      /** Articles updated per weekly run (not aggressive: a handful at a time). */
+      maxArticlesPerRun: num(1, 50),
+      /** New external (official-docs) links per article; 0 turns external linking off. */
+      maxExternalPerArticle: num(0, 5),
+      /** An article is left alone for this many days after an automatic link update. */
+      cooldownDays: num(1, 365),
+    }),
+    /** Weekly broken-link check of every link in published posts and pages (broken-links.ts). */
+    check: z.object({
+      enabled: z.boolean(),
+      weekday,
+      hourUtc: hour,
+      /** External URLs fetched per run (the rest wait for the next run); internal links are always all checked. */
+      maxExternalPerRun: num(10, 2000),
+      /** An external URL that was fine is re-checked after this many days. */
+      recheckDays: num(1, 90),
+    }),
   }),
   /** v2 Phase 3: compliant search-engine submission (docs/seo/SUBMISSION.md). Kill switch: SEO_SUBMISSION_ENABLED. */
   submission: z.object({
@@ -196,7 +222,18 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     weekly: { enabled: true, weekday: 2, hourUtc: 4, maxArticles: 20 },
     digest: { enabled: true, weekday: 6, hourUtc: 5, recipients: [] },
   },
-  links: { enabled: true, maxNewPerDraft: 3, wordsPerLink: 250, minWordsBetween: 100, maxInboundPerTargetPerRun: 5, minRelevance: 0.12, anchorMinWords: 2, anchorMaxWords: 6 },
+  links: {
+    enabled: true,
+    maxNewPerDraft: 3,
+    wordsPerLink: 250,
+    minWordsBetween: 100,
+    maxInboundPerTargetPerRun: 5,
+    minRelevance: 0.12,
+    anchorMinWords: 2,
+    anchorMaxWords: 6,
+    auto: { enabled: true, weekday: 2, hourUtc: 9, maxArticlesPerRun: 5, maxExternalPerArticle: 2, cooldownDays: 30 },
+    check: { enabled: true, weekday: 3, hourUtc: 4, maxExternalPerRun: 400, recheckDays: 7 },
+  },
   submission: { indexNow: true, googleSitemap: true, urlInspection: true, inspectionDelayHours: 60 },
   keywords: { brandRegex: "jithendar", risingMinGrowth: 0.5, decliningPositions: 3, trackedAlertPositions: 3, classifyWithLlm: true, clusterSimilarity: 0.5 },
   llmKey: null,
@@ -224,7 +261,7 @@ function merge(stored: Stored | undefined): SeoSettings {
       weekly: { ...d.drafts.weekly, ...s.drafts?.weekly },
       digest: { ...d.drafts.digest, ...s.drafts?.digest },
     },
-    links: { ...d.links, ...s.links },
+    links: { ...d.links, ...s.links, auto: { ...d.links.auto, ...(s.links?.auto as Partial<SeoSettings["links"]["auto"]> | undefined) }, check: { ...d.links.check, ...(s.links?.check as Partial<SeoSettings["links"]["check"]> | undefined) } },
     submission: { ...d.submission, ...s.submission },
     keywords: { ...d.keywords, ...s.keywords },
     llmKey: (s.llmKey as Sealed | null | undefined) ?? null,

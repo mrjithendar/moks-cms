@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -201,7 +202,7 @@ export default async function DashboardPage() {
                     {EVENT_LABELS[e.type] ?? e.type}
                     {e.title ? `: ${e.title}` : ""}
                   </span>
-                  <span className="shrink-0 text-fg-subtle">{new Date(e.createdAt).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}</span>
+                  <span className="shrink-0 text-fg-subtle"><LocalTime iso={e.createdAt} style="date" /></span>
                 </li>
               ))}
               {!d.recent.length && <li className="text-fg-muted">No activity yet.</li>}

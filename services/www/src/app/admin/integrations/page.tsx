@@ -1,11 +1,11 @@
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Alert, Button, Field, Input, Select } from "@/components/ui/form";
 import { isProductionEnv, siteUrl } from "@/config/site";
 import { adminActor } from "@/lib/admin";
 import { callbackUrl, providerLabels, SOCIAL_PROVIDERS, type SocialProvider } from "@/lib/auth-providers";
-import { formatDateTime } from "@/lib/dates";
 import { flash } from "@/lib/flash";
 import { IMAGE_SIZES } from "@/lib/gemini";
 import { audit } from "@/lib/audit";
@@ -223,7 +223,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             <p className="mb-4 text-sm text-fg-muted">
               Create a key in <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="link">Google AI Studio → API keys</a>. Saving checks the key and model
               with a free metadata request; no image is generated.
-              {gemini.verifiedAt && <> Last verified {formatDateTime(gemini.verifiedAt)}.</>}
+              {gemini.verifiedAt && <> Last verified {<LocalTime iso={gemini.verifiedAt} />}.</>}
             </p>
             <form action={saveImageGeneration} className="grid gap-4 sm:grid-cols-2">
               <Field label="API key" htmlFor="g-key" hint={gemini.hasKey ? `Stored (${gemini.keyHint}). Leave empty to keep it.` : "Starts with AIza…"}>

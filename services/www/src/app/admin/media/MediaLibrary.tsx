@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalTime } from "@/components/LocalTime";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -32,7 +34,7 @@ export type LibraryItem = {
 type Limits = { alt: number; title: number; caption: number; description: number };
 
 const ICON: Record<string, string> = { videos: "🎬", audio: "🎧", documents: "📄" };
-const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+const when = (iso: string) => <LocalTime iso={iso} />;
 const missingAlt = (m: LibraryItem) => m.kind === "images" && !m.alt.trim();
 
 function Thumb({ item, className }: { item: LibraryItem; className: string }) {

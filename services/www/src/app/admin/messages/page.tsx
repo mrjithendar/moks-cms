@@ -1,10 +1,10 @@
 import Link from "next/link";
+import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Button } from "@/components/ui/form";
 import { adminActor } from "@/lib/admin";
 import { inbox, updateMessage } from "@/lib/contact";
-import { formatDateTime } from "@/lib/dates";
 import { flash } from "@/lib/flash";
 import { requireRole } from "@/lib/session";
 
@@ -44,7 +44,7 @@ export default async function MessagesPage({ searchParams }: { searchParams: Fla
             <details open={m.status === "new"}>
               <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-fg">{m.subject}</span>
-                <span className="flex items-center gap-2 text-sm text-slate-500"><StatusPill status={m.status} />{formatDateTime(m.createdAt.toISOString())}</span>
+                <span className="flex items-center gap-2 text-sm text-slate-500"><StatusPill status={m.status} />{<LocalTime iso={m.createdAt.toISOString()} />}</span>
               </summary>
               <p className="mt-3 text-sm text-fg-muted">From {m.name} &lt;{m.email}&gt;</p>
               <p className="mt-3 whitespace-pre-line break-words text-slate-800 dark:text-slate-200">{m.message}</p>

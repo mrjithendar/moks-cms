@@ -29,6 +29,11 @@ const CHIP: Record<string, (v: string) => string> = {
   device: (v) => `Device: ${v}`, country: (v) => `Country: ${v.toUpperCase()}`, brand: (v) => (v === "brand" ? "Brand only" : v === "non_brand" ? "Non-brand" : "All"), q: (v) => `Contains “${v}”`, tracked: () => "Tracked only",
 };
 
+/** Chip text for the active filters, formatted here: FilterChips is a Client Component and can't receive functions. */
+function chipLabels(sp: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(Object.entries(sp).flatMap(([k, v]) => (v && CHIP[k] ? [[k, CHIP[k](v)]] : [])));
+}
+
 export default async function KeywordsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const p = parseKwParams(sp);
@@ -85,7 +90,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
           <a href={`/api/admin/seo/keywords/export?${base}`} className="inline-flex min-h-9 items-center rounded-md border border-line-strong px-3 text-sm">Export CSV</a>
         </div>
       </form>
-      <Suspense><FilterChips labels={CHIP} /></Suspense>
+      <Suspense><FilterChips labels={chipLabels(sp)} /></Suspense>
 
       {table && (
         <Section title={`${table.total.toLocaleString("en")} quer${table.total === 1 ? "y" : "ies"}`} description={table.period ? `${table.period.start} – ${table.period.end}, compared with ${table.period.prevStart} – ${table.period.prevEnd}. Expected CTR uses your site's curve for ${siteBuckets} of 30 positions (the rest use a conservative default).` : undefined}>

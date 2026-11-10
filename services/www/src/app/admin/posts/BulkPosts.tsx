@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { StatusPill, td, th } from "@/components/admin/ui";
@@ -15,8 +16,9 @@ export type PostRowView = {
   status: string;
   category: string;
   author: string;
-  saved: string;
-  scheduledFor: string | null;
+  /** Rendered timestamps (LocalTime: the viewer's time zone). */
+  saved: ReactNode;
+  scheduledFor: ReactNode | null;
   cover: string | null;
 };
 

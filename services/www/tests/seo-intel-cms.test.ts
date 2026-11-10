@@ -145,6 +145,51 @@ describe("editorial calendar", () => {
     const item = (await cal.listCalendar()).all.find((i) => i.id === id)!;
     expect(item).toMatchObject({ postId, ownerName: "Admin", status: "published" }); // the linked post is already published
   });
+
+  it("creates the draft post by itself once an approved item is scheduled (never published, once only)", async () => {
+    const { draftIfScheduled } = await import("@/lib/seo-agent/orchestrate");
+    const legacy = { env: { SEO_ORCHESTRATOR: "legacy" } };
+    const unscheduled = await cal.createItem({ title: "Not scheduled yet" });
+    expect(await draftIfScheduled(unscheduled, admin, legacy)).toBeNull();
+    await cal.updateItem(unscheduled, { targetDate: "2026-11-25", targetTime: "10:00" });
+    const r = await draftIfScheduled(unscheduled, admin, legacy);
+    expect(r).toMatchObject({ orchestrator: "legacy" });
+    const [post] = await db.select().from(schema.post).where(eq(schema.post.id, r!.postId));
+    expect(post!.status).toBe("draft");
+    expect((await cal.listCalendar()).all.find((i) => i.id === unscheduled)).toMatchObject({ status: "drafting", postId: r!.postId });
+    expect(await draftIfScheduled(unscheduled, admin, legacy)).toBeNull(); // already has its post
+    // A suggestion with a date still waits for approval; approving it then drafts it.
+    const [s] = rowsOf<{ id: string }>(await db.execute(sql`insert into seo_editorial_calendar (title, status, kind, target_date, brief) values ('Suggested and dated', 'suggested', 'measured', '2026-11-26', '{}'::jsonb) returning id`));
+    expect(await draftIfScheduled(s!.id, admin, legacy)).toBeNull();
+    await cal.updateItem(s!.id, { status: "approved" });
+    expect(await draftIfScheduled(s!.id, admin, legacy)).not.toBeNull();
+  });
+
+  it("edits the details and brief in place, scheduled or not, merging the brief and validating input", async () => {
+    for (const targetDate of ["2026-11-20", undefined]) {
+      const id = await cal.createItem({ title: "Editable calendar details", targetDate, notes: "first notes" });
+      await cal.updateItem(id, cal.patchSchema.parse({ cluster: "gateway api", category: "kubernetes", brief: { audience: "platform engineers", outline: ["Why", "How"], readingTimeMinutes: 9 } }));
+      await cal.updateItem(id, cal.patchSchema.parse({ brief: { intent: "how-to" } }));
+      const item = (await cal.listCalendar()).all.find((i) => i.id === id)!;
+      expect(item).toMatchObject({ cluster: "gateway api", category: "kubernetes" });
+      expect(item.brief).toMatchObject({ audience: "platform engineers", outline: ["Why", "How"], readingTimeMinutes: 9, intent: "how-to", notes: "first notes", source: "manual" });
+      await cal.updateItem(id, cal.patchSchema.parse({ cluster: null, category: null }));
+      expect((await cal.listCalendar()).all.find((i) => i.id === id)).toMatchObject({ cluster: null, category: null });
+    }
+    // Time of day (IST) with the date; a time needs a date, and clearing the date clears the time.
+    const timed = await cal.createItem(cal.createSchema.parse({ title: "Timed calendar item", targetDate: "2026-11-21", targetTime: "09:30" }));
+    expect((await cal.listCalendar()).all.find((i) => i.id === timed)).toMatchObject({ targetDate: "2026-11-21", targetTime: "09:30" });
+    await cal.updateItem(timed, cal.patchSchema.parse({ targetTime: "18:05" }));
+    expect((await cal.listCalendar()).all.find((i) => i.id === timed)!.targetTime).toBe("18:05");
+    await cal.updateItem(timed, cal.patchSchema.parse({ targetDate: null }));
+    expect((await cal.listCalendar()).all.find((i) => i.id === timed)).toMatchObject({ targetDate: null, targetTime: null });
+    await expect(cal.updateItem(timed, cal.patchSchema.parse({ targetTime: "10:00" }))).rejects.toMatchObject({ status: 400 });
+    expect(cal.patchSchema.safeParse({ targetTime: "25:00" }).success).toBe(false);
+    expect(cal.patchSchema.safeParse({ targetTime: "9:30" }).success).toBe(false);
+    expect(cal.patchSchema.safeParse({ category: "Not A Slug" }).success).toBe(false);
+    expect(cal.patchSchema.safeParse({ brief: { source: "forged" } }).success).toBe(false);
+    expect(cal.patchSchema.safeParse({ brief: { readingTimeMinutes: 500 } }).success).toBe(false);
+  });
 });
 
 describe("no automatic publishing", () => {
@@ -181,7 +226,16 @@ describe("no automatic publishing", () => {
     // nothing else in the SEO code imports the publisher's write paths except the routes and the scheduler hook
     const importers = files.filter((f) => f !== PUBLISHER && /from "(@\/lib\/seo-intel|\.|\.\.\/seo-intel)\/publish"/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(path.resolve(import.meta.dirname, ".."), f)).sort();
     // v3: the agent's callback API (publish only via publishWithApproval) and the orchestrator (recordApproval only).
-    expect(importers).toEqual(["src/app/api/admin/seo/drafts/[id]/approve/route.ts", "src/app/api/admin/seo/drafts/[id]/rollback/route.ts", "src/lib/seo-agent/callbacks.ts", "src/lib/seo-agent/orchestrate.ts", "src/lib/seo-intel/handlers.ts"]);
+    // Owner decision 2026-11-10: the weekly auto-links job publishes rule-made LINK changes only, through
+    // autoPublishLinkDraft, which refuses any draft that isn't trigger auto_links with only rules internal/external links.
+    expect(importers).toEqual(["src/app/api/admin/seo/drafts/[id]/approve/route.ts", "src/app/api/admin/seo/drafts/[id]/rollback/route.ts", "src/lib/seo-agent/callbacks.ts", "src/lib/seo-agent/orchestrate.ts", "src/lib/seo-intel/auto-links.ts", "src/lib/seo-intel/broken-links.ts", "src/lib/seo-intel/handlers.ts"]);
+    const autoUses = [...fs.readFileSync(path.resolve(import.meta.dirname, "..", "src/lib/seo-intel/auto-links.ts"), "utf8").matchAll(/import \{([^}]*)\} from "\.\/publish"/g)].flatMap((m) => m[1]!.split(",").map((x) => x.trim()));
+    expect(autoUses).toEqual(["autoPublishLinkDraft"]);
+    // The broken-link "Fix" button: the clicking admin approves the link_fix draft (approveDraft, nothing else).
+    const fixSrc = fs.readFileSync(path.resolve(import.meta.dirname, "..", "src/lib/seo-intel/broken-links.ts"), "utf8");
+    expect([...fixSrc.matchAll(/import \{([^}]*)\} from "\.\/publish"/g)].flatMap((m) => m[1]!.split(",").map((x) => x.trim()))).toEqual(["approveDraft"]);
+    expect(fixSrc).toMatch(/export async function fixBrokenLink\(db: Db, s: SeoSettings, actor: Actor[\s\S]*?approveDraft\(draft\.id, actor\)/);
+    expect(src).toMatch(/export async function autoPublishLinkDraft[\s\S]*?trigger !== "auto_links"[\s\S]*?origin !== "rules"[\s\S]*?"internal_link"[\s\S]*?"external_link"[\s\S]*?publishDraft\(/);
     const agentUses = (f: string) => [...fs.readFileSync(path.resolve(import.meta.dirname, "..", f), "utf8").matchAll(/import \{([^}]*)\} from "\.\.\/seo-intel\/publish"/g)].flatMap((m) => m[1]!.split(",").map((x) => x.trim()));
     expect(agentUses("src/lib/seo-agent/callbacks.ts").sort()).toEqual(["publishWithApproval", "verifyOnce"]);
     expect(agentUses("src/lib/seo-agent/orchestrate.ts")).toEqual(["recordApproval"]);

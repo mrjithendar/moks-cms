@@ -1,5 +1,7 @@
 "use client";
 
+import { formatLocal } from "@/components/LocalTime";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -211,7 +213,7 @@ export function NewsReview({ draft, doc, html, news, categories, editorUrl, live
       </Dialog>
       <Dialog open={dialog === "schedule"} onClose={() => setDialog(null)} title="Schedule into a publishing slot" footer={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !slot} onClick={() => act(() => api(`/api/admin/seo/drafts/${draft.id}/approve`, "POST", { publishAt: slot }), "Scheduled.")}>Approve for this slot</Button></>}>
         {slots.length ? (
-          <Field label="Slot"><Select value={slot} onChange={(e) => setSlot(e.target.value)}>{slots.map((s) => <option key={s} value={s}>{new Date(s).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</option>)}</Select></Field>
+          <Field label="Slot"><Select value={slot} onChange={(e) => setSlot(e.target.value)}>{slots.map((s) => <option key={s} value={s}>{formatLocal(s)}</option>)}</Select></Field>
         ) : (
           <p className="text-sm text-fg-muted">This job has no publishing slots (job editor → Schedule &amp; limits).</p>
         )}

@@ -46,7 +46,7 @@ export default async function McpAccessPage() {
                 <td className={`${td} text-xs`}>{g.scopes.map((s) => <span key={s} title={SCOPES[s as keyof typeof SCOPES]} className="mr-1 inline-block rounded bg-surface-sunken px-1.5 py-0.5 font-mono">{s}</span>)}</td>
                 <td className={`${td} whitespace-nowrap text-xs`}>{fmtWhen(g.created_at)}<span className="block text-fg-subtle">{g.email}</span></td>
                 <td className={`${td} whitespace-nowrap text-xs`}>{g.last_used_at ? fmtWhen(g.last_used_at) : "never"}</td>
-                <td className={`${td} text-xs`}>{g.revoked_at ? `revoked ${fmtWhen(g.revoked_at)}` : "active"}</td>
+                <td className={`${td} text-xs`}>{g.revoked_at ? <>revoked {fmtWhen(g.revoked_at)}</> : "active"}</td>
                 <td className={td}>
                   {!g.revoked_at && (
                     <form action={revokeGrant}>

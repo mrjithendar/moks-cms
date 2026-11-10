@@ -18,7 +18,7 @@ import { z } from "zod";
  * - paragraph_add: insert `after` as new block(s) after the block (`before` is empty).
  * - schema: not produced; JSON-LD is derived from fields, so its diff is computed (see diff-model.ts).
  */
-export const CHANGE_TYPES = ["title", "meta_description", "heading", "paragraph_edit", "paragraph_add", "code_block", "internal_link", "alt_text", "schema"] as const;
+export const CHANGE_TYPES = ["title", "meta_description", "heading", "paragraph_edit", "paragraph_add", "code_block", "internal_link", "external_link", "link_fix", "alt_text", "schema"] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 /** What Claude may propose. Internal links come only from the deterministic planner (internal-links.ts). */
 export const MODEL_CHANGE_TYPES = ["title", "meta_description", "heading", "paragraph_edit", "paragraph_add", "code_block", "alt_text"] as const;
@@ -119,6 +119,17 @@ export function codeBlocksOf(body: string): { lang: string | null; value: string
   visit(parseMarkdown(body), "code", (n) => {
     out.push({ lang: n.lang ?? null, value: n.value });
   });
+  return out;
+}
+
+/**
+ * Broken-link fixes (link_fix): point every inline link / <autolink> to `oldUrl` in `md` at `newUrl`, or unwrap it to
+ * its text when `newUrl` is null (autolinks can only be replaced). Images are never touched.
+ */
+export function rewriteLink(md: string, oldUrl: string, newUrl: string | null): string {
+  const esc = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let out = md.replace(new RegExp(`(?<!!)\\[([^\\]]*)\\]\\(\\s*<?${esc}>?(\\s+"[^"]*")?\\s*\\)`, "g"), (_m, text: string, title?: string) => (newUrl ? `[${text}](${newUrl}${title ?? ""})` : text));
+  if (newUrl) out = out.replace(new RegExp(`<${esc}>`, "g"), `<${newUrl}>`);
   return out;
 }
 
@@ -271,6 +282,8 @@ export type ValidationContext = {
   /** Categories this draft works on; expansion/freshness/new_article allow larger rewrites. */
   categories: string[];
   linkLimits: { wordsPerLink: number };
+  /** external_link targets that may be added (the official-docs allowlist, external-links.ts). Empty = none. */
+  externalAllow?: ReadonlySet<string>;
 };
 
 export type ValidationResult = {
@@ -388,12 +401,16 @@ export function validateChangeSet(base: BaseSnapshot, changes: Change[], ctx: Va
     const newLinks = linksIn(after).filter((u) => !linksIn(c.before).includes(u));
     if (c.origin === "claude" && newLinks.some((u) => u.startsWith("/"))) errors.push(`${label}: internal links are added by the link planner, not in prose edits`);
     if (c.type === "internal_link" && c.target && !ctx.knownPaths.has(c.target)) errors.push(`${label}: link target ${c.target} is not a published, indexable page`);
+    // link_fix: the broken-link checker's one-click fix. target = the broken URL, sourceUrls[0] = the replacement ("" =
+    // unlink); "after" must be exactly "before" with that link rewritten, nothing else.
+    if (c.type === "link_fix" && (c.origin !== "rules" || !c.target || effectiveAfter(c) !== rewriteLink(c.before, c.target, c.sourceUrls[0] || null) || effectiveAfter(c) === c.before)) errors.push(`${label}: a link fix may only re-point or unlink the broken link`);
+    if (c.type === "external_link" && (c.origin !== "rules" || !c.target || !ctx.externalAllow?.has(c.target) || effectiveAfter(c) !== `[${c.before}](${c.target})`)) errors.push(`${label}: external links come only from the official-docs allowlist, linking the existing text`);
     const fresh = newTechnicalTokens(after, original);
     const invented = fresh.urls.filter((u) => !c.sourceUrls.includes(u));
     if (invented.length) errors.push(`${label}: introduces URLs that are neither in the article nor cited as sources: ${invented.join(", ")}`);
     if ((fresh.versions.length || fresh.commands.length) && c.sourceUrls.length === 0) {
       flag(c, "needs_fact_check", "warning", `New technical detail without a source (${[...fresh.versions, ...fresh.commands].slice(0, 5).join(", ")}): verify before accepting.`);
-    } else if (c.sourceUrls.length && c.type !== "internal_link") {
+    } else if (c.sourceUrls.length && c.type !== "internal_link" && c.type !== "external_link" && c.type !== "link_fix") {
       flag(c, "verify_source", "warning", `Cites ${c.sourceUrls.length} source(s); check they support the change.`);
     }
   }

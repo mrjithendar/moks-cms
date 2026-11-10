@@ -1,3 +1,4 @@
+import { LocalTime } from "@/components/LocalTime";
 import { eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { Container } from "@/components/Container";
@@ -30,7 +31,7 @@ export default async function AchievementsPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">{TIER[b.tier]}</p>
                 <p className="mt-1 font-semibold text-fg">{b.name}</p>
                 <p className="mt-1 text-sm text-fg-muted">{b.description}</p>
-                <p className="mt-3 text-sm text-fg">{at ? `Earned ${at.toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}` : user ? "Not yet" : ""}</p>
+                <p className="mt-3 text-sm text-fg">{at ? <>Earned <LocalTime iso={at} style="date" /></> : user ? "Not yet" : ""}</p>
               </li>
             );
           })}

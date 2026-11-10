@@ -88,6 +88,19 @@ export async function draftNewArticle(calendarId: string, actor: Actor, deps: Ag
   return { ...created, orchestrator: "crewai" as const, draftId: d.id, runId: r.run_id };
 }
 
+/**
+ * Owner decision 2026-11-10: "Create draft post" runs by itself once a calendar item is scheduled — it has a target date,
+ * is approved (or drafting) and has no post yet — whichever of approval and scheduling comes last. Same path as the
+ * button: a CMS DRAFT post (never published) and, in crewai mode, the Editorial Crew writes it up to human review.
+ * Returns null when the item isn't due a draft.
+ */
+export async function draftIfScheduled(calendarId: string, actor: Actor, deps: AgentDeps = {}) {
+  const db = await getDb();
+  const [item] = rowsOf<{ target_date: string | null; post_id: string | null; status: string }>(await db.execute(sql`select target_date, post_id, status from seo_editorial_calendar where id = ${calendarId}`));
+  if (!item || !item.target_date || item.post_id || !["approved", "drafting"].includes(item.status)) return null;
+  return draftNewArticle(calendarId, actor, deps);
+}
+
 /** "Run now" for the weekly drafts (crewai mode; the CronJob runs it on schedule). legacy → null (v2 batch). */
 export async function weekly(actor?: string, deps: AgentDeps = {}) {
   if (orchestrator(deps.env) === "legacy") return null;

@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalTime } from "@/components/LocalTime";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -63,7 +65,7 @@ export function RunLogs({ runId, initial, live }: { runId: string; initial: Log[
         {shown.length === 0 && <li className="text-fg-subtle">No log lines.</li>}
         {shown.map((l) => (
           <li key={l.id} className={TONE[l.level] ?? ""}>
-            <span className="text-fg-subtle">{new Date(l.at).toLocaleTimeString("en-GB")}</span> <span className="uppercase">{l.level.slice(0, 4)}</span> {l.step && <span className="text-fg-subtle">[{l.step}]</span>} {l.message}
+            <span className="text-fg-subtle"><LocalTime iso={l.at} style="time" /></span> <span className="uppercase">{l.level.slice(0, 4)}</span> {l.step && <span className="text-fg-subtle">[{l.step}]</span>} {l.message}
           </li>
         ))}
       </ol>

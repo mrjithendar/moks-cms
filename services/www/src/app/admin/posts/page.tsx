@@ -1,4 +1,5 @@
 import { and, count, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
 import { AdminHeader } from "@/components/admin/ui";
 import { Input, Select } from "@/components/ui/form";
@@ -6,7 +7,6 @@ import { getDb, schema } from "@/db";
 import { redirect } from "next/navigation";
 import { staffActor } from "@/lib/admin";
 import { bundledPostsNotImported, importBundledPost } from "@/lib/bundled-posts";
-import { formatDateTime } from "@/lib/dates";
 import { PostError } from "@/lib/posts";
 import { postCounts } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
@@ -131,8 +131,8 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
           status: post.status,
           category: post.category,
           author: author ?? "—",
-          saved: formatDateTime((post.deletedAt ?? post.savedAt).toISOString()),
-          scheduledFor: post.status === "scheduled" && post.publishedAt ? formatDateTime(post.publishedAt.toISOString()) : null,
+          saved: <LocalTime iso={(post.deletedAt ?? post.savedAt).toISOString()} />,
+          scheduledFor: post.status === "scheduled" && post.publishedAt ? <LocalTime iso={post.publishedAt.toISOString()} /> : null,
           cover: post.featuredImage?.src ?? null,
         }))}
       />

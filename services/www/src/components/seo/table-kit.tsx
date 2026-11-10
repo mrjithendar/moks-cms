@@ -130,8 +130,11 @@ export function SortHeader({ col, className = "" }: { col: Col; className?: stri
   );
 }
 
-/** Removable chips for the active filters (each is a link without that parameter). */
-export function FilterChips({ labels }: { labels: Record<string, (v: string) => string> }) {
+/**
+ * Removable chips for the active filters (each is a link without that parameter). `labels` maps a search parameter to
+ * its chip text, already formatted by the server page: functions can't be passed to a Client Component.
+ */
+export function FilterChips({ labels }: { labels: Record<string, string> }) {
   const sp = useSearchParams();
   const pathname = usePathname();
   const active = [...sp.entries()].filter(([k, v]) => labels[k] && v);
@@ -144,10 +147,10 @@ export function FilterChips({ labels }: { labels: Record<string, (v: string) => 
   };
   return (
     <ul aria-label="Active filters" className="mb-3 flex flex-wrap gap-2">
-      {active.map(([k, v]) => (
+      {active.map(([k]) => (
         <li key={k}>
           <Link href={without(k)} className="inline-flex min-h-8 items-center gap-1 rounded-full border border-line bg-surface-muted px-3 text-xs text-fg hover:border-line-strong">
-            {labels[k]!(v)} <span aria-hidden="true">✕</span><span className="sr-only"> remove filter</span>
+            {labels[k]} <span aria-hidden="true">✕</span><span className="sr-only"> remove filter</span>
           </Link>
         </li>
       ))}

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { schema, type Db } from "@/db";
@@ -78,6 +79,13 @@ describe("/admin/seo pages", () => {
     const rep = await generateReport("weekly", "manual", NOW);
     const ReportPage = (await import("@/app/admin/seo/reports/[id]/page")).default as (p: { params: Promise<{ id: string }> }) => Promise<React.ReactElement>;
     expect(renderToStaticMarkup(await ReportPage({ params: Promise.resolve({ id: rep.id }) }))).toContain("Organic performance");
+    // The list shows the R2 PDF once report_flow stored one (the payload pointer storeReportPdf writes).
+    const ReportsList = (await import("@/app/admin/seo/reports/page")).default as () => Promise<React.ReactElement>;
+    expect(renderToStaticMarkup(await ReportsList())).toContain("Not generated");
+    await db.execute(sql`update seo_reports set payload = payload || ${JSON.stringify({ pdf: { key: "jithendar/www/reports/seo/weekly/x.pdf", bytes: 48_000, generatedAt: NOW.toISOString(), filename: "seo-weekly-report.pdf" }, narrative: "ok" })}::jsonb where id = ${rep.id}`);
+    const list = renderToStaticMarkup(await ReportsList());
+    expect(list).toContain(`/api/admin/seo/reports/${rep.id}/pdf`);
+    expect(list).toContain("47 KB · summary checked");
   });
 });
 

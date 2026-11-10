@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalTime } from "@/components/LocalTime";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -18,7 +20,7 @@ export type ReviewProps = {
   submissions: SubmissionRow[];
 };
 
-const TYPE_LABEL: Record<string, string> = { title: "Search title", meta_description: "Meta description", heading: "Heading", paragraph_edit: "Edit", paragraph_add: "Addition", code_block: "Code block", internal_link: "Internal link", alt_text: "Alt text", schema: "Structured data" };
+const TYPE_LABEL: Record<string, string> = { title: "Search title", meta_description: "Meta description", heading: "Heading", paragraph_edit: "Edit", paragraph_add: "Addition", code_block: "Code block", internal_link: "Internal link", external_link: "Docs link (nofollow)", link_fix: "Broken link fix", alt_text: "Alt text", schema: "Structured data" };
 
 async function call(url: string, method: string, body?: unknown) {
   const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }).catch(() => null);
@@ -311,7 +313,7 @@ export function DiffReview({ draft: initial, article, base, evidence, submission
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button size="sm" variant={c.decision === "accepted" ? "primary" : "secondary"} aria-pressed={c.decision === "accepted"} loading={busy === c.id} onClick={() => decide(c, c.decision === "accepted" ? "pending" : "accepted")}>{c.decision === "accepted" ? "✓ Accepted" : "Accept"}</Button>
                     <Button size="sm" variant={c.decision === "rejected" ? "danger" : "secondary"} aria-pressed={c.decision === "rejected"} onClick={() => decide(c, c.decision === "rejected" ? "pending" : "rejected")}>{c.decision === "rejected" ? "✕ Rejected" : "Reject"}</Button>
-                    {c.type !== "internal_link" && <Button size="sm" variant="ghost" onClick={() => { setEditing(c.id); setEditText(c.edited ?? c.after); }}>Edit</Button>}
+                    {c.type !== "internal_link" && c.type !== "external_link" && c.type !== "link_fix" && <Button size="sm" variant="ghost" onClick={() => { setEditing(c.id); setEditText(c.edited ?? c.after); }}>Edit</Button>}
                     {decided && <span className="sr-only">Decided</span>}
                   </div>
                 )}
@@ -340,7 +342,7 @@ export function DiffReview({ draft: initial, article, base, evidence, submission
               <Button size="sm" disabled={!accepted || blocking.length > 0} onClick={() => setDialog("publish")}>Approve &amp; publish ({accepted})</Button>
             </div>
           )}
-          {status === "scheduled" && <p className="ml-auto text-sm text-fg">Scheduled for {initial.scheduledFor ? new Date(initial.scheduledFor).toLocaleString() : "—"} <Button size="sm" variant="ghost" onClick={() => setDialog("reject")}>Cancel &amp; reject</Button></p>}
+          {status === "scheduled" && <p className="ml-auto text-sm text-fg">Scheduled for <LocalTime iso={initial.scheduledFor} /> <Button size="sm" variant="ghost" onClick={() => setDialog("reject")}>Cancel &amp; reject</Button></p>}
         </div>
       </div>
 
@@ -376,7 +378,7 @@ function PublishedPanel({ initial, submissions, onRollback }: { initial: ReviewP
   const v = initial.verification;
   return (
     <section aria-labelledby="pub-h" className="mt-8 rounded-xl border border-line bg-surface p-4">
-      <h2 id="pub-h" className="font-semibold text-fg">{initial.status === "rolled_back" ? "Rolled back" : "Published"}{initial.decidedBy ? ` by ${initial.decidedBy}` : ""}{initial.decidedAt ? `, ${new Date(initial.decidedAt).toLocaleString()}` : ""}</h2>
+      <h2 id="pub-h" className="font-semibold text-fg">{initial.status === "rolled_back" ? "Rolled back" : "Published"}{initial.decidedBy ? ` by ${initial.decidedBy}` : ""}{initial.decidedAt ? <>, <LocalTime iso={initial.decidedAt} /></> : ""}</h2>
       <h3 className="mt-3 text-sm font-semibold text-fg">Live-page verification: {v?.state ?? "pending"}{v?.attempts ? ` (attempt ${v.attempts})` : ""}</h3>
       {v?.checks && <ul className="mt-1 grid gap-1 text-sm sm:grid-cols-2">{v.checks.map((c) => <li key={c.key} className={c.ok ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}><span aria-hidden="true">{c.ok ? "✓" : "✕"}</span> <span className="sr-only">{c.ok ? "passed" : "failed"}: </span>{c.key.replace(/_/g, " ")} — {c.detail}</li>)}</ul>}
       {v?.state === "failed" && <p className="mt-2 text-sm text-red-800 dark:text-red-200">Nothing was submitted to search engines.</p>}
@@ -384,7 +386,7 @@ function PublishedPanel({ initial, submissions, onRollback }: { initial: ReviewP
       {submissions.length ? (
         <ol className="mt-1 space-y-1 text-sm text-fg-muted">
           {submissions.map((s, i) => (
-            <li key={i}><span className="font-medium text-fg">{s.engine}</span> {s.kind} · {s.status}{s.responseCode ? ` (HTTP ${s.responseCode})` : ""} · {new Date(s.requestedAt).toLocaleString()}{s.error ? ` — ${s.error}` : ""}{s.inspection ? ` — Google's last-known state: ${s.inspection.coverageState ?? s.inspection.verdict ?? "unknown"}${s.inspection.lastCrawlTime ? `, last crawled ${s.inspection.lastCrawlTime.slice(0, 10)}` : ""}` : ""}</li>
+            <li key={i}><span className="font-medium text-fg">{s.engine}</span> {s.kind} · {s.status}{s.responseCode ? ` (HTTP ${s.responseCode})` : ""} · <LocalTime iso={s.requestedAt} />{s.error ? ` — ${s.error}` : ""}{s.inspection ? ` — Google's last-known state: ${s.inspection.coverageState ?? s.inspection.verdict ?? "unknown"}${s.inspection.lastCrawlTime ? `, last crawled ${s.inspection.lastCrawlTime.slice(0, 10)}` : ""}` : ""}</li>
           ))}
         </ol>
       ) : <p className="mt-1 text-sm text-fg-subtle">Nothing submitted yet{v?.state === "passed" ? "" : " (waits for verification)"}.</p>}

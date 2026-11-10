@@ -7,7 +7,7 @@ import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
 
 export const metadata = { title: "Review queue" };
 
-const TYPES = [["", "All types"], ["paragraph_edit", "Edits"], ["paragraph_add", "Additions"], ["heading", "Headings"], ["internal_link", "Links"], ["title", "Titles"], ["meta_description", "Meta"], ["alt_text", "Alt text"]] as const;
+const TYPES = [["", "All types"], ["paragraph_edit", "Edits"], ["paragraph_add", "Additions"], ["heading", "Headings"], ["internal_link", "Links"], ["external_link", "Docs links"], ["title", "Titles"], ["meta_description", "Meta"], ["alt_text", "Alt text"]] as const;
 
 export default async function ReviewPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;

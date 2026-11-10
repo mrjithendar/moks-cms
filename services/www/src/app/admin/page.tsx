@@ -1,9 +1,9 @@
 import Link from "next/link";
+import { LocalTime } from "@/components/LocalTime";
 import type { ReactNode } from "react";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { buttonClass } from "@/components/ui/form";
 import { dashboardData } from "@/lib/dashboard";
-import { formatDateTime } from "@/lib/dates";
 import { requireRole } from "@/lib/session";
 
 export const metadata = { title: "Dashboard" };
@@ -116,7 +116,7 @@ export default async function AdminDashboard() {
               {d.myDrafts.map((x) => (
                 <li key={x.id} className="flex items-center justify-between gap-3 py-2.5">
                   <Link href={`/admin/posts/${x.id}`} className="min-w-0 truncate font-medium text-fg hover:underline">{x.title || "Untitled"}</Link>
-                  <span className="flex shrink-0 items-center gap-2 text-xs text-fg-subtle"><StatusPill status={x.status} /> {formatDateTime(x.savedAt.toISOString())}</span>
+                  <span className="flex shrink-0 items-center gap-2 text-xs text-fg-subtle"><StatusPill status={x.status} /> {<LocalTime iso={x.savedAt.toISOString()} />}</span>
                 </li>
               ))}
             </ul>
@@ -131,7 +131,7 @@ export default async function AdminDashboard() {
               {d.upcoming.map((x) => (
                 <li key={x.id} className="flex items-center justify-between gap-3 py-2.5">
                   <Link href={`/admin/posts/${x.id}`} className="min-w-0 truncate font-medium text-fg hover:underline">{x.title}</Link>
-                  <span className="shrink-0 text-xs text-fg-subtle">{x.publishedAt ? formatDateTime(x.publishedAt.toISOString()) : "—"}</span>
+                  <span className="shrink-0 text-xs text-fg-subtle">{x.publishedAt ? <LocalTime iso={x.publishedAt.toISOString()} /> : "—"}</span>
                 </li>
               ))}
             </ul>
@@ -147,7 +147,7 @@ export default async function AdminDashboard() {
                 <li key={x.id} className="flex items-center justify-between gap-3 py-2.5">
                   <span className="min-w-0">
                     <Link href={`/admin/posts/${x.id}`} className="block truncate font-medium text-fg hover:underline">{x.title}</Link>
-                    <span className="text-xs text-fg-subtle">{x.publishedAt ? formatDateTime(x.publishedAt.toISOString()) : ""} · {x.comments} comment(s)</span>
+                    <span className="text-xs text-fg-subtle">{x.publishedAt ? <LocalTime iso={x.publishedAt.toISOString()} /> : ""} · {x.comments} comment(s)</span>
                   </span>
                   <a href={`/${x.collection}/${x.slug}`} target="_blank" rel="noopener" className="shrink-0 text-xs underline">View</a>
                 </li>
@@ -181,7 +181,7 @@ export default async function AdminDashboard() {
                 <li key={h.label} className="flex items-center justify-between gap-3 py-2.5">
                   <Link href={h.href} className="font-medium text-fg hover:underline">{h.label}</Link>
                   <span className="flex min-w-0 items-center gap-2 text-xs text-fg-subtle">
-                    <span className="truncate">{h.detail}{"at" in h && h.at ? ` · ${formatDateTime(h.at)}` : ""}</span>
+                    <span className="truncate">{h.detail}{"at" in h && h.at ? <> · <LocalTime iso={h.at} /></> : ""}</span>
                     <StatusPill status={h.ok ? "ok" : "not configured"} />
                   </span>
                 </li>
@@ -198,7 +198,7 @@ export default async function AdminDashboard() {
                   <span className="min-w-0">
                     <span className="font-mono text-xs text-accent-text">{e.action}</span> <span className="text-fg-muted [overflow-wrap:anywhere]">{e.target}</span>
                   </span>
-                  <span className="text-xs text-fg-subtle">{e.actor} · {formatDateTime(e.createdAt.toISOString())}</span>
+                  <span className="text-xs text-fg-subtle">{e.actor} · {<LocalTime iso={e.createdAt.toISOString()} />}</span>
                 </li>
               ))}
             </ul>

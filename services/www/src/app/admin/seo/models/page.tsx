@@ -113,8 +113,8 @@ export default async function ModelsPage() {
                   <dt className="text-fg-subtle">Trained</dt><dd>{fmtWhen(m.latest.trainedAt)}</dd>
                   <dt className="text-fg-subtle">Data size</dt><dd>{m.latest.nSamples}</dd>
                   <dt className="text-fg-subtle">Status</dt><dd>{m.latest.status.replace(/_/g, " ")}{m.latest.beatsRule ? " · beats the rule" : ""}</dd>
-                  <dt className="text-fg-subtle">Output</dt><dd>{m.outputAt ? `${fmtWhen(m.outputAt)}${m.stale ? " (stale)" : ""}` : m.kind === "priority" ? "proposals only" : "none"}</dd>
-                  <dt className="text-fg-subtle">Reviewed</dt><dd>{m.latest.reviewedBy ? `${m.latest.reviewedBy}, ${fmtWhen(m.latest.reviewedAt)}` : "—"}</dd>
+                  <dt className="text-fg-subtle">Output</dt><dd>{m.outputAt ? <>{fmtWhen(m.outputAt)}{m.stale ? " (stale)" : ""}</> : m.kind === "priority" ? "proposals only" : "none"}</dd>
+                  <dt className="text-fg-subtle">Reviewed</dt><dd>{m.latest.reviewedBy ? <>{m.latest.reviewedBy}, {fmtWhen(m.latest.reviewedAt)}</> : "—"}</dd>
                 </dl>
                 {m.latest.notes && <p className="mt-2 text-sm text-fg-muted">{m.latest.notes}</p>}
                 <Comparison m={m} />

@@ -116,9 +116,11 @@ export async function validationContext(db: Db, s: SeoSettings, articleId: strin
   const rows = rowsOf<{ id: string; title: string; seo_title: string | null; path: string }>(
     await db.execute(sql`select id, title, seo_title, '/' || collection || '/' || slug as path from post where deleted_at is null and status = 'published' and noindex = false and (canonical_url is null or canonical_url = '')`),
   );
+  // Site pages (/about, policies) are valid link targets too (keyword links can point at them).
+  const pages = rowsOf<{ path: string }>(await db.execute(sql`select '/' || slug as path from page where deleted_at is null and noindex = false`));
   return {
     otherTitles: new Set(rows.filter((r) => r.id !== articleId).map((r) => (r.seo_title?.trim() || r.title).trim().toLowerCase())),
-    knownPaths: new Set(rows.filter((r) => r.id !== articleId).map((r) => r.path)),
+    knownPaths: new Set([...rows.filter((r) => r.id !== articleId).map((r) => r.path), ...pages.map((p) => p.path)]),
     maxRewriteRatio: s.drafts.maxRewriteRatio,
     categories,
     linkLimits: { wordsPerLink: s.links.wordsPerLink },

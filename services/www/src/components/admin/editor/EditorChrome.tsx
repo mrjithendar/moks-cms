@@ -1,5 +1,7 @@
 "use client";
 
+import { formatLocal, LocalTime } from "@/components/LocalTime";
+
 import { useEffect, useState, type ReactNode } from "react";
 import { createPreviewAction } from "@/app/admin/_actions/shared";
 import { Button } from "@/components/ui/form";
@@ -73,7 +75,7 @@ export function SaveIndicator({ state, dirty, status }: { state: SaveState; dirt
     text = state.message;
     tone = "text-red-600";
   } else if (dirty) {
-    text = state.kind === "autosaved" ? `Unsaved changes (autosaved ${new Date(state.at).toLocaleTimeString()})` : "Unsaved changes";
+    text = state.kind === "autosaved" ? `Unsaved changes (autosaved ${formatLocal(new Date(state.at).toISOString(), "time")})` : "Unsaved changes";
     tone = "text-amber-700 dark:text-amber-300";
   } else text = state.kind === "saved" && state.message ? state.message : `Saved · ${status}`;
   return (
@@ -144,7 +146,7 @@ export function RevisionsPanel({ list, load, preview, kind }: { list: () => Prom
             v{r.version} · {r.reason}
           </p>
           <p className="text-slate-500">
-            {new Date(r.createdAt).toLocaleString()} · {r.author ?? "system"}
+            <LocalTime iso={r.createdAt} /> · {r.author ?? "system"}
           </p>
           <div className="mt-1 flex gap-3">
             <button type="button" className="font-semibold underline" onClick={() => open(r.id)}>Preview</button>

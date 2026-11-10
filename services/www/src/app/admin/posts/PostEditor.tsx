@@ -1,5 +1,8 @@
 "use client";
 
+import { formatLocal, LocalTime } from "@/components/LocalTime";
+import { LinkSuggestions } from "@/components/seo/LinkSuggestions";
+
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -274,7 +277,7 @@ export function PostEditor({
           <Button type="button" variant="secondary" onClick={() => setPreview(true)}>Preview</Button>
           {!isLive && <Button type="button" variant="secondary" onClick={() => commit("save")} disabled={state.kind === "saving"}>{isScheduled ? "Save" : "Save draft"}</Button>}
           <Button type="button" onClick={() => {
-            if (primaryIntent === "publish" && futureDate && !window.confirm(`Schedule this post to publish on ${new Date(v.publishedAt!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST?`)) return;
+            if (primaryIntent === "publish" && futureDate && !window.confirm(`Schedule this post to publish on ${formatLocal(new Date(v.publishedAt!).toISOString())}?`)) return;
             void commit(primaryIntent);
           }} disabled={state.kind === "saving"}>{primary}</Button>
           <Button type="button" variant="ghost" onClick={() => setSidebar((s) => !s)} aria-expanded={sidebar} aria-controls="post-settings" className="xl:hidden">Settings</Button>
@@ -285,7 +288,7 @@ export function PostEditor({
         <div className="min-w-0 space-y-4">
           {recovery && (
             <Alert tone="info">
-              You have autosaved changes from {new Date(recovery.savedAt).toLocaleString()}{recovery.baseVersion < version ? ", based on an older version of this post" : ""}.{" "}
+              You have autosaved changes from <LocalTime iso={recovery.savedAt} />{recovery.baseVersion < version ? ", based on an older version of this post" : ""}.{" "}
               <button type="button" className="font-semibold underline" onClick={() => { load(recovery.value); setRecovery(null); }}>Restore them</button>{" · "}
               <button type="button" className="underline" onClick={() => { if (id) void discardAutosaveAction(id); setRecovery(null); }}>Discard</button>
             </Alert>
@@ -299,7 +302,7 @@ export function PostEditor({
           )}
           {conflict && (
             <Alert>
-              Someone saved a newer version at {new Date(conflict.savedAt).toLocaleString()}.{" "}
+              Someone saved a newer version at <LocalTime iso={conflict.savedAt} />.{" "}
               <button type="button" className="font-semibold underline" onClick={loadLatest}>Load the latest version</button>{" · "}
               <button type="button" className="underline" onClick={() => window.confirm("Replace the newer version with yours? It stays in the revision history.") && commit(isLive ? "save" : "save", conflict.version)}>Overwrite with mine</button>
             </Alert>
@@ -342,7 +345,7 @@ export function PostEditor({
           </div>
 
           <Panel title="Status & publishing" open>
-            <p className="text-sm">Status: <strong className="capitalize">{committed.status}</strong>{isScheduled && committed.publishedAt ? ` for ${new Date(committed.publishedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST` : ""}</p>
+            <p className="text-sm">Status: <strong className="capitalize">{committed.status}</strong>{isScheduled && committed.publishedAt ? <> for <LocalTime iso={committed.publishedAt} /></> : ""}</p>
             <Field label="Publish date & time (India Standard Time)" htmlFor="publishedAt" hint="Leave empty to publish now. A future time schedules the post; the server publishes it at that time.">
               <Input id="publishedAt" type="datetime-local" value={isoToIstInput(v.publishedAt)} onChange={(e) => set("publishedAt", istInputToIso(e.target.value))} />
             </Field>
@@ -360,11 +363,17 @@ export function PostEditor({
                 <span>Substantive update (shows “Updated” with the current time — do not use for typo fixes)</span>
               </label>
             )}
-            {v.updatedAt && <p className="text-xs text-slate-500">Last substantive update: {new Date(v.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</p>}
+            {v.updatedAt && <p className="text-xs text-slate-500">Last substantive update: <LocalTime iso={v.updatedAt} /></p>}
             {(isLive || isScheduled) && <Button type="button" variant="ghost" onClick={() => window.confirm("Switch to draft? The post is removed from the site.") && commit("unpublish")}>Switch to draft</Button>}
             {isLive && <Link href={publicPath} target="_blank" className="block text-sm font-semibold underline">View post ↗</Link>}
             <p className="text-xs text-slate-500">Author: {authorName}</p>
           </Panel>
+
+          {id && (
+            <Panel title="Link suggestions">
+              <LinkSuggestions postId={id} body={v.body} onApply={(next) => { set("body", next); setEditorKey((k) => k + 1); }} />
+            </Panel>
+          )}
 
           <Panel title="Featured image" open>
             <CoverImagePicker value={v.featuredImage} onChange={(img) => set("featuredImage", img)} context={context} generate={{ ...imageGeneration, title: v.title, summary: v.description }} />

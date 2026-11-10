@@ -1,5 +1,7 @@
 "use client";
 
+import { LocalTime } from "@/components/LocalTime";
+
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -143,14 +145,14 @@ export function PageEditor({
           )}
           {recovery && (
             <Alert tone="info">
-              You have autosaved changes from {new Date(recovery.savedAt).toLocaleString()}.{" "}
+              You have autosaved changes from <LocalTime iso={recovery.savedAt} />.{" "}
               <button type="button" className="font-semibold underline" onClick={() => { load(recovery.value); setRecovery(null); }}>Restore them</button>{" · "}
               <button type="button" className="underline" onClick={() => { if (originalSlug) void discardPageAutosaveAction(originalSlug); setRecovery(null); }}>Discard</button>
             </Alert>
           )}
           {conflict && (
             <Alert>
-              Someone saved a newer version at {new Date(conflict.savedAt).toLocaleString()}.{" "}
+              Someone saved a newer version at <LocalTime iso={conflict.savedAt} />.{" "}
               <button type="button" className="font-semibold underline" onClick={() => router.refresh()}>Reload</button>{" · "}
               <button type="button" className="underline" onClick={() => window.confirm("Replace the newer version with yours? It stays in the revision history.") && save(conflict.version)}>Overwrite with mine</button>
             </Alert>
