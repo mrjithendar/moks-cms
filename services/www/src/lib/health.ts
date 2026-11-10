@@ -24,6 +24,20 @@ async function timed(name: string, fn: () => Promise<Omit<Check, "name" | "ms">>
   }
 }
 
+/**
+ * Redis is optional. The site has run without it since 2026-11-09 (no REDIS_URL): Better Auth sessions and rate
+ * limits live in Postgres and caches are per pod. An unset REDIS_URL is therefore the normal, healthy setup, not a
+ * missing setting. Only a Redis that is configured but unreachable is a problem (the site still falls back to Postgres).
+ */
+export async function redisCheck(env: Record<string, string | undefined> = process.env, connect: typeof getRedis = getRedis): Promise<Omit<Check, "name" | "ms">> {
+  if (!env.REDIS_URL?.trim()) return { status: "ok", detail: "Not used (by design): sessions and rate limits are in Postgres, caches are per pod. Set REDIS_URL only to share caches across pods." };
+  const redis = await connect();
+  if (!redis) return { status: "degraded", detail: "REDIS_URL is set but Redis is unreachable; falling back to Postgres and per-pod caches" };
+  await redis.ping();
+  const used = (await redis.info("memory")).match(/used_memory_human:(\S+)/)?.[1];
+  return { status: "ok", detail: `PONG · ${used ?? "?"} used` };
+}
+
 async function reachable(url: string): Promise<Omit<Check, "name" | "ms">> {
   const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(TIMEOUT), redirect: "manual" });
   return { status: res.status < 500 ? "ok" : "degraded", detail: `HTTP ${res.status}` };
@@ -62,14 +76,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
       const [m] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from schema_migrations`));
       return { status: "ok", detail: `v${r?.version} · ${r?.size} · ${r?.conns} connections · ${m?.n} migrations` };
     }),
-    timed("Redis", async () => {
-      if (!process.env.REDIS_URL) return { status: "not configured", detail: "REDIS_URL not set; using Postgres and per-pod caches" };
-      const redis = await getRedis();
-      if (!redis) return { status: "down", detail: "configured but unreachable; falling back to Postgres" };
-      await redis.ping();
-      const used = (await redis.info("memory")).match(/used_memory_human:(\S+)/)?.[1];
-      return { status: "ok", detail: `PONG · ${used ?? "?"} used` };
-    }),
+    timed("Redis (optional)", () => redisCheck()),
     timed("Media storage (Cloudflare R2)", checkStorage),
     timed("Scheduled publishing & IndexNow", async () => {
       const db = await getDb();
