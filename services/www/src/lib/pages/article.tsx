@@ -108,6 +108,8 @@ export async function ArticleView({
   const neighbours = article.preview ? null : await seriesNeighbours(article);
   const cats = await getCategoryMap();
   const category = cats.get(fm.category);
+  // News desk expiry policy (per job, optional): never deletes; shows a notice with a link to newer coverage.
+  const expiry = collection === "news" && article.id && !article.preview ? await (await import("@/lib/news/corrections")).newsExpiry(article.id) : null;
   const crumbs = [
     { name: "Home", path: "/" },
     { name: collectionLabels[collection], path: `/${collection}` },
@@ -185,6 +187,21 @@ export async function ArticleView({
                   editorial policy
                 </Link>{" "}
                 for how sponsored content is handled.
+              </p>
+            )}
+            {expiry && (
+              <p role="note" className="mb-8 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                This news may be outdated.{" "}
+                {expiry.newer ? (
+                  <>
+                    Newer coverage:{" "}
+                    <Link href={expiry.newer.path} className="font-medium underline">
+                      {expiry.newer.title}
+                    </Link>
+                  </>
+                ) : (
+                  "Check the sources below for the latest information."
+                )}
               </p>
             )}
             {fm.contentType === "curated" && (

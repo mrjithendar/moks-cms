@@ -382,7 +382,9 @@ async function publishNewArticle(db: Db, draftId: string, actor: Actor, now: Dat
   const claimed = rowsOf<{ id: string }>(await db.execute(sql`update seo_drafts set status = 'publishing', updated_at = now() where id = ${draftId} and status in ('ready_for_review', 'scheduled') returning id`));
   if (!claimed.length) throw new DraftError("This draft is already being published.", 409);
   const slugFree = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from post where collection = ${d.collection} and slug = ${doc.slug_suggestion} and id <> ${d.article_id}`))[0]?.n === 0;
-  const patch: Record<string, unknown> = { title: doc.title, description: doc.meta_description, seoDescription: doc.meta_description, body: doc.body_mdx, status: "published", publishedAt: toIsoOffset(now) };
+  const { newsPublishPatch, onNewsPublished } = await import("../news/publishing");
+  // News desk drafts also carry their reviewed category, tags, sources and cover (docs/news/DECISIONS.md N-06).
+  const patch: Record<string, unknown> = { ...(await newsPublishPatch(db, doc)), title: doc.title, description: doc.meta_description, seoDescription: doc.meta_description, body: doc.body_mdx, status: "published", publishedAt: toIsoOffset(now) };
   if (slugFree && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(doc.slug_suggestion)) patch.slug = doc.slug_suggestion;
   let row;
   try {
@@ -395,6 +397,7 @@ async function publishNewArticle(db: Db, draftId: string, actor: Actor, now: Dat
   await db.execute(sql`update seo_drafts set status = 'published', published_version = ${row.version}, previous_version = ${d.base_version}, substantive = true, decided_by = ${actor.label}, decided_by_id = ${actor.id}, decided_at = now(), verification = ${JSON.stringify({ state: "pending", attempts: 0 })}::jsonb, updated_at = now() where id = ${draftId}`);
   if (d.calendar_id) await db.execute(sql`update seo_editorial_calendar set status = 'published', updated_at = now() where id = ${String(d.calendar_id)}`);
   await audit(actor, "seo.draft.publish_new", d.article_id, { draftId, version: row.version, slug: row.slug });
+  await onNewsPublished(db, draftId, actor, doc.body_mdx).catch((e) => log.warn("news publish bookkeeping failed", { err: e, operation: "news_publish" }));
   revalidate(`/${row.collection}/${row.slug}`);
   log.info("seo new article published", { operation: "seo_publish", outcome: "published" });
   return { status: "published" as const, version: row.version, substantive: true };

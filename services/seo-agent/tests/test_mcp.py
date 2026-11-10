@@ -79,7 +79,7 @@ async def test_tool_registries_and_schemas(llm, web) -> None:
         assert {p.name for p in (await s.list_prompts()).prompts} == {"triage_review_queue", "weekly_seo_briefing", "investigate_drop"}
         for name, t in tools.items():
             assert t.annotations is not None and t.annotations.destructiveHint is False, name
-            assert t.annotations.readOnlyHint is (name not in ("kickoff_flow", "reject_draft", "add_review_note")), name
+            assert t.annotations.readOnlyHint is (name not in ("kickoff_flow", "reject_draft", "add_review_note", "kickoff_news_job", "reject_news_draft")), name
 
 
 def test_no_mcp_tool_can_approve_publish_rollback_or_submit() -> None:

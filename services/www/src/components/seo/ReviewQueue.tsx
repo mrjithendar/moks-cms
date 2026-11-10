@@ -28,6 +28,8 @@ export type QueueItem = {
   inBatch: boolean;
   /** v3: "new_article" drafts come from the editorial crew. */
   kind?: string;
+  /** News desk drafts: job, selection score, age (news gets stale). */
+  news?: { job: string; score: number | null; mode: string; ageHours: number } | null;
   /** The latest CrewAI flow run for this draft (status + current step), from seo_flow_runs. */
   agent?: { status: string; node: string | null; outcome: string | null } | null;
 };
@@ -96,7 +98,15 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
                   <p className="mt-0.5 truncate text-xs text-fg-subtle">{i.path}</p>
                   {i.evidence[0] && <p className="mt-1 line-clamp-2 text-sm text-fg-muted">{i.evidence[0]}</p>}
                   {i.status === "generation_failed" && i.failureReason && <p className="mt-1 text-sm text-red-700 dark:text-red-300">{i.failureReason}</p>}
-                  {(i.kind === "new_article" || i.agent) && (
+                  {i.news && (
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-fg-subtle">
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-900 dark:bg-sky-400/15 dark:text-sky-200">News</span>
+                      <span>{i.news.job}{i.news.mode === "digest" ? " · digest" : ""}</span>
+                      {i.news.score !== null && <span className="tabular-nums">· score {i.news.score.toFixed(2)}</span>}
+                      <span className={i.news.ageHours >= 48 ? "font-medium text-amber-800 dark:text-amber-200" : ""}>· {i.news.ageHours < 1 ? "just now" : i.news.ageHours < 48 ? `${i.news.ageHours} h old` : `${Math.round(i.news.ageHours / 24)} days old: may be stale`}</span>
+                    </p>
+                  )}
+                  {(i.kind === "new_article" || i.agent) && !i.news && (
                     <p className="mt-1 text-xs text-fg-subtle">
                       {i.kind === "new_article" ? "New article (editorial crew)" : "Optimization crew"}
                       {i.agent ? ` · ${i.agent.outcome === "draft_ready" ? "waiting for your review" : i.agent.status === "running" || i.agent.status === "queued" ? `working${i.agent.node ? ` (${i.agent.node.replace(/_/g, " ")})` : ""}` : (i.agent.outcome ?? i.agent.status).replace(/_/g, " ")}` : ""}
