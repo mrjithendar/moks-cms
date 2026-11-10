@@ -47,7 +47,7 @@ export async function articlePanel(id: string, now = new Date()) {
   const sessions = Number(ga?.sessions ?? 0);
   const gscTotals = queries.length || gscTrend.length ? data.pages.get(article.url)?.cur ?? null : null;
   return {
-    article: { id: article.id, title: article.title, path: article.path, url: article.url, status: article.status, category: article.category, tags: article.tags, contentType: article.contentType, seoTitle: article.seoTitle, seoDescription: article.seoDescription, description: article.description, publishedAt: article.publishedAt?.toISOString() ?? null, updatedAt: article.updatedAt?.toISOString() ?? null, noindex: article.noindex, canonicalUrl: article.canonicalUrl, featuredImage: article.featuredImage },
+    article: { id: article.id, body: article.body, title: article.title, path: article.path, url: article.url, status: article.status, category: article.category, tags: article.tags, contentType: article.contentType, seoTitle: article.seoTitle, seoDescription: article.seoDescription, description: article.description, publishedAt: article.publishedAt?.toISOString() ?? null, updatedAt: article.updatedAt?.toISOString() ?? null, noindex: article.noindex, canonicalUrl: article.canonicalUrl, featuredImage: article.featuredImage },
     period: { start, end },
     gsc: gscTotals,
     gscTrend,

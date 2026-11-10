@@ -151,7 +151,7 @@ was needed). Decisions D-21 … in DECISIONS.md.
 | 2 Review & approve (mobile-first) | done (mock-tested; live publish verified only against local fakes) |
 | 3 Search-engine submission | done (mock-tested; live IndexNow/Google need production + credentials) |
 | 4 Automated internal linking | done (unit + DB-tested; uses real corpus once posts are in Postgres) |
-| 5 Content optimization popovers | pending |
+| 5 Content optimization popovers | done (unit + DOM-tested) |
 | 6 Keyword opportunities | pending |
 | 7 UI/UX overhaul | pending |
 | 8 Tests, docs, PR | pending |
@@ -240,3 +240,27 @@ was needed). Decisions D-21 … in DECISIONS.md.
   skip-at-cap, forbidden zones (headings/code/captions/first sentence/existing links), spacing, inbound cap per week,
   2–6-word existing anchors, no repeated exact anchor, orphan/prerequisite/series priority, threshold, graph; plus DB
   integration: links-only draft → validate → approve → links in the published body; no re-linking.
+
+## v2 Phase 5 notes
+
+- `issue-details.ts` (pure): every finding located (heading path · line · element/field), with one-line why / how to
+  fix and the draft category Claude may use; counts are located issues, so a number and its popover always agree;
+  score breakdown = 100 − 15/error − 7/warning − 2/notice (the v1 audit formula).
+- `GET /api/admin/seo/content/{id}/details?metric=…&run={contentHash}`: lazy; cached privately per audit run.
+- `Popover.tsx`: no Popover/HoverCard existed in the repo, so a small accessible one — mouse hover (delay, mouse only)
+  and keyboard focus → tooltip with `aria-describedby`; click/tap/Enter → non-modal dialog with focus trap; Esc closes
+  both and returns focus. `MetricCell.tsx`: ≤ 5 issues + "View all N", jump-to-line links, "Fix with Claude" (creates or
+  extends the draft via `POST /drafts` with `extra` tasks; never edits).
+- Content optimization page: Articles/News tabs, sticky-header table on desktop, cards on phones, every count
+  interactive. Article panel: `#issues` (all located issues) and a line-numbered body that highlights `?line=N#LN`.
+- Tests: `tests/seo-v2-popover.test.tsx` (8): counts ≡ list lengths, locations/why/fix, score arithmetic ≡ audit score;
+  DOM: focus → tooltip + describedby + Esc, mouse-only hover delay, tap → dialog + focus trap + focus return, lazy
+  fetch once per run, ≤ 5 + View all, Fix with Claude payload, zero is plain text.
+
+## Environment issue found during v2 (needs the owner)
+
+Files named `<name> 2.<ext>` keep appearing in the working tree during this session (55 + 39 so far), all byte-identical
+to v1 files and carrying v1-era timestamps — the signature of a cloud-sync conflict copier (e.g. iCloud "Desktop &
+Documents" syncing `~/Desktop/Work`). The first batch was accidentally included in the Phase 4 commit and removed by
+amending it (before any push). Every batch was verified identical to a committed version and **moved**, not deleted,
+to the session scratchpad. Recommendation: keep this repository outside a synced folder.

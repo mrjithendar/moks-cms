@@ -11,11 +11,14 @@ import { articlePanel } from "@/lib/seo-intel/article-panel";
 import { openDraft } from "@/lib/seo-intel/drafts";
 import { UUID } from "@/lib/seo-intel/http";
 import { listSubmissions, timelineSummary } from "@/lib/seo-intel/submission";
+import { issuesFor } from "@/lib/seo-intel/issue-details";
+import { SeverityBadge } from "@/components/seo/badges";
 
 export const metadata = { title: "Article SEO" };
 
-export default async function ArticleSeoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ArticleSeoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ line?: string }> }) {
   const { id } = await params;
+  const focusLine = Number((await searchParams)?.line) || null;
   if (!UUID.test(id)) notFound();
   const p = await articlePanel(id);
   if (!p) notFound();
@@ -113,6 +116,24 @@ export default async function ArticleSeoPage({ params }: { params: Promise<{ id:
             <li key={i} className="flex gap-2 text-sm"><StatusPill status={f.severity === "error" ? "critical" : f.severity === "warning" ? "warning" : "info"} /><span>{f.message}{f.source && <> (<a className="underline" href={f.source} rel="noreferrer noopener" target="_blank">source</a>)</>}{Array.isArray(f.detail?.links) && <span className="block text-xs text-fg-subtle">{(f.detail!.links as string[]).join(", ")}</span>}{Array.isArray(f.detail?.images) && <span className="block text-xs text-fg-subtle">{(f.detail!.images as string[]).join(", ")}</span>}</span></li>
           ))}</ul>
         ) : <Empty>No findings.</Empty>}
+      </Section>
+      <Section id="issues" title="All located issues" description="Each issue with where it is. Line links jump to the body below and highlight the line.">
+        {(() => {
+          const issues = issuesFor("errors", p.audit, a.body).concat(issuesFor("warnings", p.audit, a.body), issuesFor("notices", p.audit, a.body));
+          return issues.length ? (
+            <ul className="space-y-2 text-sm">{issues.map((i, k) => <li key={k} className="flex flex-wrap items-start gap-2"><SeverityBadge severity={i.severity} /><span className="min-w-0 flex-1"><span className="font-medium text-fg">{i.check.replace(/_/g, " ")}</span> — {i.line ? <a className="underline" href={`?line=${i.line}#L${i.line}`}>{i.location}</a> : i.location}<span className="block text-xs text-fg-subtle">{i.fix}</span></span></li>)}</ul>
+          ) : <Empty>No issues.</Empty>;
+        })()}
+      </Section>
+      <Section id="body" title="Body (line numbers)" description="Read-only. The highlighted line is the one the issue refers to; edit it in the editor or with a draft.">
+        <details open={Boolean(focusLine)} className="rounded-xl border border-line bg-surface">
+          <summary className="cursor-pointer px-4 py-2 text-sm text-fg-muted">Show {a.body.split("\n").length} lines</summary>
+          <ol className="max-h-[32rem] overflow-auto border-t border-line py-2 font-mono text-xs leading-5">
+            {a.body.split("\n").map((l, i) => (
+              <li key={i} id={`L${i + 1}`} className={`scroll-mt-24 whitespace-pre-wrap px-4 [overflow-wrap:anywhere] target:bg-amber-100 dark:target:bg-amber-500/20 ${focusLine === i + 1 ? "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-500/20" : ""}`}><span aria-hidden="true" className="mr-3 inline-block w-8 select-none text-right text-fg-subtle">{i + 1}</span>{l || " "}</li>
+            ))}
+          </ol>
+        </details>
       </Section>
       <Section title="Heading outline">
         {p.audit.headings.length ? <ol className="space-y-0.5 text-sm">{p.audit.headings.map((h, i) => <li key={i} style={{ paddingLeft: `${(h.level - 1) * 1}rem` }}><span className="text-fg-subtle">H{h.level}</span> {h.text}</li>)}</ol> : <Empty>No headings.</Empty>}

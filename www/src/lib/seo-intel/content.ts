@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { auditArticle } from "./audit-article";
 import { loadAnalysisData } from "./data";
+import { metricCounts } from "./issue-details";
 
 /** Content optimisation overview: every published article with its current audit score (computed live, no I/O beyond reads). */
 export async function contentOverview(now = new Date()) {
@@ -19,6 +20,9 @@ export async function contentOverview(now = new Date()) {
         title: a.title,
         path: a.path,
         category: a.category,
+        collection: a.collection,
+        run: audit.contentHash,
+        counts: metricCounts(audit, a.body),
         score: audit.score,
         errors: audit.findings.filter((f) => f.severity === "error").length,
         warnings: audit.findings.filter((f) => f.severity === "warning").length,

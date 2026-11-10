@@ -260,7 +260,7 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
   }
   const linkRecs = newRecs.filter((r) => r.categories.includes("internal_links"));
   const linkCats = allowedCategories(s, base.collection);
-  const linkChanges = s.links.enabled && (linkRecs.length || linkCats.has("internal_links")) && !keep.some((c) => c.type === "internal_link") ? await linkChangesFor(db, s, base, articleId, linkRecs.map((r) => `rec:${r.id}`), keep.length + modelChanges.length + 1) : [];
+  const linkChanges = s.links.enabled && (linkRecs.length || linkCats.has("internal_links") || extra.some((e) => e.category === "internal_links")) && !keep.some((c) => c.type === "internal_link") ? await linkChangesFor(db, s, base, articleId, linkRecs.map((r) => `rec:${r.id}`), keep.length + modelChanges.length + 1) : [];
 
   if (failure && !linkChanges.length) {
     await db.execute(sql`update seo_drafts set status = ${keep.length ? "ready_for_review" : "generation_failed"}, failure_reason = ${failure}, updated_at = now(), model = ${cfg.draftModel}, prompt_version = ${DRAFT_PROMPT_VERSION} where id = ${draft.id}`);
