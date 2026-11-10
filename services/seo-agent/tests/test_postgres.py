@@ -338,3 +338,59 @@ async def test_rag_eval_smoke_on_postgres(pool) -> None:
     assert stats["articles"] == len(arts) and stats["embedded"] > 500
     res = await evaluate("pg-smoke", lambda q, k: idx.search(q, k), load_eval_set())
     assert res.n >= 40 and res.metrics["recall@6"] > 0.3  # hashed embeddings + Postgres full text: it runs and finds things
+
+
+# --- v5: the ML store against the real migration 0019 ------------------------------------------------------------------
+
+MIGRATION_0019 = __import__("pathlib").Path(__file__).resolve().parents[2] / "www" / "src" / "db" / "migrations" / "0019_seo_v5_ml.sql"
+
+
+async def test_ml_store_roundtrip_on_migration_0019(pool) -> None:
+    from datetime import date
+
+    from app.seo_ml import train as tr
+    from app.seo_ml.store import PgMlStore
+
+    async with pool.connection() as c:
+        await c.execute("create table seo_query_intents (query text primary key, intent text not null, source text not null, model text, classified_at timestamptz not null default now())")
+        await c.execute("create table seo_query_clusters (query text primary key, cluster_id integer not null, parent_topic text not null, computed_at timestamptz not null default now())")
+        await c.execute("create table seo_gsc_daily_totals (date date, search_type text, clicks bigint, impressions bigint, ctr float8, position float8)")
+        await c.execute("create table seo_gsc_page_daily (date date, page text, search_type text, device text, country text, clicks bigint, impressions bigint, ctr float8, position float8)")
+        await c.execute("create table setting (key text primary key, value jsonb not null)")
+        for stmt in MIGRATION_0019.read_text().split("--> statement-breakpoint"):
+            if stmt.strip():
+                await c.execute(stmt)
+        await c.execute("insert into seo_query_intents (query, intent, source, prompt_version) values ('helm vs kustomize', 'comparison', 'llm', 'seo-intent-v1'), ('old', 'informational', 'llm', 'seo-intent-v0')")
+        await c.execute("insert into seo_gsc_daily_totals values ('2026-11-08', 'web', 1, 1, 1, 1)")
+        await c.execute("insert into seo_gsc_page_daily values ('2026-11-08', '/a', 'web', 'mobile', 'ind', 3, 30, 0.1, 5), ('2026-11-08', '/a', 'web', 'desktop', 'ind', 2, 20, 0.1, 5)")
+        await c.execute("""insert into setting values ('seo', '{"weights": {"effort": 9}}')""")
+    s = PgMlStore(pool)
+    assert await s.latest_gsc_date() == date(2026, 11, 8)
+    assert (await s.page_daily(date(2026, 11, 1)))[0]["clicks"] == 5  # devices summed
+    assert (await s.current_weights())["effort"] == 9
+    # registry: activation, deactivation, one active per kind
+    r1 = await tr.register(s, "decay", n=3, model_metrics={"a": 1}, rule_metrics={}, beats=True)
+    assert r1["active"] and (await s.active_model("decay"))["version"] == "v1"
+    r2 = await tr.register(s, "decay", n=3, model_metrics={}, rule_metrics={}, beats=False)
+    assert r2["run_status"] == "fallback_to_rule" and await s.active_model("decay") is None and (await s.latest_model("decay"))["version"] == "v2"
+    # outputs, embeddings cache, labels, training data with the owner's correction winning
+    await s.replace_outputs("seo_ml_query_clusters", [{"query": "q", "cluster_id": 1, "cluster_label": "q", "model_version": "v1"}])
+    await s.replace_outputs("seo_ml_query_clusters", [{"query": "r", "cluster_id": 2, "cluster_label": "r", "model_version": "v2"}])
+    async with pool.connection() as c:
+        assert [r["query"] for r in await (await c.execute("select query from seo_ml_query_clusters")).fetchall()] == ["r"]
+    await s.replace_outputs("seo_ml_decay_signals", [{"page": "/a", "window_start": "2026-01-01", "window_end": "2026-11-08", "decaying": True, "trend_slope": -1.0, "drop_pct": 0.3, "confidence": 0.8, "method_version": "stl-v1", "evidence": {"dates": ["2026-11-08"]}}])
+    await s.save_embeddings({"q": [0.1, 0.2]}, "m")
+    assert (await s.cached_embeddings(["q", "x"], "m")) == {"q": [pytest.approx(0.1), pytest.approx(0.2)]}
+    assert await s.add_label_tasks("intent_check", [("helm vs kustomize", {"haiku": "comparison"})]) == 1
+    assert await s.add_label_tasks("intent_check", [("helm vs kustomize", {"haiku": "comparison"})]) == 0
+    async with pool.connection() as c:
+        await c.execute("""update seo_ml_labels set status = 'changed', label = '{"intent": "informational"}'""")
+    assert await s.intent_training("seo-intent-v1") == [("helm vs kustomize", "informational")]
+    await s.add_proposal({"model_version": "v1", "weights": {"effort": 1}, "current_weights": {}, "metrics": {}, "n_outcomes": 50})
+    await s.add_proposal({"model_version": "v2", "weights": {"effort": 2}, "current_weights": {}, "metrics": {}, "n_outcomes": 51})
+    async with pool.connection() as c:
+        st = [r["status"] for r in await (await c.execute("select status from seo_ml_weight_proposals order by created_at, model_version")).fetchall()]
+    assert sorted(st) == ["proposed", "superseded"]
+    await s.record_rag_eval("live", {"recall@3": 0.9})
+    assert await s.related_scores("00000000-0000-4000-8000-000000000001") == {}
+    assert await s.ga4_pairs() == []

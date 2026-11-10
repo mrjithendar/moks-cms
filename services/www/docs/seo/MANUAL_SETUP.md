@@ -287,3 +287,84 @@ request-size-limiting, no buffering, 5-minute read timeout, `preserve_host`). Th
 4. Data: migration 0016 is additive; its manual rollback is `src/db/rollback/0016_seo_v4.down.sql` (deletes flow-run
    history, notes and every MCP client/grant/token). Report PDFs stay in R2.
 
+
+---
+
+# v5: RAG quality and SEO-side ML
+
+Nothing here is automatic: each step is for a person, in order. The kube-context guard (`scripts/lib/kube-context.sh`)
+asks which cluster to use unless you set `KUBE_CONTEXT`.
+
+## 29. Migrations 0018 and 0019 (additive)
+
+They run when the web app starts (like every migration). 0018 adds two columns to `seo_ask_log`. 0019 adds the ML
+tables (`seo_ml_*`, `seo_ga4_page_pairs`, `seo_rag_eval_runs`) and the `prompt_version` / `source` columns on
+`seo_query_intents` / `seo_query_clusters`. Manual rollbacks: `src/db/rollback/0019_seo_v5_ml.down.sql`, then
+`0018_seo_v5_rag.down.sql`.
+
+## 30. Apply the seo-agent group (ConfigMap + the new CronJob)
+
+```bash
+scripts/manifests.sh seo-agent | kubectl diff -f -
+scripts/manifests.sh seo-agent | kubectl apply -f -
+kubectl -n jithendar rollout restart deploy/seo-agent
+```
+
+New in `seo-agent-config`: `RAG_MODE=vector`, `RAG_MAX_PER_ARTICLE=3`, `ASK_BLOG_MIN_SCORE=0.66`,
+`RAG_RERANKER_ENABLED=false` (RAG.md "Defaults"). New CronJob `seo-flow-ml` (Sundays 04:47 UTC) → `seo_ml_flow`.
+`SEO_LLM_MONTHLY_BUDGET_USD` is now `15` here; set the same value in `jithendar-com-public` if it is set there.
+
+## 31. First reindex after the deploy (re-embeds everything once)
+
+The token-aware chunker changes every chunk's stored hash, so the next reindex embeds all ~1.8k chunks once (like a
+full reindex: a few minutes, ~0.7 GiB peak). Run it on demand instead of waiting for Sunday:
+
+```bash
+kubectl -n jithendar create job --from=cronjob/seo-flow-reindex seo-reindex-v5
+```
+
+(or `POST /api/admin/seo/agent/reindex` as an admin, or the admin MCP `kickoff_flow`). Check: Grafana "SEO agents" →
+**ML & RAG** → "Truncated chunks" stays 0, and the p95 of embedded chunk tokens is under 480.
+
+## 32. First evaluation runs
+
+- **Retrieval, real model:** GitHub → Actions → **RAG eval (manual)** → Run workflow (defaults compare all
+  configurations). The job summary has the table; commit the reports worth keeping under `docs/seo/rag-eval/`.
+- **Retrieval, live index:** the first `seo_ml_flow` run records it (ML models → "Retrieval evaluation"). To run it
+  now: Admin → SEO → ML models → **Run now**.
+- **Floor check after a week of Ask-the-Blog traffic** (read-only):
+  `DATABASE_URL=… uv run python scripts/rag_calibrate.py` in `services/seo-agent`.
+
+## 33. Your labelling tasks
+
+1. **Query groupings (clusters):** ML models → **Ask Claude for suggestions** (one Haiku call), then Labelling →
+   Query groupings. Confirm or change the group of each of the 200 queries. The clustering model can be activated
+   once ≥ 100 are confirmed and it beats the token-set rule.
+2. **Intent disagreements:** after the first training with ≥ 60 Haiku labels, Labelling → Intent disagreements:
+   pick the right intent for up to 50 queries. The classifier is used only after these 50 checks and macro-F1 ≥ 0.85.
+3. **Decay back-test review:** when ML models shows the decay model as "needs review", read its real back-test (alert
+   rate vs the rule, agreement) and click **Reviewed: use the model** if it looks right.
+4. **Weight proposals** (after ≥ 50 measured outcomes): Settings → "ML models & retrieval" → approve or dismiss.
+
+## 34. Related-articles experiment
+
+It starts by itself with the first `seo_ml_flow` run: even article ids show the model's list. To measure it, GA4 must
+receive the `related_click` event (sent by the block, consent permitting): in GA4 → Admin → Custom definitions, add an
+event-scoped dimension `arm` (and optionally `position`). After ≥ 28 days compare `related_click` ÷ article page views
+per arm (Explore → Free form). The page-pair report for co-visitation is tried by the daily GA4 sync; Integrations
+shows `pagePairs: unsupported` if the property can't provide it.
+
+## 35. Alerts and dashboard
+
+- Alerts: copy the groups from [alerts-for-minikube-repo.yaml](alerts-for-minikube-repo.yaml) into the miniKube repo
+  (OPERATIONS.md "Alerts handoff"). New group: `jithendar-com-seo-ml`.
+- Dashboard: `services/grafana/jithendar-com-seo-agent.json` has a new **ML & RAG** row (Argo CD `grafana` app).
+
+## 36. v5 rollback
+
+- One ML feature: ML models → its **Use** select → `force the rule` (no restart).
+- All ML: `kubectl -n jithendar patch cronjob seo-flow-ml -p '{"spec":{"suspend":true}}'`. Outputs go stale after 14
+  days and every feature falls back to its rule.
+- Retrieval: `RAG_MODE=vector` (already the default), `RAG_MAX_PER_ARTICLE=0` for v4's undiversified list,
+  `ASK_BLOG_MIN_SCORE=0.15` for v4's floor, then `rollout restart deploy/seo-agent`.
+- Code: redeploy the previous image (CI pushes `:latest` only; rebuild from the previous commit) or revert the merge.

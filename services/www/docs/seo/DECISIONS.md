@@ -502,3 +502,39 @@ tests keep v4 behaviour. The answer step sees only the named excerpts, renumbere
 ## D-74 Reranker left off without downloading a model
 Its gate (+3 points of Recall@3) is unreachable when Recall@3 is already 100 %. Downloading and measuring a 280 MB model
 that cannot be enabled was skipped; the code and eval config stay for a harder set.
+
+## D-75 STL in numpy, not statsmodels
+The brief names statsmodels for STL, and the rules allow a new library only if nothing installed can do the job.
+statsmodels needs pandas and patsy (~100 MB installed) for one function; STL is iterated LOESS, which numpy does.
+`app/seo_ml/stl.py` follows Cleveland et al. (1990), with a vectorised LOESS for evenly spaced days that matches the
+reference loop to 1e-15 (tested), and yearly seasonality by a second STL pass (MSTL-style). Decay detection adds a
+last-week confirmation to the brief's conditions, because STL's trend at the end of a series cannot yet tell a dip that
+just ended from a decline. The detector was designed on one seed range and is judged on a held-out range.
+
+## D-76 One flow, one registry, one decision function
+All five models are steps of `seo_ml_flow` and register versions in `seo_ml_models` through one `register()` (activation
+rule, carried-over review, automatic fallback with a metric). The web app decides "model or rule" in one place
+(`ml.ts mlDecision`: override, active, fresh within 14 days), and every consumer labels its output with that decision.
+Outputs are written even for inactive models, so "force the model" works and the Models page can show them.
+
+## D-77 Clusters and intents reach the existing tables at refresh time
+The keyword views, content gaps and "Asked on site" already read `seo_query_clusters` / `seo_query_intents`. The daily
+keyword refresh copies the model's clusters (plus token-set clusters for queries the weekly model hasn't seen, id-offset)
+and the confident intent predictions into them, with a `source`, instead of rewriting every reader. Ask-the-Blog gaps
+are embedded in the same HDBSCAN run as `ask:<normalized>` rows.
+
+## D-78 Cluster activation gates on ARI, purity within 0.05
+Purity alone rewards over-splitting (singletons score 1), which is what token-set clustering does; the brief asks to
+compare ARI and purity. ARI must be strictly higher; purity may be at most 0.05 lower; inverse purity is reported.
+
+## D-79 Related articles: an A/B by id parity; link ranking only uses an active model
+The public block shows the model's list on even article ids while the model is `experiment_running`, measured with a
+consent-gated `related_click` GA4 event. Internal-link candidate ranking uses the model's score (25 % blend) only when
+the model is active or forced, so an unvalidated experiment can't change draft links; the v2 link limits stay in the
+planner. GA4 page-pair data is fetched outside `GA4_REPORTS`, so a property that rejects the pair can't fail the sync or
+"Test connection".
+
+## D-80 Settings improvements as their own commit (owner request during v5)
+The owner asked for better SEO settings mid-build and chose: organise the form (tabs, change tracking, defaults, field
+errors), a connections card, and ML/RAG controls. The first two were committed separately (`de84e76`); the ML/RAG
+card ships with Phase 3 because it needs the model registry.

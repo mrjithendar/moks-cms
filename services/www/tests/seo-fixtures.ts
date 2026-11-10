@@ -51,6 +51,10 @@ type Options = {
   ga4TokensRemaining?: number;
   /** Extra synthetic pages so a report needs several pages of results. */
   extraPages?: number;
+  /** Requested GA4 dimensions that checkCompatibility should report as incompatible. */
+  ga4Incompatible?: string[];
+  /** v5: answer the landing page × page path report with 400 INVALID_ARGUMENT, like a property without that pair. */
+  ga4PairsUnsupported?: boolean;
 };
 
 export type FakeGoogle = { fetch: typeof fetch; calls: { url: string; body: Record<string, unknown> }[] };
@@ -118,6 +122,13 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
       return Response.json({ rows: rows.slice(startRow, startRow + rowLimit), responseAggregationType: "byPage", metadata: { firstIncompleteDate: String(body.endDate) } });
     }
 
+    if (url.endsWith(":runReport") && JSON.stringify(body.dimensions).includes("pagePath")) {
+      if (opts.ga4PairsUnsupported) return Response.json({ error: { code: 400, message: "Please remove pagePath to make the request compatible.", status: "INVALID_ARGUMENT" } }, { status: 400 });
+      const paths = pages.map((p) => new URL(p.raw).pathname);
+      const rows = paths.flatMap((a, i) => paths.filter((_b, j) => j !== i).map((b, j) => ({ dimensionValues: [{ value: a }, { value: b }], metricValues: [{ value: String(10 + i + j) }] })));
+      return Response.json({ dimensionHeaders: [{ name: "landingPagePlusQueryString" }, { name: "pagePath" }], metricHeaders: [{ name: "screenPageViews" }], rows, rowCount: rows.length, metadata: { timeZone: "Asia/Kolkata" } });
+    }
+
     if (url.endsWith(":runReport")) {
       const range = (body.dateRanges as { startDate: string; endDate: string }[])[0]!;
       const limit = Number(body.limit);
@@ -145,7 +156,15 @@ export function fakeGoogle(opts: Options = {}): FakeGoogle {
       });
     }
 
-    if (url.endsWith(":checkCompatibility")) return Response.json({ dimensionCompatibilities: [], metricCompatibilities: [] });
+    if (url.endsWith(":checkCompatibility")) {
+      // Like Google: INCOMPATIBLE lists catalogue fields that can't be added to the request, not only requested ones.
+      const dim = (apiName: string) => ({ dimensionMetadata: { apiName }, compatibility: "INCOMPATIBLE" });
+      const met = (apiName: string) => ({ metricMetadata: { apiName }, compatibility: "INCOMPATIBLE" });
+      return Response.json({
+        dimensionCompatibilities: ["campaignId", "cohortNthDay", "googleAdsKeyword", ...(opts.ga4Incompatible ?? [])].map(dim),
+        metricCompatibilities: ["advertiserAdCost", "organicGoogleSearchClicks"].map(met),
+      });
+    }
     return new Response("not found", { status: 404 });
   };
   return { fetch: impl as typeof fetch, calls };

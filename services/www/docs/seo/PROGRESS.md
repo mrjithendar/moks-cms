@@ -496,10 +496,11 @@ plain Python steps inside flows and writes Postgres tables that the TypeScript r
 
 | Phase | Status | Commit |
 |---|---|---|
-| 1 Safety and housekeeping | done | (this commit) |
-| 2 RAG quality | done (eval measured with the real model; pgvector tests run in CI only) | (phase 2 commit) |
-| 3 SEO-side ML | not started | |
-| 4 Deployment and observability | not started | |
+| 1 Safety and housekeeping | done | `8a5ca05` |
+| 2 RAG quality | done (eval measured with the real model; pgvector tests run in CI only) | `09f6fe7` |
+| Owner request: SEO settings (tabs, connections, change tracking) | done | `de84e76` |
+| 3 SEO-side ML | done (mock- and synthetic-tested; real metrics need production data) | (phase 3 commit) |
+| 4 Deployment and observability | done (rendered, client-validated; not applied) | (phase 3 commit) |
 | 5 Tests, docs, PR | not started | |
 
 ## Phase 1 notes
@@ -536,3 +537,38 @@ plain Python steps inside flows and writes Postgres tables that the TypeScript r
 - **Environment:** LightGBM needs libomp on macOS; this Mac has none, so local test runs set
   `DYLD_LIBRARY_PATH` to scikit-learn's bundled `sklearn/.dylibs` (no system change). The ONNX model came from an earlier
   session's scratch copy, verified against the Dockerfile's sha256 pins.
+
+## Phase 3 notes (SEO-side ML; ML.md)
+
+- **Agent:** `app/seo_ml/` (stl, decay, clusters, intent, priority, related, store, train) and `app/flows/ml.py`
+  (`seo_ml_flow`, in SPECS and the CronJob list). One `register()` holds the activation rule (beats the rule; review
+  where required, carried over to retrains that still win) and the automatic fallback with its metric.
+- **Web:** migration 0019 (+ rollback); `ml.ts` (the one model-or-rule decision: override, active, fresh ≤ 14 days),
+  decay in `rules.ts` (STL signals, labelled source, trend-vs-actual chart on Recommendations), clusters and intents
+  in the keyword refresh (with `source`), ask-gap clustering, related articles A/B on the public page (+ the
+  `related_click` GA4 event), GA4 page pairs (best-effort, outside `GA4_REPORTS`), **ML models** and **Labelling**
+  pages, APIs (models, override/review, labels, proposals, run), Settings → "ML models & retrieval" (owner request).
+- **Measured** (held-out synthetic, 2026-11-10): decay 2/180 false alarms vs the rule's 13, drop recall 91 % vs 47 %.
+  Clusters, intent, priority and related need production data and your labels (status "collecting data" / "needs
+  review" / "experiment running" until then).
+- **Bugs found while measuring and fixed:** LOESS as a Python loop made the weekly run take > 10 minutes (vectorised,
+  identical to 1e-15); a yearly STL with two cycles absorbed the declines it should find (0/133 flagged → yearly shape
+  from the previous year); σ inflated by the unadjusted first year; holiday dips just before the cut-off flagged
+  (last-week confirmation); co-visitation normalisation saturating at 1; token-set "purity" rewarding over-splitting
+  (ARI gate); a rollback-test regex that couldn't see table names with digits.
+- **Memory** (this Mac, Python 3.13, ONNX bge-small loaded, in-memory store with 400 pages × 800 days, 2,000 queries,
+  400 intent labels, 120 outcomes, 40 articles): whole flow ≈ 44 s, **peak RSS 456 MiB** (ONNX 276 MiB, fixtures
+  ~110 MiB, ML ≈ 70 MiB). The seo-agent limit is 1,280 MiB and the reindex peak ~0.7 GiB runs at 03:17, the ML flow at
+  04:47, so training stays in the Deployment; no separate Job, no limit change.
+
+## Phase 4 notes
+
+- CronJob `seo-flow-ml` (Sun 04:47 UTC, `concurrencyPolicy: Forbid`) in `seo-agent-60-flow-triggers.yaml`;
+  `seo-agent-config` gains the RAG settings. `scripts/manifests.sh seo-agent | python scripts/ci-app-manifests.py`
+  and `kubectl create --dry-run=client`: 13 CronJobs, pass.
+- Metrics: `seo_ml_train_runs_total{model,status}`, `seo_ml_model_active{model}`, `seo_ml_metric{model,metric}`,
+  `seo_ml_flow_consecutive_failures`, `seo_rag_eval_recall_at_3`, `seo_rag_retrieval_mode{mode}`,
+  `seo_rag_chunk_tokens`, `seo_rag_chunks_truncated_total` (all fixed label sets).
+- Alerts (group `jithendar-com-seo-ml`): `SeoMlFlowFailing`, `SeoMlModelFellBackToRule`, `SeoRagChunksTruncated`;
+  handoff file regenerated (4 groups, 20 rules).
+- Grafana: "ML & RAG" row on the SEO agents dashboard (8 panels); `check-dashboards.py` passes.

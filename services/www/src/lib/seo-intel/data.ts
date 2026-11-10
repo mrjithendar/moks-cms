@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import type { AuditInput } from "./audit-article";
+import { decaySignals, mlDecision, type DecaySignal, type MlDecision } from "./ml";
 import { addDays } from "./sqlutil";
 import { siteOrigin } from "./urls";
 
@@ -22,6 +23,8 @@ export type AnalysisData = {
   articles: Article[];
   articleByUrl: Map<string, Article>;
   knownPaths: Set<string>;
+  /** v5 ML outputs the rules may use (ml.ts decides model vs rule); absent = rules only. */
+  ml?: { decay: { decision: MlDecision; signals: Map<string, DecaySignal> } };
 };
 
 const metric = (r: Record<string, unknown> | undefined): Metric | null =>
@@ -97,8 +100,11 @@ export async function loadAnalysisData(db: Db): Promise<AnalysisData> {
         sum(position * impressions) filter (where position is not null) / nullif(sum(impressions) filter (where position is not null), 0) as position
       from seo_gsc_query_daily where search_type = 'web' and date between ${cur[0]} and ${cur[1]} group by page, query`),
   );
+  const decision = await mlDecision(db, "decay");
+  const ml = { decay: { decision, signals: decision.mode === "model" ? await decaySignals(db) : new Map<string, DecaySignal>() } };
   return {
     asOf,
+    ml,
     periods: { cur, prev, yoy },
     pageQuery: pq.map((r) => ({ page: String(r.page), query: String(r.query), clicks: Number(r.clicks), impressions: Number(r.impressions), position: r.position === null ? null : Number(r.position) })),
     pages,

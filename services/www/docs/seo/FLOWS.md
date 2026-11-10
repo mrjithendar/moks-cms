@@ -60,6 +60,7 @@ flowchart LR
 | `new_article_flow` | approved calendar idea; regenerate; MCP | load_brief → draft (**Editorial Crew**) → validate_draft → router: ok → save_draft · retry once · fail | **draft awaiting review** |
 | `publish_flow` | **only a human approval** (`POST /review/{id}/decision`) | apply_changes → cms_publish → verify_live → router: passed → submit_search → reindex → schedule_measure · failed → offer_rollback | done |
 | `reindex_flow` | CronJob Sun 03:17; after each publish (inside publish_flow) | chunk_and_embed (incremental by content hash) | done |
+| `seo_ml_flow` (v5) | CronJob `seo-flow-ml` Sun 04:47; ML models → Run now | decay → query_clusters → intent → priority → related → rag_eval → finish (each step independent; the run fails if any failed) | done ([ML.md](ML.md)) |
 | `report_flow` | CronJob Mon 08:00 (weekly) and the 2nd 08:00 (monthly); "Generate"; MCP | aggregate → narrate (**Report Crew**) → router check: store · mismatch → render_pdf (R2) → notify | done |
 
 Schedules are configuration in `minikube/seo-agent-60-flow-triggers.yaml`: change a `schedule:` (or

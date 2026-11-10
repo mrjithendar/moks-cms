@@ -78,3 +78,18 @@ The usage card now splits the month by flow, from `seo_flow_runs.cost_usd` (ever
 `seo_llm_usage` (the v2 legacy path, keyword intent labelling, recommendation explanations). Expect
 `optimize_article_flow` to dominate (≈ 60–70 % of the estimate above). These are measured numbers once runs exist;
 the table is empty until then.
+
+## v5: ML and RAG costs
+
+| Item | Model calls | Cost |
+|---|---|---|
+| `seo_ml_flow` weekly training (decay, clusters, intent, priority, related, live RAG eval) | none: CPU in the seo-agent pod | $0 |
+| Cluster label suggestions ("Ask Claude for suggestions", once per 200-query sample) | 1 Haiku call (~2.5k tokens in, ~3k out) | < $0.002 per sample |
+| Ask the Blog, ask-blog-v3 | the answer prompt has only the excerpts the grader kept (often 2–3 of 6) | answer input ≈ −40–60 % when the grader is selective; **estimate**, measured per question in `seo_ask_log` from the first week |
+| Intent labelling with the distilled classifier | Haiku only for queries below the classifier's confidence threshold | see below |
+
+**Intent savings (estimate):** Haiku labels new queries in batches of 100 (~1.5k tokens in, ~1.2k out per batch, about
+$0.0008). At this site's volume (a few hundred new queries a month) that is **under $0.01 a month**, so the classifier
+saves cents, not dollars. It mainly removes a dependency on the API for a routine step. The Models page reports the
+measured share of queries answered without Claude once the classifier is active (`share_confident` on held-out
+queries; `byModel` in the keyword refresh result).
