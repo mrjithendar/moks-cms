@@ -152,7 +152,7 @@ was needed). Decisions D-21 … in DECISIONS.md.
 | 3 Search-engine submission | done (mock-tested; live IndexNow/Google need production + credentials) |
 | 4 Automated internal linking | done (unit + DB-tested; uses real corpus once posts are in Postgres) |
 | 5 Content optimization popovers | done (unit + DOM-tested) |
-| 6 Keyword opportunities | pending |
+| 6 Keyword opportunities | done (SQL + mocked-Haiku tested; real data needs GSC credentials) |
 | 7 UI/UX overhaul | pending |
 | 8 Tests, docs, PR | pending |
 
@@ -264,3 +264,26 @@ to v1 files and carrying v1-era timestamps — the signature of a cloud-sync con
 Documents" syncing `~/Desktop/Work`). The first batch was accidentally included in the Phase 4 commit and removed by
 amending it (before any push). Every batch was verified identical to a committed version and **moved**, not deleted,
 to the session scratchpad. Recommendation: keep this repository outside a synced folder.
+
+## v2 Phase 6 notes
+
+- `keywords.ts` + migration `0014_seo_keywords.sql` (+ rollback, up/down/up tested; index
+  `(search_type, date, query)` for the server-side aggregation). Search Console data only: no volume/difficulty
+  columns (no licensed source configured).
+- Site CTR curve (90 days, web, ≥ 200 impressions per position, PAVA-pooled to be non-increasing; sparse positions
+  use the v1 yardstick and the page says how many positions are site-based). Click gap = impressions × (expected −
+  actual), labelled as an estimate everywhere.
+- Views in SQL with allowlisted multi-column sort + pagination: all, striking (4–20 by gap), low CTR (≤ 5, CTR below
+  `lowCtrRatio` × curve, non-brand), rising, new (first seen in period), lost/declining, cannibalization (page split,
+  leader-change volatility, link/consolidate/differentiate — never delete), content gaps (clusters with demand,
+  best position > 15).
+- Clusters: greedy token-set similarity with light stemming (`-s`, `-ing`), parent topic = top query. Intent: Claude
+  Haiku 5.5 in batches of 100 (cached per query in `seo_query_intents`, logged in `seo_llm_usage`, budget-capped,
+  data blocks), rules fallback. Brand split via the configurable regex. Daily `keywords_refresh` job after the GSC sync.
+- Row actions: Draft optimization (queues a draft for the ranking article with the query as evidence), Draft new
+  article (calendar item; CMS draft only if "new article" drafting is on), Track, Ignore. Tracked keywords page with
+  90-day position history; alert when the 7-day average moves > N positions (once per 6 days, via the mail service).
+- UI kit `table-kit.tsx` (column picker + density remembered per viewer, URL-driven multi-sort headers, removable
+  chips, roving keyboard rows, saved views via `/api/admin/seo/views`, sparkline); CSV export (formula-safe).
+- Bug found by tests and fixed: "locking"/"lock" did not cluster (added `-ing` stemming).
+- Tests: `tests/seo-v2-keywords.test.ts` (18).

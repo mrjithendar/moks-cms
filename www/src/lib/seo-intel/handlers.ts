@@ -1,5 +1,6 @@
 import { pollDraftBatches, weeklyBatch } from "./drafts";
 import { registerSeoHandler } from "./jobs";
+import { refreshKeywords, trackedAlerts } from "./keywords";
 import { sendDraftDigest } from "./notify";
 import { captureDraftOutcomes } from "./publish";
 import { captureOutcomes, generateRecommendations } from "./recommendations";
@@ -36,6 +37,12 @@ registerSeoHandler("drafts_poll", async () => {
 registerSeoHandler("drafts_digest", async (ctx) => {
   const r = await sendDraftDigest(ctx.now);
   return { status: r.sent ? "succeeded" : "skipped", rows: r.drafts, detail: r };
+});
+
+registerSeoHandler("keywords_refresh", async (ctx) => {
+  const r = await refreshKeywords({ now: ctx.now });
+  const alerts = await trackedAlerts(ctx.now);
+  return { status: "succeeded", rows: r.clustered, detail: { ...r, alerts: alerts.length } };
 });
 
 export { seoJobHandler, runSeoJob } from "./jobs";
