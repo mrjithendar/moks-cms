@@ -19,7 +19,7 @@ data:
   SEO_DRAFT_MODEL: claude-sonnet-5-5
   SEO_CLASSIFY_MODEL: claude-haiku-5-5
   # Shared with the web app (same seo_llm_usage table): keep equal to the site's SEO_LLM_MONTHLY_BUDGET_USD.
-  SEO_LLM_MONTHLY_BUDGET_USD: "10"
+  SEO_LLM_MONTHLY_BUDGET_USD: "15"
   ASK_BLOG_DAILY_BUDGET_USD: "1"
   # Kill switch for the public assistant; the web app's ASK_BLOG_ENABLED gates the widget and /api/ask too.
   ASK_BLOG_ENABLED: "false"

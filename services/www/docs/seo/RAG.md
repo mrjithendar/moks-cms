@@ -6,7 +6,7 @@ pgvector index the agents also use for related articles and internal links. It's
 
 ## Answer path (v4: a plain async pipeline)
 
-v3 ran this as a LangGraph graph. In v4 it is a plain async pipeline (`app/services/ask_pipeline.py`), deliberately
+Since v4 it is a plain async pipeline (`app/services/ask_pipeline.py`), deliberately
 **not a Crew or a Flow**: a multi-agent run per visitor question would be too slow and too expensive. The same pipeline
 answers the public MCP tool `ask_blog` ([MCP.md](MCP.md)), with the same guards, cache and daily budget.
 

@@ -265,7 +265,7 @@ describe("Claude draft pipeline (mocked API)", () => {
     const s = { ...DEFAULT_SEO_SETTINGS, drafts: { ...DEFAULT_SEO_SETTINGS.drafts, monthlyBudgetUsd: 50 } };
     expect(claudeConfig(s, { SEO_LLM_MONTHLY_BUDGET_USD: "20" }).monthlyBudgetUsd).toBe(20);
     expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 5 } }, { SEO_LLM_MONTHLY_BUDGET_USD: "20" }).monthlyBudgetUsd).toBe(5);
-    expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 0 } }, {}).monthlyBudgetUsd).toBe(10);
+    expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 0 } }, {}).monthlyBudgetUsd).toBe(15);
     expect(claudeConfig(s, { SEO_DRAFT_MODEL: "claude-opus-5-5" }).draftModel).toBe("claude-opus-5-5");
     expect(claudeConfig(s, {}).classifyModel).toBe("claude-haiku-5-5");
   });

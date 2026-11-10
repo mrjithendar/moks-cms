@@ -194,7 +194,7 @@ export async function reserveDraft(db: Db, articleId: string, base: BaseSnapshot
     values (${articleId}, ${base.collection}, 'generating', ${base.version}, ${JSON.stringify(snapshot)}::jsonb, ${trigger}, ${opts.kind ?? "optimize"}, ${opts.calendarId ?? null})
     on conflict (article_id) where status in ('generating', 'ready_for_review', 'generation_failed', 'scheduled', 'publishing') do nothing`);
   const d = (await openDraft(db, articleId))!;
-  // v3: a LangGraph run owns the draft (thread_id = draft id).
+  // v4: a CrewAI flow run owns the draft (thread_id = draft id).
   if (opts.threadManaged && !d.thread_id) await db.execute(sql`update seo_drafts set thread_id = ${d.id} where id = ${d.id}`);
   return { ...d, thread_id: opts.threadManaged ? d.id : d.thread_id };
 }

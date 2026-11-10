@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Add (or update) Google / GitHub sign-in credentials in Secret jithendar/jithendar-com-env.
-#   scripts/set-oauth-config.sh
+#   KUBE_CONTEXT=mk4 scripts/set-oauth-config.sh
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 # Prompts for each value (secrets are read silently and never printed), writes them with a patch file
 # that only this user can read, and deletes it afterwards. Leave a prompt empty to keep the current value.
 # A provider's button appears only when both its client ID and secret are set. See docs/AUTH.md.
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 
 NS="jithendar"
 SECRET="jithendar-com-env"

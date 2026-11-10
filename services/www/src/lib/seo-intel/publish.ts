@@ -299,13 +299,13 @@ export async function captureDraftOutcomes(now = new Date()): Promise<number> {
 }
 
 
-// --- v3: the approval gate for LangGraph runs (docs/seo/DECISIONS.md D-43) ------------------------------------------
+// --- The approval gate for CrewAI flow runs (docs/seo/DECISIONS.md D-43, D-56) ---------------------------------------
 
 const APPROVAL_TTL_MS = 7 * 86_400_000;
 
 /**
- * The admin approve route (langgraph mode) records the approval here — after the same preflight as v2 — and only then
- * resumes the graph with the approval id. Nothing is published by this function.
+ * The admin approve route (crewai mode) records the approval here — after the same preflight as v2 — and only then
+ * starts publish_flow with the approval id. Nothing is published by this function.
  */
 export async function recordApproval(draftId: string, actor: Actor, opts: ApproveOpts = {}) {
   const db = await getDb();

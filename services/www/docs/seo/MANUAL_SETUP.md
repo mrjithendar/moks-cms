@@ -77,7 +77,7 @@ Admin → SEO intelligence → Settings (which then win).
 3. Budget and models (non-secret) in ConfigMap `jithendar-com-public`:
    ```bash
    kubectl -n jithendar patch configmap jithendar-com-public --type merge \
-     -p '{"data":{"SEO_LLM_MONTHLY_BUDGET_USD":"10","SEO_DRAFT_MODEL":"claude-sonnet-5-5","SEO_CLASSIFY_MODEL":"claude-haiku-5-5"}}'
+     -p '{"data":{"SEO_LLM_MONTHLY_BUDGET_USD":"15","SEO_DRAFT_MODEL":"claude-sonnet-5-5","SEO_CLASSIFY_MODEL":"claude-haiku-5-5"}}'
    kubectl -n jithendar rollout restart deployment/jithendar-com
    ```
    The budget is a hard cap on month-to-date spend (UTC month) across all SEO Claude calls; Settings can lower it but
@@ -106,7 +106,7 @@ submissions (each event is still logged as `skipped`).
 Settings → Drafts → digest → recipients (requires email in Admin → Storage & email). Until a recipient is set, nothing
 is emailed.
 
-# v3: agents (LangGraph, CrewAI, pgvector)
+# agents (CrewAI Flows and Crews, pgvector)
 
 Everything below is off until you do it. Until then, the site keeps running the v2 path. Do the steps in order;
 details are in [AGENTS.md](AGENTS.md) and [RAG.md](RAG.md).
@@ -157,18 +157,11 @@ Rotate by running the script again and restarting both Deployments.
 - Dashboard: `services/grafana/jithendar-com-seo-agent.json` (Argo CD `grafana` app). **Since the `services/` move, the
   app's path must be `services/grafana`** (tools repo, `deploy/minikube/applications/grafana.yaml`).
 
-## 17. Switch drafting to LangGraph (v3; superseded by §22)
+## 17. Switch drafting to the agent (superseded by §22)
 
-> v4 removed LangGraph. `SEO_ORCHESTRATOR=langgraph` is now an alias of `crewai`; follow §20–§28 instead.
+> v3 ran drafting on LangGraph; v4 replaced it with CrewAI Flows. `SEO_ORCHESTRATOR=langgraph` still works as an alias
+> of `crewai` (existing ConfigMaps keep working), but set `crewai` and follow §20–§28.
 
-```bash
-kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"langgraph"}}'
-kubectl -n jithendar rollout restart deploy/jithendar-com
-```
-Check: on an article's SEO panel, **Draft with Claude**. The review page shows "LangGraph run · Agent working…", then
-"Waiting for your review". Approve one change: the run publishes, verifies and submits, and the strip shows
-"Run published". Keep `SEO_LLM_MONTHLY_BUDGET_USD` equal in `jithendar-com-public` and `seo-agent-config`, because
-both read the same usage table.
 **Rollback:** set `SEO_ORCHESTRATOR=legacy` and restart. Drafts that runs created stay reviewable, but their
 approval needs the agent; reject them, or regenerate them under legacy.
 

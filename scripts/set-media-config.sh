@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Add (or update) the Cloudflare R2 and Gemini settings in Secret jithendar/jithendar-com-env.
-#   scripts/set-media-config.sh
+#   KUBE_CONTEXT=mk4 scripts/set-media-config.sh
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 # Prompts for each value (secrets are read silently and never printed), writes them with a patch file
 # that only this user can read, and deletes it afterwards. Leave a prompt empty to keep the current value.
 # Then restart the site: kubectl -n jithendar rollout restart deployment/jithendar-com
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 
 NS="jithendar"
 SECRET="jithendar-com-env"

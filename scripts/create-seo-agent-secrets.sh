@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Create (or rotate) the SEO v3 agent's Secret in namespace jithendar and give the site the matching tokens.
-#   scripts/create-seo-agent-secrets.sh
+#   KUBE_CONTEXT=mk4 scripts/create-seo-agent-secrets.sh
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 # Writes:
 #   jithendar/seo-agent-env       ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN
 #   jithendar/jithendar-com-env   SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN (other keys are kept)
@@ -8,6 +9,8 @@
 # drafting already uses; one key, one shared monthly budget). Two different random tokens: one per direction.
 # Nothing is printed, written to disk or committed; secrets travel on stdin only. Restart commands are printed.
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 NS=jithendar
 k() { kubectl -n "$NS" "$@"; }
 

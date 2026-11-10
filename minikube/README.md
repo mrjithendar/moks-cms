@@ -65,7 +65,7 @@ mTLS with no plain-text port: Prometheus scrapes `:9464` over mTLS through its o
 
 ## Before the first deploy
 
-These Secrets must exist in `jithendar`; they are never committed. `scripts/create-secrets.sh mk4`
+These Secrets must exist in `jithendar`; they are never committed. `KUBE_CONTEXT=mk4 scripts/create-secrets.sh`
 creates `jithendar-com-env`; Terraform in the miniKube repository writes the database and Redis ones.
 
 - `jithendar-com-env` (site configuration)
@@ -83,8 +83,16 @@ The site always runs `registry.jithendar.com/jithendar/jithendar-com:latest` (Ha
 the Deployment on every push to `master`, so new code needs nothing here.
 
 ```sh
-./deploy.sh
+KUBE_CONTEXT=mk4 ./deploy.sh
 ```
+
+**Kube context.** Every script that changes the cluster (`deploy.sh`, `scripts/create-*`, `set-*`, `setup-ci-*`,
+`verify-practice-sandbox.sh`) sources `scripts/lib/kube-context.sh`: it targets `KUBE_CONTEXT` if set, otherwise the
+current kubectl context, refuses a context that doesn't exist, prints the context and its API server, and passes
+`--context` to every kubectl call so the whole run stays on one cluster. Without `KUBE_CONTEXT` it asks for confirmation
+when run from a terminal (`YES=1` skips the question; CI and pipes never prompt). `scripts/manifests.sh` only prints,
+so it has no guard; the `kubectl` you pipe it into uses your current context.
+Tests: `bash scripts/tests/kube-context.test.sh` (stub kubectl, no cluster).
 
 Server dry-runs, applies the `site` group, restarts the site so it pulls `:latest`, waits for the rollouts and runs
 `scripts/smoke.sh`.

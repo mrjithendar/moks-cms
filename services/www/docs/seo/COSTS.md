@@ -1,4 +1,4 @@
-# SEO v4 LLM costs (estimate)
+# SEO LLM costs (estimate; v4 crews, v5 budget and ML)
 
 These are estimates, not measured bills: no live Claude call was made during the build (no API key here). The inputs
 are the v3 measurements (corpus, prompt sizes) plus the v4 crew structure. Every real call writes a `seo_llm_usage`
@@ -45,18 +45,19 @@ article blocks, the v2 rules and the style guide on each of its turns. Putting t
 | Manual "Draft/Fix with Claude", keyword actions and MCP kickoffs (10) + regenerations (5) | $1.70–2.10 |
 | New articles from the Editorial Crew (4) | $1.00–1.80 |
 | Reports (4 weekly + 1 monthly) | < $0.01 |
-| **Admin total (v2 legacy path and v4 flows share this budget)** | **≈ $8–10.5** against the default **$10** cap |
+| **Admin total (v2 legacy path and v4 flows share this budget)** | **≈ $8–10.5** against the default **$15** cap (v5; was $10) |
 | Ask the Blog (separate daily cap): 20 questions/day, 60 % answered, 15 % cache hits | ≈ $2.80 |
 | Ask the Blog ceiling | ≤ 31 × $1 = $31 (only if the daily cap is hit every day) |
 
-**The v4 crews cost about 3–4× v3's single-call drafting.** At the current defaults the admin budget is close to the cap;
-the guard pauses runs (`paused_budget`, banner, alert at 80 %) rather than overspend. Options, in order: raise
-`SEO_LLM_MONTHLY_BUDGET_USD` to $15; lower `SEO_AGENT_WEEKLY_MAX_ARTICLES` to 5 (−$3); move the reviewer to Haiku (−25 %
+**The v4 crews cost about 3–4× v3's single-call drafting.** With the old $10 cap the estimate ($8–10.5) left no headroom,
+so **v5 raised the default to $15** (web `DEFAULT_MONTHLY_BUDGET_USD`, agent `Settings.monthly_budget_usd`, the
+`seo-agent-config` ConfigMap); the estimate now uses 53–70 % of it, and `SeoLlmBudget80` fires at $12. The guard still
+pauses runs (`paused_budget`, banner, alert at 80 %) rather than overspend. To spend less: lower `SEO_AGENT_WEEKLY_MAX_ARTICLES` to 5 (−$3); move the reviewer to Haiku (−25 %
 per draft). v3's graph path had used ~$3–4.5 a month.
 
 ## Budget controls
 
-1. **Admin budget:** `SEO_LLM_MONTHLY_BUDGET_USD` (default $10): one cap for the v2 legacy path and every v4 flow,
+1. **Admin budget:** `SEO_LLM_MONTHLY_BUDGET_USD` (default $15 since v5; $10 before): one cap for the v2 legacy path and every v4 flow,
    computed from `seo_llm_usage` (+ in-flight legacy batches), excluding Ask the Blog. Before every call an upper-bound
    estimate is checked; a call that could cross the cap is **never sent**. The flow ends `paused_budget`, the draft shows
    "Paused", every SEO admin page shows the banner, and MCP `kickoff_flow` refuses drafting/report flows.
@@ -69,3 +70,11 @@ per draft). v3's graph path had used ~$3–4.5 a month.
 6. **Alerts:** `SeoLlmBudget80` (≥ 80 %) and `SeoLlmBudgetReached` (100 %).
 7. **Kill switches:** `SEO_ORCHESTRATOR=legacy`, `ASK_BLOG_ENABLED=false`, `PUBLIC_MCP_ENABLED=false`,
    `ADMIN_MCP_ENABLED=false`, and suspending the CronJobs.
+
+## Where the money goes: Settings → Claude usage → "By flow" (v5)
+
+The usage card now splits the month by flow, from `seo_flow_runs.cost_usd` (every run's measured model cost). News flows
+(own caps) and Ask the Blog (own daily cap, no flow) are not in it; **Outside flows** is the rest of the admin month in
+`seo_llm_usage` (the v2 legacy path, keyword intent labelling, recommendation explanations). Expect
+`optimize_article_flow` to dominate (≈ 60–70 % of the estimate above). These are measured numbers once runs exist;
+the table is empty until then.

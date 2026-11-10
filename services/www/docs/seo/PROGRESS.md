@@ -483,3 +483,38 @@ not built: the web side runs on PGlite in tests and has no long-running callback
   $10 cap (COSTS.md has the levers).
 - **Environment:** no stray cloud-sync copies appeared this time. The scratch PostgreSQL and the local agent were
   stopped after the checks.
+
+
+---
+
+# v5: RAG quality, SEO-side ML, safety and housekeeping (branch `feature/seo-v5-ml-rag`)
+
+Branched 2026-11-10 from master `0ea52e4`. Decisions D-66 onwards. CrewAI Flows stay the only orchestrator; ML runs as
+plain Python steps inside flows and writes Postgres tables that the TypeScript rules read, with a fallback to the rule.
+
+## v5 phase status
+
+| Phase | Status | Commit |
+|---|---|---|
+| 1 Safety and housekeeping | done | (this commit) |
+| 2 RAG quality | not started | |
+| 3 SEO-side ML | not started | |
+| 4 Deployment and observability | not started | |
+| 5 Tests, docs, PR | not started | |
+
+## Phase 1 notes
+
+- **Kube-context guard** (`scripts/lib/kube-context.sh`, D-66) sourced by `deploy.sh`, `create-*` (3), `set-*` (4),
+  `setup-ci-applier/deployer`, `verify-practice-sandbox.sh`. `setup-ci-ecr-user.sh` runs no kubectl and is left alone;
+  `manifests.sh` only prints. Test: `bash scripts/tests/kube-context.test.sh` (stub kubectl) — 7 behaviours + a check
+  that every kubectl script sources the guard: all pass. CI job `ci-repo.yml`.
+- **`README 2.md`** was an older copy (pre-`services/` paths, no SEO agent or content image): nothing to merge; deleted.
+  `scripts/check-conflict-copies.sh` fails CI on tracked `name 2.ext` / `name (1).ext` files (1–2 digits, so
+  `notes 2026.txt` is allowed).
+- **LangGraph leftovers:** comments in 7 source files and 2 docs now say CrewAI; MANUAL_SETUP §17 shortened to the alias
+  note. The `SEO_ORCHESTRATOR=langgraph` alias stays, with its own test (`tests/seo-orchestrator-alias.test.ts`, 5 cases).
+  Migrations 0015/0016, the blog content, the news gazetteer (a product name) and history in PROGRESS/DECISIONS untouched.
+- **Budget:** default $15 (D-67); 80 % alert already present; per-flow breakdown on Settings → Claude usage (test in
+  `seo-v4-agent.test.ts` "budgets"); COSTS.md updated.
+- **Alerts handoff:** `docs/seo/alerts-for-minikube-repo.yaml` (generated, D-69); copy step in OPERATIONS.md#alerts.
+- **Image size:** `scripts/image-size.sh` + baselines (D-68); the baselines are empty until the first CI run.

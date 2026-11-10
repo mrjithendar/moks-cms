@@ -6,15 +6,18 @@
 #   MK4_CI_TOKEN    repository secret    ServiceAccount token    (from Secret jithendar/github-ci-deployer-token)
 # ./deploy.sh also applies the manifest (it is in minikube/kustomization.yaml).
 #
-#   scripts/setup-ci-deployer.sh            # apply SA + Role + token, test the kubeconfig, store the values
-#   SKIP_GH=1 scripts/setup-ci-deployer.sh  # only apply and test; set the values in GitHub yourself
-#   ROTATE=1 scripts/setup-ci-deployer.sh   # replace the token (the old one stops working)
+#   KUBE_CONTEXT=mk4 scripts/setup-ci-deployer.sh            # apply SA + Role + token, test the kubeconfig, store the values
+#   KUBE_CONTEXT=mk4 SKIP_GH=1 scripts/setup-ci-deployer.sh  # only apply and test; set the values in GitHub yourself
+#   KUBE_CONTEXT=mk4 ROTATE=1 scripts/setup-ci-deployer.sh   # replace the token (the old one stops working)
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 #
 # The token goes straight into `gh secret set` (stdin) and is never printed. The script renders the template to a
 # temporary file to check the kubeconfig can restart jithendar-com, then deletes it.
 # Needs: kubectl with cluster-admin on context mk4; gh CLI signed in with admin on the repository (unless SKIP_GH=1).
 # The cluster API (server in the mk4 context) must be reachable from GitHub-hosted runners.
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 
 REPO="${GITHUB_REPO:-mrjithendar/jithendar.com}"
 NS="jithendar"
@@ -63,7 +66,7 @@ trap 'rm -f "$KCFG"' EXIT # delete it when the script exits, whether it succeeds
 perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' "$TEMPLATE" > "$KCFG"
 
 # test the login with $KCFG filled file
-[[ "$(kubectl --kubeconfig "$KCFG" auth can-i patch deployment/jithendar-com -n "$NS")" == yes ]] \
+[[ "$(command kubectl --kubeconfig "$KCFG" auth can-i patch deployment/jithendar-com -n "$NS")" == yes ]] \
   || { echo "The rendered kubeconfig cannot restart deployment/jithendar-com." >&2; exit 1; }
 
 if [[ "${SKIP_GH:-0}" == "1" ]]; then

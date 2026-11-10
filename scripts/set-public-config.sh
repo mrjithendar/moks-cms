@@ -2,10 +2,13 @@
 # Create or update ConfigMap jithendar/jithendar-com-public: public identifiers for search-engine
 # verification, Google Analytics 4, Google AdSense, ads.txt and IndexNow. None of these are secrets
 # (they appear in page HTML or public files), but they are account-specific, so they are not in Git.
-#   scripts/set-public-config.sh
+#   KUBE_CONTEXT=mk4 scripts/set-public-config.sh
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 # Leave a prompt empty to leave that setting unset. Then restart:
 #   kubectl -n jithendar rollout restart deployment/jithendar-com
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 NS="jithendar"
 
 args=()

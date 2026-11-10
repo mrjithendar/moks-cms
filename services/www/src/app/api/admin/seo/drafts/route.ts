@@ -16,7 +16,7 @@ const body = z.object({
 /** POST /api/admin/seo/drafts — queue (re)generation of an article's draft. Returns at once; the queue shows progress. */
 export const POST = seoRoute("drafts-create", { mutating: true, rate: { max: 20, windowSeconds: 600 } }, async (_req, ctx) => {
   const b = parse(body, ctx.body);
-  // SEO_ORCHESTRATOR=legacy → v2 job queue; langgraph → an optimize_article run (thread_id = draft id).
+  // SEO_ORCHESTRATOR=legacy → v2 job queue; crewai → an optimize_article_flow run in the seo-agent (thread_id = draft id).
   const r = await requestDraft(b.articleId, { mode: b.mode, recommendationIds: b.recommendationIds, extra: b.extra, trigger: b.extra?.length ? "fix" : "manual", actor: ctx.actor.label });
   await ctx.audit("draft.generate", b.articleId, { mode: b.mode, recommendations: b.recommendationIds?.length ?? null, issues: b.extra?.length ?? 0, queued: r.queued, orchestrator: r.orchestrator, threadId: "threadId" in r ? r.threadId : null });
   return json(r, 202);

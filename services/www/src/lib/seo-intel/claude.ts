@@ -78,6 +78,32 @@ export async function budgetState(db: Db, cfg: Pick<ClaudeConfig, "monthlyBudget
   return { budgetUsd: cfg.monthlyBudgetUsd, spentUsd, reservedUsd, remainingUsd, paused: spentUsd + reservedUsd >= cfg.monthlyBudgetUsd, monthStart: monthStart.slice(0, 10), byModel };
 }
 
+export type FlowCost = { flow: string; runs: number; costUsd: number; tokens: number; share: number };
+export type FlowCostBreakdown = { monthStart: string; flows: FlowCost[]; outsideFlowsUsd: number; totalUsd: number };
+
+/**
+ * Month-to-date spend per seo-agent flow (v5), from seo_flow_runs.cost_usd (every run's model cost, written by the
+ * agent's CrewAI persistence). News flows are left out (own caps, docs/news/COSTS.md), as is Ask the Blog (no flow).
+ * "Outside flows" = the admin month's spend in seo_llm_usage minus the flows: the v2 legacy path, keyword intents and
+ * recommendation explanations. A flow's cost lands in the month its run started.
+ */
+export async function flowCostBreakdown(db: Db, spentUsd: number, now = new Date()): Promise<FlowCostBreakdown> {
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  let rows: { flow_name: string; runs: number; cost: number; tokens: number }[] = [];
+  try {
+    rows = rowsOf<{ flow_name: string; runs: number; cost: number; tokens: number }>(
+      await db.execute(sql`select flow_name, count(*)::int as runs, coalesce(sum(cost_usd), 0)::float8 as cost, coalesce(sum(tokens), 0)::float8 as tokens
+        from seo_flow_runs where started_at >= ${monthStart} and flow_name not like 'news%' group by flow_name order by cost desc, flow_name`),
+    );
+  } catch {
+    rows = []; // migration 0016 not applied (legacy installs): no flows, everything is "outside flows"
+  }
+  const inFlows = rows.reduce((s, r) => s + Number(r.cost), 0);
+  const totalUsd = Math.max(spentUsd, inFlows);
+  const flows = rows.map((r) => ({ flow: r.flow_name, runs: Number(r.runs), costUsd: Number(r.cost), tokens: Number(r.tokens), share: totalUsd > 0 ? Number(r.cost) / totalUsd : 0 }));
+  return { monthStart: monthStart.slice(0, 10), flows, outsideFlowsUsd: Math.max(0, spentUsd - inFlows), totalUsd };
+}
+
 export class BudgetExceeded extends Error {
   readonly code = "budget";
 }

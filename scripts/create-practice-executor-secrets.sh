@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Create (or rotate) the executor's Secret in namespace jithendar and give the site the matching token.
-#   scripts/create-practice-executor-secrets.sh
+#   KUBE_CONTEXT=mk4 scripts/create-practice-executor-secrets.sh
+#   (kube context: KUBE_CONTEXT=<name>, else the current context with a confirmation prompt; scripts/lib/kube-context.sh)
 # Writes:
 #   jithendar/practice-executor-env   EXECUTOR_API_TOKEN
 #     (the queue is the shared Valkey: EXECUTOR_REDIS_URL comes from redis-practice-credentials, written by Terraform
@@ -8,6 +9,8 @@
 #   jithendar/jithendar-com-env       PRACTICE_EXECUTOR_URL, PRACTICE_EXECUTOR_TOKEN (other keys are kept)
 # Nothing is printed, written to disk or committed. Then restart the executor and the site (printed at the end).
 set -euo pipefail
+# shellcheck source=/dev/null
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/kube-context.sh"
 NS=jithendar
 k() { kubectl -n "$NS" "$@"; }
 
