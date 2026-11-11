@@ -112,7 +112,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
         </Card>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[repeat(2,minmax(0,1fr))]">
         <Panel title="Your drafts" action={<Link href="/admin/posts?status=draft" className="text-sm underline">All drafts</Link>}>
           {d.myDrafts.length === 0 ? (
             <Empty>No drafts. <Link href="/admin/posts/new" className="underline">Start a post</Link>.</Empty>

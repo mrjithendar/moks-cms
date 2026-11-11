@@ -33,22 +33,26 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     db.select({ n: count() }).from(schema.contactMessage).where(eq(schema.contactMessage.status, "new")),
     isAdmin ? reviewCount(db) : 0,
   ]);
-  // One CMS: search, analytics, the editorial calendar and AI drafting are ordinary admin pages, grouped by job.
+  // One CMS (D-86): search, analytics, the editorial calendar and AI drafting are ordinary admin pages.
+  // Grouped by category; each category expands and collapses in the sidebar (components/admin/AdminNav.tsx).
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", section: "Overview" },
-    ...(isAdmin ? [{ href: "/admin/news", label: "News desk", section: "Overview" }] : []),
+    // Content: what is published.
     { href: "/admin/posts", label: "Posts", section: "Content" },
-    ...(isAdmin
-      ? [
-          { href: "/admin/calendar", label: "Editorial calendar", section: "Content" },
-          { href: "/admin/review", label: "Review queue", badge: review, section: "Content" },
-        ]
-      : []),
     { href: "/admin/pages", label: "Pages", section: "Content" },
     { href: "/admin/media", label: "Media", section: "Content" },
     { href: "/admin/categories", label: "Categories", section: "Content" },
     { href: "/admin/tags", label: "Tags", section: "Content" },
     { href: "/admin/practice", label: "Python practice", section: "Content" },
+    // Editorial & AI: planning and AI-drafted work waiting for a person.
+    ...(isAdmin
+      ? [
+          { href: "/admin/calendar", label: "Editorial calendar", section: "Editorial & AI" },
+          { href: "/admin/review", label: "Review queue", badge: review, section: "Editorial & AI" },
+          { href: "/admin/news", label: "News desk", section: "Editorial & AI" },
+        ]
+      : []),
+    // Insights: search and audience data.
     ...(isAdmin
       ? [
           { href: "/admin/search", label: "Search performance", section: "Insights" },
@@ -62,19 +66,24 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/reports", label: "Reports", section: "Insights" },
         ]
       : []),
+    // Community: people who write to you or book a call.
     { href: "/admin/comments", label: "Comments", badge: comments.pending + comments.reported, section: "Community" },
-    ...(isAdmin ? [{ href: "/admin/messages", label: "Messages", badge: unread?.n, section: "Community" }, { href: "/admin/bookings", label: "Bookings", section: "Community" }] : []),
-    { href: "/admin/profile", label: "Author profile", section: "Account" },
-    { href: "/admin/api-keys", label: "API keys", section: "Account" },
     ...(isAdmin
       ? [
-          { href: "/admin/users", label: "Users", section: "Site" },
-          { href: "/admin/appearance", label: "Appearance & settings", section: "Site" },
-          { href: "/admin/integrations", label: "Integrations", section: "Site" },
-          { href: "/admin/automation", label: "Automation & AI", section: "Site" },
-          { href: "/admin/automation/mcp", label: "MCP access", section: "Site" },
-          { href: "/admin/advanced", label: "Advanced settings", section: "Site" },
-          { href: "/admin/storage", label: "Storage & email", section: "Site" },
+          { href: "/admin/messages", label: "Messages", badge: unread?.n, section: "Community" },
+          { href: "/admin/bookings", label: "Bookings", section: "Community" },
+        ]
+      : []),
+    // Site settings and operations (admins only).
+    ...(isAdmin
+      ? [
+          { href: "/admin/appearance", label: "Appearance & settings", section: "Site settings" },
+          { href: "/admin/integrations", label: "Integrations", section: "Site settings" },
+          { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
+          { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
+          { href: "/admin/advanced", label: "Advanced settings", section: "Site settings" },
+          { href: "/admin/storage", label: "Storage & email", section: "Site settings" },
+          { href: "/admin/users", label: "Users", section: "Site settings" },
           { href: "/admin/system", label: "System status", section: "Operations" },
           { href: "/admin/sync", label: "Data sync", section: "Operations" },
           { href: "/admin/models", label: "ML models", section: "Operations" },
@@ -83,6 +92,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/audit", label: "Audit log", section: "Operations" },
         ]
       : []),
+    { href: "/admin/profile", label: "Author profile", section: "Account" },
+    { href: "/admin/api-keys", label: "API keys", section: "Account" },
   ];
 
   const account = (
