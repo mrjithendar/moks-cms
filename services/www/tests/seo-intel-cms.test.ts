@@ -193,7 +193,7 @@ describe("editorial calendar", () => {
 });
 
 describe("no automatic publishing", () => {
-  const roots = ["src/lib/seo-intel", "src/lib/seo-agent", "src/app/api/admin/seo", "src/app/admin/seo", "src/components/seo", "src/app/api/ask", "src/components/ask"].map((p) => path.resolve(import.meta.dirname, "..", p));
+  const roots = ["src/lib/seo-intel", "src/lib/seo-agent", "src/app/api/admin/seo", "src/app/admin/(growth)", "src/components/seo", "src/app/api/ask", "src/components/ask"].map((p) => path.resolve(import.meta.dirname, "..", p));
   const files = roots.flatMap(function walk(dir: string): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : []));
   });
@@ -201,9 +201,22 @@ describe("no automatic publishing", () => {
   // v2 (docs/seo/DECISIONS.md D-21): publish.ts is the single module allowed to update a post, from an explicit approval.
   const PUBLISHER = path.resolve(import.meta.dirname, "..", "src/lib/seo-intel/publish.ts");
 
+  // Owner decision 2026-11-11 (D-85): calendar articles go straight into their CMS draft post. handoff.ts may fill a
+  // DRAFT post through updatePost (never publish, never change status) and only while the post still holds the outline.
+  const HANDOFF = path.resolve(import.meta.dirname, "..", "src/lib/seo-intel/handoff.ts");
+
+  it("handoff.ts only fills draft posts: updatePost without status, never publish/delete/raw writes", () => {
+    const src = fs.readFileSync(HANDOFF, "utf8");
+    expect(src).not.toMatch(/\b(publishPost|publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost|createPost)\b/);
+    expect(src).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);
+    expect(src).not.toMatch(/status:\s*["']/);
+    expect([...src.matchAll(/\bupdatePost\(/g)].length).toBe(1);
+    expect(src).toMatch(/\["draft", "review"\]\.includes\(r\.p_status\)[\s\S]*?p_body\.trim\(\) !== outline\.trim\(\)[\s\S]*?updatePost\(/);
+  });
+
   it("no SEO module calls the CMS's publish/update/delete functions or writes post status", () => {
     expect(files.length).toBeGreaterThan(20);
-    for (const f of files.filter((x) => x !== PUBLISHER)) {
+    for (const f of files.filter((x) => x !== PUBLISHER && x !== HANDOFF)) {
       const src = fs.readFileSync(f, "utf8");
       expect(src, f).not.toMatch(/\b(publishPost|updatePost|publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost)\b/);
       expect(src, f).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);

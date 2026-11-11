@@ -35,8 +35,10 @@ AGENTS = [
 ROLES = {a.key: {"role": a.role, "tools": a.tools} for a in AGENTS}
 
 FACT_CHECK_MARKER = "NEEDS_FACT_CHECK:"
-_MARKER_RE = re.compile(r"^\s*\**\s*needs_fact_check\s*\**\s*:", re.I | re.M)
+_MARKER_RE = re.compile(r"^\s*(?:\**\s*needs[_ ]fact[_ ]check\s*\**\s*:|#{1,6}\s*needs[_ ]fact[_ ]check\b[^\n]*$)", re.I | re.M)
 _FENCE_RE = re.compile(r"^```(?:mdx|markdown|md)?[ \t]*\n([\s\S]*?)\n```[ \t]*$")
+_OPEN_FENCE_RE = re.compile(r"^```(?:mdx|markdown|md)[ \t]*$", re.I | re.M)
+_PREAMBLE_RE = re.compile(r"^#{1,6}\s*corrected\b[^\n]*\n+", re.I)
 _CODE_RE = re.compile(r"```([A-Za-z0-9_+-]*)[^\n]*\n([\s\S]*?)```")
 
 
@@ -57,6 +59,19 @@ def _slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:80] or "draft"
 
 
+def _unwrap_mdx(body: str) -> str:
+    """Drop a reviewer preamble and an outer ```mdx wrapper. Inner code blocks come in pairs of fence lines, so with an
+    odd count after the opening the last bare ``` closes the wrapper; with an even count the wrapper was cut off."""
+    o = _OPEN_FENCE_RE.search(body)
+    if not o:
+        return _PREAMBLE_RE.sub("", body).strip()
+    lines = body[o.end() :].strip("\n").split("\n")
+    fences = [i for i, ln in enumerate(lines) if ln.strip().startswith("```")]
+    if len(fences) % 2 == 1 and lines[fences[-1]].strip() == "```":
+        lines = lines[: fences[-1]]
+    return "\n".join(lines).strip()
+
+
 def split_review(raw: str) -> tuple[str, list[FactCheckFlag]]:
     """The reviewer's answer → (corrected body, needs_fact_check items). The body is everything before the
     NEEDS_FACT_CHECK: line, with one wrapping ```mdx fence removed; items are `- claim | reason` lines after it."""
@@ -67,6 +82,10 @@ def split_review(raw: str) -> tuple[str, list[FactCheckFlag]]:
     f = _FENCE_RE.match(body)
     if f:
         body = f.group(1).strip()
+    else:
+        # "## Corrected MDX body", reviewer notes, then the body in a ```mdx fence: keep only the fenced body
+        # (from the opening ```mdx line to the last bare ``` line; inner code blocks stay intact).
+        body = _unwrap_mdx(body)
     flags: list[FactCheckFlag] = []
     for line in rest.splitlines():
         item = line.strip().lstrip("-*• ").strip()

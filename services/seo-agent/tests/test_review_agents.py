@@ -148,6 +148,18 @@ def test_split_review() -> None:
     assert [b.lang for b in code_blocks_of("```\nx\n```\n```yaml\na: 1\n```")] == ["text", "yaml"]
 
 
+def test_split_review_wrapped_body() -> None:
+    # The reviewer ignored the marker format: a preamble, the body in an ```mdx fence, then a notes heading.
+    wrapped = "## Corrected MDX body\n\nNotes on the edits.\n\n```mdx\nIntro.\n\n## A\n\n```bash\nls\n```\n\nEnd.\n```\n\n## needs_fact_check items\n\n- claim | why\n"
+    body, flags = split_review(wrapped)
+    assert body == "Intro.\n\n## A\n\n```bash\nls\n```\n\nEnd."
+    assert [(f.claim, f.reason) for f in flags] == [("claim", "why")]
+    # Cut off inside the wrapper (token cap): keep everything after the opening fence, inner code blocks intact.
+    cut = "## Corrected MDX body\n\nNotes.\n\n```mdx\nIntro.\n\n```bash\nls\n```\n\n## Command reference"
+    assert split_review(cut)[0] == "Intro.\n\n```bash\nls\n```\n\n## Command reference"
+    assert split_review("## Corrected body\n\n## A\n\nText.")[0] == "## A\n\nText."
+
+
 # --- 3. publish idempotency ------------------------------------------------------------------------------------------
 
 

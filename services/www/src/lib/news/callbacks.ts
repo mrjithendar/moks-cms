@@ -230,7 +230,7 @@ export async function newsNotify(body: unknown, send = sendSeoAlert) {
   if (b.kind === "run_summary") {
     if (!b.ready && !b.failedQuality) return { sent: false, reason: "nothing to report" };
     subject = `News desk: ${b.ready ?? 0} draft${b.ready === 1 ? "" : "s"} ready${b.failedQuality ? `, ${b.failedQuality} failed quality` : ""} (${b.jobName})`;
-    text = `${subject}\n\nReview: ${siteOrigin().origin}/admin/seo/review?tab=news\nRun: ${link}`;
+    text = `${subject}\n\nReview: ${siteOrigin().origin}/admin/review?tab=news\nRun: ${link}`;
   } else if (b.kind === "job_failed") {
     subject = `News desk job failed: ${b.jobName}`;
     text = `${b.error ?? "Unknown error"}\n\nRun: ${link}`;

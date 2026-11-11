@@ -83,7 +83,7 @@ export function MetricCell({ articleId, metric, value, run, title }: { articleId
                   <li key={k}>
                     <div className="flex flex-wrap items-center gap-2"><SeverityBadge severity={i.severity} /><span className="font-medium text-fg">{i.check.replace(/_/g, " ")}</span></div>
                     <p className="mt-1 text-xs text-fg-subtle">
-                      {i.line ? <Link className="underline" href={`/admin/seo/articles/${articleId}?line=${i.line}#L${i.line}`}>{i.location}</Link> : i.location}
+                      {i.line ? <Link className="underline" href={`/admin/posts/${articleId}/insights?line=${i.line}#L${i.line}`}>{i.location}</Link> : i.location}
                     </p>
                     <p className="mt-1 text-xs text-fg-muted"><span className="font-medium text-fg">Why:</span> {i.why}</p>
                     <p className="text-xs text-fg-muted"><span className="font-medium text-fg">Fix:</span> {i.fix}</p>
@@ -91,7 +91,7 @@ export function MetricCell({ articleId, metric, value, run, title }: { articleId
                 ))}
               </ul>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                {data.total > 5 && <Link className="text-xs font-medium underline" href={`/admin/seo/articles/${articleId}#issues`}>View all {data.total}</Link>}
+                {data.total > 5 && <Link className="text-xs font-medium underline" href={`/admin/posts/${articleId}/insights#issues`}>View all {data.total}</Link>}
                 {data.items.some((i) => i.fixCategory) && (
                   <button type="button" onClick={() => fix(data.items)} disabled={Boolean(fixing)} className="min-h-9 rounded-md bg-accent px-3 text-xs font-semibold text-on-accent hover:bg-accent-hover disabled:opacity-60">
                     {fixing ? "Queuing…" : "Fix with Claude"}

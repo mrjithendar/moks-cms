@@ -8,7 +8,7 @@ import { getSeoSettings } from "./settings";
 import { addDays, dateIn } from "./sqlutil";
 
 /**
- * "Test connection" in /admin/seo/integrations: one cheap, real request per provider. A provider is reported as
+ * "Test connection" in /admin/integrations: one cheap, real request per provider. A provider is reported as
  * connected only after Google answered successfully; nothing is simulated.
  */
 export type TestResult = { provider: "gsc" | "ga4"; ok: boolean; status: "connected" | "auth_error" | "error" | "not_configured"; message: string };

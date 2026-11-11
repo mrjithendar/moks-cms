@@ -26,11 +26,11 @@ for (const [name, path] of PAGES) {
 
 /** Admin pages (after only): SHOT_DIR + ADMIN_SHOTS=1 against the seeded E2E instance. */
 const ADMIN_PAGES = [
-  ["admin-overview", "/admin/seo?compare=1"],
-  ["admin-review-queue", "/admin/seo/review"],
-  ["admin-keywords", "/admin/seo/keywords?view=striking"],
-  ["admin-content", "/admin/seo/content"],
-  ["admin-links", "/admin/seo/links"],
+  ["admin-overview", "/admin?compare=1"],
+  ["admin-review-queue", "/admin/review"],
+  ["admin-keywords", "/admin/keywords?view=striking"],
+  ["admin-content", "/admin/content-audit"],
+  ["admin-links", "/admin/links"],
 ] as const;
 
 test("admin screenshots", async ({ page }, info) => {
@@ -43,8 +43,8 @@ test("admin screenshots", async ({ page }, info) => {
     await page.screenshot({ path: `${process.env.SHOT_DIR}/${name}-${info.project.name}.png`, fullPage: true });
   }
   // The diff view of the first draft in the queue, if any.
-  await page.goto("/admin/seo/review?tab=done");
-  const first = page.locator('a[href^="/admin/seo/review/"]').first();
+  await page.goto("/admin/review?tab=done");
+  const first = page.locator('a[href^="/admin/review/"]').first();
   if (await first.count()) {
     await first.click();
     await page.waitForLoadState("networkidle");

@@ -11,7 +11,7 @@ const TABS = [
   { href: "/admin/news/topics", label: "Topics" },
   { href: "/admin/news/analytics", label: "Analytics" },
   { href: "/admin/news/settings", label: "Settings" },
-  { href: "/admin/seo/review?tab=news", label: "Review queue ↗" },
+  { href: "/admin/review?tab=news", label: "Review queue ↗" },
 ];
 
 /** Section tabs for /admin/news (horizontally scrollable on phones). */

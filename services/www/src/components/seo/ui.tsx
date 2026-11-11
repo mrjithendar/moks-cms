@@ -61,8 +61,8 @@ export function SourceBanner({ status }: { status: SourceStatus }) {
       <p className="mt-0.5">{status.message}</p>
       {status.lastError && status.state === "error" && <p className="mt-1 text-xs [overflow-wrap:anywhere]">Last error: {status.lastError}</p>}
       <p className="mt-2 flex flex-wrap gap-3 text-xs">
-        <Link className="underline" href="/admin/seo/integrations">Integrations</Link>
-        <Link className="underline" href="/admin/seo/sync">Sync history</Link>
+        <Link className="underline" href="/admin/integrations">Integrations</Link>
+        <Link className="underline" href="/admin/sync">Sync history</Link>
       </p>
     </div>
   );

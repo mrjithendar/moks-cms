@@ -237,7 +237,7 @@ export async function verifyDraft(draftId: string, attempt: number, reason: "pub
   }
   await audit({ id: null, label: "seo-verify" }, "seo.draft.verification_failed", d.article_id, { draftId, reason, checks });
   log.warn("seo post-publish verification failed", { operation: "seo_verify", outcome: "failed" });
-  await sendSeoAlert(`SEO: verification failed for ${path}`, `The page published from an SEO draft did not pass verification, so nothing was submitted to search engines.\n\n${checks.map((c) => `${c.ok ? "✓" : "✗"} ${c.key}: ${c.detail}`).join("\n")}\n\nRoll back in one click: ${origin.origin}/admin/seo/review/${draftId}`).catch(() => false);
+  await sendSeoAlert(`SEO: verification failed for ${path}`, `The page published from an SEO draft did not pass verification, so nothing was submitted to search engines.\n\n${checks.map((c) => `${c.ok ? "✓" : "✗"} ${c.key}: ${c.detail}`).join("\n")}\n\nRoll back in one click: ${origin.origin}/admin/review/${draftId}`).catch(() => false);
   return verification;
 }
 

@@ -6,7 +6,7 @@ import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ getAll: () => [] }) }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/admin/seo/settings", redirect: () => {}, notFound: () => {} }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/admin/automation", redirect: () => {}, notFound: () => {} }));
 const admin: SessionUser = { id: "admin", name: "Admin", email: "admin@example.com", role: "admin", emailVerified: true, image: null, sessionCreatedAt: new Date() };
 vi.mock("@/lib/session", () => ({ getSessionUser: async () => admin, requireRole: async () => admin, requireUser: async () => admin }));
 
@@ -47,7 +47,7 @@ describe("settings page", () => {
   it("renders connections, the tab bar and the first tab; no secret values", async () => {
     vi.stubEnv("PAGESPEED_API_KEY", "pk-secret-value");
     vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-secret-value");
-    const Page = (await import("@/app/admin/seo/settings/page")).default as () => Promise<React.ReactElement>;
+    const Page = (await import("@/app/admin/(growth)/automation/page")).default as () => Promise<React.ReactElement>;
     const html = renderToStaticMarkup(await Page());
     expect(html).toContain("Connections");
     expect(html).toContain("PageSpeed Insights / CrUX");

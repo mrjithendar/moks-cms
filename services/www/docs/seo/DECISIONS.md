@@ -578,3 +578,20 @@ refused honest questions on an AI blog ("how do I write a system prompt…", a r
 phrasing aimed at this assistant's prompt and a capitalised `DAN`. The eval set's hard questions and the opt-in
 generation eval (citation precision, faithfulness via an `eval_judge` call) replace a CI recall gate, which hashed
 embeddings can't make meaningful.
+
+## D-85 SEO is part of the CMS; calendar articles are written into their CMS draft post (owner request 2026-11-11)
+
+"Do not make anything separate, integrate the SEO dashboard into the CMS." Two changes:
+
+- **One admin shell.** The SEO section rail is gone; every SEO page is an item in the main admin sidebar (Editorial calendar and AI review queue under Content, analysis pages under SEO, SEO settings/integrations/MCP under Site, sync history and ML models under Operations). URLs are unchanged. The dashboard keeps its view controls and ⌘K palette.
+- **No separate review step for calendar articles.** When the Editorial Crew saves a calendar draft, `seo-intel/handoff.ts` writes its title, meta description and body into the item's CMS **draft** post (through `updatePost`, never publishing, never changing status) and marks the seo_drafts row superseded. It only replaces the generated outline: if the post body was edited, nothing is overwritten. Opening the post in the editor runs the same handoff, so drafts that finished earlier move too. The crew's fact-check flags are shown above the editor. Publishing is the editor's own Publish button; the calendar follows the post status. News desk drafts are unchanged. This narrows D-21 (publish.ts is the only SEO module that publishes) rather than replacing it; `tests/seo-intel-cms.test.ts` pins both.
+
+The crew's reviewer sometimes wrapped the body ("## Corrected MDX body", notes, a ```mdx fence, a "needs_fact_check items" heading). `split_review` (seo-agent) and `cleanCrewBody` (www) now unwrap it, including a wrapper cut off by the token cap.
+
+## D-86 No separate SEO area: one CMS (owner request 2026-11-11)
+
+"Do not make separation like SEO dashboard / CMS, merge everything." D-85 put the SEO pages in the main sidebar; this removes the SEO area itself.
+
+- **No /admin/seo.** The pages live in the route group `app/admin/(growth)` (no URL prefix): `/admin/calendar`, `/admin/review`, `/admin/search`, `/admin/analytics`, `/admin/page-insights`, `/admin/keywords`, `/admin/recommendations`, `/admin/content-audit`, `/admin/links`, `/admin/technical`, `/admin/reports`, `/admin/sync`, `/admin/models`, `/admin/automation` (+ `/mcp`). The group layout keeps the admin-only guard, the budget banner and the ⌘K palette; the stylesheet loads in the admin layout (every admin page). Old `/admin/seo/*` links (bookmarks, emails already sent) redirect (`lib/seo-intel/old-urls.ts`). API routes stay under `/api/admin/seo`.
+- **Merged pages.** The SEO overview is the "Search & traffic" part of the admin Dashboard (admins). Search Console / GA4 is a section of Admin → Integrations. The per-article SEO panel is `/admin/posts/{id}/insights`, linked from the post editor.
+- **Sidebar by job, no "SEO" group.** Content: Posts, Editorial calendar, Review queue, …; Insights: search, analytics, keywords, recommendations, content audit, linking, technical health, reports; Site: Integrations, Automation & AI, MCP access; Operations: Data sync, ML models.

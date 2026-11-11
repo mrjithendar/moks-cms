@@ -13,6 +13,7 @@ import { queueSitemapForIndexNow } from "@/lib/indexnow";
 import { geminiSummary, indexNowSummary, removeGeminiKey, resetSocialProvider, saveGemini, saveSocialProvider, setIndexNow, socialSummary } from "@/lib/integrations";
 import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
+import { SeoIntegrations } from "@/components/seo/merged/SeoIntegrations";
 import { storageReady } from "@/lib/storage";
 
 export const metadata = { title: "Integrations" };
@@ -256,6 +257,9 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             </form>
           </Card>
         </section>
+      </div>
+      <div className="mt-10">
+        <SeoIntegrations />
       </div>
     </>
   );

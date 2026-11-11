@@ -41,7 +41,7 @@ describe("reports", () => {
     expect(r.organic.dataComplete).toBe(true);
     expect(r.organic.ga4.current.organicSessions).toBeGreaterThan(0);
     expect(r.bestArticles[0]!.page).toBe("https://jithendar.com/blog/argo-cd-gitops");
-    const text = reportText(r, "https://jithendar.com/admin/seo/reports/x");
+    const text = reportText(r, "https://jithendar.com/admin/reports/x");
     expect(text).toMatch(/Search Console: \d+ clicks/);
     expect(text).not.toMatch(/forecast|guarantee/i);
   });
@@ -72,7 +72,7 @@ describe("reports", () => {
     const r = await generateReport("weekly", "schedule", NOW, { send, mailReady });
     expect(r.emailed).toBe(2);
     expect(send).toHaveBeenCalledTimes(2);
-    expect((send.mock.calls[0] as unknown as [string, string, string])[2]).toContain(`/admin/seo/reports/${r.id}`);
+    expect((send.mock.calls[0] as unknown as [string, string, string])[2]).toContain(`/admin/reports/${r.id}`);
     await generateReport("weekly", "manual", NOW, { send, mailReady });
     expect(send).toHaveBeenCalledTimes(2);
     expect(rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_reports`))[0]!.n).toBe(1);

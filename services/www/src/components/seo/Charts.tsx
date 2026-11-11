@@ -1,5 +1,5 @@
 /**
- * Dependency-free charts for /admin/seo (server-rendered SVG/HTML, same approach as components/practice/Charts.tsx).
+ * Dependency-free charts for the search/analytics admin pages (server-rendered SVG/HTML, same approach as components/practice/Charts.tsx).
  * One series per chart, in the site accent: no dual axes (clicks and impressions are separate charts), no legend
  * needed (the heading names the series). Every mark has a hover tooltip (<title>) with a hit target larger than
  * the mark, and every chart has a table equivalent, so nothing depends on colour or hover alone.

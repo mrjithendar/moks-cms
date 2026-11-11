@@ -2,11 +2,13 @@
 @import "./theme-tokens.css";
 @plugin "@tailwindcss/typography";
 
-/* The SEO admin (/admin/seo) has its own stylesheet (src/app/admin/seo/seo.css), loaded only there, so its utility
+/* The search/analytics/calendar admin pages (route group app/admin/(growth)) have their own stylesheet
+   (src/app/admin/(growth)/seo.css), loaded by the admin layout only, so its utility
    classes never add weight to the render-blocking CSS of public pages. */
 @source not "../components/seo";
-@source not "./admin/seo";
-/* News desk admin (docs/news): same split as the SEO admin (D-37); its layout loads admin/seo/seo.css. */
+/* `?growth?` = the (growth) route group; Tailwind globs cannot take literal parentheses. */
+@source not "./admin/?growth?";
+/* News desk admin (docs/news): same split as the SEO admin (D-37); the admin layout loads admin/(growth)/seo.css. */
 @source not "../components/news";
 @source not "./admin/news";
 

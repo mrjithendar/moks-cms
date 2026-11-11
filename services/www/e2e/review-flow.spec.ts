@@ -16,12 +16,12 @@ test("draft → review → reject one, edit one → approve & publish → verify
   await signIn(page);
 
   // Find the seeded article and ask Claude (fake) for a draft.
-  await page.goto("/admin/seo/content");
+  await page.goto("/admin/content-audit");
   await page.getByRole("link", { name: "Ingress and TLS on Kubernetes" }).first().click();
   await page.getByRole("button", { name: "Draft with Claude" }).click();
 
   // The job runs on the worker tick; the queue shows the draft with counts and the breakdown.
-  await page.goto("/admin/seo/review");
+  await page.goto("/admin/review");
   await eventually(page, async () => {
     await expect(page.getByRole("link", { name: "Ingress and TLS on Kubernetes" })).toBeVisible({ timeout: 1000 });
     await expect(page.getByText(/4 changes/)).toBeVisible({ timeout: 1000 });
@@ -93,12 +93,12 @@ test("mobile (375 px): queue cards, inline diff, swipe/buttons to move, accept/r
   test.skip(info.project.name !== "mobile", "mobile only");
   test.setTimeout(300_000);
   await signIn(page);
-  await page.goto("/admin/seo");
+  await page.goto("/admin");
   await noHorizontalScroll(page);
-  await page.goto("/admin/seo/content");
+  await page.goto("/admin/content-audit");
   await page.getByRole("link", { name: "Ingress and TLS on Kubernetes" }).first().click();
   await page.getByRole("button", { name: "Draft with Claude" }).click();
-  await page.goto("/admin/seo/review");
+  await page.goto("/admin/review");
   await eventually(page, async () => expect(page.getByRole("link", { name: "Ingress and TLS on Kubernetes" })).toBeVisible({ timeout: 1000 }));
   await noHorizontalScroll(page);
   await page.getByRole("link", { name: "Ingress and TLS on Kubernetes" }).click();

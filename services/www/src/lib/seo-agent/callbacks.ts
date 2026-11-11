@@ -212,6 +212,11 @@ export async function saveDraft(draftId: string, body: unknown) {
       recommendation_ids = ${`{${b.recommendationIds.join(",")}}`}::uuid[], categories = ${`{${b.categories.join(",")}}`}::text[], document = ${b.document ? JSON.stringify(b.document) : null}::jsonb,
       failure_reason = null, model = ${b.model}, prompt_version = ${b.promptVersion}, generated_at = now(), updated_at = now(), attempts = attempts + 1
     where id = ${draftId} and status in ('generating', 'ready_for_review', 'generation_failed')`);
+  // Calendar articles go straight into their CMS draft post (no separate review step); see seo-intel/handoff.ts.
+  if (b.kind === "new_article" && d.calendar_id) {
+    const { handOffToCms } = await import("../seo-intel/handoff");
+    await handOffToCms(draftId, db).catch((err) => log.warn("calendar draft handoff failed", { err, operation: "seo_handoff" }));
+  }
   return { ok: true, changes: changes.length };
 }
 

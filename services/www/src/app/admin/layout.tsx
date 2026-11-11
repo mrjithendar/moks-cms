@@ -1,34 +1,67 @@
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AdminNav, type NavItem } from "@/components/admin/AdminNav";
 import { SessionGuard } from "@/components/SessionGuard";
 import { getDb, schema } from "@/db";
+import { rowsOf } from "@/db/rows";
 import { moderationCounts } from "@/lib/comments";
 import { requireRole } from "@/lib/session";
 import { SignOutButton } from "../account/SignOutButton";
+// The admin stylesheet (search, analytics and calendar components are part of the CMS, so it loads on every admin page).
+import "./(growth)/seo.css";
 
 export const metadata: Metadata = { title: { default: "Admin", template: "%s · Admin" }, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
+async function reviewCount(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
+  try {
+    const [r] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_drafts where status = 'ready_for_review'`));
+    return Number(r?.n ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await requireRole("admin", "author");
   const db = await getDb();
-  const [comments, [unread]] = await Promise.all([
+  const isAdmin = user.role === "admin";
+  const [comments, [unread], review] = await Promise.all([
     moderationCounts(),
     db.select({ n: count() }).from(schema.contactMessage).where(eq(schema.contactMessage.status, "new")),
+    isAdmin ? reviewCount(db) : 0,
   ]);
-  const isAdmin = user.role === "admin";
+  // One CMS: search, analytics, the editorial calendar and AI drafting are ordinary admin pages, grouped by job.
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", section: "Overview" },
-    ...(isAdmin ? [{ href: "/admin/seo", label: "SEO intelligence", section: "Overview" }, { href: "/admin/news", label: "News desk", section: "Overview" }] : []),
+    ...(isAdmin ? [{ href: "/admin/news", label: "News desk", section: "Overview" }] : []),
     { href: "/admin/posts", label: "Posts", section: "Content" },
+    ...(isAdmin
+      ? [
+          { href: "/admin/calendar", label: "Editorial calendar", section: "Content" },
+          { href: "/admin/review", label: "Review queue", badge: review, section: "Content" },
+        ]
+      : []),
     { href: "/admin/pages", label: "Pages", section: "Content" },
     { href: "/admin/media", label: "Media", section: "Content" },
     { href: "/admin/categories", label: "Categories", section: "Content" },
     { href: "/admin/tags", label: "Tags", section: "Content" },
     { href: "/admin/practice", label: "Python practice", section: "Content" },
+    ...(isAdmin
+      ? [
+          { href: "/admin/search", label: "Search performance", section: "Insights" },
+          { href: "/admin/analytics", label: "Visitor analytics", section: "Insights" },
+          { href: "/admin/page-insights", label: "Page insights", section: "Insights" },
+          { href: "/admin/keywords", label: "Keywords", section: "Insights" },
+          { href: "/admin/recommendations", label: "Recommendations", section: "Insights" },
+          { href: "/admin/content-audit", label: "Content audit", section: "Insights" },
+          { href: "/admin/links", label: "Internal linking", section: "Insights" },
+          { href: "/admin/technical", label: "Technical health", section: "Insights" },
+          { href: "/admin/reports", label: "Reports", section: "Insights" },
+        ]
+      : []),
     { href: "/admin/comments", label: "Comments", badge: comments.pending + comments.reported, section: "Community" },
     ...(isAdmin ? [{ href: "/admin/messages", label: "Messages", badge: unread?.n, section: "Community" }, { href: "/admin/bookings", label: "Bookings", section: "Community" }] : []),
     { href: "/admin/profile", label: "Author profile", section: "Account" },
@@ -38,9 +71,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/users", label: "Users", section: "Site" },
           { href: "/admin/appearance", label: "Appearance & settings", section: "Site" },
           { href: "/admin/integrations", label: "Integrations", section: "Site" },
+          { href: "/admin/automation", label: "Automation & AI", section: "Site" },
+          { href: "/admin/automation/mcp", label: "MCP access", section: "Site" },
           { href: "/admin/advanced", label: "Advanced settings", section: "Site" },
           { href: "/admin/storage", label: "Storage & email", section: "Site" },
           { href: "/admin/system", label: "System status", section: "Operations" },
+          { href: "/admin/sync", label: "Data sync", section: "Operations" },
+          { href: "/admin/models", label: "ML models", section: "Operations" },
           { href: "/admin/backups", label: "Backups", section: "Operations" },
           { href: "/admin/database", label: "Database", section: "Operations" },
           { href: "/admin/audit", label: "Audit log", section: "Operations" },

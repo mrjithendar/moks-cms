@@ -214,7 +214,7 @@ export function DiffReview({ draft: initial, article, base, evidence, submission
       <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <a className="underline" href={article.liveUrl} target="_blank" rel="noopener">Live page ↗</a>
         <a className="underline" href={`/preview/seo-draft/${initial.id}`} target="_blank" rel="noopener">Preview final page ↗</a>
-        <Link className="underline" href={`/admin/seo/articles/${article.id}`}>Article SEO panel</Link>
+        <Link className="underline" href={`/admin/posts/${article.id}/insights`}>Article SEO panel</Link>
       </p>
       {initial.summary && <p className="mt-2 text-sm text-fg-muted">{initial.summary}</p>}
     </div>
@@ -392,7 +392,7 @@ function PublishedPanel({ initial, submissions, onRollback }: { initial: ReviewP
       ) : <p className="mt-1 text-sm text-fg-subtle">Nothing submitted yet{v?.state === "passed" ? "" : " (waits for verification)"}.</p>}
       <p className="mt-2 text-xs text-fg-subtle">Submission is a crawl hint, not an indexing guarantee.</p>
       {initial.status === "published" && <Button className="mt-4" variant={v?.state === "failed" ? "danger" : "secondary"} size="sm" onClick={onRollback}>Roll back this change</Button>}
-      <Link href="/admin/seo/review" className={`${buttonClass("ghost", "sm")} mt-4 ml-2`}>Back to queue</Link>
+      <Link href="/admin/review" className={`${buttonClass("ghost", "sm")} mt-4 ml-2`}>Back to queue</Link>
     </section>
   );
 }

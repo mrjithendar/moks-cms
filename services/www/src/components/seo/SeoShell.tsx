@@ -6,10 +6,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SEO_GROUPS, type SectionIcon } from "./sections";
 
 /**
- * /admin/seo app shell: collapsible, grouped section rail (icons + labels, review-queue count), a sticky top bar
- * with the global date range + comparison toggle (URL params, so every view is shareable), the Search Console
- * property, a sync-status pill and a ⌘K / Ctrl+K command palette (sections, settings, articles, keywords).
- * On phones the rail becomes a section menu in the top bar.
+ * SEO pages are ordinary CMS admin pages (navigation is the main admin sidebar). This keeps the ⌘K / Ctrl+K command
+ * palette (sections, settings, articles, keywords) and the Dashboard's Search & traffic view controls (date range +
+ * comparison toggle as URL params, Search Console property, sync-status pill).
  */
 export type SyncPill = { state: "ok" | "stale" | "error" | "disconnected" | "never_synced"; label: string; detail: string };
 
@@ -46,16 +45,6 @@ const PILL: Record<SyncPill["state"], string> = {
   never_synced: "bg-surface-muted text-fg-muted ring-line-strong",
 };
 
-const KEEP = ["range", "start", "end", "compare"];
-
-function useCarry() {
-  const sp = useSearchParams();
-  return (href: string) => {
-    const p = new URLSearchParams([...sp.entries()].filter(([k]) => KEEP.includes(k)));
-    return p.size ? `${href}?${p}` : href;
-  };
-}
-
 type PaletteItem = { label: string; hint: string; href: string; group: string };
 
 function Palette({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -68,7 +57,7 @@ function Palette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const local = useMemo<PaletteItem[]>(
     () => [
       ...SEO_GROUPS.flatMap((g) => g.items.map((i) => ({ label: i.label, hint: i.hint, href: i.href, group: "Sections" }))),
-      ...["Drafts & Claude budget", "Internal linking limits", "Submission", "Keywords", "Schedules", "Thresholds"].map((l) => ({ label: `Settings: ${l}`, hint: "Settings", href: "/admin/seo/settings", group: "Settings" })),
+      ...["Drafts & Claude budget", "Internal linking limits", "Submission", "Keywords", "Schedules", "Thresholds"].map((l) => ({ label: `Settings: ${l}`, hint: "Settings", href: "/admin/automation", group: "Settings" })),
     ],
     [],
   );
@@ -143,21 +132,10 @@ function Palette({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
-export function SeoShell({ children, reviewCount, property, sync }: { children: ReactNode; reviewCount: number; property: string | null; sync: SyncPill }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const sp = useSearchParams();
-  const carry = useCarry();
-  const [collapsed, setCollapsed] = useState(false);
+/** The ⌘K / Ctrl+K "Jump to…" palette on SEO pages. Section navigation is the main admin sidebar. */
+export function SeoShell({ children }: { children: ReactNode }) {
   const [palette, setPalette] = useState(false);
   useEffect(() => {
-    let v: string | null = null;
-    try {
-      v = window.localStorage.getItem("seo-rail");
-    } catch {
-      /* storage blocked */
-    }
-    const t = setTimeout(() => setCollapsed(v === "collapsed"), 0);
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -165,23 +143,22 @@ export function SeoShell({ children, reviewCount, property, sync }: { children: 
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("keydown", onKey);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const toggleRail = () => {
-    setCollapsed((c) => {
-      try {
-        window.localStorage.setItem("seo-rail", c ? "open" : "collapsed");
-      } catch {
-        /* storage blocked */
-      }
-      return !c;
-    });
-  };
-  const active = (href: string) => (href === "/admin/seo" ? pathname === href : pathname.startsWith(href));
-  const current = SEO_GROUPS.flatMap((g) => g.items).filter((i) => active(i.href)).sort((a, b) => b.href.length - a.href.length)[0];
+  return (
+    <div className="min-w-0">
+      {children}
+      <Palette open={palette} onClose={() => setPalette(false)} />
+    </div>
+  );
+}
+
+/** Period / compare / property / sync bar above Search & traffic on the admin Dashboard (URL params, shareable). */
+export function SeoViewControls({ property, sync }: { property: string | null; sync: SyncPill }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const sp = useSearchParams();
+  const [palette, setPalette] = useState(false);
   const setParam = (k: string, v: string | null) => {
     const p = new URLSearchParams(sp);
     if (v) p.set(k, v);
@@ -190,82 +167,38 @@ export function SeoShell({ children, reviewCount, property, sync }: { children: 
       p.delete("start");
       p.delete("end");
     }
-    router.push(`${pathname}?${p}`);
+    router.push(`${pathname}?${p}`, { scroll: false });
   };
   const range = sp.get("range") ?? "28";
-  // The view controls (period, compare, property, sync, Jump to…) belong to the dashboard only. Other pages keep the
-  // small-screen section picker (the rail is hidden below lg); ⌘K still opens Jump to… everywhere.
-  const onDashboard = pathname === "/admin/seo";
-  const sectionPicker = (
-    <label className="lg:hidden">
-      <span className="sr-only">Section</span>
-      <select value={current?.href ?? "/admin/seo"} onChange={(e) => router.push(carry(e.target.value))} className="min-h-11 max-w-[11rem] rounded-md border border-line-strong bg-surface px-2 text-sm font-medium text-fg">
-        {SEO_GROUPS.map((g) => <optgroup key={g.label} label={g.label}>{g.items.map((i) => <option key={i.href} value={i.href}>{i.label}{i.badge === "review" && reviewCount ? ` (${reviewCount})` : ""}</option>)}</optgroup>)}
-      </select>
-    </label>
-  );
-
   return (
-    <div className={`lg:grid lg:gap-8 ${collapsed ? "lg:grid-cols-[3.25rem_minmax(0,1fr)]" : "lg:grid-cols-[13rem_minmax(0,1fr)]"}`}>
-      <nav aria-label="SEO sections" className="hidden lg:block">
-        <div className="sticky top-[calc(var(--spacing-header)+1rem)]">
-          <button type="button" onClick={toggleRail} aria-expanded={!collapsed} aria-label={collapsed ? "Expand SEO menu" : "Collapse SEO menu"} className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:bg-surface-sunken hover:text-fg">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true"><path d={collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} /></svg>
-          </button>
-          {SEO_GROUPS.map((g) => (
-            <div key={g.label} className="mb-4">
-              {!collapsed && <p className="px-2 pb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-fg-subtle">{g.label}</p>}
-              <ul className="space-y-0.5">
-                {g.items.map((i) => (
-                  <li key={i.href}>
-                    <Link href={carry(i.href)} aria-current={active(i.href) && i === current ? "page" : undefined} title={collapsed ? i.label : i.hint} className={`flex min-h-9 items-center gap-2.5 rounded-md px-2 text-sm ${i === current ? "bg-accent-soft font-medium text-accent-text" : "text-fg-muted hover:bg-surface-sunken hover:text-fg"}`}>
-                      <SeoIcon name={i.icon} className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="min-w-0 flex-1 truncate">{i.label}</span>}
-                      {i.badge === "review" && reviewCount > 0 && <span className={`rounded-full bg-accent px-1.5 text-[0.7rem] font-semibold tabular-nums text-on-accent ${collapsed ? "absolute ml-5 -mt-5" : ""}`} aria-label={`${reviewCount} waiting`}>{reviewCount}</span>}
-                      {collapsed && <span className="sr-only">{i.label}</span>}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </nav>
-
-      <div className="min-w-0">
-        {!onDashboard && <div className="mb-4 lg:hidden">{sectionPicker}</div>}
-        {onDashboard && (
-        <div role="toolbar" aria-label="SEO view controls" className="sticky top-header z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-line bg-surface-muted/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:mx-0 lg:rounded-xl lg:border lg:px-3">
-          {sectionPicker}
-          <label className="flex items-center gap-1.5 text-xs text-fg-subtle">
-            <span className="max-sm:sr-only">Period</span>
-            <select value={range} onChange={(e) => setParam("range", e.target.value)} className="min-h-11 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg sm:min-h-9">
-              <option value="7">Last 7 days</option>
-              <option value="28">Last 28 days</option>
-              <option value="90">Last 90 days</option>
-              {range === "custom" && <option value="custom">Custom</option>}
-            </select>
-          </label>
-          <label className="flex min-h-11 items-center gap-1.5 text-sm text-fg sm:min-h-9">
-            <input type="checkbox" checked={sp.get("compare") === "1"} onChange={(e) => setParam("compare", e.target.checked ? "1" : null)} className="h-4 w-4" />
-            Compare to previous
-          </label>
-          <span className="hidden items-center gap-1 text-xs text-fg-subtle md:flex" title="Search Console property (Settings)">
-            <span aria-hidden="true">◎</span> {property ? <Link href="/admin/seo/settings" className="max-w-[14rem] truncate hover:underline">{property}</Link> : <Link href="/admin/seo/integrations" className="underline">No property set</Link>}
-          </span>
-          <Link href="/admin/seo/sync" title={sync.detail} className={`inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium ring-1 ring-inset ${PILL[sync.state]}`}>
-            <span aria-hidden="true">{sync.state === "ok" ? "●" : sync.state === "error" ? "✕" : sync.state === "stale" ? "◐" : "○"}</span>{sync.label}
-          </Link>
-          <button type="button" onClick={() => setPalette(true)} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-3 text-sm text-fg-muted hover:text-fg sm:min-h-9">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
-            <span className="max-sm:sr-only">Jump to…</span>
-            <kbd className="hidden rounded border border-line px-1 text-[0.7rem] text-fg-subtle sm:inline">⌘K</kbd>
-          </button>
-        </div>
-        )}
-        {children}
+    <>
+      <div role="toolbar" aria-label="Search and traffic view" className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+        <label className="flex items-center gap-1.5 text-xs text-fg-subtle">
+          <span className="max-sm:sr-only">Period</span>
+          <select value={range} onChange={(e) => setParam("range", e.target.value)} className="min-h-11 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg sm:min-h-9">
+            <option value="7">Last 7 days</option>
+            <option value="28">Last 28 days</option>
+            <option value="90">Last 90 days</option>
+            {range === "custom" && <option value="custom">Custom</option>}
+          </select>
+        </label>
+        <label className="flex min-h-11 items-center gap-1.5 text-sm text-fg sm:min-h-9">
+          <input type="checkbox" checked={sp.get("compare") === "1"} onChange={(e) => setParam("compare", e.target.checked ? "1" : null)} className="h-4 w-4" />
+          Compare to previous
+        </label>
+        <span className="hidden items-center gap-1 text-xs text-fg-subtle md:flex" title="Search Console property (Settings)">
+          <span aria-hidden="true">◎</span> {property ? <Link href="/admin/automation" className="max-w-[14rem] truncate hover:underline">{property}</Link> : <Link href="/admin/integrations" className="underline">No property set</Link>}
+        </span>
+        <Link href="/admin/sync" title={sync.detail} className={`inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium ring-1 ring-inset ${PILL[sync.state]}`}>
+          <span aria-hidden="true">{sync.state === "ok" ? "●" : sync.state === "error" ? "✕" : sync.state === "stale" ? "◐" : "○"}</span>{sync.label}
+        </Link>
+        <button type="button" onClick={() => setPalette(true)} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-3 text-sm text-fg-muted hover:text-fg sm:min-h-9">
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
+          <span className="max-sm:sr-only">Jump to…</span>
+          <kbd className="hidden rounded border border-line px-1 text-[0.7rem] text-fg-subtle sm:inline">⌘K</kbd>
+        </button>
       </div>
       <Palette open={palette} onClose={() => setPalette(false)} />
-    </div>
+    </>
   );
 }

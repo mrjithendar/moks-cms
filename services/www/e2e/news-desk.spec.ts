@@ -55,7 +55,7 @@ test("sources health and review of a news draft", async ({ page }) => {
   await page.goto("/admin/news/sources");
   await expect(page.getByText("CISA Known Exploited Vulnerabilities")).toBeVisible();
   await shot(page, "sources");
-  await page.goto("/admin/seo/review?tab=news");
+  await page.goto("/admin/review?tab=news");
   await expect(page.getByText("News", { exact: true }).first()).toBeVisible();
   await page.getByRole("link", { name: "Kubernetes 1.35 makes in-place pod resize stable" }).click();
   await expect(page.getByRole("heading", { name: "Why this story was picked" })).toBeVisible();

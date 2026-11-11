@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import { Button } from "@/components/ui/form";
 
 /**
- * Data-table building blocks for /admin/seo (keywords, review, content, links): column picker and density (remembered
+ * Data-table building blocks for the search/analytics admin pages (keywords, review, content, links): column picker and density (remembered
  * per viewer in localStorage — a convenience only; the page works without it), multi-column sort headers driven by the
  * URL (server-side sorting), removable filter chips, roving keyboard navigation between rows, saved views.
  */

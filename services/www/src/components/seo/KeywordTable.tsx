@@ -69,7 +69,7 @@ export function KeywordTable({ rows, view, days }: { rows: KwViewRow[]; view: Vi
       case "query":
         return (
           <span className="flex flex-wrap items-center gap-1.5">
-            {r.articleId ? <Link data-primary href={`/admin/seo/articles/${r.articleId}`} className="font-medium text-fg hover:underline [overflow-wrap:anywhere]">{r.query}</Link> : <span data-primary className="font-medium text-fg [overflow-wrap:anywhere]">{r.query}</span>}
+            {r.articleId ? <Link data-primary href={`/admin/posts/${r.articleId}/insights`} className="font-medium text-fg hover:underline [overflow-wrap:anywhere]">{r.query}</Link> : <span data-primary className="font-medium text-fg [overflow-wrap:anywhere]">{r.query}</span>}
             {r.brand && <Badge>Brand</Badge>}
             {r.tracked && <Badge t="blue">Tracked</Badge>}
           </span>

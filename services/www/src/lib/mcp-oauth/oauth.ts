@@ -58,7 +58,7 @@ export function metadata(origin = siteOrigin()) {
     token_endpoint_auth_methods_supported: ["none"],
     revocation_endpoint_auth_methods_supported: ["none"],
     scopes_supported: Object.keys(SCOPES),
-    service_documentation: `${o}/admin/seo/settings/mcp`,
+    service_documentation: `${o}/admin/automation/mcp`,
   };
 }
 

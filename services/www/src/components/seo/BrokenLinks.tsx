@@ -37,7 +37,7 @@ export function BrokenLinks({ problems, moved = false }: { problems: Problem[]; 
               return (
                 <li key={key} className="flex flex-wrap items-center gap-2">
                   <span className="text-fg-muted">in</span>
-                  {o.kind === "post" ? <Link className="underline" href={`/admin/seo/articles/${o.id}`}>{o.title}</Link> : <Link className="underline" href={`/admin/pages`}>{o.title} (page)</Link>}
+                  {o.kind === "post" ? <Link className="underline" href={`/admin/posts/${o.id}/insights`}>{o.title}</Link> : <Link className="underline" href={`/admin/pages`}>{o.title} (page)</Link>}
                   {o.kind === "post" ? (
                     <>
                       {moved && p.finalUrl && <button type="button" disabled={busy === key} className="min-h-8 rounded-md bg-accent px-2 text-xs font-medium text-on-accent disabled:opacity-60" onClick={() => void fix(p, o, p.finalUrl)}>Update to new URL</button>}

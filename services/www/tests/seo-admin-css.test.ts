@@ -4,13 +4,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Regression (2026-11-10): on /admin/seo pages the admin menu showed its phone layout on desktop (two columns,
+ * Regression (2026-11-10): on the SEO admin pages the admin menu showed its phone layout on desktop (two columns,
  * bordered box, wrapped labels). seo.css loads after globals.css and its utilities are unlayered, so its copies of
  * base utilities beat globals.css's responsive overrides. It scanned only the SEO folders, so it had `p-3`,
  * `sm:grid-cols-2`… but not the admin nav's `lg:p-0`, `lg:grid-cols-1`…. It must contain every class that renders on
  * those pages, in Tailwind's order. This compiles the real stylesheet and checks the admin shell's pairs.
  */
-const SEO_CSS = path.resolve(__dirname, "../src/app/admin/seo/seo.css");
+const SEO_CSS = path.resolve(__dirname, "../src/app/admin/(growth)/seo.css");
 
 async function compileSeoCss(): Promise<string> {
   const { compile } = await import("@tailwindcss/node");

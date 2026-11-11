@@ -24,7 +24,7 @@ export function MlSettingsCard({ data }: { data: Awaited<ReturnType<typeof loadM
     <Card className="mb-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold text-fg">ML models &amp; retrieval</h2>
-        <Link href="/admin/seo/models" className="text-sm underline">Metrics, versions and labelling →</Link>
+        <Link href="/admin/models" className="text-sm underline">Metrics, versions and labelling →</Link>
       </div>
       {!data.migrated && <p className="mt-2 text-sm text-fg-muted">Migration 0019 is not applied yet: every feature uses its rule.</p>}
       <ul className="mt-3 divide-y divide-line">
@@ -33,7 +33,7 @@ export function MlSettingsCard({ data }: { data: Awaited<ReturnType<typeof loadM
             <span className="font-medium text-fg">{m.title}</span>
             <span className="text-fg-muted">
               Uses <strong>{m.decision.label}</strong> · {m.decision.reason}
-              {m.pendingLabels > 0 && <> · <Link className="underline" href={`/admin/seo/models/labels?task=${m.kind === "intent" ? "intent_check" : "cluster"}`}>{m.pendingLabels} labels waiting</Link></>}
+              {m.pendingLabels > 0 && <> · <Link className="underline" href={`/admin/models/labels?task=${m.kind === "intent" ? "intent_check" : "cluster"}`}>{m.pendingLabels} labels waiting</Link></>}
             </span>
             {m.kind === "priority" ? <span className="text-xs text-fg-subtle">proposals only</span> : <ModelOverride kind={m.kind} value={m.decision.override} />}
           </li>

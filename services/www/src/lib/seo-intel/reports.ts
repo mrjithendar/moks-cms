@@ -140,7 +140,7 @@ export async function notifyReport(id: string, deps: MailDeps = {}): Promise<{ e
   }
   const report = (typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload) as Report & { narrative?: string; pdf?: { key: string } };
   const send = deps.send ?? mail.sendMail;
-  const base = `${siteOrigin().origin}/admin/seo/reports/${id}`;
+  const base = `${siteOrigin().origin}/admin/reports/${id}`;
   let text = reportText(report, base);
   if (report.narrative) text = `${report.narrative}\n\n${text}`;
   if (report.pdf?.key) text += `\nPDF: ${base}/pdf (admin sign-in required)`;

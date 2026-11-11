@@ -1,5 +1,5 @@
 /**
- * One colour scale per meaning, used everywhere in /admin/seo. Every badge carries its text (and a glyph where it
+ * One colour scale per meaning, used everywhere on the search/analytics admin pages. Every badge carries its text (and a glyph where it
  * helps), so meaning never depends on colour alone. Contrast: 700/800 text on 50/100 fills (light), 200/300 text
  * on 10–15 % fills (dark) — WCAG AA for small text.
  */

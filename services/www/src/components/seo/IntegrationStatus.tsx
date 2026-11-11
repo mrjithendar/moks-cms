@@ -22,7 +22,7 @@ export async function loadConnections(env: Record<string, string | undefined> = 
   const rows: ConnectionRow[] = [];
   for (const p of ["gsc", "ga4"] as const) {
     const st = iv.status[p];
-    rows.push({ key: p, name: p === "gsc" ? "Search Console" : "Google Analytics 4", status: sourcePill(st.state), detail: st.message, href: "/admin/seo/integrations" });
+    rows.push({ key: p, name: p === "gsc" ? "Search Console" : "Google Analytics 4", status: sourcePill(st.state), detail: st.message, href: "/admin/integrations" });
   }
   const ps = { enabled: iv.pageSpeed.enabled, keyConfigured: Boolean(env.PAGESPEED_API_KEY?.trim()) };
   rows.push({

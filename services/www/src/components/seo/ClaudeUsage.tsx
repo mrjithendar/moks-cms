@@ -90,7 +90,7 @@ export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
   );
 }
 
-/** Banner on every /admin/seo page while the monthly cap is reached. */
+/** Banner on every search/analytics admin page while the monthly cap is reached. */
 export async function BudgetBanner() {
   let b: Awaited<ReturnType<typeof budgetState>> | null = null;
   try {

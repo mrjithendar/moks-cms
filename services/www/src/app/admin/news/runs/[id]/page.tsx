@@ -81,7 +81,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                   <span className="font-medium text-fg">{String(a.title ?? "(no title)")}</span>
                   <span className="text-xs text-fg-subtle">{String(a.mode)} · ${Number(a.cost_usd).toFixed(3)}</span>
                   {q?.failed?.length ? <span className="text-xs text-red-700 dark:text-red-300">failed: {q.failed.join(", ")}</span> : null}
-                  {a.draft_id ? <Link className="ml-auto underline" href={`/admin/seo/review/${String(a.draft_id)}`}>Review →</Link> : null}
+                  {a.draft_id ? <Link className="ml-auto underline" href={`/admin/review/${String(a.draft_id)}`}>Review →</Link> : null}
                 </li>
               );
             })}

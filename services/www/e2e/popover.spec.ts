@@ -6,7 +6,7 @@ test.skip(!process.env.E2E_ADMIN_PASSWORD, "E2E environment not configured");
 
 test("popover: hover, keyboard focus and tap", async ({ page }, info) => {
   await signIn(page);
-  await page.goto("/admin/seo/content");
+  await page.goto("/admin/content-audit");
   const scope = info.project.name === "mobile" ? page.locator("ul.md\\:hidden") : page.locator("table");
   const trigger = scope.getByRole("button", { name: /Audit score \d+ for .*: details/ }).first();
   await expect(trigger).toBeVisible();

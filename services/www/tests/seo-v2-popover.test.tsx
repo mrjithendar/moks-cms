@@ -146,7 +146,7 @@ describe("MetricCell: lazy, cached per audit run", () => {
     const dlg = container.querySelector('[role="dialog"]')!;
     expect(dlg.querySelectorAll("li")).toHaveLength(5);
     expect(dlg.textContent).toContain("View all 7");
-    expect((dlg.querySelector('a[href*="line=1"]') as HTMLAnchorElement).getAttribute("href")).toBe("/admin/seo/articles/a1?line=1#L1");
+    expect((dlg.querySelector('a[href*="line=1"]') as HTMLAnchorElement).getAttribute("href")).toBe("/admin/posts/a1/insights?line=1#L1");
     const fixBtn = [...dlg.querySelectorAll("button")].find((b) => b.textContent === "Fix with Claude")!;
     await act(async () => fixBtn.click());
     const post = fetchMock.mock.calls.find((c) => c[1]?.method === "POST")!;

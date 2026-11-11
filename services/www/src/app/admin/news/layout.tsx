@@ -4,7 +4,6 @@ import { NewsNav } from "@/components/news/NewsNav";
 import { ensureNewsDefaults } from "@/lib/news/service";
 import { newsDeskEnabled } from "@/lib/news/schema";
 import { requireRole } from "@/lib/session";
-import "../seo/seo.css";
 
 export const metadata: Metadata = { title: { default: "News desk", template: "%s · News desk · Admin" }, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";

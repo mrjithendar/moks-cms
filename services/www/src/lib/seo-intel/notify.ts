@@ -16,10 +16,10 @@ export function digestText(items: Awaited<ReturnType<typeof reviewQueue>>, base:
   const lines = [
     `${ready.length} draft${ready.length === 1 ? "" : "s"} waiting for your review${failed.length ? `, ${failed.length} failed to generate` : ""}.`,
     "",
-    ...ready.slice(0, 20).map((i) => `• ${i.title}\n  ${i.breakdown || `${i.changeCount} changes`} · ${i.band} priority · ~${i.reviewMinutes} min\n  ${base}/admin/seo/review/${i.id}`),
+    ...ready.slice(0, 20).map((i) => `• ${i.title}\n  ${i.breakdown || `${i.changeCount} changes`} · ${i.band} priority · ~${i.reviewMinutes} min\n  ${base}/admin/review/${i.id}`),
     ...(ready.length > 20 ? [`…and ${ready.length - 20} more.`] : []),
     "",
-    `Review queue: ${base}/admin/seo/review`,
+    `Review queue: ${base}/admin/review`,
     "Nothing is published until you approve each article.",
   ];
   return lines.join("\n");

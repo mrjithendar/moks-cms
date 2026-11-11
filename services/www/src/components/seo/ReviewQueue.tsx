@@ -94,7 +94,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
               )}
               <div className="min-w-0 flex-1 md:grid md:grid-cols-[minmax(0,2.2fr)_minmax(0,1.2fr)_auto] md:items-center md:gap-4">
                 <div className="min-w-0">
-                  <Link href={`/admin/seo/review/${i.id}`} className="font-semibold text-fg after:absolute after:inset-0 hover:underline [overflow-wrap:anywhere]">{i.title}</Link>
+                  <Link href={`/admin/review/${i.id}`} className="font-semibold text-fg after:absolute after:inset-0 hover:underline [overflow-wrap:anywhere]">{i.title}</Link>
                   <p className="mt-0.5 truncate text-xs text-fg-subtle">{i.path}</p>
                   {i.evidence[0] && <p className="mt-1 line-clamp-2 text-sm text-fg-muted">{i.evidence[0]}</p>}
                   {i.status === "generation_failed" && i.failureReason && <p className="mt-1 text-sm text-red-700 dark:text-red-300">{i.failureReason}</p>}

@@ -7,7 +7,7 @@ import { getSeoSettings, SEARCH_TYPES, type SeoSettings } from "./settings";
 import { addDays, daysBetween, isDay } from "./sqlutil";
 
 /**
- * Read models for /admin/seo. Every number comes from the synced tables; nothing is estimated or invented.
+ * Read models for the search/analytics admin pages. Every number comes from the synced tables; nothing is estimated or invented.
  * Search Console site totals come from seo_gsc_daily_totals (the source of truth); when a page/device/country/
  * category filter is applied they come from the page-level table and are labelled so. Query tables are partial
  * coverage (anonymised queries are excluded by Google) and are labelled so. GA4 sessions are never mixed with

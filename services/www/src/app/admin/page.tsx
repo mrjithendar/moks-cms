@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/LocalTime";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { buttonClass } from "@/components/ui/form";
 import { dashboardData } from "@/lib/dashboard";
 import { requireRole } from "@/lib/session";
+import { SeoOverview } from "@/components/seo/merged/SeoOverview";
+import { shellData } from "@/components/seo/merged/shell-data";
+import { SeoViewControls } from "@/components/seo/SeoShell";
 
 export const metadata = { title: "Dashboard" };
 
@@ -37,8 +40,10 @@ function Panel({ title, action, children }: { title: string; action?: ReactNode;
 
 const Empty = ({ children }: { children: ReactNode }) => <p className="text-sm text-fg-subtle">{children}</p>;
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await requireRole("admin", "author");
+  const sp = await searchParams;
+  const shell = user.role === "admin" ? await shellData() : null;
   const d = await dashboardData(user);
   const c = d.counts;
   const s = d.site;
@@ -205,6 +210,18 @@ export default async function AdminDashboard() {
           </Panel>
         )}
       </div>
+      {shell && (
+        <section aria-label="Search and traffic">
+          <SeoOverview
+            sp={sp}
+            controls={
+              <Suspense>
+                <SeoViewControls property={shell.property} sync={shell.sync} />
+              </Suspense>
+            }
+          />
+        </section>
+      )}
     </>
   );
 }

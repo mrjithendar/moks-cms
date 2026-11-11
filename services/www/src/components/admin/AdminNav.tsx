@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { CloseIcon, MenuIcon } from "@/components/icons";
 
-export type NavItem = { href: string; label: string; badge?: number; section: string };
+export type NavItem = { href: string; label: string; badge?: number; section: string; exact?: boolean };
 
-const isActive = (href: string, pathname: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
+const matches = (item: NavItem, pathname: string) => (item.exact || item.href === "/admin" ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`));
+/** The one current item: the longest matching href (so /admin/automation/mcp does not also light up Automation). */
+const currentOf = (items: NavItem[], pathname: string) => items.filter((i) => matches(i, pathname)).sort((a, b) => b.href.length - a.href.length)[0];
 
 /**
  * Sidebar on large screens; below `lg` a "Menu" button (showing the current page) toggles the same list.
@@ -24,7 +26,7 @@ export function AdminNav({ items, account }: { items: NavItem[]; account?: React
     setOpen(false);
   }
   const sections = [...new Set(items.map((i) => i.section))];
-  const current = items.find((i) => isActive(i.href, pathname));
+  const current = currentOf(items, pathname);
   const pending = items.reduce((n, i) => n + (i.badge ?? 0), 0);
   return (
     <div>
@@ -49,7 +51,7 @@ export function AdminNav({ items, account }: { items: NavItem[]; account?: React
               {items
                 .filter((i) => i.section === section)
                 .map((item) => {
-                  const active = isActive(item.href, pathname);
+                  const active = item === current;
                   return (
                     <li key={item.href}>
                       <Link

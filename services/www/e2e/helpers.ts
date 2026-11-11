@@ -18,7 +18,7 @@ export async function signIn(page: Page) {
     data: { email: ADMIN.email, password: ADMIN.password },
   });
   expect(res.status(), `sign-in failed: ${await res.text()}`).toBe(200);
-  await page.goto("/admin/seo");
+  await page.goto("/admin");
   await page.waitForURL((u) => u.pathname.startsWith("/admin"), { timeout: 30_000 });
 }
 
