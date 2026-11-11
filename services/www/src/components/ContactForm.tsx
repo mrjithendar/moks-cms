@@ -2,11 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { submitContactAction } from "@/app/_actions/public";
+import { authClient } from "@/lib/auth-client";
 import { Turnstile } from "@/components/Turnstile";
 import { Alert, Button, Field, Input, Textarea } from "@/components/ui/form";
 
-/** Signed-in users skip Turnstile (they passed it at sign-in); the server checks the session itself. */
-export function ContactForm({ siteKey, signedIn = false }: { siteKey: string | undefined; signedIn?: boolean }) {
+/**
+ * Signed-in users skip Turnstile (they passed it at sign-in); the server checks the session itself. The session is
+ * read here in the browser, not on the server, so the contact page stays a cached (ISR) page for everyone.
+ */
+export function ContactForm({ siteKey }: { siteKey: string | undefined }) {
+  const { data: session } = authClient.useSession();
+  const signedIn = Boolean(session?.user);
   const [token, setToken] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
   const [result, setResult] = useState<{ ok: boolean; text: string; issues?: string[] } | null>(null);

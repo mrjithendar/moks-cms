@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { publicMcpEnabled } from "@/lib/seo-agent/config";
 import { siteOrigin } from "@/lib/seo-intel/urls";
 
-export const dynamic = "force-dynamic";
+// ISR (lib/page-cache.ts): rendered once, served from the page cache, re-rendered after 300 s (PAGE_REVALIDATE_SECONDS)
+// and cleared on every replica when content or settings change.
+export const revalidate = 300;
 export const metadata: Metadata = {
   title: "Use jithendar.com in your AI assistant",
   description: "Connect Claude or any MCP client to search and cite jithendar.com articles.",

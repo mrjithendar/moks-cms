@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, draftMode } from "next/headers";
 import { NextResponse } from "next/server";
 import { actorOf } from "@/lib/admin";
 import { isProductionEnv } from "@/config/site";
@@ -20,6 +20,7 @@ export const GET = handleErrors("appearance preview", async (req: Request) => {
   const jar = await cookies();
   if (url.searchParams.get("exit") === "1") {
     await endConfigPreview(jar.get(PREVIEW_COOKIE)?.value);
+    (await draftMode()).disable();
     const res = NextResponse.redirect(new URL("/admin/appearance", url), { status: 303, headers: NO_STORE });
     res.cookies.delete(PREVIEW_COOKIE);
     return res;
@@ -27,6 +28,9 @@ export const GET = handleErrors("appearance preview", async (req: Request) => {
   const user = await getSessionUser();
   if (!user || user.role !== "admin") return new NextResponse("Not found", { status: 404, headers: NO_STORE });
   const { token, maxAge } = await createConfigPreview(actorOf(user));
+  // Pages are served from the ISR cache; draft mode makes this browser's requests render per request again, so they
+  // can show the draft configuration (lib/site-config/index.ts).
+  (await draftMode()).enable();
   const target = safeNext(url.searchParams.get("path"), "/");
   const res = NextResponse.redirect(new URL(target.startsWith("/admin") ? "/" : target, url), { status: 303, headers: NO_STORE });
   res.cookies.set(PREVIEW_COOKIE, token, { httpOnly: true, sameSite: "lax", secure: isProductionEnv(), path: "/", maxAge });
