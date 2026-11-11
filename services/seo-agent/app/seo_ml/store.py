@@ -110,20 +110,19 @@ class PgMlStore:
         return sorted(data.items())
 
     async def outcomes(self) -> list[dict[str, Any]]:
+        """Implemented recommendations with outcomes, oldest first, with pre-change snapshots only: score_inputs and the
+        evidence are frozen when the recommendation leaves review, baseline_metrics is captured at "implemented", and
+        pre_baseline_clicks is history before that. Nothing is read from today's post body, decay signals, intents or
+        clusters: those describe the page after the change (priority.training_row maps the row to features)."""
         return await self._all(
-            """select r.id::text as id, r.category, r.score_inputs, r.query, r.url, r.implemented_at, r.baseline_metrics, r.post_metrics_28d,
+            """select r.id::text as id, r.category, r.score_inputs, r.implemented_at, r.baseline_metrics, r.post_metrics_28d,
                  (select sum(clicks)::float8 from seo_gsc_page_daily g where g.page = r.url and g.search_type = 'web'
                     and g.date >= (r.implemented_at::date - 56) and g.date < (r.implemented_at::date - 28)) as pre_baseline_clicks,
                  (select value from seo_recommendation_evidence e where e.recommendation_id = r.id and e.metric = 'position' limit 1) as position,
-                 (select value from seo_recommendation_evidence e where e.recommendation_id = r.id and e.metric = 'impressions' limit 1) as impressions,
-                 length(coalesce(p.body, '')) / 6 as words,
-                 (length(coalesce(p.body, '')) - length(replace(coalesce(p.body, ''), '](/', ''))) / 3 as internal_links,
-                 qi.intent, (select count(*) from seo_query_clusters c2 where c2.cluster_id = qc.cluster_id) as cluster_size,
-                 exists (select 1 from seo_ml_decay_signals d where d.page = r.url and d.decaying) as decaying
-               from seo_recommendations r left join post p on p.id = r.article_id
-               left join seo_query_intents qi on qi.query = r.query left join seo_query_clusters qc on qc.query = r.query
+                 (select value from seo_recommendation_evidence e where e.recommendation_id = r.id and e.metric = 'impressions' limit 1) as impressions
+               from seo_recommendations r
                where r.implementation_status = 'implemented' and r.post_metrics_28d is not null and r.baseline_metrics is not null
-               order by r.implemented_at"""
+               order by r.implemented_at, r.id"""
         )
 
     async def current_weights(self) -> dict[str, float]:

@@ -538,3 +538,19 @@ planner. GA4 page-pair data is fetched outside `GA4_REPORTS`, so a property that
 The owner asked for better SEO settings mid-build and chose: organise the form (tabs, change tracking, defaults, field
 errors), a connections card, and ML/RAG controls. The first two were committed separately (`de84e76`); the ML/RAG
 card ships with Phase 3 because it needs the model registry.
+
+## D-81 SEO-ML review fixes: reviews bound to a configuration, leakage-free priority, honest intent metrics
+- **Decay.** The activation benchmark is a fixed set of held-out seeds, so it gives the same answer every week, and a
+  review used to carry over to every retrain that passed it, even after `DecayConfig` or the method changed. A review
+  now binds to `review_key` (method + a hash of the config) and carries over only while the key matches and the real
+  back-test's Jaccard agreement with the rule stays within 0.15 of the reviewed version's. Activation also needs the
+  back-test's alerts within 1.5 × the rule's (+ 2). The benchmark gained zero-inflated pages and step changes (gain:
+  negative; loss: positive), which showed the detector catches fewer abrupt step losses than the rule; that is
+  reported, not tuned away.
+- **Priority.** `outcomes()` used the post body, decay signal, intent and cluster as they are today, i.e. after the
+  change it measures. With no snapshot of those at implementation time, they were dropped rather than kept (no
+  web-app change: `score_inputs` and the evidence are already frozen once a recommendation leaves review, and
+  `baseline_metrics` is captured at "implemented"). One 10-row hold-out was replaced by expanding-window CV and a
+  bootstrap CI; a proposal needs the CI's lower bound above 0.
+- **Intent.** `MIN_TRAIN` 60 → 300; stratified 5-fold × 2 for the metrics; the threshold is tuned on a calibration
+  split of each training fold, so "accuracy when confident" is no longer measured on the rows that chose the threshold.
