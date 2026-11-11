@@ -117,6 +117,7 @@ flowchart TD
   AC -->|no accepted changes / bad edits| ST([publish_failed])
   AC --> CP["cms_publish\n(web publishWithApproval)"]
   CP -->|approval missing, used, expired, changed| ST
+  CP -->|"response lost after the commit: replayed (Idempotency-Key)\nor draft already published by this approval"| VL
   CP --> VL["verify_live\n(3 attempts: 40 s, 30 s, 60 s)"]
   VL -->|failed| RB(["offer_rollback: alert + one-click rollback\n(verify_failed, nothing submitted)"])
   VL -->|passed| SU["submit_search\n(IndexNow, sitemap, URL Inspection later)"] --> RI[reindex] --> SM[schedule_measure] --> P([published])
@@ -185,9 +186,9 @@ refused, bounded sizes, UUID patterns).
 |---|---|
 | `JobState` | job_type, slot, result |
 | `WeeklyState` | limit, prepared, children |
-| `OptimizeState` | draft_id, article_id, recommendation_ids, extra, trigger, feedback, context, related, plan, change_set, crew, changes, validation_report, attempts |
+| `OptimizeState` | draft_id, article_id, recommendation_ids, extra, trigger, feedback (reviewer), validator_feedback (automatic retry), context, related, plan, change_set, crew, changes, validation_report, attempts |
 | `LinkingState` | article_ids, candidates, results |
-| `NewArticleState` | draft_id, calendar_id, article_id, feedback, brief, document, crew, changes, validation_report, attempts |
+| `NewArticleState` | draft_id, calendar_id, article_id, feedback (reviewer), validator_feedback (automatic retry), brief, document, crew, changes, validation_report, attempts |
 | `PublishState` | draft_id, article_id, approval_id, accepted_change_ids, edits, actor, publish_result, verification, submission_results, reindex, measurement |
 | `ReindexState` | article_ids, full, result |
 | `AskGapsState` | result |
@@ -207,7 +208,12 @@ finished_at, updated_at, triggered_by (cron · manual · approval · flow · mcp
 - **Failures:** a step that raises marks the run `failed` with the error. A rerun starts from the beginning; steps are
   idempotent (upserts, one open draft per article, single-use approvals). On start-up, runs the previous process left
   queued/running are failed ("interrupted by a restart") and their drafts set to "regenerate".
-- **Wall clock:** `SEO_FLOW_TIMEOUT_SECONDS` (1800) per run; crews have their own shorter limit.
+- **Wall clock:** `SEO_FLOW_TIMEOUT_SECONDS` (1800) per run; crews have their own shorter limit. A cancelled or timed-out
+  run also stops its crew: the crew's worker thread makes no further model call (CREWS.md "Cancellation").
+- **Publish retries:** `cms_publish` sends the approval id as `Idempotency-Key`. If a publish commits and its response is
+  lost (timeout, 5xx), the retry gets the earlier success back from `publishWithApproval` (`replayed: true`) instead of a
+  403 for the used approval. Against a web app without that, a non-transient error after a transient one makes the flow
+  read the draft (`GET /drafts/{id}`): `published` by this approval (`publishedApprovalId`) counts as success.
 
 ## Scheduling
 

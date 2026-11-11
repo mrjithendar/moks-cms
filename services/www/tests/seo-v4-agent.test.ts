@@ -223,6 +223,34 @@ describe("the approval gate", () => {
     expect(audit).toEqual(expect.arrayContaining(["seo.draft.approve", "seo.draft.publish", "seo.draft.verified"]));
   });
 
+  it("a retried publish with Idempotency-Key = the approval gets the earlier success back; nothing is written twice", async () => {
+    const draftId = await agentDraft();
+    await drafts.decideChange(draftId, "c1", "accepted");
+    const { approvalId } = await pub.recordApproval(draftId, admin);
+    const send = (key?: string) => handleCallback("POST", `/internal/seo-agent/drafts/${draftId}/publish`, `Bearer ${CB_TOKEN}`, { approvalId, acceptedChangeIds: ["c1"] }, { ...process.env, SEO_AGENT_CALLBACK_TOKEN: CB_TOKEN }, key ? { "idempotency-key": key } : {});
+    expect((await send("not-the-approval")).status).toBe(400);
+    const first = await send(approvalId);
+    expect(first).toMatchObject({ status: 200, body: { status: "published" } });
+    const version = (await db.select().from(schema.post))[0]!.version;
+    // the agent's request timed out after the commit and it retries: same result, flagged as a replay
+    expect(await send(approvalId)).toMatchObject({ status: 200, body: { status: "published", version: (first.body as { version: number }).version, replayed: true } });
+    expect((await db.select().from(schema.post))[0]!.version).toBe(version);
+    expect((await send()).status).toBe(403); // without the key a used approval is still refused
+    await expect(pub.publishWithApproval(draftId, approvalId, ["c1", "c2"], new Date(), { idempotent: true })).rejects.toMatchObject({ status: 403 }); // other changes: no replay
+    // draftSummary tells publish_flow which approval published the draft
+    expect((await cb("GET", `/drafts/${draftId}`)).body).toMatchObject({ status: "published", publishedApprovalId: approvalId });
+  });
+
+  it("a used approval is not replayed once a later approval published the draft", async () => {
+    const draftId = await agentDraft();
+    await drafts.decideChange(draftId, "c1", "accepted");
+    const { approvalId } = await pub.recordApproval(draftId, admin);
+    await db.execute(sql`update seo_draft_approvals set used_at = now() - interval '1 hour' where id = ${approvalId}`); // used, but publish never happened
+    const later = await pub.recordApproval(draftId, admin);
+    await pub.publishWithApproval(draftId, later.approvalId, ["c1"]);
+    await expect(pub.publishWithApproval(draftId, approvalId, ["c1"], new Date(), { idempotent: true })).rejects.toMatchObject({ status: 403 });
+  });
+
   it("refuses without an approval, with a forged or expired one, or when the accepted changes differ", async () => {
     const draftId = await agentDraft();
     await drafts.decideChange(draftId, "c1", "accepted");
