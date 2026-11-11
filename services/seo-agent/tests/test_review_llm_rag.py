@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 import anthropic
@@ -13,7 +14,7 @@ import httpx2
 import pytest
 
 from app.ask import AskService, MemoryAskLog
-from app.index import Hit, MemoryRetriever
+from app.index import Hit, IndexSafetyError, MemoryRetriever, PgVectorIndex, search_settings
 from app.llm import AnthropicLlm, BudgetExceeded, BudgetGuard, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Truncated, Usage, price_of
 from app.schemas import Relevance
 from app.services.ask_pipeline import AskPipeline, StreamGate, check_input, safe_cut
@@ -373,3 +374,211 @@ def test_injection_filter_lets_honest_questions_through(q: str) -> None:
 )
 def test_injection_filter_still_refuses_injections(q: str) -> None:
     assert check_input(q) == "injection"
+
+
+# --- 8. pgvector search settings -------------------------------------------------------------------------------------
+
+
+def test_search_settings_follow_the_pgvector_version() -> None:
+    assert search_settings("0.4.4", 40) == []  # IVFFlat era: nothing to set
+    assert search_settings("0.6.0", 40) == [("hnsw.ef_search", "80")]
+    assert search_settings("0.8.1", 10) == [("hnsw.ef_search", "40"), ("hnsw.iterative_scan", "relaxed_order")]
+    assert search_settings("0.8.1", 900)[0] == ("hnsw.ef_search", "1000")
+    assert search_settings(None, 40) == []
+
+
+class _Cur:
+    def __init__(self, rows: list[dict[str, Any]]):
+        self.rows = rows
+
+    async def fetchall(self) -> list[dict[str, Any]]:
+        return self.rows
+
+    async def fetchone(self) -> dict[str, Any] | None:
+        return self.rows[0] if self.rows else None
+
+
+class _Conn:
+    def __init__(self) -> None:
+        self.log: list[tuple[str, Any, bool]] = []
+        self.in_tx = False
+
+    async def execute(self, q: str, params: Any = None) -> _Cur:
+        self.log.append((" ".join(q.split())[:60], params, self.in_tx))
+        return _Cur([])
+
+    def transaction(self) -> Any:
+        conn = self
+
+        class Tx:
+            async def __aenter__(self) -> None:
+                conn.in_tx = True
+
+            async def __aexit__(self, *a: Any) -> None:
+                conn.in_tx = False
+
+        return Tx()
+
+
+class _Pool:
+    def __init__(self) -> None:
+        self.conn = _Conn()
+
+    def connection(self) -> Any:
+        conn = self.conn
+
+        class Ctx:
+            async def __aenter__(self) -> _Conn:
+                return conn
+
+            async def __aexit__(self, *a: Any) -> None:
+                return None
+
+        return Ctx()
+
+
+async def test_search_sets_ef_search_inside_a_transaction() -> None:
+    from app.embeddings import HashEmbeddings
+    from app.retrieval import RetrievalConfig
+
+    fake = _Pool()
+    idx = PgVectorIndex(fake, HashEmbeddings(), RetrievalConfig(mode="hybrid", candidates=30))
+    idx.available, idx.pgvector_version = True, "0.8.1"
+    assert await idx.search("how does cert-manager renew") == []
+    sets = [(p, tx) for q, p, tx in fake.conn.log if q.startswith("select set_config")]
+    assert sets == [(("hnsw.ef_search", "60"), True), (("hnsw.iterative_scan", "relaxed_order"), True)]
+    assert all(tx for _q, _p, tx in fake.conn.log)  # the candidate queries run in the same transaction
+
+
+# --- 9/10. reindex reuse and build-then-swap (PostgreSQL + pgvector) -------------------------------------------------
+
+from tests.test_postgres import pool  # noqa: E402,F401 - the PostgreSQL fixture (skips without a database)
+
+MIGRATION_0022 = (Path(__file__).resolve().parents[2] / "www" / "src" / "db" / "migrations" / "0022_seo_llm_usage_attribution.sql").read_text()
+
+
+class _CountingEmbeddings:
+    def __init__(self, dim: int = 384):
+        from app.embeddings import HashEmbeddings
+
+        self.inner = HashEmbeddings(dim)
+        self.dim, self.name = self.inner.dim, self.inner.name
+        self.embedded: list[str] = []
+
+    async def embed(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
+        if not query:
+            self.embedded.extend(texts)
+        return await self.inner.embed(texts, query=query)
+
+
+def _need_vector() -> None:
+    import os
+
+    if os.environ.get("SEO_AGENT_TEST_NO_VECTOR"):
+        pytest.skip("pgvector is not installed on this PostgreSQL")
+
+
+async def _post(p: Any, slug: str = "ingress-tls", title: str = "Ingress and TLS on Kubernetes") -> str:
+    import uuid
+
+    a = str(uuid.uuid4())
+    async with p.connection() as c:
+        await c.execute("insert into post values (%s, 'blog', %s, %s, 'published', null)", (a, slug, title))
+    return a
+
+
+BODY3 = "## Issuers\n\ncert-manager uses a ClusterIssuer for ACME.\n\n## Renewal\n\ncert-manager renews certificates thirty days before expiry.\n\n## Ingress\n\nThe ingress controller terminates TLS."
+
+
+@pytest.mark.postgres
+async def test_inserting_a_section_reuses_the_embeddings_of_the_shifted_chunks(pool: Any) -> None:  # noqa: F811 - the imported fixture
+    _need_vector()
+    a = await _post(pool)
+    emb = _CountingEmbeddings()
+    idx = PgVectorIndex(pool, emb)
+    assert await idx.ensure_schema()
+    art = {"id": a, "title": "Ingress and TLS on Kubernetes", "body": BODY3}
+    s1 = await idx.reindex([art])
+    assert s1["embedded"] == 3 and len(emb.embedded) == 3
+    emb.embedded.clear()
+    art["body"] = "## Overview\n\nA short overview paragraph about TLS.\n\n" + BODY3  # every later chunk_index shifts by one
+    s2 = await idx.reindex([art])
+    assert s2["embedded"] == 1 and s2["reused"] == 3 and len(emb.embedded) == 1 and "overview" in emb.embedded[0].lower()
+    [hit] = await idx.search("how does cert-manager renew certificates before expiry", k=1)
+    assert hit.anchor == "renewal"
+    async with pool.connection() as c:
+        rows = await (await c.execute("select chunk_index, heading_path from seo_article_chunks where article_id = %s order by chunk_index", (a,))).fetchall()
+    assert [r["heading_path"].split(" › ")[-1] for r in rows] == ["Overview", "Issuers", "Renewal", "Ingress"]
+    assert (await idx.reindex([art]))["embedded"] == 0  # stable afterwards
+
+
+@pytest.mark.postgres
+async def test_dimension_change_builds_a_new_table_then_swaps_it_in(pool: Any) -> None:  # noqa: F811 - the imported fixture
+    _need_vector()
+    a = await _post(pool)
+    art = {"id": a, "title": "Ingress and TLS on Kubernetes", "body": BODY3}
+    old = PgVectorIndex(pool, _CountingEmbeddings(384))
+    assert await old.ensure_schema()
+    await old.reindex([art])
+
+    new = PgVectorIndex(pool, _CountingEmbeddings(64))
+    assert await new.ensure_schema() and new.rebuilding
+    async with pool.connection() as c:
+        n = (await (await c.execute("select count(*)::int as n from seo_article_chunks")).fetchone())["n"]
+    assert n == 3  # the live table is kept while the new one is built
+    assert await new.search("cert-manager renewal") == []  # query vectors don't fit the old table: fallback, not an error
+    with pytest.raises(IndexSafetyError):
+        await new.reindex([])  # the guard still counts the live table
+    s = await new.reindex([art])
+    assert s.get("swapped") == 1 and not new.rebuilding
+    async with pool.connection() as c:
+        t = await new._vector_type(c, "seo_article_chunks")
+        gone = await new._vector_type(c, "seo_article_chunks_next")
+        names = {r["n"] for r in await (await c.execute("select conname as n from pg_constraint where conrelid = to_regclass('seo_article_chunks')")).fetchall()}
+        idx_names = {r["n"] for r in await (await c.execute("select indexname as n from pg_indexes where tablename = 'seo_article_chunks'")).fetchall()}
+    assert t == "vector(64)" and gone is None
+    assert names == {"seo_article_chunks_pkey", "seo_article_chunks_article_id_fkey", "seo_article_chunks_article_id_chunk_index_key"}
+    assert {"seo_article_chunks_embedding_idx", "seo_article_chunks_tsv_idx", "seo_article_chunks_identifiers_idx"} <= idx_names
+    assert (await new.search("cert-manager renews certificates thirty days", k=1))[0].anchor == "renewal"
+    again = PgVectorIndex(pool, _CountingEmbeddings(64))
+    assert await again.ensure_schema() and not again.rebuilding
+    assert (await again.reindex([art]))["embedded"] == 0
+
+
+@pytest.mark.postgres
+async def test_reverting_the_provider_drops_the_half_built_table(pool: Any) -> None:  # noqa: F811 - the imported fixture
+    _need_vector()
+    a = await _post(pool)
+    art = {"id": a, "title": "Ingress and TLS on Kubernetes", "body": BODY3}
+    old = PgVectorIndex(pool, _CountingEmbeddings(384))
+    assert await old.ensure_schema()
+    await old.reindex([art])
+    new = PgVectorIndex(pool, _CountingEmbeddings(64))
+    await new.ensure_schema()
+    await new.reindex([art], only={a})  # a single-article reindex fills the new table but never swaps
+    assert new.rebuilding
+    back = PgVectorIndex(pool, _CountingEmbeddings(384))
+    assert await back.ensure_schema() and not back.rebuilding
+    async with pool.connection() as c:
+        assert await back._vector_type(c, "seo_article_chunks_next") is None
+    assert (await back.search("cert-manager renews certificates thirty days", k=1))[0].anchor == "renewal"
+
+
+@pytest.mark.postgres
+async def test_usage_rows_carry_run_id_and_agent_once_migration_0022_is_applied(pool: Any) -> None:  # noqa: F811 - the imported fixture
+    from app.llm import PgSpendStore
+
+    u = Usage("claude-haiku-5-5", 10, 10)
+    before = BudgetGuard(PgSpendStore(pool), 10, 1)
+    await before.record(u, "draft", "v", run_id="r1", agent="editor")  # the web app's migration not applied yet: still recorded
+    mig = MIGRATION_0022
+    async with pool.connection() as c:
+        for stmt in mig.split("--> statement-breakpoint"):
+            body = "\n".join(line for line in stmt.splitlines() if not line.startswith("--")).strip()
+            if body:
+                await c.execute(body)
+    after = BudgetGuard(PgSpendStore(pool), 10, 1)
+    await after.record(u, "draft", "v", run_id="r2", agent="editor")
+    async with pool.connection() as c:
+        rows = await (await c.execute("select run_id, agent from seo_llm_usage order by at, run_id nulls first")).fetchall()
+    assert [(r["run_id"], r["agent"]) for r in rows] == [(None, None), ("r2", "editor")]
