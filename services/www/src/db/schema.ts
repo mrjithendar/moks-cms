@@ -344,6 +344,31 @@ export const commentReport = pgTable(
   (t) => [uniqueIndex("comment_report_user_idx").on(t.commentId, t.userId), index("comment_report_open_idx").on(t.resolvedAt, t.createdAt)],
 );
 
+/** Cal.com bookings from the webhook (migration 0024): one row per booking uid, updated by later events. */
+export const calBooking = pgTable(
+  "cal_booking",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    uid: text("uid").notNull(),
+    /** booked | requested | rescheduled | cancelled | rejected */
+    status: text("status").notNull(),
+    title: text("title").notNull().default(""),
+    eventType: text("event_type"),
+    startTime: ts("start_time"),
+    endTime: ts("end_time"),
+    attendeeName: text("attendee_name"),
+    attendeeEmail: text("attendee_email"),
+    attendeeTimeZone: text("attendee_time_zone"),
+    location: text("location"),
+    notes: text("notes"),
+    cancellationReason: text("cancellation_reason"),
+    rescheduledFrom: text("rescheduled_from"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("cal_booking_uid_key").on(t.uid), index("cal_booking_start_idx").on(t.startTime)],
+);
+
 export const contactMessage = pgTable(
   "contact_message",
   {

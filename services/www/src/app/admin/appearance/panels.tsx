@@ -514,6 +514,10 @@ export function HireMePanel() {
           <TextField path="hireMe.bookingUrl" label="Intro call booking link" placeholder="https://cal.com/your-name/intro" type="url"
             hint="Your Cal.com (or other https) booking page. Used by “Book an intro call” and by offers without their own link." />
         </Grid>
+        <Toggle path="hireMe.embedBooking" label="Open Cal.com links in a pop-up on the page"
+          hint="Cal.com's scheduler loads only when a visitor clicks Book; other links (and blocked scripts) open in a new tab." />
+        <TextField path="hireMe.calOrigin" label="Self-hosted Cal.com address (optional)" placeholder="https://cal.example.com" type="url"
+          hint="Only if you run Cal.com yourself. Leave empty for cal.com. Bookings reach Admin → Bookings through a webhook: see Advanced settings → Cal.com bookings." />
       </Panel>
       {HIRE_OFFERS.map((k) => (
         <Panel key={k} title={OFFER_LABELS[k]}>

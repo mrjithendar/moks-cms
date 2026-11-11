@@ -8,6 +8,7 @@ import { BookingLink } from "@/components/hire/BookingLink";
 import { EnquiryForm } from "@/components/hire/EnquiryForm";
 import { absoluteUrl } from "@/config/site";
 import { CERTIFICATIONS, EXPERIENCE, HIGHLIGHTS, PROCESS, PROFILE, SELECTED_WORK, SKILLS } from "@/config/hire-me-profile";
+import { calEmbedTarget } from "@/lib/calcom";
 import { AVAILABILITY_LABEL, activeOffers, bookingUrlFor, priceLabel } from "@/lib/hire-me";
 import { getSiteConfig } from "@/lib/site-config";
 import { turnstileKeys } from "@/lib/turnstile";
@@ -37,6 +38,8 @@ export default async function HireMePage() {
   if (!h.enabled) notFound();
   const offers = activeOffers(h);
   const booking = bookingUrlFor(h);
+  // Cal.com links open in Cal.com's pop-up scheduler (when switched on); other links open in a new tab.
+  const embedFor = (url: string) => (h.embedBooking && url ? calEmbedTarget(url, h.calOrigin) : null);
   const { siteKey } = await turnstileKeys();
   const ld = {
     "@context": "https://schema.org" as const,
@@ -69,7 +72,7 @@ export default async function HireMePage() {
           {h.availabilityNote && <p className="mt-3 max-w-3xl text-fg-muted">{h.availabilityNote}</p>}
           <div className="mt-8 flex flex-wrap gap-3">
             {booking && h.availability !== "unavailable" && (
-              <BookingLink href={booking} kind="intro" className={primary}>Book an intro call <ArrowRight className="h-4 w-4" /></BookingLink>
+              <BookingLink href={booking} kind="intro" embed={embedFor(booking)} className={primary}>Book an intro call <ArrowRight className="h-4 w-4" /></BookingLink>
             )}
             <a href="#enquiry" className={booking ? secondary : primary}>Send an enquiry</a>
           </div>
@@ -93,7 +96,7 @@ export default async function HireMePage() {
                   <p className="mt-2 flex-1 text-fg-muted">{offer.summary}</p>
                   <p className="mt-4 text-sm font-semibold text-fg">{priceLabel(offer.price, offer.unit, h.currency)}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {link && h.availability !== "unavailable" && <BookingLink href={link} kind={key} className={primary}>Book</BookingLink>}
+                    {link && h.availability !== "unavailable" && <BookingLink href={link} kind={key} embed={embedFor(link)} className={primary}>Book</BookingLink>}
                     <a href={`#enquiry-${key}`} className={link ? secondary : primary}>Enquire</a>
                   </div>
                 </li>

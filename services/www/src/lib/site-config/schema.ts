@@ -391,6 +391,10 @@ const hireMe = z.object({
   currency: z.enum(HIRE_CURRENCIES),
   /** General booking page (e.g. a Cal.com intro call). */
   bookingUrl: httpsOrEmpty,
+  /** Open Cal.com links in a pop-up scheduler on the page (Cal.com's embed, loaded on the first click only). */
+  embedBooking: z.boolean(),
+  /** Self-hosted Cal.com only: its address, e.g. https://cal.example.com. Empty = cal.com. */
+  calOrigin: httpsOrEmpty,
   responseTime: text(80),
   offers: z.object(Object.fromEntries(HIRE_OFFERS.map((k) => [k, hireOffer])) as Record<HireOfferKey, typeof hireOffer>),
   /** A short "work with me" box at the end of articles, above the author card. */
@@ -686,6 +690,8 @@ export function defaultConfig(): SiteConfig {
         "I'm a Lead Platform Engineer for AI with 9+ years in AWS, Kubernetes/EKS, Terraform, CI/CD and SRE. I help teams put AI agents, MCP services and RAG into production on infrastructure that is secure, observable and cheap to run.",
       currency: "SGD",
       bookingUrl: "",
+      embedBooking: true,
+      calOrigin: "",
       responseTime: "I reply within two working days.",
       offers: {
         consulting: {

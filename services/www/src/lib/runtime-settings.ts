@@ -77,6 +77,13 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "calcom",
+    title: "Cal.com bookings",
+    description:
+      "Bookings, reschedules and cancellations from Cal.com appear in Admin → Bookings. In Cal.com: Settings → Developer → Webhooks → New: subscriber URL https://jithendar.com/api/cal/webhook, events Booking created, rescheduled, cancelled, requested and rejected, and a secret. Paste the same secret here; requests without a valid signature are refused.",
+    fields: [{ env: "CAL_WEBHOOK_SECRET", label: "Webhook secret", type: "secret", pattern: /^$|^[\x21-\x7e]{16,200}$/, hint: "At least 16 characters; any printable characters without spaces." }],
+  },
+  {
     id: "image-limits",
     title: "Image generation limits",
     description: "Caps on Gemini usage (each image costs money). The key and model are in Integrations.",

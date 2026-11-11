@@ -1,5 +1,23 @@
 # Progress log — jithendar.com
 
+## Cal.com integration for Hire me (2026-11-11, owner request "integrate cal.com to schedule meeting")
+
+- Pop-up scheduling: `BookingLink` opens Cal.com's embed (`Cal("modal", {calLink, calOrigin, config})`, API checked
+  against `app.cal.com/embed/embed.js` on 2026-11-11) for cal.com links or a configured self-hosted Cal.com; script loaded
+  on the first click only; blocked script → booking page; GA4 `booking_completed` via `bookingSuccessfulV2`. Config:
+  `hireMe.embedBooking` (default on), `hireMe.calOrigin`.
+- Webhook `POST /api/cal/webhook` (`src/lib/calcom.ts`): HMAC-SHA256 `X-Cal-Signature-256` with `CAL_WEBHOOK_SECRET`
+  (Advanced settings → Cal.com bookings, encrypted); `cal_booking` table (migration 0024 + rollback); Admin → Bookings.
+- Privacy policy source: Cal.com scheduler, the booking copy kept here, deletion on request.
+
+**Commands → result**: `npm test` 917 passed, 1 skipped; lint, typecheck pass; new `tests/calcom.test.ts` (20 tests) (link parsing, signature, created / repeated /
+rescheduled / cancelled / ping / bad JSON / oversized, upcoming vs past, the route, migration + rollback). `next build`
+pass (`/hire-me` ○, `/api/cal/webhook` and `/admin/bookings` ƒ). Standalone build + Playwright through the proxy: no
+Cal.com request before the click; click → `embed.js` and the `rick/get-rick-rolled` scheduler (Cal.com's public demo)
+open in a pop-up on /hire-me; with Cal.com blocked the click navigates to the booking page.
+
+**Manual**: Cal.com webhook + secret (docs/HIRE_ME.md "Cal.com integration"); live privacy policy text in Admin → Pages.
+
 ## Hire me page: consulting, freelance, speaking, mentoring (2026-11-11, owner request)
 
 `/hire-me` with availability, four offers (prices and Cal.com links from the admin), production highlights, selected
