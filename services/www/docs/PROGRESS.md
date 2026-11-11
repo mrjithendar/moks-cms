@@ -27,6 +27,9 @@ draft-mode requests render per request and are not stored.
 **Open / manual**: none required. Optional: set `PAGE_CACHE_MAX_MB` if the site grows past ~64 MB of rendered pages.
 Direct SQL edits are not seen until 300 s or a pod restart.
 
+**Article**: `content/blog/ssg-isr-nextjs-jithendar-com.mdx` (`status: review`) explains the change; notes and the
+facts to re-check in `docs/knowledge-sharing/ssg-isr/README.md`. Manual: deploy, re-measure live TTFB, review, publish.
+
 ## Cache bus: cross-replica cache invalidation over the shared Valkey, pub/sub only (2026-11-10, owner request)
 
 Edits now reach both replicas within about a second instead of up to the cache TTL. `src/lib/cache-bus.ts` has its own
