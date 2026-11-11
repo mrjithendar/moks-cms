@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CheckIcon, AlertIcon } from "@/components/icons";
 import { Alert, Button } from "@/components/ui/form";
 import { checkCustomCss } from "@/lib/site-config/css";
-import { BODY_FONTS, CODE_FONTS, DATE_FORMATS, defaultConfig, HEADER_PRESETS, THEME_PRESETS, TIMEZONES, type SiteConfig } from "@/lib/site-config/schema";
+import { BODY_FONTS, CODE_FONTS, DATE_FORMATS, defaultConfig, HEADER_PRESETS, HIRE_CURRENCIES, HIRE_OFFERS, HIRE_UNITS, THEME_PRESETS, TIMEZONES, type SiteConfig } from "@/lib/site-config/schema";
 import { BannerField, Choice, ColorField, getIn, Grid, ImageField, LinkField, NumberField, Panel, TextField, Toggle, useEditor, useField } from "./fields";
 import type { EditorContext as Ctx } from "./AppearanceEditor";
 
@@ -489,5 +489,52 @@ export function AdvancedPanel() {
           </Alert>
         ))}
     </Panel>
+  );
+}
+
+// --- Hire me -----------------------------------------------------------------------------------------------------
+
+const OFFER_LABELS: Record<(typeof HIRE_OFFERS)[number], string> = { consulting: "Consulting", freelance: "Freelance projects", speaking: "Speaking and workshops", mentoring: "Mentoring" };
+
+export function HireMePanel() {
+  return (
+    <>
+      <Panel title="Page and availability" description={<>The public page is <Link href="/hire-me" className="underline">/hire-me</Link>. Résumé facts (experience, skills, certification) are in <code>src/config/hire-me-profile.ts</code>.</>}>
+        <Toggle path="hireMe.enabled" label="Show the Hire me page" hint="Off: /hire-me is not found and every call to action is hidden. Add the page to a menu in Navigation." />
+        <Choice path="hireMe.availability" label="Availability" options={opts({ available: "Available for new work", limited: "Limited availability", unavailable: "Not taking new work" })}
+          hint="“Not taking new work” keeps the page but hides booking buttons and the article call to action." />
+        <TextField path="hireMe.availabilityNote" label="Availability note" max={160} placeholder="Taking on consulting and freelance work, remote or in Singapore." />
+        <TextField path="hireMe.headline" label="Headline" max={120} />
+        <TextField path="hireMe.intro" label="Introduction" max={600} multiline rows={4} />
+        <TextField path="hireMe.responseTime" label="Reply time (shown under the form)" max={80} />
+      </Panel>
+      <Panel title="Booking and pricing" description="Prices of 0 show as “On request”. Booking links open in a new tab; no booking widget or script is loaded.">
+        <Grid>
+          <Choice path="hireMe.currency" label="Currency" options={opts(Object.fromEntries(HIRE_CURRENCIES.map((c) => [c, c])))} />
+          <TextField path="hireMe.bookingUrl" label="Intro call booking link" placeholder="https://cal.com/your-name/intro" type="url"
+            hint="Your Cal.com (or other https) booking page. Used by “Book an intro call” and by offers without their own link." />
+        </Grid>
+        <Toggle path="hireMe.embedBooking" label="Open Cal.com links in a pop-up on the page"
+          hint="Cal.com's scheduler loads only when a visitor clicks Book; other links (and blocked scripts) open in a new tab." />
+        <TextField path="hireMe.calOrigin" label="Self-hosted Cal.com address (optional)" placeholder="https://cal.example.com" type="url"
+          hint="Only if you run Cal.com yourself. Leave empty for cal.com. Bookings reach Admin → Bookings through a webhook: see Advanced settings → Cal.com bookings." />
+      </Panel>
+      {HIRE_OFFERS.map((k) => (
+        <Panel key={k} title={OFFER_LABELS[k]}>
+          <Toggle path={`hireMe.offers.${k}.enabled`} label="Offer this" />
+          <TextField path={`hireMe.offers.${k}.title`} label="Title" max={60} />
+          <TextField path={`hireMe.offers.${k}.summary`} label="Summary" max={280} multiline rows={3} />
+          <Grid>
+            <NumberField path={`hireMe.offers.${k}.price`} label="Price from (0 = on request)" min={0} max={1_000_000} />
+            <Choice path={`hireMe.offers.${k}.unit`} label="Per" options={opts(Object.fromEntries(HIRE_UNITS.map((u) => [u, u])))} />
+          </Grid>
+          <TextField path={`hireMe.offers.${k}.bookingUrl`} label="Booking link for this offer (optional)" placeholder="https://cal.com/your-name/consulting" type="url" />
+        </Panel>
+      ))}
+      <Panel title="Call to action in articles" description="A short box at the end of every article, linking to /hire-me. Hidden while you are not taking new work.">
+        <Toggle path="hireMe.articleCta.enabled" label="Show it" />
+        <TextField path="hireMe.articleCta.text" label="Text" max={200} multiline rows={2} />
+      </Panel>
+    </>
   );
 }

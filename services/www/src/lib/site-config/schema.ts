@@ -366,6 +366,41 @@ const seo = z.object({
 
 const advanced = z.object({ customCss: z.object({ enabled: z.boolean(), css: z.string().max(10_000) }) });
 
+/** Hire me (/hire-me): what is offered, at what price and how readers book or enquire. Edited in Admin → Appearance → Hire me. */
+export const HIRE_OFFERS = ["consulting", "freelance", "speaking", "mentoring"] as const;
+export type HireOfferKey = (typeof HIRE_OFFERS)[number];
+export const HIRE_CURRENCIES = ["SGD", "USD", "EUR", "GBP", "INR", "AUD"] as const;
+export const HIRE_UNITS = ["hour", "day", "session", "project", "talk", "month"] as const;
+const hireOffer = z.object({
+  enabled: z.boolean(),
+  title: text(60, 2),
+  summary: text(280),
+  /** 0 = shown as "On request" (no public price). */
+  price: z.number().int().min(0).max(1_000_000),
+  unit: z.enum(HIRE_UNITS),
+  /** This offer's Cal.com (or other https) booking page; empty = the general booking link, then the enquiry form. */
+  bookingUrl: httpsOrEmpty,
+});
+const hireMe = z.object({
+  /** Off: /hire-me is a 404 and every call to action is hidden. */
+  enabled: z.boolean(),
+  availability: z.enum(["available", "limited", "unavailable"]),
+  availabilityNote: text(160),
+  headline: text(120, 10),
+  intro: text(600),
+  currency: z.enum(HIRE_CURRENCIES),
+  /** General booking page (e.g. a Cal.com intro call). */
+  bookingUrl: httpsOrEmpty,
+  /** Open Cal.com links in a pop-up scheduler on the page (Cal.com's embed, loaded on the first click only). */
+  embedBooking: z.boolean(),
+  /** Self-hosted Cal.com only: its address, e.g. https://cal.example.com. Empty = cal.com. */
+  calOrigin: httpsOrEmpty,
+  responseTime: text(80),
+  offers: z.object(Object.fromEntries(HIRE_OFFERS.map((k) => [k, hireOffer])) as Record<HireOfferKey, typeof hireOffer>),
+  /** A short "work with me" box at the end of articles, above the author card. */
+  articleCta: z.object({ enabled: z.boolean(), text: text(200) }),
+});
+
 const base = z.object({
   general,
   branding,
@@ -378,6 +413,7 @@ const base = z.object({
   media,
   seo,
   advanced,
+  hireMe,
 });
 
 /** Cross-field rules that keep the site usable and readable. */
@@ -645,6 +681,54 @@ export function defaultConfig(): SiteConfig {
     media: { imageRadius: "small", captionAlign: "center", galleryColumns: 3 },
     seo: { titleSeparator: "|", homeTitle: "Jithendar.com: engineering insight on AI, cloud and Kubernetes" },
     advanced: { customCss: { enabled: false, css: "" } },
+    hireMe: {
+      enabled: true,
+      availability: "available",
+      availabilityNote: "Taking on consulting and freelance work, remote or in Singapore.",
+      headline: "AI platforms, Kubernetes and cloud infrastructure, built to run in production",
+      intro:
+        "I'm a Lead Platform Engineer for AI with 9+ years in AWS, Kubernetes/EKS, Terraform, CI/CD and SRE. I help teams put AI agents, MCP services and RAG into production on infrastructure that is secure, observable and cheap to run.",
+      currency: "SGD",
+      bookingUrl: "",
+      embedBooking: true,
+      calOrigin: "",
+      responseTime: "I reply within two working days.",
+      offers: {
+        consulting: {
+          enabled: true,
+          title: "Consulting",
+          summary: "Architecture reviews and hands-on guidance for AI platforms, EKS, Terraform and observability: a second pair of eyes before you commit.",
+          price: 0,
+          unit: "hour",
+          bookingUrl: "",
+        },
+        freelance: {
+          enabled: true,
+          title: "Freelance projects",
+          summary: "Fixed-scope delivery: an AI gateway or MCP server, an EKS platform, Terraform modules, CI/CD pipelines or an observability stack.",
+          price: 0,
+          unit: "project",
+          bookingUrl: "",
+        },
+        speaking: {
+          enabled: true,
+          title: "Speaking and workshops",
+          summary: "Talks and hands-on workshops on AI agents and MCP, Kubernetes, platform engineering and observability, for meetups and engineering teams.",
+          price: 0,
+          unit: "talk",
+          bookingUrl: "",
+        },
+        mentoring: {
+          enabled: true,
+          title: "Mentoring",
+          summary: "One-to-one sessions for engineers moving into cloud, DevOps, platform or AI engineering: career, interviews, certifications and code.",
+          price: 0,
+          unit: "session",
+          bookingUrl: "",
+        },
+      },
+      articleCta: { enabled: true, text: "Need something like this built or reviewed for your team? I take on consulting and freelance work." },
+    },
   };
 }
 

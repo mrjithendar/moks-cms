@@ -1,7 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
-import { submitContact } from "@/lib/contact";
+import { submitContact, submitEnquiry } from "@/lib/contact";
 import { PostError } from "@/lib/posts";
 import { getSessionUser } from "@/lib/session";
 
@@ -26,5 +26,16 @@ export async function submitContactAction(data: { name: string; email: string; s
   return guard(async () => {
     await submitContact(data, token, await clientIp(), { signedIn: !!(await getSessionUser()) });
     return "Thanks for getting in touch. Your message has been received.";
+  });
+}
+
+/** Hire me (/hire-me): an enquiry about consulting, a project, a talk or mentoring. */
+/** Plain strings from the form; validated (kind, choices, lengths) in submitEnquiry. */
+export type EnquiryFields = { kind: string; name: string; email: string; company: string; budget: string; timeline: string; message: string };
+
+export async function submitEnquiryAction(data: EnquiryFields, token: string | null): Promise<PublicResult> {
+  return guard(async () => {
+    await submitEnquiry(data, token, await clientIp(), { signedIn: !!(await getSessionUser()) });
+    return "Thanks, your enquiry has been received. I'll reply by email.";
   });
 }

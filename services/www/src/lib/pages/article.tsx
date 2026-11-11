@@ -21,6 +21,7 @@ import { collectionLabels, type Collection } from "@/config/taxonomy";
 import { getCategoryMap, labelOf } from "@/lib/categories";
 import { findRedirect } from "@/lib/redirects";
 import { RelatedClickTracker } from "@/components/RelatedClickTracker";
+import { HireCta } from "@/components/hire/HireCta";
 import { getAuthor, getPublishedArticle, readingTimeMinutes, seriesNeighbours, type Article, type Author } from "@/lib/content";
 import { relatedForArticle } from "@/lib/seo-intel/related-ab";
 import { ScrollSpy } from "@/components/ScrollSpy";
@@ -300,6 +301,7 @@ export async function ArticleView({
 
             <footer className="mt-12 space-y-8 border-t border-line pt-8">
               <TagList tags={fm.tags} />
+              {!article.preview && <HireCta hire={config.hireMe} />}
               {a.showAuthorCard && <AuthorCard author={author} />}
             </footer>
 

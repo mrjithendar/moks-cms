@@ -4,7 +4,8 @@ import { checkImage, imageRefs, publicRoot, type ImageProblem } from "@/lib/imag
 import { getAuthors, getPages, getPublishedContent, type PublishedQuery } from "./index";
 import { contentRoot, loadContent } from "./load";
 
-const STATIC_ROUTES = ["/", "/search", "/feed.xml", "/sitemap.xml", "/news-sitemap.xml", "/robots.txt", ...collections.map((c) => `/${c}`)];
+// Code routes that always exist (/hire-me can be switched off in the admin, but the route is always there).
+const STATIC_ROUTES = ["/", "/search", "/hire-me", "/feed.xml", "/sitemap.xml", "/news-sitemap.xml", "/robots.txt", ...collections.map((c) => `/${c}`)];
 
 /** Internal links in a body: markdown `[text](/path)` (not images: `![alt](…)` is checked by the image checker) and `href="/path"`, without query or fragment. */
 export function internalLinks(body: string): string[] {
