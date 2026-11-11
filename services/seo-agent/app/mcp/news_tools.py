@@ -1,7 +1,7 @@
 """News desk MCP tools (docs/news/RUNBOOK.md "MCP").
 
-Admin (same OAuth server and scopes as the SEO admin tools): read jobs, runs (steps + recent logs), candidates and
-drafts; start a job run (optionally a dry run); reject a draft. There is no tool that approves or publishes news, and the
+Admin (same OAuth server and scopes as the SEO admin tools): read jobs, runs (steps + recent logs), candidates,
+drafts and stored model versions; start a job run (optionally a dry run); reject a draft. There is no tool that approves or publishes news, and the
 only flow these tools can start is news_job_flow (the runner refuses anything else from MCP). Drafts come back with
 `review_url`: approval happens only in the web review page.
 
@@ -22,7 +22,7 @@ from ..services import content, review
 from ..services.content import ContentError
 from .common import Guard, guarded
 
-NEWS_ADMIN_TOOLS = ("list_news_jobs", "get_news_job", "list_news_runs", "get_news_run", "kickoff_news_job", "list_news_drafts", "get_news_candidates", "reject_news_draft")
+NEWS_ADMIN_TOOLS = ("list_news_jobs", "get_news_job", "list_news_runs", "get_news_run", "kickoff_news_job", "list_news_drafts", "get_news_candidates", "list_news_models", "reject_news_draft")
 NEWS_PUBLIC_TOOLS = ("search_news",)
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 START = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
@@ -103,6 +103,15 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
                 item["review_url"] = review.review_link(site, str(a["draft_id"]))
             out.append(item)
         return {"drafts": out}
+
+    @mcp.tool(name="list_news_models", title="News models", annotations=READ)
+    @guarded(guard, "list_news_models", scope="seo:read")
+    async def list_news_models(kind: Literal["classifier", "ranker"] | None = None, limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict[str, Any]:
+        """Stored news ML model versions (classifier, ranker): which one serves, held-out metrics, promotion notes.
+        Read-only: activating an earlier version (rollback) is an owner action (NewsStore.activate_model, RUNBOOK)."""
+        rows = await store.list_models(kind, limit)
+        keep = ("macro_f1", "macro_f1_human", "brier", "excluded_topics", "current", "v1", "v2", "promoted", "reason", "test", "n")
+        return {"models": [{**_clean(r, ("kind", "version", "active", "n_samples", "notes", "trained_at", "has_artifact")), "metrics": {k: v for k, v in (r.get("metrics") or {}).items() if k in keep}} for r in rows]}
 
     @mcp.tool(name="kickoff_news_job", title="Run a news job", annotations=START)
     @guarded(guard, "kickoff_news_job", scope="seo:flows")
