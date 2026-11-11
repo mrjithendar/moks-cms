@@ -1,6 +1,7 @@
 import { getCategories } from "./categories";
 import { getPages, getPublishedContent } from "./content";
 import { log } from "./log";
+import { recordPageWarmup } from "./metrics";
 import { compileMdx } from "./mdx/compile";
 import { getSettings } from "./settings";
 
@@ -47,7 +48,10 @@ function localFetcher(): Fetcher {
   };
 }
 
-/** The paths to render: the home page plus every <loc> in the sitemap (same host only). */
+/** Cached responses that are not in the sitemap but are fetched often (feed readers, the search box). */
+const EXTRA_PATHS = ["/feed.xml", "/news/feed.xml", "/search-index.json"];
+
+/** The paths to render: the home page, every <loc> in the sitemap (same host only), then the feeds and search index. */
 export function sitemapPaths(xml: string, origin: string): string[] {
   const out = new Set<string>(["/"]);
   for (const m of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)) {
@@ -58,6 +62,7 @@ export function sitemapPaths(xml: string, origin: string): string[] {
       /* not a URL */
     }
   }
+  for (const p of EXTRA_PATHS) out.add(p);
   return [...out].slice(0, WARM_MAX_PAGES);
 }
 
@@ -89,9 +94,16 @@ function runWarmup(reason: string) {
     again = true; // cleared again while warming: one more pass afterwards
     return;
   }
+  const started = Date.now();
   running = warmPages()
-    .then((r) => log.info("pages warmed", { reason, ...r }))
-    .catch((err) => log.warn("page warm-up failed", { reason, err }))
+    .then((r) => {
+      log.info("pages warmed", { reason, ...r });
+      recordPageWarmup(reason, "ok", r.ms / 1000, r.pages, r.failed);
+    })
+    .catch((err) => {
+      log.warn("page warm-up failed", { reason, err });
+      recordPageWarmup(reason, "failed", (Date.now() - started) / 1000);
+    })
     .finally(() => {
       running = null;
       if (again) {

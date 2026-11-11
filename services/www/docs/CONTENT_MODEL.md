@@ -81,8 +81,19 @@ Public pages (home, `[page]`, blog, news, projects, categories, tags, authors, f
   and are never served). Instead each pod renders every URL in its sitemap into the cache once it is up, and again
   10 s after the cache is cleared (`src/lib/warm.ts`; `PAGE_WARMUP=false` turns it off). Visitors get cached pages from
   the first request; a page the warm-up missed is rendered on its first request.
-- **Stays per request**: admin, account, sign-in, search, Python practice, previews, `news-sitemap.xml` (48 h window),
-  article Open Graph images, APIs. Per-user parts of public pages (account menu, comments, the contact form's
+- **Also cached**: per-article Open Graph images (300 s, drawn once per article instead of per crawler request) and
+  `news-sitemap.xml` (60 s, so items still leave the 48-hour window within a minute).
+- **Stale window**: `expireTime: 86400` in `next.config.ts`, sent as `stale-while-revalidate=86100`: a CDN in front
+  may serve a page at most a day old while it refreshes (Next's default would be a year).
+- **Warm-up** covers every sitemap URL plus `/feed.xml`, `/news/feed.xml` and `/search-index.json`.
+- **Browser caching**: `/_next/static/*` one year, immutable (Next); `icon.svg` one day; HTML has no browser
+  `max-age` (`s-maxage` only), so readers always get the current version from the server's cache.
+- **Metrics** (port 9464): `jithendar_page_cache_{hits,misses,clears}_total`, `jithendar_page_cache_{entries,bytes}`,
+  `jithendar_page_warmups_total{reason,outcome}`, `jithendar_page_warmup_duration_seconds`,
+  `jithendar_page_warmup_{pages,failed_pages}`; Grafana → Jithendar.com · Overview → "ISR page cache". Tuning: a hit
+  ratio well below 90 % outside deploys and edits means pages are evicted (raise `PAGE_CACHE_MAX_MB`, watch
+  `jithendar_page_cache_bytes`) or cleared too often.
+- **Stays per request**: admin, account, sign-in, search, Python practice, previews, APIs. Per-user parts of public pages (account menu, comments, the contact form's
   signed-in check) are client-side.
 - **Appearance preview** (Admin → Appearance → Preview) turns on Next's draft mode for that admin's browser: those
   requests render per request with the draft configuration and are never stored in the cache.

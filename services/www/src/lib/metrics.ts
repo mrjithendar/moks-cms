@@ -305,6 +305,51 @@ export function renderCacheBus(): string[] {
   return parts;
 }
 
+// --- ISR page cache (cache-handler.mjs, src/lib/page-cache.ts, src/lib/warm.ts) ----------------------------------
+// The handler's state lives on globalThis (one store per process); it is read at scrape time, so the handler itself
+// stays free of imports. Labels are fixed: reason (startup | cleared), outcome (ok | failed).
+
+type PageCacheState = { generation: number; entries: Map<string, unknown>; bytes: number; hits: number; misses: number };
+type WarmupRegistry = { runs: Counter; duration: Histogram; lastPages: number; lastFailed: number };
+const gw = globalThis as unknown as { __pageWarmupMetrics?: WarmupRegistry };
+function warmupRegistry(): WarmupRegistry {
+  gw.__pageWarmupMetrics ??= {
+    runs: new Counter("jithendar_page_warmups_total", "Page cache warm-ups, by reason (startup | cleared) and outcome (ok | failed)."),
+    duration: new Histogram("jithendar_page_warmup_duration_seconds", "Time to render every sitemap page into the page cache.", [1, 5, 15, 30, 60, 120, 300]),
+    lastPages: 0,
+    lastFailed: 0,
+  };
+  return gw.__pageWarmupMetrics;
+}
+
+export function recordPageWarmup(reason: string, outcome: "ok" | "failed", seconds: number, pages = 0, failed = 0) {
+  const r = warmupRegistry();
+  const why = reason === "startup" ? "startup" : "cleared";
+  r.runs.inc({ reason: why, outcome });
+  if (outcome === "ok") {
+    r.duration.observe({ reason: why }, seconds);
+    r.lastPages = pages;
+    r.lastFailed = failed;
+  }
+}
+
+export function renderPageCache(): string[] {
+  const s = (globalThis as unknown as Record<symbol, PageCacheState | undefined>)[Symbol.for("jithendar.pageCache")];
+  const w = warmupRegistry();
+  const counter = (name: string, help: string, value: number) => `# HELP ${name} ${help}\n# TYPE ${name} counter\n${name} ${value}`;
+  return [
+    counter("jithendar_page_cache_hits_total", "ISR page cache lookups answered from memory.", s?.hits ?? 0),
+    counter("jithendar_page_cache_misses_total", "ISR page cache lookups that rendered the page (first visit, expired or cleared).", s?.misses ?? 0),
+    counter("jithendar_page_cache_clears_total", "Times the whole page cache was cleared (content or settings changed).", s?.generation ?? 0),
+    gauge("jithendar_page_cache_entries", "Pages and route responses held in the ISR page cache.", [{ value: s?.entries.size ?? 0 }]),
+    gauge("jithendar_page_cache_bytes", "Approximate memory used by the ISR page cache (PAGE_CACHE_MAX_MB caps it).", [{ value: s?.bytes ?? 0 }]),
+    w.runs.render(),
+    w.duration.render(),
+    gauge("jithendar_page_warmup_pages", "Pages the last successful warm-up rendered.", [{ value: w.lastPages }]),
+    gauge("jithendar_page_warmup_failed_pages", "Pages the last successful warm-up could not render (5xx or no answer).", [{ value: w.lastFailed }]),
+  ];
+}
+
 // --- Exposition --------------------------------------------------------------------------------------
 
 export async function renderMetrics(): Promise<string> {
@@ -326,6 +371,7 @@ export async function renderMetrics(): Promise<string> {
     r.comments.render(),
     ...renderSeo(),
     ...renderCacheBus(),
+    ...renderPageCache(),
     await databaseGauges(),
   ];
   r.loop.reset();

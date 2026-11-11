@@ -1,5 +1,5 @@
 ---
-title: "SSG and ISR in Next.js: How jithendar.com Went From 1 Second to 9 Milliseconds Per Page"
+title: "SSG and ISR in Next.js: How jithendar.com Went From Half a Second to 9 Milliseconds Per Page"
 slug: ssg-isr-nextjs-jithendar-com
 description: "What SSG and ISR are, why jithendar.com's pages had quietly become fully dynamic, and how a custom ISR cache made them static again across replicas."
 seoTitle: "SSG and ISR in Next.js: Implementation and Benefits"
@@ -65,13 +65,9 @@ const token = (await cookies()).get(PREVIEW_COOKIE)?.value;
 
 In the Next.js App Router, reading `cookies()` or `headers()` during render makes the page dynamic. Because it was in the **root layout**, it made **every** page dynamic. Removing `force-dynamic` alone would have changed nothing.
 
-The cost was visible on the live site: `Cache-Control: private, no-store` on every page, and these times to first byte:
-
-| Page | Before (live site) |
-|---|---|
-| Homepage | 1.03 s |
-| `/blog` | 0.60 s |
-| An article | 0.48 s |
+The cost was visible in the response headers, `Cache-Control: private, no-store` on every page, and in the server time:
+rendering an article from Postgres took about 0.49 s on a production build, for every request. (Times measured from a
+distant client add the network on top; the comparison that matters is the server's own work.)
 
 ## The obstacle: two replicas and Next's default cache
 
@@ -246,7 +242,8 @@ Measured on a production build (`APP_ENV=production`) running locally against Po
 | Unpublish | 404 on the next request, gone from `/blog` |
 | Two replicas over Redis, edit on B | A serves the new version on its next request |
 | Admin in draft mode | Fresh render each time, never stored |
-| Live site after deploy | *To be measured* |
+| Article Open Graph image | 194 ms → 6 ms once cached |
+| Live site after deploy | `x-nextjs-cache: HIT` and `s-maxage=300` on every public page; TTFB *to be measured from a real client* |
 
 The build output now shows the public routes as `○` (static) or `●` (SSG) with a 5-minute revalidation, while admin, account, search, sign-in and Python practice stay `ƒ` (dynamic).
 

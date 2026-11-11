@@ -6,6 +6,11 @@ import { ogCard, ogSize } from "@/lib/og/card";
 export const alt = "Article preview";
 export const size = ogSize;
 export const contentType = "image/png";
+// ISR like the article page (lib/page-cache.ts): the card is drawn once per article, not on every crawler request.
+export const revalidate = 300;
+export async function generateStaticParams() {
+  return []; // rendered on the first request (the build has no database), then cached
+}
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const article = await getPublishedArticle("blog", (await params).slug);

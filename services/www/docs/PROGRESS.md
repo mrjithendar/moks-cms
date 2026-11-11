@@ -1,5 +1,28 @@
 # Progress log — jithendar.com
 
+## Page cache tuning (2026-11-11, owner request "finetune caching")
+
+After the SSG + ISR release (#40): measured the live site, then tuned what was still uncached or unbounded.
+
+- Per-article Open Graph images (`blog|news|projects/[slug]/opengraph-image.tsx`): `revalidate = 300` +
+  `generateStaticParams() → []`. Local production build: 194 ms per request → 6 ms after the first.
+- `news-sitemap.xml`: per request → ISR, `revalidate = 60` (Cache-Control max-age 60, was 600).
+- `next.config.ts`: `expireTime: 86400` → `stale-while-revalidate=86100` (was a year); `icon.svg` Cache-Control
+  `public, max-age=86400, stale-while-revalidate=604800` (was max-age=0).
+- Warm-up also renders `/feed.xml`, `/news/feed.xml`, `/search-index.json`.
+- Metrics `jithendar_page_cache_*` and `jithendar_page_warmup*` (lib/metrics.ts `renderPageCache`, `recordPageWarmup`);
+  Grafana Overview row "ISR page cache" (hit ratio, cached pages, memory, failed warm-up pages, lookups/s, clears and
+  warm-ups).
+
+**Commands → result**: `npm test` 879 passed, 1 skipped; lint, typecheck, `next build` pass (OG images `●`,
+news-sitemap `○` 1m/1d); `scripts/check-dashboards.py` OK. Standalone server on PostgreSQL 18: OG MISS 194 ms then HIT
+6 ms; news-sitemap HIT; `/blog` sends `s-maxage=300, stale-while-revalidate=86100`; startup warm-up 7 pages incl. feeds;
+`/metrics` exposes the new series.
+
+**Not in this repo**: Istio's response compression (EnvoyFilter in the miniKube repo) drops the ETag on compressed
+responses, so browsers cannot get 304s for HTML; keeping weak ETags there would save bandwidth on repeat visits.
+Live TTFB cannot be measured from the agent sandbox (its HTTPS proxy adds 0.3–0.7 s); measure from a real client.
+
 ## SSG + ISR for public pages (2026-11-11, owner request)
 
 Public pages were `force-dynamic` (rendered from Postgres on every request; production TTFB 0.48–1.03 s, `Cache-Control:

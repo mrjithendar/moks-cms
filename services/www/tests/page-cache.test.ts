@@ -5,6 +5,7 @@ import PageCacheHandler, { pageCacheState } from "../cache-handler.mjs";
 import { broadcastInvalidate } from "@/lib/cache-bus";
 import { clearPageCache, onPageCacheCleared, pageCacheStats } from "@/lib/page-cache";
 import { sitemapPaths, warmPages } from "@/lib/warm";
+import { recordPageWarmup, renderPageCache } from "@/lib/metrics";
 
 const page = (html: string) => ({ kind: "APP_PAGE", html, rscData: Buffer.from(html), headers: {}, status: 200 });
 
@@ -101,7 +102,7 @@ describe("page warm-up (lib/warm.ts)", () => {
     const xml = `<urlset><url><loc>https://jithendar.com</loc></url><url><loc>https://jithendar.com/blog</loc></url>
       <url><loc> https://jithendar.com/blog/a?x=1&amp;y=2 </loc></url><url><loc>https://evil.example/blog</loc></url>
       <url><loc>https://jithendar.com/blog</loc></url><url><loc>not a url</loc></url></urlset>`;
-    expect(sitemapPaths(xml, "https://jithendar.com")).toEqual(["/", "/blog", "/blog/a"]);
+    expect(sitemapPaths(xml, "https://jithendar.com")).toEqual(["/", "/blog", "/blog/a", "/feed.xml", "/news/feed.xml", "/search-index.json"]);
   });
 
   it("requests every page and counts server errors", async () => {
@@ -112,8 +113,8 @@ describe("page warm-up (lib/warm.ts)", () => {
       if (p === "/sitemap.xml") return { status: 200, body: sitemap };
       return { status: p === "/broken" ? 500 : p === "/gone" ? 404 : 200, body: "" };
     });
-    expect(seen.slice(1).sort()).toEqual(["/", "/blog", "/broken", "/gone"]);
-    expect(r).toMatchObject({ pages: 4, failed: 1 });
+    expect(seen.slice(1).sort()).toEqual(["/", "/blog", "/broken", "/feed.xml", "/gone", "/news/feed.xml", "/search-index.json"]);
+    expect(r).toMatchObject({ pages: 7, failed: 1 });
   });
 
   it("fails when the sitemap does not answer", async () => {
@@ -157,10 +158,44 @@ describe("public routes are ISR, not per request", () => {
     if (f.includes("[")) expect(src).toMatch(/export async function generateStaticParams\(\)/);
   });
 
+  it.each(["blog", "news", "projects"])("%s article Open Graph images are cached like their pages", (c) => {
+    const src = readFileSync(path.join(ROOT, "src/app", c, "[slug]/opengraph-image.tsx"), "utf8");
+    expect(src).toMatch(/export const revalidate = 300;/);
+  });
+
+  it("the news sitemap refreshes every minute (48-hour window) instead of per request", () => {
+    const src = readFileSync(path.join(ROOT, "src/app/news-sitemap.xml/route.ts"), "utf8");
+    expect(src).not.toMatch(/force-dynamic/);
+    expect(src).toMatch(/export const revalidate = 60;/);
+  });
+
   it("the root layout's config only reads cookies in draft mode (otherwise every page would be dynamic)", () => {
     const src = readFileSync(path.join(ROOT, "src/lib/site-config/index.ts"), "utf8");
     const draft = src.indexOf("(await draftMode()).isEnabled");
     expect(draft).toBeGreaterThan(0);
     expect(src.indexOf("(await cookies())")).toBeGreaterThan(draft);
+  });
+});
+
+describe("page cache metrics (lib/metrics.ts)", () => {
+  beforeEach(reset);
+
+  it("exports hits, misses, clears, size and warm-ups", async () => {
+    const h = new PageCacheHandler({});
+    const before = pageCacheState();
+    const hits = before.hits;
+    await h.get("/m");
+    await h.set("/m", page("m"));
+    await h.get("/m");
+    recordPageWarmup("startup", "ok", 2.5, 12, 1);
+    recordPageWarmup("cache cleared", "failed", 1);
+    const out = renderPageCache().join("\n");
+    expect(out).toContain(`jithendar_page_cache_hits_total ${hits + 1}`);
+    expect(out).toMatch(/jithendar_page_cache_entries 1\b/);
+    expect(out).toMatch(/jithendar_page_cache_clears_total \d+/);
+    expect(out).toContain('jithendar_page_warmups_total{reason="startup",outcome="ok"} 1');
+    expect(out).toContain('jithendar_page_warmups_total{reason="cleared",outcome="failed"} 1');
+    expect(out).toContain("jithendar_page_warmup_pages 12");
+    expect(out).toContain("jithendar_page_warmup_failed_pages 1");
   });
 });
