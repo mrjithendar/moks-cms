@@ -19,6 +19,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from psycopg import sql
+
 from . import metrics
 from .embeddings import MODEL_MAX_TOKENS, SPECIAL_TOKENS, Embeddings, chunk_markdown, embed_input, question_identifiers, token_counter
 from .retrieval import Candidate, RetrievalConfig, diversify, fuse
@@ -274,6 +276,16 @@ class PgVectorIndex:
             await c.execute(f"drop table {LIVE_TABLE}")
             for ddl in _SWAP_RENAMES:
                 await c.execute(ddl)
+            # Every other constraint still named after the build table, e.g. PostgreSQL 18's named NOT NULL
+            # constraints (seo_article_chunks_next_<col>_not_null), so a later rebuild starts from clean names.
+            cur = await c.execute(
+                "select conname from pg_constraint where conrelid = to_regclass(%s) and starts_with(conname, %s)",
+                (LIVE_TABLE, f"{NEXT_TABLE}_"),
+            )
+            for r in await cur.fetchall():
+                old = r["conname"]
+                new = LIVE_TABLE + old[len(NEXT_TABLE) :]
+                await c.execute(sql.SQL("alter table {} rename constraint {} to {}").format(sql.Identifier(LIVE_TABLE), sql.Identifier(old), sql.Identifier(new)))
         self.rebuilding = False
         self.reason = "ok"
         log.warning("embeddings rebuild complete: %s swapped in", LIVE_TABLE)
