@@ -1,7 +1,8 @@
 """What both MCP servers share: rate limits, the audit log, safe errors, metrics, and the tool wrapper.
 
 Every MCP tool/resource/prompt is a thin wrapper over an `app/services` function, registered through `guarded()`:
-- rate limit (public: per client IP + a daily cap; admin: per token, plus a stricter per-hour cap on kickoff_flow);
+- rate limit (public: per client IP per minute, a daily cap per client IP (PUBLIC_MCP_DAILY_CALLS_PER_IP) and the global
+  daily backstop (PUBLIC_MCP_DAILY_CALLS); admin: per token, plus a stricter per-hour cap on kickoff_flow);
 - metrics `seo_mcp_requests_total{server,tool,status}` and `seo_mcp_request_duration_seconds{server,tool}`;
 - admin only: one `audit_log` row per call (client id, tool, arguments with secrets redacted, result status);
 - errors become MCP tool errors with a safe message: ContentError/RunError text, or a generic "internal error" with a
@@ -37,7 +38,10 @@ CLIENT_IP: ContextVar[str] = ContextVar("mcp_client_ip", default="unknown")
 
 
 class RateLimiter:
-    """Sliding-window counters in process memory (one seo-agent replica). Kong adds its own limits in front."""
+    """Sliding-window counters in process memory (one seo-agent replica). Kong adds its own limits in front.
+
+    In memory on purpose: the service has no Valkey/Redis client (the site's shared Valkey carries only the web app's
+    cache-bus pub/sub, no data), and a restart resetting a day's counters is acceptable for an abuse backstop."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic):
         self.clock = clock
@@ -58,15 +62,27 @@ class RateLimiter:
         return True
 
     def allow_daily(self, key: str, limit: int) -> bool:
-        if limit <= 0:
+        return self.allow_daily_all([(key, limit)])
+
+    def allow_daily_all(self, checks: list[tuple[str, int]]) -> bool:
+        """Several daily counters at once (per client + global): a call counts against all of them, or none when any
+        is exhausted (a refused call never uses up another counter). limit <= 0 = no cap for that key."""
+        active = [(k, lim) for k, lim in checks if lim > 0]
+        if not active:
             return True
         today = datetime.now(UTC).strftime("%Y-%m-%d")
-        d, n = self.day.get(key, (today, 0))
-        if d != today:
-            d, n = today, 0
-        if n >= limit:
-            return False
-        self.day[key] = (d, n + 1)
+        counts: list[tuple[str, int]] = []
+        for key, limit in active:
+            d, n = self.day.get(key, (today, 0))
+            n = n if d == today else 0
+            if n >= limit:
+                return False
+            counts.append((key, n))
+        for key, n in counts:
+            self.day[key] = (today, n + 1)
+        if len(self.day) > 50_000:  # bound memory: per-client keys from earlier days go first
+            for k in [k for k, (d, _n) in self.day.items() if d != today][:25_000]:
+                self.day.pop(k, None)
         return True
 
 
@@ -117,7 +133,8 @@ class Guard:
     server: str  # public | admin
     limiter: RateLimiter
     rpm: int
-    daily: int = 0
+    daily: int = 0  # global daily backstop for this server
+    daily_per_client: int = 0  # daily cap per client key (public: per IP); 0 = none
     audit: Any = None
     caller: Callable[[], tuple[str, str | None, list[str]]] | None = None  # → (key, subject, scopes)
     extra_limits: dict[str, tuple[int, float]] = field(default_factory=dict)  # tool → (limit, window_s)
@@ -136,7 +153,7 @@ def guarded(g: Guard, tool: str, *, scope: str | None = None) -> Callable[[Calla
                 if scope and scope not in scopes:
                     status = "forbidden"
                     raise ToolError(f"insufficient_scope: this tool needs the {scope} scope")
-                if not g.limiter.allow(f"{g.server}:{key}", g.rpm, 60) or not g.limiter.allow_daily(f"{g.server}:day", g.daily):
+                if not g.limiter.allow(f"{g.server}:{key}", g.rpm, 60) or not g.limiter.allow_daily_all([(f"{g.server}:day:{key}", g.daily_per_client), (f"{g.server}:day", g.daily)]):
                     status = "rate_limited"
                     raise ToolError("rate limit reached; try again later")
                 if tool in g.extra_limits:

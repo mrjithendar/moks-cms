@@ -77,8 +77,9 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
             if crew is None:
                 raise RuntimeError("optimization crew is not configured")
             try:
-                r = await crew.run(s.context, article_id=s.article_id, related=s.related, feedback=s.feedback, draft_id=s.draft_id, recommendation_ids=s.plan.get("recommendation_ids"))
+                r = await crew.run(s.context, article_id=s.article_id, related=s.related, feedback=s.feedback, validator_feedback=s.validator_feedback, feedback_untrusted=s.triggered_by == "mcp", draft_id=s.draft_id, recommendation_ids=s.plan.get("recommendation_ids"))
             except BudgetExceeded as e:
+                self.add_budget_cost(e)
                 s.outcome = "paused_budget"
                 s.errors.append(f"budget: {e.detail}")
                 return
@@ -111,7 +112,8 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
             s.validation_report = report
             if report.get("errors"):
                 if s.attempts < MAX_ATTEMPTS and s.plan.get("model"):
-                    s.feedback = "Your previous answer was rejected by the validator:\n- " + "\n- ".join(list(report["errors"])[:20])
+                    # Kept apart from the reviewer's feedback, which the retry must still address.
+                    s.validator_feedback = "- " + "\n- ".join(list(report["errors"])[:20])
             else:
                 s.changes = report.get("changes") or []
 
@@ -140,7 +142,7 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
             # The one write an automated step makes: the draft (never the article). Idempotent upsert by draft id;
             # the web app stores every change as `pending` and the draft as `ready_for_review`.
             await self.retry(lambda: self.deps.web.save_draft(s.draft_id, body))
-            s.feedback = None
+            s.feedback = s.validator_feedback = None
             s.outcome = "draft_ready"
 
     @listen("to_nothing")

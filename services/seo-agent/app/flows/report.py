@@ -48,6 +48,7 @@ class ReportFlow(SeoFlow[ReportState]):
             try:
                 r = await crew.run(s.numbers, facts(s.numbers))
             except BudgetExceeded as e:
+                self.add_budget_cost(e)
                 s.outcome = "paused_budget"
                 s.errors.append(f"budget: {e.detail}")
                 return

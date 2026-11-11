@@ -22,7 +22,7 @@ from ..config import Settings
 from ..llm import Llm
 from ..schemas import FactCheckFlag, ModelChangeSet
 from ..tools import ToolContext, data_block
-from .common import AgentDef, CrewRun, build_agents, make_crew, run_crew
+from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew
 
 PROMPT_VERSION = "seo-optimize-crew-v1"
 
@@ -74,7 +74,9 @@ class OptimizationCrew:
     def __init__(self, settings: Settings, llm: Llm, web: Any, retriever: Any):
         self.settings, self.llm, self.web, self.retriever = settings, llm, web, retriever
 
-    async def run(self, context: dict[str, Any], *, article_id: str, related: list[dict[str, Any]] | None = None, feedback: str | None = None, draft_id: str | None = None, recommendation_ids: list[str] | None = None) -> OptimizationCrewResult:
+    async def run(self, context: dict[str, Any], *, article_id: str, related: list[dict[str, Any]] | None = None, feedback: str | None = None, validator_feedback: str | None = None, feedback_untrusted: bool = False, draft_id: str | None = None, recommendation_ids: list[str] | None = None) -> OptimizationCrewResult:
+        """`feedback`: the reviewer's (regenerate); `validator_feedback`: the validator's errors on the previous attempt.
+        Both reach the editor. `feedback_untrusted`: the feedback came through the admin MCP API → data block."""
         from crewai import Task
 
         prompt = context.get("prompt") or {}
@@ -82,13 +84,13 @@ class OptimizationCrew:
         recs = [r for r in context.get("recommendations", []) if not recommendation_ids or r.get("id") in recommendation_ids]
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not feedback else "regenerate", prompt_version=PROMPT_VERSION, crew="optimization", models=context.get("models") or {})
+            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not (feedback or validator_feedback) else "regenerate", prompt_version=PROMPT_VERSION, crew="optimization", models=context.get("models") or {})
             evidence = data_block("evidence", {"recommendations": recs, "metrics_28d": context.get("metrics") or {}, "ga4_engagement_28d": context.get("ga4") or {}, "related_site_articles": related or []})
             # v2's own prompt (article blocks with ids). The web app already wraps article text in data blocks; it is
             # wrapped again here so a closing tag inside the article can never end the data section (defence in depth).
             article = data_block("article_and_recommendations", str(prompt.get("user") or ""))
             rules = data_block("draft_rules", prompt.get("rules") or "")
-            fb = f"\n\nReviewer or validator feedback on the previous attempt (fix every point):\n{feedback[:4000]}" if feedback else ""
+            fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
             analyse = Task(description=f"Read the evidence and the article. Use gsc_queries_for_page for the queries this page ranks for. Write a problem statement of at most 5 sentences: which queries, what gap, which part of the article.\n\n{evidence}", expected_output="A short problem statement grounded in the evidence.", agent=agents["analyst"])
             edit = Task(description=f"Write the minimal change set for the problem statement. Follow the rules and the style guide (style_guide tool). Every change names its block id and quotes `before` exactly.\n\n{rules}\n\n{article}{fb}\n\n{CHANGESET_RULES}", expected_output="The JSON object described above.", agent=agents["editor"], context=[analyse])
             review = Task(description=f"Check every command, version or technical claim the editor changed against official documentation (fetch_allowlisted_docs). Remove or fix any change you can prove wrong; list anything you cannot verify in needs_fact_check. Return the final JSON object.\n\n{CHANGESET_RULES}", expected_output="The final JSON object.", agent=agents["reviewer"], context=[analyse, edit], output_pydantic=OptimizationResult)

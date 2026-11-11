@@ -180,6 +180,9 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
         st = await c.guard.status()
         if flow_name in ("optimize_article_flow", "new_article_flow", "report_flow") and st["month_spend_usd"] >= st["monthly_budget_usd"]:
             raise ContentError("the monthly LLM budget is used up; drafting flows are paused")
+        # Drafting flows: only a new draft or one whose generation failed (never a draft awaiting review). Feedback given
+        # here reaches the crew as untrusted data (triggered_by="mcp"), not as instructions.
+        await review.check_mcp_draft(web, flow_name, inputs or {})
         key, _subject, _ = caller()
         try:
             r = await c.runner.kickoff(flow_name, inputs or {}, triggered_by="mcp", actor=f"mcp:{key}")
