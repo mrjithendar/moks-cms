@@ -21,7 +21,7 @@ from ..runs import INSTANCE_ONLY
 from ..state import NewArticleState
 from .base import SeoFlow
 
-PROMPT_VERSION = "seo-crew-v2"
+PROMPT_VERSION = "seo-crew-v3"
 MAX_ATTEMPTS = 2
 
 
@@ -48,8 +48,9 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
             if crew is None:
                 raise RuntimeError("editorial crew is not configured")
             try:
-                r = await crew.run(s.brief, feedback=s.feedback, draft_id=s.draft_id)
+                r = await crew.run(s.brief, feedback=s.feedback, validator_feedback=s.validator_feedback, feedback_untrusted=s.triggered_by == "mcp", draft_id=s.draft_id)
             except BudgetExceeded as e:
+                self.add_budget_cost(e)
                 s.outcome = "paused_budget"
                 s.errors.append(f"budget: {e.detail}")
                 return
@@ -69,7 +70,8 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
             report = await self.retry(lambda: self.deps.web.validate(str(s.article_id), {"draftId": s.draft_id, "kind": "new_article", "document": doc}))
             s.validation_report = report
             if report.get("errors") and s.attempts < MAX_ATTEMPTS and not doc.get("incomplete"):
-                s.feedback = "- " + "\n- ".join(list(report["errors"])[:20])
+                # Kept apart from the reviewer's feedback, which the retry must still address.
+                s.validator_feedback = "- " + "\n- ".join(list(report["errors"])[:20])
 
     @router(validate_draft)
     def after_validate(self) -> str:
@@ -87,7 +89,7 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
             doc = s.document or {}
             r = s.validation_report
             await self.retry(lambda: self.deps.web.save_draft(s.draft_id, {"kind": "new_article", "document": doc, "changes": r.get("changes") or [], "flags": r.get("flags") or [], "summary": f"New article: {doc.get('title', '')}", "model": self.deps.settings.draft_model, "promptVersion": PROMPT_VERSION, "threadId": s.draft_id, "runId": s.id}))
-            s.feedback = None
+            s.feedback = s.validator_feedback = None
             s.outcome = "draft_ready"
 
     @listen("to_fail")

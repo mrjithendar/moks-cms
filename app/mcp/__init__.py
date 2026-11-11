@@ -29,6 +29,19 @@ from .auth import DbTokenVerifier
 from .common import CLIENT_IP, AuditLog, Guard, RateLimiter
 from .public import PUBLIC_TOOLS, build_public
 
+PUBLIC_DAILY_PER_IP_DEFAULT = 500
+
+
+def public_daily_per_ip(s: Any) -> int:
+    """PUBLIC_MCP_DAILY_CALLS_PER_IP (default 500/day per client IP; 0 = off): a single client cannot use up the global
+    daily backstop (PUBLIC_MCP_DAILY_CALLS) for everyone. Read like the other settings (config._int)."""
+    v = getattr(s, "public_mcp_daily_calls_per_ip", None)
+    if isinstance(v, int):
+        return v
+    from ..config import _int
+
+    return _int("PUBLIC_MCP_DAILY_CALLS_PER_IP", PUBLIC_DAILY_PER_IP_DEFAULT)
+
 __all__ = ["ADMIN_TOOLS", "PUBLIC_TOOLS", "create_edge_app"]
 
 
@@ -93,7 +106,7 @@ def create_edge_app(c: Any, *, verifier: Any = None, audit: Any = None, limiter:
     s = c.settings
     lim = limiter or RateLimiter()
     sec = security(s)
-    public = build_public(c, Guard("public", lim, s.public_mcp_rpm_per_ip, s.public_mcp_daily_calls), sec)
+    public = build_public(c, Guard("public", lim, s.public_mcp_rpm_per_ip, s.public_mcp_daily_calls, daily_per_client=public_daily_per_ip(s)), sec)
     admin_guard = Guard("admin", lim, s.admin_mcp_rpm_per_token, audit=audit if audit is not None else (AuditLog(c.pool) if c.pool is not None else None), caller=caller, extra_limits={"kickoff_flow": (s.admin_kickoffs_per_hour, 3600.0), "kickoff_news_job": (s.admin_kickoffs_per_hour, 3600.0)})
     admin = build_admin(c, admin_guard, sec, verifier if verifier is not None else DbTokenVerifier(c.pool, s.admin_mcp_resource))
     public_app, admin_app = public.streamable_http_app(), admin.streamable_http_app()

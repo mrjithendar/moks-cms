@@ -151,7 +151,7 @@ def test_labelling_sample_mixes_head_and_tail() -> None:
 # --- 3.3 intent ------------------------------------------------------------------------------------------------------
 
 
-def _intent_data(n_per: int = 40) -> tuple[np.ndarray, list[str], list[str]]:
+def _intent_data(n_per: int = 70) -> tuple[np.ndarray, list[str], list[str]]:
     rng = np.random.default_rng(5)
     tmpl = {"troubleshooting": "{} error not working", "comparison": "{} vs alternative", "informational": "what is {}", "commercial": "best {} course", "navigational": "{} docs login"}
     centers = {k: rng.normal(size=16) for k in tmpl}
@@ -168,7 +168,7 @@ def _intent_data(n_per: int = 40) -> tuple[np.ndarray, list[str], list[str]]:
 def test_intent_classifier_trains_with_a_confidence_threshold_and_serialises() -> None:
     x, y, _q = _intent_data()
     model, m, test = it.train(x, y, "v1")
-    assert model is not None and m["macro_f1"] >= 0.85 and 0.5 <= model.threshold <= 0.95 and len(test) == 40
+    assert model is not None and m["macro_f1"] >= 0.85 and 0.5 <= model.threshold <= 0.95 and len(test) == len(y)
     again = it.IntentModel.from_bytes("v1", model.to_bytes())
     assert again.predict(x[:3]) == model.predict(x[:3])
 
@@ -219,7 +219,7 @@ def test_priority_proposes_weights_that_rank_held_out_outcomes_better() -> None:
     p, m = pr.propose(_outcomes(120), current, "v1")
     assert p is not None and set(p.weights) == set(pr.INPUTS) and abs(sum(p.weights.values()) - 100) <= 3
     assert p.weights["searchOpportunity"] == max(p.weights.values())
-    assert m["ndcg10_proposed"] >= m["ndcg10_current"] and m["test"] == 24
+    assert m["ndcg10_proposed"] > m["ndcg10_current"] and m["test"] == 60 and m["promote"] and m["ndcg10_diff_ci"][0] > 0
 
 
 def test_lift_is_relative_to_the_pages_own_trend() -> None:
@@ -267,7 +267,7 @@ def _store_with_data() -> MemoryMlStore:
         s.daily += [{"page": page, "date": END - timedelta(days=199 - i), "clicks": float(v), "impressions": 500.0} for i, v in enumerate(y)]
     rows, _v, _l = _cluster_fixture()
     s.queries = rows
-    _x, y, q = _intent_data(20)
+    _x, y, q = _intent_data(it.MIN_TRAIN // 5)
     s.intents = list(zip(q, y, strict=True))
     s.article_rows = [{"id": f"00000000-0000-4000-8000-00000000000{i}", "path": f"/blog/{i}", "category": "k8s"} for i in range(4)]
     return s

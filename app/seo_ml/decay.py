@@ -13,15 +13,20 @@ recent decline can't be absorbed into the seasonal part) and flag decay when
 The rule it competes with is the web app's: clicks in the last 28 days vs the 28 before, ≥ 30 % lower, ≥ 20 clicks
 (rules.ts decayRule; with a year-over-year check when that history exists).
 
-Activation: on a labelled synthetic benchmark (stable weekly pattern, holiday dips, sustained drops, with noise) the
-model must raise fewer false alarms on the noise series than the rule without missing more sustained drops; the real
-back-test (alert rate and agreement with the rule on historical windows) is shown for the owner's review, and the model
-is used only after that review (status needs_review → approved on the Models page).
+Activation (train.run_decay): on a labelled synthetic benchmark (stable weekly pattern, holiday dips, zero-inflated
+low-traffic pages, ranking gains that step the level up, sustained declines and ranking losses that step it down, all
+with noise) the model must raise fewer false alarms on the negatives than the rule without missing more positives; on
+the real back-test its alerts must stay within `MAX_ALERT_RATE_RATIO` × the rule's. The owner then reviews the real
+back-test (status needs_review → approved on the Models page). A review covers one method and one `DecayConfig`
+(`review_key`): it carries over to a retrain only while both are unchanged and the back-test's agreement with the rule
+hasn't fallen more than `MAX_JACCARD_DROP` below the reviewed version's.
 """
 
 from __future__ import annotations
 
 import functools
+import hashlib
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from typing import Any
@@ -46,6 +51,47 @@ class DecayConfig:
 
 
 DEFAULT_CONFIG = DecayConfig()
+
+# Real back-test gates (train.run_decay). The synthetic benchmark runs the same fixed seeds every week, so on its own it
+# would let every retrain through; these two read the site's own history.
+# k: the model may alert on at most this multiple of the rule's page-windows, plus ALERT_SLACK page-windows so a site
+# where the rule raises 0–1 alerts isn't decided by a single alert. The model exists to raise FEWER alerts than the rule;
+# 1.5× leaves room for the declines the rule misses (on the benchmark the model catches about twice the rule's drops)
+# without letting an alarm storm through.
+MAX_ALERT_RATE_RATIO = 1.5
+ALERT_SLACK = 2
+# floor: a carried-over review needs the Jaccard agreement with the rule to stay within this much of the agreement the
+# owner saw when reviewing. A larger fall means the model now flags different pages than the version that was reviewed.
+MAX_JACCARD_DROP = 0.15
+
+
+def config_hash(cfg: DecayConfig = DEFAULT_CONFIG) -> str:
+    return hashlib.sha256(json.dumps(asdict(cfg), sort_keys=True).encode()).hexdigest()[:16]
+
+
+def review_key(cfg: DecayConfig = DEFAULT_CONFIG) -> dict[str, str]:
+    """What an owner's review approves: this method with this configuration. Anything else needs a new review."""
+    return {"method": METHOD, "config_hash": config_hash(cfg)}
+
+
+def alert_rate_ok(bt: dict[str, Any]) -> bool:
+    """The model's back-test alerts stay within k × the rule's (+ slack)."""
+    if not bt.get("page_windows"):
+        return True  # nothing to back-test yet: the owner's review decides
+    return int(bt["model_alerts"]) <= MAX_ALERT_RATE_RATIO * int(bt["rule_alerts"]) + ALERT_SLACK
+
+
+def agreement_ok(bt: dict[str, Any], reviewed_bt: dict[str, Any] | None) -> bool:
+    """The Jaccard agreement with the rule hasn't fallen more than MAX_JACCARD_DROP below the reviewed version's."""
+    if reviewed_bt is None:
+        return False  # no reviewed back-test to compare with: a fresh review is needed
+    ref = reviewed_bt.get("agreement_jaccard")
+    cur = bt.get("agreement_jaccard")
+    if ref is None:
+        return True  # neither flagged anything when reviewed: there was no agreement to keep
+    if cur is None:
+        return True  # neither flags anything now: nothing disagrees
+    return float(cur) >= float(ref) - MAX_JACCARD_DROP
 
 
 @dataclass
@@ -150,14 +196,35 @@ def rule_flags(clicks: np.ndarray, min_clicks: float = 20, drop_ratio: float = 0
 # --- Labelled synthetic benchmark (activation) and back-test -------------------------------------------------------
 
 
+NEGATIVES = ("stable", "holiday", "sparse", "step_up")
+POSITIVES = ("drop", "step")
+KINDS = NEGATIVES + POSITIVES
+
+
 def synthetic_series(kind: str, seed: int, n: int = 180, level: float = 30.0) -> np.ndarray:
-    """stable: weekly pattern + noise; holiday: stable + a 7–14-day dip of 50–70 % ending 5–25 days before the end
-    (the rule's 28-day windows see it); drop: stable, then a sustained decline of 35–60 % over the last 30–50 days."""
+    """Negatives (no decay):
+      stable: weekly pattern + Poisson noise;
+      holiday: stable + a 7–14-day dip of 50–70 % ending 5–25 days before the end (the rule's 28-day windows see it);
+      sparse: a low-traffic page (2–6 clicks/day) with 20–50 % of its days at zero (zero-inflated, as GSC reports them);
+      step_up: a ranking gain 60–120 days before the end steps the level up by 30–80 %, and it stays there.
+    Positives (decay):
+      drop: stable, then a sustained decline of 35–60 % over the last 30–50 days;
+      step: a ranking loss 25–50 days before the end steps the level down by 35–60 % at once, and it stays down."""
     rng = np.random.default_rng(seed)
     t = np.arange(n)
     week = np.array([1.05, 1.12, 1.1, 1.06, 1.0, 0.62, 0.55])
     lvl = level * rng.uniform(0.7, 1.5)
+    if kind == "sparse":
+        lvl = rng.uniform(2.0, 6.0)
     base = lvl * week[t % 7]
+    if kind == "step":
+        base[n - int(rng.integers(25, 51)) :] *= 1 - rng.uniform(0.35, 0.6)
+    elif kind == "step_up":
+        base[n - int(rng.integers(60, 121)) :] *= 1 + rng.uniform(0.3, 0.8)
+    elif kind == "sparse":
+        y = rng.poisson(np.maximum(base, 0.1)).astype(float)
+        y[rng.uniform(size=n) < rng.uniform(0.2, 0.5)] = 0.0
+        return y
     if kind == "holiday":
         length = int(rng.integers(7, 15))
         stop = n - int(rng.integers(5, 26))
@@ -169,22 +236,25 @@ def synthetic_series(kind: str, seed: int, n: int = 180, level: float = 30.0) ->
     return np.maximum(0, rng.poisson(np.maximum(base, 0.1)).astype(float))
 
 
-# The detector's conditions were designed while looking at seeds 0–2,999 (DESIGN_SEEDS); activation is decided on
-# seeds from HELD_OUT_SEEDS, which were not looked at during design.
+# The detector's conditions were designed while looking at seeds 0–2,999 (DESIGN_SEEDS) of the stable/holiday/drop
+# kinds; sparse/step_up/step were added later without changing the detector. Activation is decided on seeds from
+# HELD_OUT_SEEDS (kind k, series i: HELD_OUT_SEEDS + 1000·k + i), which were not looked at during design.
 DESIGN_SEEDS = 0
 HELD_OUT_SEEDS = 50_000
+# kind index → seed offset; the first three keep their original offsets so earlier held-out results stay comparable
+_SEED_OFFSET = {"stable": 0, "holiday": 1, "drop": 2, "sparse": 3, "step_up": 4, "step": 5}
 
 
 @functools.cache
 def benchmark(cfg: DecayConfig = DEFAULT_CONFIG, per_kind: int = 40, seed_base: int = HELD_OUT_SEEDS) -> dict[str, Any]:
-    """Model vs rule on labelled synthetic series. Positives = sustained drops."""
+    """Model vs rule on labelled synthetic series. Positives = sustained drops and step losses; the rest are noise."""
     end = date(2026, 1, 1)
     out: dict[str, dict[str, int]] = {"model": {}, "rule": {}}
     long_n = per_kind // 2  # plus 800-day series with a yearly wave (the yearly-seasonality path)
     total = per_kind + long_n
-    for kind in ("stable", "holiday", "drop"):
+    for kind in KINDS:
         m = r = 0
-        k = ("stable", "holiday", "drop").index(kind)
+        k = _SEED_OFFSET[kind]
         for i in range(total):
             n = 180 if i < per_kind else 800
             y = synthetic_series(kind, seed=seed_base + 1000 * k + i, n=n)
@@ -193,10 +263,11 @@ def benchmark(cfg: DecayConfig = DEFAULT_CONFIG, per_kind: int = 40, seed_base: 
             m += int(detect(y, np.full(len(y), 1000.0), end, f"s{i}", cfg).decaying)
             r += int(rule_flags(y))
         out["model"][kind], out["rule"][kind] = m, r
-    res: dict[str, Any] = {"per_kind": total, "short": per_kind, "long_800d": long_n, "seed_base": seed_base, "counts": out}
+    res: dict[str, Any] = {"per_kind": total, "short": per_kind, "long_800d": long_n, "seed_base": seed_base, "negatives": list(NEGATIVES), "positives": list(POSITIVES), "counts": out}
     for who in ("model", "rule"):
         c = out[who]
-        res[who] = {"false_alarms": c["stable"] + c["holiday"], "false_alarm_rate": round((c["stable"] + c["holiday"]) / (2 * total), 4), "drop_recall": round(c["drop"] / total, 4)}
+        fa = sum(c[k] for k in NEGATIVES)
+        res[who] = {"false_alarms": fa, "false_alarm_rate": round(fa / (len(NEGATIVES) * total), 4), "drop_recall": round(sum(c[k] for k in POSITIVES) / (len(POSITIVES) * total), 4)}
     res["beats_rule"] = res["model"]["false_alarms"] < res["rule"]["false_alarms"] and res["model"]["drop_recall"] >= res["rule"]["drop_recall"]
     return res
 

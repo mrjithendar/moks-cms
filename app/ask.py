@@ -104,6 +104,7 @@ class AskService:
         self.log = log
         self.enabled = enabled
         self.cache = TtlCache(cache_ttl_s)
+        self._bg: set[asyncio.Task[Any]] = set()  # streamed answers finishing after a client disconnect
 
     async def _key(self, question: str) -> str:
         return hashlib.sha256(f"{normalize_question(question)}\n{await self.retriever.version()}".encode()).hexdigest()
@@ -122,7 +123,7 @@ class AskService:
         hit = self.cache.get(key)
         if hit:
             metrics.ASK_REQUESTS.labels(outcome="cached").inc()
-            await self._record(question, ip_hash, hit, True)
+            await self._record(question, ip_hash, {**hit, "cost_usd": 0.0}, True)  # a cache hit costs nothing
             return {**hit, "cached": True}
         try:
             s = await self.graph.ainvoke({"question": question, "ip_hash": ip_hash})
@@ -157,7 +158,7 @@ class AskService:
         hit = self.cache.get(key)
         if hit:
             metrics.ASK_REQUESTS.labels(outcome="cached").inc()
-            await self._record(question, ip_hash, hit, True)
+            await self._record(question, ip_hash, {**hit, "cost_usd": 0.0}, True)  # a cache hit costs nothing
             yield ev("final", {**hit, "cached": True})
             return
         q: asyncio.Queue[str | None] = asyncio.Queue()
@@ -169,24 +170,30 @@ class AskService:
                 await q.put(None)
 
         task = asyncio.create_task(run())
+        # The answer is finished, cached and logged by its own task: when the client disconnects, the generator is
+        # closed at a `yield` but the pipeline (and its LLM spend) runs to the end and is still recorded.
+        done = asyncio.create_task(self._finish(key, question, ip_hash, task))
+        self._bg.add(done)
+        done.add_done_callback(self._bg.discard)
         while True:
             tok = await q.get()
             if tok is None:
                 break
             yield ev("delta", {"text": tok})
+        yield ev("final", await asyncio.shield(done))
+
+    async def _finish(self, key: str, question: str, ip_hash: str | None, task: asyncio.Task[dict[str, Any]]) -> dict[str, Any]:
         try:
             s = await task
         except BudgetExceeded:
             metrics.ASK_REQUESTS.labels(outcome="budget").inc()
-            yield ev("final", {"outcome": "budget", "answer": "The assistant is resting for today. Please try again tomorrow or use search.", "citations": [], "related": []})
-            return
+            return {"outcome": "budget", "answer": "The assistant is resting for today. Please try again tomorrow or use search.", "citations": [], "related": []}
         except Exception:
             metrics.ASK_REQUESTS.labels(outcome="error").inc()
-            yield ev("final", {"outcome": "error", "answer": "Something went wrong. Please try again.", "citations": [], "related": []})
-            return
+            return {"outcome": "error", "answer": "Something went wrong. Please try again.", "citations": [], "related": []}
         res = self._result(s)
         metrics.ASK_REQUESTS.labels(outcome=res["outcome"]).inc()
         if res["outcome"] in ("answered", "fallback"):
             self.cache.put(key, res)
         await self._record(question, ip_hash, res, False, s)
-        yield ev("final", res)
+        return res

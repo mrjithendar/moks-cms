@@ -32,8 +32,6 @@ def final_json(sources: list[str]) -> str:
             "slug_suggestion": "rotate-cert-manager-certificates",
             "meta_description": "How cert-manager renews certificates, how to force a rotation, and how to verify the new certificate is served by your ingress controller.",
             "outline": ["Why rotate", "How", "Verify"],
-            "body_mdx": "## Why rotate\n\nCertificates expire.\n\n```bash\nkubectl get certificate -A\n```",
-            "code_blocks": [{"lang": "bash", "code": "kubectl get certificate -A", "purpose": "list"}],
             "sources": [{"url": u, "title": "Ingress", "used_for": "ingress basics"} for u in sources],
             "fact_check_flags": [],
             "internal_links": [{"target_path": "/blog/ingress-tls", "anchor": "ingress TLS", "reason": "prerequisite"}],

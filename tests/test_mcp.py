@@ -183,6 +183,7 @@ async def test_admin_tools_call_services_audit_and_link_to_review(llm, web) -> N
         assert payload(await s.call_tool("get_page_report", {"slug": "ingress-tls"}))["name"] == "page-report"
         assert payload(await s.call_tool("get_audit_issues", {"severity": "error"}))["name"] == "audit-issues"
         assert "budget" in payload(await s.call_tool("get_llm_usage", {}))
+        web.drafts[DRAFT] = {"status": "generating"}  # a new draft (reserved by the web app, never drafted)
         k = payload(await s.call_tool("kickoff_flow", {"flow_name": "optimize_article_flow", "inputs": {"article_id": ARTICLE, "draft_id": DRAFT}}))
         assert k["review_url"].endswith(DRAFT)
         await c.runner.wait(k["run_id"], 10)

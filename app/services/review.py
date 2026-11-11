@@ -8,11 +8,13 @@ publish_flow, rollback or submission (a static test of the tool registry enforce
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 from ..flows import DRAFTING_FLOWS
 from ..runs import FlowRunner, RunError, view
+from ..webapp import WebAppError
 from .content import ContentError, clamp_limit, decode_cursor, encode_cursor, untrusted
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -23,6 +25,15 @@ def check_uuid(v: str, what: str = "id") -> str:
     if not UUID.match(s):
         raise ContentError(f"invalid {what}")
     return s
+
+
+def untrusted_value(v: Any, cap: int = 4000) -> dict[str, Any] | None:
+    """Model- or client-written text (rationale, evidence, flags, summaries, titles, notes) → an untrusted_content
+    block for the AI client. Structured values are serialised to JSON text first. None stays None."""
+    if v is None or v == "" or v == []:
+        return None
+    text = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
+    return untrusted(text[:cap])
 
 
 def review_link(site: str, draft_id: str) -> str:
@@ -56,6 +67,36 @@ async def decide(runner: FlowRunner, web: Any, draft_id: str, decision: str, *, 
     raise RunError(400, "decision must be approve, reject or regenerate")
 
 
+MCP_DRAFT_STATUSES = ("generating", "generation_failed")
+
+
+async def check_mcp_draft(web: Any, flow_name: str, inputs: dict[str, Any]) -> None:
+    """Admin MCP `kickoff_flow` for a drafting flow: only a *new* draft (reserved by the web app, never generated) or
+    one whose generation failed. A draft awaiting review, scheduled, published or closed is refused, so an AI client
+    cannot overwrite what the owner is reviewing; the owner regenerates from the web review page (`decide`, which is
+    not reachable from MCP). The draft must also be of this flow's kind and for the article/calendar item given."""
+    if flow_name not in DRAFTING_FLOWS:
+        return
+    draft_id = check_uuid(str(inputs.get("draft_id") or ""), "draft id")
+    try:
+        d = await web.draft_summary(draft_id)
+    except WebAppError as e:
+        if e.status == 404:
+            raise ContentError("draft not found; create the draft from the web app first") from None
+        raise
+    status = str(d.get("status") or "")
+    new = status == "generating" and not d.get("generatedAt")
+    if not (new or status == "generation_failed"):
+        raise ContentError(f"this draft is {status.replace('_', ' ') or 'not available'}; from MCP only a new draft or one whose generation failed can be (re)drafted. Regenerate it from the review page instead.")
+    kind = "new_article" if flow_name == "new_article_flow" else "optimize"
+    if (d.get("kind") or "optimize") != kind:
+        raise ContentError(f"this draft is not a {kind} draft")
+    if kind == "optimize" and inputs.get("article_id") and str(inputs["article_id"]).lower() != str(d.get("articleId") or "").lower():
+        raise ContentError("article_id does not match the draft")
+    if kind == "new_article" and inputs.get("calendar_id") and str(inputs["calendar_id"]).lower() != str(d.get("calendarId") or "").lower():
+        raise ContentError("calendar_id does not match the draft")
+
+
 # --- Read models for the admin MCP -----------------------------------------------------------------------------------
 
 
@@ -65,7 +106,16 @@ async def review_queue(web: Any, site: str, *, sort: str | None, kind: str | Non
     params = {"sort": sort if sort in ("priority", "age", "changes") else "priority", "kind": kind if kind in ("optimize", "new_article", "news") else None, "priority": priority if priority in ("high", "medium", "low") else None, "limit": lim + 1, "offset": max(0, off)}
     r = await web.review_queue(params)
     rows = r.get("items") or []
-    items = [{**{k: x.get(k) for k in ("id", "title", "path", "kind", "priority", "status", "changes", "accepted", "flags", "createdAt", "summary")}, "review_url": review_link(site, str(x.get("id")))} for x in rows[:lim]]
+    items = [
+        {
+            **{k: x.get(k) for k in ("id", "path", "kind", "priority", "status", "changes", "accepted", "flags", "createdAt")},
+            # Titles and summaries are written by the crews (model text): data, never instructions.
+            "title": untrusted_value(x.get("title"), 300),
+            "summary": untrusted_value(x.get("summary"), 2000),
+            "review_url": review_link(site, str(x.get("id"))),
+        }
+        for x in rows[:lim]
+    ]
     return {"items": items, "total": r.get("total"), "next_cursor": encode_cursor({"o": off + lim}) if len(rows) > lim else None}
 
 
@@ -87,18 +137,19 @@ async def draft_diff(web: Any, site: str, draft_id: str, fmt: str | None, cursor
             "before": untrusted(str(c.get("before") or "")[:cap]),
             "after": untrusted(str(c.get("after") or "")[:cap]),
             "diff": untrusted(str(c.get("diffText") or "")[:cap]) if c.get("diffText") else None,
-            "rationale": c.get("rationale"),
-            "evidence": c.get("evidence"),
-            "flags": c.get("flags"),
+            # Everything the model wrote is untrusted content for the AI client reading this diff.
+            "rationale": untrusted_value(c.get("rationale"), cap),
+            "evidence": untrusted_value(c.get("evidence"), cap),
+            "flags": untrusted_value(c.get("flags"), cap),
         }
 
     return {
         "draft_id": draft_id,
-        "title": d.get("title"),
+        "title": untrusted_value(d.get("title"), 300),
         "status": d.get("status"),
-        "summary": d.get("summary"),
-        "flags": d.get("flags"),
-        "notes": d.get("notes") or [],
+        "summary": untrusted_value(d.get("summary"), 2000),
+        "flags": untrusted_value(d.get("flags")),
+        "notes": untrusted_value(d.get("notes")),
         "changes": [one(c) for c in page],
         "total_changes": len(changes),
         "next_cursor": encode_cursor({"o": off + 25}) if len(changes) > off + 25 else None,
