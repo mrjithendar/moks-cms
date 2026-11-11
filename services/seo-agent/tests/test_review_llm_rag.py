@@ -582,3 +582,88 @@ async def test_usage_rows_carry_run_id_and_agent_once_migration_0022_is_applied(
     async with pool.connection() as c:
         rows = await (await c.execute("select run_id, agent from seo_llm_usage order by at, run_id nulls first")).fetchall()
     assert [(r["run_id"], r["agent"]) for r in rows] == [(None, None), ("r2", "editor")]
+
+
+# --- 11. RAG eval: hard set, mining, generation eval -----------------------------------------------------------------
+
+
+def test_hard_set_is_large_tagged_and_loads() -> None:
+    from app.rag_eval import TAGS, load_eval_set
+
+    qs = load_eval_set()
+    hard = [q for q in qs if q.tags]
+    assert len(hard) >= 30 and {t for q in hard for t in q.tags} == set(TAGS)
+    assert sum(1 for q in hard if "multi-hop" in q.tags and len(q.slugs) >= 2) >= 5
+
+
+async def test_eval_reports_recall_by_tag() -> None:
+    from app.embeddings import HashEmbeddings
+    from app.rag_eval import BLOG_DIR, LocalIndex, evaluate, load_articles, load_eval_set, render_markdown
+    from app.retrieval import RetrievalConfig
+
+    ix = LocalIndex(HashEmbeddings(), RetrievalConfig(mode="hybrid"))
+    await ix.build(load_articles(BLOG_DIR))
+    res = await evaluate("smoke", ix.search, [q for q in load_eval_set() if q.tags])
+    assert set(res.by_tag) == {"paraphrase", "multi-hop", "exact"} and all(0 <= v["recall@3"] <= 1 for v in res.by_tag.values())
+    assert "## Hard set by tag" in render_markdown(res, {})
+
+
+def _mine_module() -> Any:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("rag_mine_eval", Path(__file__).resolve().parents[1] / "scripts" / "rag_mine_eval.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_mined_candidates_are_unlabelled_and_ranked() -> None:
+    import yaml
+
+    mod = _mine_module()
+    logs = [
+        {"normalized": "what is ebpf", "question": "What is eBPF?", "asked": 3, "fell_back": False, "best_score": 0.95, "retrieval": []},  # well answered: skip
+        {"normalized": "how do i tune hpa", "question": "How do I tune HPA?", "asked": 2, "fell_back": False, "best_score": 0.68, "retrieval": [{"url": "/blog/x#y", "score": 0.68}]},
+        {"normalized": "kafka lag", "question": "kafka lag", "asked": 5, "fell_back": True, "best_score": 0.4, "retrieval": None},
+        {"normalized": "what is the difference between helm and kustomize", "question": "What is the difference between Helm and Kustomize?", "asked": 9, "fell_back": True, "best_score": 0.3, "retrieval": None},
+    ]
+    gaps = [{"normalized": "nomad", "sample_question": "Nomad vs Kubernetes?", "asked": 1, "status": "open"}]
+    known = {"what is the difference between helm and kustomize"}
+    out = mod.candidates(logs, gaps, low_score=0.72, known=known, limit=10)
+    assert [(e["question"], e["mined"]["reason"]) for e in out] == [("Nomad vs Kubernetes?", "open_gap"), ("kafka lag", "fallback"), ("How do I tune HPA?", "low_score")]
+    assert all(e["type"] is None and e["slugs"] == [] and e["anchors"] == [] for e in out)  # no auto-labels
+    assert out[2]["mined"]["retrieved"] == ["/blog/x#y (0.68)"]
+    doc = yaml.safe_load(mod.render(out))
+    assert len(doc["questions"]) == 3 and "NOT LABELLED" in mod.render(out)
+
+
+async def test_generation_eval_scores_citations_and_faithfulness_with_a_fake_judge() -> None:
+    from app.rag_eval import JudgeVerdict, Question, generation_eval, render_generation_markdown
+
+    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    deps = _Deps(llm, _hits())
+    qs = [
+        Question("a", "How does cert-manager renew certificates?", "how-to", ["tls"], ["renewal"]),
+        Question("b", "How do I tune Elasticsearch shard allocation?", "no-answer", [], []),
+    ]
+    llm.queue("ask_grade", Relevance(relevant=True, reason="r"), Relevance(relevant=False, reason="r"))
+    llm.queue("ask_answer", "It renews 30 days before expiry [1]. It also emails you [1].")
+    llm.queue("eval_judge", JudgeVerdict(claims_total=2, claims_supported=1, citations_total=2, citations_supported=5, unsupported=["It also emails you"]))
+    res = await generation_eval(AskPipeline(deps), llm, "claude-opus-5-5", qs)
+    m = res.metrics
+    assert m["answered_rate"] == 1 and m["abstain_rate"] == 1 and m["label_citation_precision"] == 1
+    assert m["faithfulness"] == 0.5 and m["judge_citation_precision"] == 1  # supported is clamped to total
+    judge = [c for c in llm.calls if c.purpose == "eval_judge"]
+    assert len(judge) == 1 and "It also emails you" in judge[0].user and "renews certificates 30 days" in judge[0].user
+    assert res.cost_usd > 0 and "| a | how-to | answered |" in render_generation_markdown(res, {"date": "t"})
+
+
+async def test_generation_eval_stops_at_its_budget() -> None:
+    from app.rag_eval import Question, generation_eval
+
+    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm.queue("ask_grade", Relevance(relevant=False, reason="r"), Relevance(relevant=False, reason="r"))
+    qs = [Question(str(i), "How does cert-manager renew certificates?", "how-to", ["tls"], []) for i in range(2)]
+    res = await generation_eval(AskPipeline(_Deps(llm, _hits())), llm, "m", qs, max_usd=0.0000001)
+    assert res.n == 1
