@@ -23,7 +23,9 @@ Cached system blocks (the rules + each agent's prompt) bring the input part down
 
 Covers: template $0. Gemini or OpenAI: 2 variants × the configured price (default estimate $0.04) = $0.08 + the vision checks.
 
-Classification fallback (Haiku, 20 stories per call): < $0.001 per story. Bootstrap (one-off, up to 1,000 items):
+Classification fallback (Haiku, 20 stories per call): < $0.001 per story. It runs during ingest and counts against the
+**global** news caps (booked to the job or ingest run that ingested); over the cap the model's low-confidence guess is
+kept (`model_low_conf`). Bootstrap (one-off, up to 1,000 items):
 ≈ $0.10–0.30. Style review (weekly, Sonnet, ≤ 12 diffs): ≈ $0.05–0.10. Training: CPU only, free.
 
 ## Per approved article
@@ -53,7 +55,10 @@ The defaults then stop it earlier, by design:
 | global drafts per day | 10 | |
 
 When a cap is reached, the run ends as **paused (budget)** with the cap named; nothing is sent first (every call is
-checked against an upper-bound estimate). News spend never counts against the SEO admin budget (N-07).
+checked against an upper-bound estimate). The estimate is *reserved* before the call: booked on the run's row under a
+lock and then verified against the caps, so parallel drafts cannot all pass the same check and overspend together; the
+reservation is released when the call ends and the actual cost booked. News spend never counts against the SEO admin
+budget (N-07).
 
 Levers: fewer articles per run/day, Haiku for the researcher/analyst (job → Writing → models per agent), fewer items per
 story, a lower token cap, template covers.
