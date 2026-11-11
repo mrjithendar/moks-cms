@@ -42,6 +42,10 @@ const nextConfig: NextConfig = {
   // a restarted pod starts empty and src/lib/warm.ts renders the site again.
   cacheHandler: path.join(siteRoot, "cache-handler.mjs"),
   cacheMaxMemorySize: 0,
+  // How long a cached page may still be served while it re-renders: Next sends it as `stale-while-revalidate`
+  // (expireTime − revalidate). The default is a year, which would let a CDN in front serve year-old pages; a day is
+  // plenty, since pages refresh every 5 minutes and the warm-up re-renders them after every change.
+  expireTime: 86_400,
   // Server actions accept image uploads up to 10 MB (plus multipart overhead); larger files
   // (video, audio, PDF) go straight to R2 with presigned URLs and never pass through the app.
   experimental: { serverActions: { bodySizeLimit: "11mb" } },
@@ -68,6 +72,9 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
         ],
       },
+      // The favicon (app/icon.svg) changes only with a deploy: browsers may keep it a day instead of re-checking it on
+      // every page (Next sends max-age=0 for it).
+      { source: "/icon.svg", headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }] },
       // Pages may not be framed by other sites; editor previews may be framed by the editor itself.
       // Other sites may not frame any page (clickjacking); the site itself may, for the admin's device previews.
       { source: "/((?!preview/).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }, { key: "Content-Security-Policy", value: "frame-ancestors 'self'" }] },
