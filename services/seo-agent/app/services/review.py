@@ -37,7 +37,7 @@ def untrusted_value(v: Any, cap: int = 4000) -> dict[str, Any] | None:
 
 
 def review_link(site: str, draft_id: str) -> str:
-    return f"{site}/admin/seo/review/{draft_id}"
+    return f"{site}/admin/review/{draft_id}"  # D-86: no /admin/seo prefix (old links redirect)
 
 
 async def decide(runner: FlowRunner, web: Any, draft_id: str, decision: str, *, approval_id: str | None = None, accepted_change_ids: list[str] | None = None, edits: dict[str, str] | None = None, feedback: str | None = None, actor: str | None = None) -> dict[str, Any]:

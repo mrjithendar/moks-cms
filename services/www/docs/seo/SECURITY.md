@@ -1,7 +1,7 @@
 # SEO intelligence platform: security
 
 ## Access control
-- `/admin/seo/*` pages: `requireRole("admin")` in the SEO layout (authors and readers are redirected).
+- Search, analytics, review, calendar and automation pages (`app/admin/(growth)/*`, e.g. `/admin/review`, `/admin/automation`; D-86): `requireRole("admin")` in the group layout (authors and readers are redirected). Old `/admin/seo/*` URLs only redirect.
 - `/api/admin/seo/*`: one guard (`src/lib/seo-intel/http.ts#seoRoute`): 401 without a session, 403 for any role but
   admin, on every request. `tests/seo-intel-api.test.ts` discovers **every** route file and asserts 401/403 for each
   method, so a new route without the guard fails CI.

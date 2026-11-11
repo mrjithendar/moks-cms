@@ -1,5 +1,5 @@
 """Dashboard read models for the admin MCP: thin wrappers over the web app's own TypeScript query functions (the same
-ones the /admin/seo pages render), reached through the internal callback API `/data/*`.
+ones the admin's search and analytics pages render), reached through the internal callback API `/data/*`.
 
 Nothing here computes metrics; it validates arguments (enums, slugs, bounded limits) and trims payloads.
 """

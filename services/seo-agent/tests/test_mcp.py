@@ -166,7 +166,7 @@ async def test_injected_instructions_come_back_labelled_and_trigger_nothing(llm,
     async with as_admin(["seo:read"]), create_connected_server_and_client_session(app.state.admin) as s:
         d = payload(await s.call_tool("get_draft_diff", {"draft_id": DRAFT}))
         q = payload(await s.call_tool("list_review_queue", {}))
-    assert d["changes"][0]["after"]["untrusted_content"] is True and d["review_url"].endswith(f"/admin/seo/review/{DRAFT}")
+    assert d["changes"][0]["after"]["untrusted_content"] is True and d["review_url"].endswith(f"/admin/review/{DRAFT}")
     assert q["items"][0]["review_url"]
     assert c.store.rows == {} and web.published == [] and web.rejected == []  # reading did nothing
 

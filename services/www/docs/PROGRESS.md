@@ -1,5 +1,22 @@
 # Progress log — jithendar.com
 
+## One CMS (D-86) follow-up: last /admin/seo links (2026-11-11, owner request "merge SEO dashboard and CMS in 1")
+
+Reviewed master after `6cb34e1` (D-86: SEO pages in `app/admin/(growth)`, one sidebar, SEO overview in the Dashboard,
+GSC/GA4 in Integrations, per-post insights at `/admin/posts/{id}/insights`, old `/admin/seo/*` URLs redirect). The web
+app had no remaining `/admin/seo` page links. Fixed what still pointed at the old area:
+
+- seo-agent: review links in MCP results and emails → `/admin/review/{id}`; MCP `service_documentation_url` →
+  `/admin/automation/mcp`; sync `runs_url` → `/admin/sync`; docstrings (`review.py`, `mcp/admin.py`, `seo_data.py`,
+  `tests/test_mcp.py`).
+- docs/seo: ARCHITECTURE, FLOWS, MANUAL_SETUP, OPERATIONS, SECURITY use the new paths; PLAN.md marked historical.
+  DECISIONS.md and PROGRESS.md keep their history.
+
+**Commands → result** (master `6cb34e1` + this change): www `npm run lint`, `npm run typecheck` pass, `npm test` 934
+passed, 1 skipped, `next build` pass (merged routes `/admin/calendar`, `/admin/review`, `/admin/automation`,
+`/admin/posts/[id]/insights`; `/admin/seo/[[...rest]]` only redirects). seo-agent ruff, mypy pass, pytest 367 passed,
+19 skipped (Postgres tests need a database). GitHub CI on master: green for #43 and `6cb34e1`.
+
 ## Cal.com integration for Hire me (2026-11-11, owner request "integrate cal.com to schedule meeting")
 
 - Pop-up scheduling: `BookingLink` opens Cal.com's embed (`Cal("modal", {calLink, calOrigin, config})`, API checked

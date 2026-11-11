@@ -1,5 +1,7 @@
 # SEO intelligence platform: plan
 
+> **Historical plan.** Paths below are as planned; since D-86 the admin pages live in `src/app/admin/(growth)/` without the `/admin/seo` prefix (e.g. `/admin/calendar`, `/admin/reports`, `/admin/posts/{id}/insights`).
+
 Maps each phase of the brief to modules in this repository. Paths are relative to `services/www/`.
 New server code lives in `src/lib/seo-intel/` (the existing `src/lib/seo/` is the public site's metadata/sitemap
 code and is not modified).
