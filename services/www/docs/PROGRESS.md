@@ -1,5 +1,21 @@
 # Progress log — jithendar.com
 
+## Article: caching, SSG, ISR and image optimisation (2026-11-11, owner request)
+
+`content/blog/caching-isr-ssg-image-optimisation-nextjs.mdx` (`status: review`, 15 min by `readingTimeMinutes`): the
+caching layers of the site from browser to database, SSG vs ISR vs dynamic rendering, the cross-replica ISR cache, the
+warm-up, image optimisation with measured sizes, metrics, trade-offs and a checklist. Six draw.io figures
+(`docs/knowledge-sharing/caching-web-performance/diagrams/`: `.drawio` sources, `build_diagrams.py`, `render_png.py`;
+SVG + PNG in `public/images/caching-web-performance/`). Notes and facts to re-check:
+`docs/knowledge-sharing/caching-web-performance/README.md`.
+
+**Commands → result**: `build_diagrams.py` (label-fit and page-bounds checks pass), `render_png.py` (PNGs inspected by
+eye; overlaps fixed); `npx vitest run tests/content.test.ts` 9 passed; `npm test` 880 passed, 1 skipped; `npm run lint` pass. Every source
+URL answered 200.
+
+**Manual**: measure live TTFB from a real client; choose the category; decide between this and
+`ssg-isr-nextjs-jithendar-com` (or publish both as a series); review, then set `status`/`publishedAt`.
+
 ## Page cache tuning (2026-11-11, owner request "finetune caching")
 
 After the SSG + ISR release (#40): measured the live site, then tuned what was still uncached or unbounded.
