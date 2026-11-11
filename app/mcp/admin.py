@@ -73,7 +73,7 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
         stateless_http=True,
         transport_security=security,
         token_verifier=verifier,
-        auth=AuthSettings(issuer_url=site, resource_server_url=s.admin_mcp_resource, required_scopes=["seo:read"], validate_token_resource=True, service_documentation_url=f"{site}/admin/seo/settings/mcp"),
+        auth=AuthSettings(issuer_url=site, resource_server_url=s.admin_mcp_resource, required_scopes=["seo:read"], validate_token_resource=True, service_documentation_url=f"{site}/admin/automation/mcp"),
     )
     web = c.deps.web
 
@@ -81,7 +81,7 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
     @guarded(guard, "get_overview", scope="seo:read")
     async def get_overview(period: Period = "28d") -> dict[str, Any]:
         """KPIs (clicks, impressions, CTR, position, organic sessions) for the period with source, last sync time and the
-        change against the previous period. Same numbers as the /admin/seo dashboard."""
+        change against the previous period. Same numbers as the admin dashboard's Search & traffic view."""
         return await seo_data.overview(web, period)
 
     @mcp.tool(name="explain_traffic_change", title="Explain a traffic change", annotations=READ)
@@ -188,7 +188,7 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
             r = await c.runner.kickoff(flow_name, inputs or {}, triggered_by="mcp", actor=f"mcp:{key}")
         except RunError as e:
             raise ContentError(str(e)) from None
-        out: dict[str, Any] = {**r, "runs_url": f"{site}/admin/seo/sync"}
+        out: dict[str, Any] = {**r, "runs_url": f"{site}/admin/sync"}
         draft = (inputs or {}).get("draft_id")
         if draft:
             out["review_url"] = review.review_link(site, str(draft))
