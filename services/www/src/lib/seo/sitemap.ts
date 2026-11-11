@@ -3,6 +3,7 @@ import { absoluteUrl } from "@/config/site";
 import { collections } from "@/config/taxonomy";
 import { getCategories } from "@/lib/categories";
 import { articlesInCategory, getAuthors, getPages, getPublishedContent, isCategoryIndexable, lastModified, type Article } from "@/lib/content";
+import { getPublishedConfig } from "@/lib/site-config/store";
 import { isSelfCanonical } from "./canonical";
 
 function newest(articles: Article[]): string | undefined {
@@ -35,6 +36,8 @@ export async function buildSitemap(now: Date = new Date()): Promise<MetadataRout
     if (page.frontmatter.noindex) continue;
     entries.push({ url: absoluteUrl(page.path), ...(page.frontmatter.updatedAt ? { lastModified: page.frontmatter.updatedAt } : {}) });
   }
+  // Hire me (/hire-me) while it is switched on (Admin → Appearance → Hire me).
+  if ((await getPublishedConfig()).config.hireMe.enabled) entries.push({ url: absoluteUrl("/hire-me") });
   for (const article of published.filter((a) => isSelfCanonical(a) && !a.frontmatter.noindex)) {
     // Image sitemap entry: the public cover image the article actually shows.
     const cover = article.frontmatter.featuredImage;

@@ -1,5 +1,27 @@
 # Progress log — jithendar.com
 
+## Hire me page: consulting, freelance, speaking, mentoring (2026-11-11, owner request)
+
+`/hire-me` with availability, four offers (prices and Cal.com links from the admin), production highlights, selected
+work, skills, experience, process and an enquiry form; a call to action at the end of articles. See `docs/HIRE_ME.md`.
+
+- Config: `hireMe` section in the site configuration (`src/lib/site-config/schema.ts`, defaults: page on, all prices 0 =
+  "On request", no booking links); Admin → Appearance → Hire me (`HireMePanel`). Stored configs get the defaults via
+  `mergeKnown`; no config migration.
+- Résumé facts in `src/config/hire-me-profile.ts` (owner's résumé, 2026-11-11); phone, personal email and CV download
+  left out; Terraform Associate left out (dated June 2026).
+- Enquiries: `submitEnquiry` + `enquiryInput` (`src/lib/contact.ts`), migration `0023_contact_enquiry.sql` (+ rollback),
+  Admin → Messages "Enquiries" filter with kind badge and details, `[Kind]` email subjects; shared hourly limits.
+- UI: `src/app/hire-me/page.tsx` (ISR 300 s), `src/components/hire/{EnquiryForm,BookingLink,HireCta,track}`;
+  sitemap entry while enabled; `/hire-me` in the link checker's static routes; privacy policy source updated.
+
+**Commands → result**: `npm test` 897 passed, 1 skipped (incl. new `tests/hire-me.test.ts`, 17 tests); `npm run lint`,
+`npm run typecheck`, `next build` pass (`/hire-me` ○ 5m/1d). Standalone build against PostgreSQL 18: 200, `s-maxage=300`,
+JSON-LD and sitemap entry present; Playwright (iPhone 13 + 1280 px): no horizontal overflow, no page errors, "Enquire" on
+Mentoring preselects Mentoring, budget only for consulting/freelance; article call to action rendered.
+
+**Manual**: Cal.com links and prices in the panel; header button/menu; privacy policy bullet in Admin → Pages.
+
 ## Article: caching, SSG, ISR and image optimisation (2026-11-11, owner request)
 
 `content/blog/caching-isr-ssg-image-optimisation-nextjs.mdx` (`status: review`, 15 min by `readingTimeMinutes`): the

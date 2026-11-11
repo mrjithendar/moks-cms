@@ -355,6 +355,9 @@ export const contactMessage = pgTable(
     /** new → read → archived */
     status: text("status").notNull().default("new"),
     createdAt: ts("created_at").notNull().defaultNow(),
+    /** Hire me enquiries (migration 0023): consulting | freelance | speaking | mentoring | other; NULL = contact form. */
+    kind: text("kind"),
+    details: jsonb("details").$type<{ company?: string; budget?: string; timeline?: string } | null>(),
   },
   (t) => [index("contact_status_idx").on(t.status, t.createdAt)],
 );

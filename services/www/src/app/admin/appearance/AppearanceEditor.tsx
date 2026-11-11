@@ -13,7 +13,7 @@ import { EditorContext, setIn } from "./fields";
 import { HistoryPanel, TransferPanel } from "./history";
 import { HomepagePanel } from "./homepage";
 import { NavigationPanel } from "./menus";
-import { AdvancedPanel, BlogPanel, BrandingPanel, FooterPanel, GeneralPanel, HeaderPanel, MediaPanel, SeoPanel, ThemePanel } from "./panels";
+import { AdvancedPanel, BlogPanel, BrandingPanel, FooterPanel, GeneralPanel, HeaderPanel, HireMePanel, MediaPanel, SeoPanel, ThemePanel } from "./panels";
 
 export type EditorContext = {
   categories: { slug: string; label: string }[];
@@ -51,6 +51,7 @@ const SECTIONS = [
   { id: "blog", label: "Blog & articles", prefix: ["blog"] },
   { id: "media", label: "Media", prefix: ["media"] },
   { id: "seo", label: "SEO & integrations", prefix: ["seo"] },
+  { id: "hireMe", label: "Hire me", prefix: ["hireMe"] },
   { id: "advanced", label: "Advanced", prefix: ["advanced"] },
   { id: "history", label: "Revision history", prefix: [] },
 ] as const;
@@ -323,6 +324,7 @@ export function AppearanceEditor({
             {section === "blog" && <BlogPanel />}
             {section === "media" && <MediaPanel ctx={context} />}
             {section === "seo" && <SeoPanel ctx={context} />}
+            {section === "hireMe" && <HireMePanel />}
             {section === "advanced" && <AdvancedPanel />}
             {section === "history" && (
               <>
