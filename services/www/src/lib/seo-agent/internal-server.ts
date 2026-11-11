@@ -14,8 +14,14 @@ import { callbackPort, callbackToken } from "./config";
  * can reach this; the NetworkPolicy admits only seo-agent pods; every request needs SEO_AGENT_CALLBACK_TOKEN.
  */
 export type CallbackResponse = { status: number; body: unknown };
+export type CallbackHeaders = Record<string, string | string[] | undefined>;
 
-const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, body: unknown, q: URLSearchParams) => Promise<unknown>][] = [
+const header = (h: CallbackHeaders, name: string): string | undefined => {
+  const v = h[name.toLowerCase()];
+  return Array.isArray(v) ? v[0] : v;
+};
+
+const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, body: unknown, q: URLSearchParams, h: CallbackHeaders) => Promise<unknown>][] = [
   // News desk (docs/news/ARCHITECTURE.md): fetch, draft creation, covers, notifications. Never publishing.
   ["POST", /^\/news\/fetch$/, (_m, b) => news.newsFetch(b)],
   ["POST", /^\/news\/drafts$/, (_m, b) => news.newsSaveDraft(b)],
@@ -48,7 +54,8 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/articles\/published$/, () => cb.publishedArticles()],
   ["POST", /^\/drafts\/([^/]+)\/save$/, (m, b) => cb.saveDraft(m[1]!, b)],
   ["POST", /^\/drafts\/([^/]+)\/status$/, (m, b) => cb.setDraftStatus(m[1]!, b)],
-  ["POST", /^\/drafts\/([^/]+)\/publish$/, (m, b) => cb.publish(m[1]!, b)],
+  // Idempotency-Key = the approval id: a retried publish whose first attempt committed gets that result back (publish.ts).
+  ["POST", /^\/drafts\/([^/]+)\/publish$/, (m, b, _q, h) => cb.publish(m[1]!, b, header(h, "idempotency-key"))],
   ["POST", /^\/drafts\/([^/]+)\/verify$/, (m, b) => cb.verify(m[1]!, b)],
   ["POST", /^\/drafts\/([^/]+)\/submit$/, (m) => cb.submit(m[1]!)],
   ["GET", /^\/gsc\/queries$/, (_m, _b, q) => cb.gscQueries(q)],
@@ -68,7 +75,7 @@ export function tokenOk(header: string | undefined, token: string | null): boole
 }
 
 /** Route one request (also used directly by tests). */
-export async function handleCallback(method: string, rawUrl: string, authorization: string | undefined, body: unknown, env: Record<string, string | undefined> = process.env): Promise<CallbackResponse> {
+export async function handleCallback(method: string, rawUrl: string, authorization: string | undefined, body: unknown, env: Record<string, string | undefined> = process.env, headers: CallbackHeaders = {}): Promise<CallbackResponse> {
   if (!tokenOk(authorization, callbackToken(env))) return { status: 401, body: { error: "unauthorized", code: "unauthorized" } };
   const url = new URL(rawUrl, "http://internal");
   if (!url.pathname.startsWith(PREFIX)) return { status: 404, body: { error: "not found", code: "not_found" } };
@@ -78,7 +85,7 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
     if (!match) continue;
     if (m !== method) return { status: 405, body: { error: "method not allowed", code: "method" } };
     try {
-      return { status: 200, body: await fn(match, body, url.searchParams) };
+      return { status: 200, body: await fn(match, body, url.searchParams, headers) };
     } catch (e) {
       if (e instanceof cb.CallbackError) return { status: e.status, body: { error: e.message, code: e.code } };
       if (e instanceof DraftError) return { status: e.status, body: { error: e.message, code: e.status === 403 ? "approval_required" : "draft" } };
@@ -128,7 +135,7 @@ export async function startCallbackServer(env: Record<string, string | undefined
           return send({ status: 400, body: { error: "invalid JSON" } });
         }
       }
-      handleCallback(req.method ?? "GET", req.url ?? "/", req.headers.authorization, body, env).then(send, () => send({ status: 500, body: { error: "internal error" } }));
+      handleCallback(req.method ?? "GET", req.url ?? "/", req.headers.authorization, body, env, req.headers).then(send, () => send({ status: 500, body: { error: "internal error" } }));
     });
   });
   server.requestTimeout = 120_000;

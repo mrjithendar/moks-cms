@@ -222,6 +222,8 @@ class CallSpec:
     max_tokens: int = 4096
     draft_id: str | None = None
     effort: str | None = None  # output_config.effort; None = the model's default
+    run_id: str | None = None  # the flow run this call belongs to (seo_flow_runs.run_id), for usage attribution
+    agent: str | None = None  # the crew agent key (e.g. "writer") that made the call
     # News desk: images for a vision check (media type, bytes), sent before the text. Alt text is written by a model
     # looking at the final image, never from the generation prompt (docs/news/IMAGES.md).
     images: list[tuple[str, bytes]] = field(default_factory=list)

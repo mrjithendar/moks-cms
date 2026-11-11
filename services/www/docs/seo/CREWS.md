@@ -11,7 +11,20 @@ allowlisted tools, the limits and the runner.
 - **Limits:** per agent `max_iter` (`CREW_MAX_ITER`, 4), `max_rpm` (`CREW_MAX_RPM`, 20, also on the crew),
   `max_execution_time` (half of the crew timeout), `max_retry_limit` 1. Per run `CREW_MAX_TOKENS_PER_RUN` (150k, checked
   before every call) and `CREW_TIMEOUT_SECONDS` (600, wall clock). Hitting a limit returns a **partial result marked
-  `incomplete`** with the reason; nothing loops silently. A budget refusal is re-raised and the flow ends `paused_budget`.
+  `incomplete`** with the reason; nothing loops silently. A budget refusal is re-raised and the flow ends `paused_budget`;
+  the tokens and cost the crew spent before it are added to the run (`CrewBudgetExceeded`).
+- **Cancellation:** a crew runs in a worker thread. When its flow run is cancelled (reject/regenerate cancel the drafting
+  run, the run's `SEO_FLOW_TIMEOUT_SECONDS`, `POST /flows/runs/{id}/cancel`) or the crew's wall clock fires, the crew run
+  is marked cancelled and its in-flight model call is cancelled; the LLM adapter (and the tool adapter) refuse every
+  later call, so the thread stops calling Claude at its next step.
+- **Output caps:** agents that re-emit a whole article body or change set (`writer`, `reviewer`, `editor`) get
+  `CREW_LONG_OUTPUT_MAX_TOKENS` (default 16,000); all others 4,096. An answer cut off at `max_tokens` (the LLM layer's
+  `InvalidOutput`/`Truncated`) is an error: the crew stops and the result is `incomplete` ("model answer rejected"),
+  never a silently shortened article.
+- **Attribution:** every crew call carries `CallSpec.run_id` (the flow run) and `CallSpec.agent` (the agent key), and
+  gets an OTel span `crew.<crew>.<agent>` under `crew.<crew>`. CrewAI's own tracing stays off: it exports to CrewAI's
+  platform (`CREWAI_TRACING_ENABLED=false`, `tracing=False`). The usage `purpose` stays per crew (`crew`, `draft`,
+  `regenerate`, `report`): budget scopes and metrics are keyed on it.
 - **LLM:** `ClaudeCrewLLM`, a CrewAI `BaseLLM` that calls this service's `AnthropicLlm` (official SDK, anthropic 2.3.0).
   Every call goes through the budget guard and writes a `seo_llm_usage` row. `SEO_DRAFT_MODEL` (default
   `claude-sonnet-5-5`) for writing, `SEO_CLASSIFY_MODEL` (default `claude-haiku-5-5`) for cheap work.
@@ -68,11 +81,21 @@ look anyway).
 | Researcher | Related site articles and official docs; list every source URL | vector_search, read_article, fetch_allowlisted_docs |
 | Technical writer | Full MDX draft per STYLE_GUIDE.md, minimal working code | read_article |
 | Technical reviewer | Commands, flags, versions against the sources; unsourced → `needs_fact_check` | fetch_allowlisted_docs |
-| SEO editor | Title ≤ 60, meta 120–155, heading plan for the target queries, ≤ 3 internal links to existing paths, final JSON | gsc_queries_for_topic, vector_search |
+| SEO editor | Title ≤ 60, meta 120–155, heading plan for the target queries, ≤ 3 internal links to existing paths, **metadata JSON only** (`SeoMetadata`, no body) | gsc_queries_for_topic, vector_search |
 
 Output: `NewArticleDraft` (title, slug_suggestion, meta_description, outline, body_mdx, code_blocks, sources[],
-fact_check_flags[], internal_links[], incomplete, incomplete_reason). A cited source the crew never retrieved during
-the run is flagged automatically.
+fact_check_flags[], internal_links[], incomplete, incomplete_reason), **assembled in code** (prompt `seo-crew-v3`):
+`body_mdx` is the technical reviewer's corrected body (everything before its `NEEDS_FACT_CHECK:` line), `code_blocks`
+are extracted from it, the reviewer's `NEEDS_FACT_CHECK` items join the editor's `fact_check_flags`, and the rest is the
+SEO editor's metadata. The editor never re-emits the body, so a long article cannot be truncated inside its JSON and no
+rewrite can slip in after the technical review (a body it emits anyway is ignored). Without a reviewed body the writer's
+body is kept, flagged "technical review did not finish", and the draft is incomplete. A cited source the crew never
+retrieved during the run is flagged automatically.
+
+**Feedback (both crews):** a regenerate's reviewer feedback and the validator's errors from the automatic retry are kept
+apart (`feedback`, `validator_feedback` in the flow state) and both reach the prompt, so a validator retry never drops
+what the reviewer asked for. Feedback from a run started through the admin MCP (`triggered_by="mcp"`) is untrusted: it
+goes in a `<data name="api_feedback">` block framed as suggestions, never as instructions.
 
 ## Report Crew
 

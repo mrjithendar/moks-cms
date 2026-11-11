@@ -225,9 +225,15 @@ export async function setDraftStatus(draftId: string, body: unknown) {
   return { ok: true };
 }
 
-export async function publish(draftId: string, body: unknown) {
+/**
+ * POST /drafts/{id}/publish. `idempotencyKey` (header Idempotency-Key) must be the approval id when given: a retry of
+ * a publish that already committed (the agent's request timed out after the write) then gets the earlier success
+ * back instead of a 403 for the used approval (publishWithApproval).
+ */
+export async function publish(draftId: string, body: unknown, idempotencyKey?: string) {
   uuid(draftId, "draft id");
   const b = parse(z.object({ approvalId: z.string().max(80), acceptedChangeIds: z.array(z.string().max(12)).max(200), edits: z.record(z.string().max(12), z.string().max(20_000)).default({}) }), body);
+  if (idempotencyKey !== undefined && idempotencyKey !== b.approvalId) throw new CallbackError("Idempotency-Key must be the approval id.", 400, "invalid");
   // v4: the reviewer's edits travel with the decision; they must be exactly what the review UI stored on the draft
   // (the approval covers the stored draft, so a different edit would publish something the admin never saw).
   if (Object.keys(b.edits).length) {
@@ -236,7 +242,7 @@ export async function publish(draftId: string, body: unknown) {
     const bad = Object.entries(b.edits).filter(([id, text]) => stored.get(id) !== text).map(([id]) => id);
     if (bad.length) throw new CallbackError(`Edits differ from the reviewed draft: ${bad.slice(0, 5).join(", ")}.`, 409, "approval_mismatch");
   }
-  return publishWithApproval(draftId, b.approvalId, b.acceptedChangeIds);
+  return publishWithApproval(draftId, b.approvalId, b.acceptedChangeIds, new Date(), { idempotent: idempotencyKey === b.approvalId });
 }
 
 export async function verify(draftId: string, body: unknown) {

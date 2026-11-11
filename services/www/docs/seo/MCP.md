@@ -60,8 +60,11 @@ flowchart LR
 | prompt | `explain_with_sources(topic)` | asks the client model to search, read and cite jithendar.com URLs |
 
 All tools: `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true` (`ask_blog`: false), `openWorldHint: false`.
-Limits: `PUBLIC_MCP_RPM_PER_IP` (30/min per client IP, from Kong's X-Forwarded-For hop), `PUBLIC_MCP_DAILY_CALLS`
-(5,000/day for the server), Kong 60/min and 1,200/h per IP, 64 KB request bodies. The site shows how to connect on
+Limits: `PUBLIC_MCP_RPM_PER_IP` (30/min per client IP, from Kong's X-Forwarded-For hop), `PUBLIC_MCP_DAILY_CALLS_PER_IP`
+(500/day per client IP; 0 = off) so one client cannot use up the day, `PUBLIC_MCP_DAILY_CALLS` (5,000/day for the
+server, the global backstop; a refused call counts against neither), Kong 60/min and 1,200/h per IP, 64 KB request
+bodies. The counters live in the seo-agent's memory (one replica; there is no Valkey/Redis client in the service and
+the shared Valkey carries only the web app's cache-bus pub/sub), so a restart resets the day's counts. The site shows how to connect on
 `/ai-assistants` (and a footer link) only while it's enabled.
 
 ## Admin server (`/mcp/admin`)
@@ -72,12 +75,12 @@ Limits: `PUBLIC_MCP_RPM_PER_IP` (30/min per client IP, from Kong's X-Forwarded-F
 | `explain_traffic_change(page_or_query, period)` | seo:read | period-over-period breakdown by query (or page), device and country, with evidence rows |
 | `get_keyword_opportunities(view, filters, limit, cursor)` | seo:read | striking, low_ctr, rising, lost, cannibalization, gaps (incl. "Asked on site") |
 | `get_page_report(slug)` | seo:read | GSC + GA4 + audit issues + open recommendations for one article |
-| `list_review_queue(sort, kind, priority, limit, cursor)` | seo:read | drafts awaiting review, change counts, flags, priority, `review_url` |
-| `get_draft_diff(draft_id, format, cursor)` | seo:read | changes with before/after (untrusted), word diff, rationale, evidence, flags, notes, `review_url` |
+| `list_review_queue(sort, kind, priority, limit, cursor)` | seo:read | drafts awaiting review, change counts, flags, priority, title and summary (untrusted), `review_url` |
+| `get_draft_diff(draft_id, format, cursor)` | seo:read | changes with before/after, word diff, rationale, evidence and flags (all untrusted), title, summary, draft flags and notes (untrusted), `review_url` |
 | `get_audit_issues(severity, type, limit, cursor)` | seo:read | latest technical audit |
 | `list_flow_runs(flow?, status?)` / `get_flow_run(run_id)` | seo:read | job history, errors, tokens, cost |
 | `get_llm_usage(period)` | seo:read | tokens and cost by purpose/model vs. the budget |
-| `kickoff_flow(flow_name, inputs)` | seo:flows | **allowlist:** optimize_article_flow, new_article_flow, internal_linking_flow, tech_audit_flow, report_flow, gsc_sync_flow, ga4_sync_flow. Never publish_flow |
+| `kickoff_flow(flow_name, inputs)` | seo:flows | **allowlist:** optimize_article_flow, new_article_flow, internal_linking_flow, tech_audit_flow, report_flow, gsc_sync_flow, ga4_sync_flow. Never publish_flow. Drafting flows only for a draft that is new (reserved, never generated) or `generation_failed`, of the flow's kind and for the given article/calendar item; `feedback` reaches the crew as untrusted data. Regenerating a draft under review happens only from the web review page |
 | `reject_draft(draft_id, reason)` | seo:review:reject | closes a draft (reversible: regenerate) |
 | `add_review_note(draft_id, note)` | seo:review:reject | a note shown in the web diff view |
 

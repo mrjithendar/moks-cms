@@ -52,7 +52,7 @@ async def test_validation_failure_retries_once_then_succeeds(llm, web) -> None:
     c = container(llm, web, crew)
     r = await run(c, "optimize_article_flow", OPT)
     assert r["outputs"]["outcome"] == "draft_ready" and len(crew.runs) == 2
-    assert "rejected by the validator" in (crew.runs[1]["feedback"] or "")
+    assert "before text not found in b4" in (crew.runs[1]["validator_feedback"] or "") and crew.runs[1]["feedback"] is None
 
 
 async def test_validation_failure_twice_fails_the_draft(llm, web) -> None:
