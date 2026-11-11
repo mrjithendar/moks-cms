@@ -1,5 +1,16 @@
 # Progress log — jithendar.com
 
+## Admin sidebar by category, expand/collapse (2026-11-11, owner request)
+
+D-87: the 37 admin links regrouped into Overview, Content, Editorial & AI, Insights, Community, Site settings, Operations
+and Account; each category expands and collapses (current page's category always open; choices remembered per
+browser; collapsed categories show their badge total). Also fixed a mobile overflow on the Dashboard (`/admin`): its
+panel grid had no `minmax(0,1fr)` column, so a long draft title widened the page by 457 px on a 390 px screen.
+
+**Commands → result**: `npm test` 943 passed, 1 skipped (new `tests/admin-nav.test.tsx`, 9 tests); lint, typecheck,
+`next build` pass. Standalone build + Playwright, signed in as an admin: sidebar default / expanded / mobile menu
+screenshots checked; a collapsed category stays collapsed after reload; 22 admin pages at 390 px: no horizontal overflow.
+
 ## One CMS (D-86) follow-up: last /admin/seo links (2026-11-11, owner request "merge SEO dashboard and CMS in 1")
 
 Reviewed master after `6cb34e1` (D-86: SEO pages in `app/admin/(growth)`, one sidebar, SEO overview in the Dashboard,

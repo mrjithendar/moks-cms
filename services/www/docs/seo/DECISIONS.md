@@ -595,3 +595,15 @@ The crew's reviewer sometimes wrapped the body ("## Corrected MDX body", notes, 
 - **No /admin/seo.** The pages live in the route group `app/admin/(growth)` (no URL prefix): `/admin/calendar`, `/admin/review`, `/admin/search`, `/admin/analytics`, `/admin/page-insights`, `/admin/keywords`, `/admin/recommendations`, `/admin/content-audit`, `/admin/links`, `/admin/technical`, `/admin/reports`, `/admin/sync`, `/admin/models`, `/admin/automation` (+ `/mcp`). The group layout keeps the admin-only guard, the budget banner and the ⌘K palette; the stylesheet loads in the admin layout (every admin page). Old `/admin/seo/*` links (bookmarks, emails already sent) redirect (`lib/seo-intel/old-urls.ts`). API routes stay under `/api/admin/seo`.
 - **Merged pages.** The SEO overview is the "Search & traffic" part of the admin Dashboard (admins). Search Console / GA4 is a section of Admin → Integrations. The per-article SEO panel is `/admin/posts/{id}/insights`, linked from the post editor.
 - **Sidebar by job, no "SEO" group.** Content: Posts, Editorial calendar, Review queue, …; Insights: search, analytics, keywords, recommendations, content audit, linking, technical health, reports; Site: Integrations, Automation & AI, MCP access; Operations: Data sync, ML models.
+
+## D-87 Admin sidebar: categories that expand and collapse (owner request 2026-11-11)
+
+"Make admin sidebar menu category wise and can be expand collapse." Same 37 links, regrouped by job: Overview
+(Dashboard); Content (posts, pages, media, categories, tags, Python practice); Editorial & AI (editorial calendar,
+review queue, news desk); Insights (search, analytics, keywords, reports…); Community (comments, messages, bookings);
+Site settings; Operations; Account. Every category is a disclosure button (`aria-expanded`/`aria-controls`). Overview
+and the current page's category are open by default; the current page's category is always open; choices are kept in
+the browser (`localStorage`, key `admin-nav-open-v1`). A collapsed category shows the sum of its badges (pending
+reviews, unread messages) as a pill, otherwise its item count. Expand all / Collapse all. Authors see only the
+categories they have pages in. `components/admin/AdminNav.tsx`, `app/admin/layout.tsx`, `tests/admin-nav.test.tsx`.
+
