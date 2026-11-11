@@ -18,7 +18,7 @@ whose edits differ from what is stored.
 from __future__ import annotations
 
 from functools import partial
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from crewai.flow import listen, persist, router, start
 
@@ -55,16 +55,48 @@ class PublishFlow(SeoFlow[PublishState]):
     async def cms_publish(self) -> None:
         async with self.step("cms_publish"):
             s = self.state
+            saw_transient = False
+
+            async def attempt() -> dict[str, Any]:
+                nonlocal saw_transient
+                try:
+                    return dict(await self.deps.web.publish(s.draft_id, s.approval_id, s.accepted_change_ids, s.edits))
+                except WebAppError as e:
+                    saw_transient = saw_transient or e.transient
+                    raise
+
             try:
-                r = await self.retry(lambda: self.deps.web.publish(s.draft_id, s.approval_id, s.accepted_change_ids, s.edits))
+                r = await self.retry(attempt)
             except WebAppError as e:
                 if e.transient:
                     raise
+                # A transient failure (timeout, 5xx) may have hidden a publish that committed; the retry then meets the
+                # used approval. The web app replays the result for the Idempotency-Key; an older web app answers 403,
+                # so check the draft before calling this a failure.
+                if saw_transient and await self._published_by_this_approval():
+                    s.publish_result = {"ok": True, "status": "published", "recovered": True}
+                    return
                 s.publish_result = {"ok": False, "status": e.status, "error": e.message}
                 s.errors.append(f"publish: {e.message}")
                 s.outcome = "publish_failed"
                 return
             s.publish_result = {"ok": True, **r}
+
+    async def _published_by_this_approval(self) -> bool:
+        s = self.state
+        for i in range(3):
+            try:
+                d = await self.retry(lambda: self.deps.web.draft_summary(s.draft_id))
+            except WebAppError:
+                return False
+            status = d.get("status")
+            if status == "published":
+                by = d.get("publishedApprovalId")
+                return by is None or str(by) == s.approval_id  # None: a web app without the field
+            if status != "publishing" or i == 2:
+                return False
+            await self.deps.sleep(5.0)  # the first attempt is still writing
+        return False
 
     @router(cms_publish)
     def after_publish(self) -> str:

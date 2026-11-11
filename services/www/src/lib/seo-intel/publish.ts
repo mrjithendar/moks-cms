@@ -347,15 +347,24 @@ export async function recordApproval(draftId: string, actor: Actor, opts: Approv
  * Called by the seo-agent's publish node (internal callback). Refused unless an unused, unexpired approval with this id
  * exists for this draft, its accepted change ids are exactly the ones given, the approver is still an admin, and a
  * scheduled approval's time has come. The approval is consumed before anything is written, so it works once.
+ *
+ * `idempotent` (the agent sent `Idempotency-Key: <approval id>`): replaying a used approval returns the earlier
+ * success instead of 403 when that approval is the one that published the draft (the draft is `published` and no
+ * later approval of it was used), with the same accepted changes. This covers a publish whose response was lost after
+ * the commit. Nothing is written on a replay; any other used approval is still refused.
  */
-export async function publishWithApproval(draftId: string, approvalId: string, acceptedChangeIds: string[], now = new Date()) {
+export async function publishWithApproval(draftId: string, approvalId: string, acceptedChangeIds: string[], now = new Date(), opts: { idempotent?: boolean } = {}) {
   const db = await getDb();
   if (!/^[0-9a-f-]{36}$/.test(approvalId)) throw new DraftError("No valid admin approval for this draft.", 403);
   const [a] = rowsOf<{ id: string; approved_by_id: string; accepted_change_ids: unknown; publish_at: string | null; expires_at: string; used_at: string | null }>(
     await db.execute(sql`select id, approved_by_id, accepted_change_ids, publish_at, expires_at, used_at from seo_draft_approvals where id = ${approvalId} and draft_id = ${draftId}`),
   );
+  const approved = a ? (Array.isArray(a.accepted_change_ids) ? a.accepted_change_ids.map(String) : String(a.accepted_change_ids ?? "").replace(/^\{|\}$/g, "").split(",").filter(Boolean)).sort() : [];
+  if (a?.used_at && opts.idempotent && approved.join(",") === [...acceptedChangeIds].sort().join(",")) {
+    const replay = await replayedPublish(db, draftId, approvalId);
+    if (replay) return replay;
+  }
   if (!a || a.used_at || new Date(a.expires_at).getTime() < now.getTime()) throw new DraftError("No valid admin approval for this draft.", 403);
-  const approved = (Array.isArray(a.accepted_change_ids) ? a.accepted_change_ids.map(String) : String(a.accepted_change_ids ?? "").replace(/^\{|\}$/g, "").split(",").filter(Boolean)).sort();
   if (approved.join(",") !== [...acceptedChangeIds].sort().join(",")) throw new DraftError("The accepted changes differ from what the admin approved.", 409);
   if (a.publish_at && new Date(a.publish_at).getTime() > now.getTime() + 60_000) throw new DraftError("This approval is scheduled for later.", 409);
   const [u] = rowsOf<{ id: string; role: string; email: string }>(await db.execute(sql`select id, role, email from "user" where id = ${a.approved_by_id}`));
@@ -370,6 +379,20 @@ export async function publishWithApproval(draftId: string, approvalId: string, a
   const actor: Actor = { id: u.id, role: "admin", label: u.email };
   if (d.kind === "new_article") return publishNewArticle(db, draftId, actor, now);
   return publishDraft(db, draftId, actor, now, { orchestrated: true });
+}
+
+/** The result of the publish this (used) approval made, if the draft is published and no later approval was used. */
+async function replayedPublish(db: Db, draftId: string, approvalId: string) {
+  const [r] = rowsOf<{ status: string; published_version: number | null; substantive: boolean | null; later: number }>(
+    await db.execute(sql`
+      select d.status, d.published_version, d.substantive,
+        (select count(*)::int from seo_draft_approvals o where o.draft_id = d.id and o.id <> ${approvalId} and o.used_at is not null
+          and o.used_at >= (select used_at from seo_draft_approvals where id = ${approvalId})) as later
+      from seo_drafts d where d.id = ${draftId}`),
+  );
+  if (!r || r.status !== "published" || r.later > 0) return null;
+  log.info("seo publish replayed", { operation: "seo_publish", outcome: "replayed" });
+  return { status: "published" as const, version: Number(r.published_version), substantive: Boolean(r.substantive), replayed: true };
 }
 
 type NewArticleDoc = { title: string; slug_suggestion: string; meta_description: string; body_mdx: string; incomplete?: boolean; fact_check_flags?: { severity: string }[] };

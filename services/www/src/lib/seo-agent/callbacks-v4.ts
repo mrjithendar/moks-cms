@@ -58,7 +58,15 @@ export async function runJob(body: unknown) {
 export async function draftSummary(draftId: string) {
   const d = await getDraft(uuid(draftId, "draft id"));
   if (!d) throw new CallbackError("Draft not found.", 404, "not_found");
-  return { id: d.id, kind: d.kind ?? "optimize", articleId: d.article_id, calendarId: (d.calendar_id as string | null) ?? null, status: d.status, recommendationIds: d.recommendation_ids ?? [] };
+  // generatedAt: null for a draft that was reserved but never drafted (the admin MCP may only draft those, or failed
+  // ones). publishedApprovalId: the approval whose publish made a published draft live (publish_flow's retry check).
+  let publishedApprovalId: string | null = null;
+  if (d.status === "published") {
+    const db = await getDb();
+    publishedApprovalId = rowsOf<{ id: string }>(await db.execute(sql`select id from seo_draft_approvals where draft_id = ${d.id} and used_at is not null order by used_at desc limit 1`))[0]?.id ?? null;
+  }
+  const generatedAt = d.generated_at ? new Date(String(d.generated_at)).toISOString() : null;
+  return { id: d.id, kind: d.kind ?? "optimize", articleId: d.article_id, calendarId: (d.calendar_id as string | null) ?? null, status: d.status, recommendationIds: d.recommendation_ids ?? [], generatedAt, publishedApprovalId };
 }
 
 /** POST /drafts/{id}/reject — v2's rejectDraft; a no-op for a draft that is already rejected (the web route did it). */

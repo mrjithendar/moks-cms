@@ -2,7 +2,10 @@
 
 `seo_article_chunks` is owned by this service rather than by the web app's migrations because its column type depends
 on the embeddings model (vector(384) for bge-small, 768 for nomic-embed-text, …): `ensure_schema` creates it when the
-`vector` extension is enabled, and recreates it (derived data only) when the provider's dimension changes.
+`vector` extension is enabled. When the provider's dimension changes it keeps the live table and creates
+`seo_article_chunks_next` with the new dimension; the next complete reindex fills it and swaps it in atomically
+(build-then-swap). Until then search returns nothing (the query vectors no longer fit the live table), so Ask the Blog
+answers with the fallback; a reverted provider change drops the half-built table and serves the old one again.
 
 If the extension is not enabled, retrieval reports `available=False`: Ask the Blog answers with the fallback and the
 graphs skip "related articles"; nothing else breaks. Enabling it needs a superuser once (docs/seo/MANUAL_SETUP.md).
@@ -11,6 +14,7 @@ graphs skip "related articles"; nothing else breaks. Enabling it needs a superus
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -18,6 +22,11 @@ from typing import Any, Protocol
 from . import metrics
 from .embeddings import MODEL_MAX_TOKENS, SPECIAL_TOKENS, Embeddings, chunk_markdown, embed_input, question_identifiers, token_counter
 from .retrieval import Candidate, RetrievalConfig, diversify, fuse
+
+log = logging.getLogger("seo_agent.index")
+
+LIVE_TABLE = "seo_article_chunks"
+NEXT_TABLE = "seo_article_chunks_next"  # built after an embeddings dimension change, then swapped in
 
 
 @dataclass
@@ -128,13 +137,72 @@ HYBRID_DDL = (
 TEXT_QUERY_CTE = "with tq as (select nullif(replace(plainto_tsquery('english'::regconfig, %(q)s)::text, ' & ', ' | '), '')::tsquery as q)"
 
 
-async def ensure_hybrid_columns(conn: Any) -> None:
+async def ensure_hybrid_columns(conn: Any, table: str = LIVE_TABLE) -> None:
     for ddl in HYBRID_DDL:
-        await conn.execute(ddl)
+        await conn.execute(ddl.replace(LIVE_TABLE, table))
 
 
 def _key(article_id: str, content_hash: str) -> str:
     return f"{article_id}:{content_hash}"
+
+
+def _chunks_ddl(table: str, vector_type: str) -> str:
+    # Constraint names spelled out, so a rebuilt table can be renamed to the live names on swap.
+    return f"""create table if not exists {table} (
+                 id bigserial constraint {table}_pkey primary key,
+                 article_id uuid not null constraint {table}_article_id_fkey references post(id) on delete cascade,
+                 chunk_index integer not null,
+                 heading_path text not null default '',
+                 anchor text,
+                 content text not null,
+                 content_hash text not null,
+                 embedding {vector_type} not null,
+                 model text not null,
+                 updated_at timestamptz not null default now(),
+                 constraint {table}_article_id_chunk_index_key unique (article_id, chunk_index))"""
+
+
+# Rebuilt table → live names (the old table's own objects are dropped with it, so the names are free).
+_SWAP_RENAMES = (
+    f"alter table {NEXT_TABLE} rename to {LIVE_TABLE}",
+    f"alter table {LIVE_TABLE} rename constraint {NEXT_TABLE}_pkey to {LIVE_TABLE}_pkey",
+    f"alter table {LIVE_TABLE} rename constraint {NEXT_TABLE}_article_id_fkey to {LIVE_TABLE}_article_id_fkey",
+    f"alter table {LIVE_TABLE} rename constraint {NEXT_TABLE}_article_id_chunk_index_key to {LIVE_TABLE}_article_id_chunk_index_key",
+    f"alter sequence if exists {NEXT_TABLE}_id_seq rename to {LIVE_TABLE}_id_seq",
+    f"alter index if exists {NEXT_TABLE}_embedding_idx rename to {LIVE_TABLE}_embedding_idx",
+    f"alter index if exists {NEXT_TABLE}_tsv_idx rename to {LIVE_TABLE}_tsv_idx",
+    f"alter index if exists {NEXT_TABLE}_identifiers_idx rename to {LIVE_TABLE}_identifiers_idx",
+)
+
+INSERT_CHUNK = """insert into {table} (article_id, chunk_index, heading_path, anchor, content, content_hash, embedding, model, updated_at,
+       title, part, parts, embed_text, identifiers)
+     values (%s, %s, %s, %s, %s, %s, %s::vector, %s, now(), %s, %s, %s, %s, %s)
+     on conflict (article_id, chunk_index) do update set heading_path = excluded.heading_path, anchor = excluded.anchor,
+       content = excluded.content, content_hash = excluded.content_hash, embedding = excluded.embedding,
+       model = excluded.model, updated_at = now(), title = excluded.title, part = excluded.part, parts = excluded.parts,
+       embed_text = excluded.embed_text, identifiers = excluded.identifiers"""
+
+
+def _version_tuple(v: str | None) -> tuple[int, int]:
+    try:
+        major, minor = (int(x) for x in (v or "0.0").split(".")[:2])
+        return major, minor
+    except ValueError:
+        return (0, 0)
+
+
+def search_settings(pgvector_version: str | None, n: int) -> list[tuple[str, str]]:
+    """Transaction-local pgvector settings for one search. HNSW (pgvector ≥ 0.5) returns at most ef_search rows
+    before the `published` / `exclude_article` filters run, so ef_search follows the candidate count (2×, ≥ 40, ≤ 1000);
+    pgvector ≥ 0.8 also keeps scanning (iterative_scan = relaxed_order) when the filters drop rows. Nothing for
+    IVFFlat-era versions."""
+    v = _version_tuple(pgvector_version)
+    out: list[tuple[str, str]] = []
+    if v >= (0, 5):
+        out.append(("hnsw.ef_search", str(min(1000, max(40, n * 2)))))
+    if v >= (0, 8):
+        out.append(("hnsw.iterative_scan", "relaxed_order"))
+    return out
 
 
 class PgVectorIndex:
@@ -152,6 +220,21 @@ class PgVectorIndex:
         self.reason = "not checked"
         self.pgvector_version: str | None = None
         self._version_cache: tuple[float, str] | None = None
+        # Build-then-swap after an embeddings dimension change: reindex writes NEXT_TABLE, the next complete
+        # (non-`only`) reindex swaps it in. Until then search returns nothing (query vectors no longer fit the live table).
+        self.rebuilding = False
+
+    @property
+    def write_table(self) -> str:
+        return NEXT_TABLE if self.rebuilding else LIVE_TABLE
+
+    async def _vector_type(self, c: Any, table: str) -> str | None:
+        cur = await c.execute(
+            "select format_type(a.atttypid, a.atttypmod) as t from pg_attribute a where a.attrelid = to_regclass(%s) and a.attname = 'embedding'",
+            (table,),
+        )
+        row = await cur.fetchone()
+        return row["t"] if row else None
 
     async def ensure_schema(self) -> bool:
         async with self.pool.connection() as c:
@@ -161,98 +244,122 @@ class PgVectorIndex:
                 self.available, self.reason = False, "pgvector extension is not enabled in this database (MANUAL_SETUP.md)"
                 return False
             self.pgvector_version = row["extversion"]
-            cur = await c.execute(
-                """select format_type(a.atttypid, a.atttypmod) as t from pg_attribute a
-                   where a.attrelid = to_regclass('seo_article_chunks') and a.attname = 'embedding'"""
-            )
-            existing = await cur.fetchone()
             want = f"vector({self.emb.dim})"
-            if existing and existing["t"] != want:
-                await c.execute("drop table seo_article_chunks")  # derived data; rebuilt by the full reindex below
-            await c.execute(
-                f"""create table if not exists seo_article_chunks (
-                      id bigserial primary key,
-                      article_id uuid not null references post(id) on delete cascade,
-                      chunk_index integer not null,
-                      heading_path text not null default '',
-                      anchor text,
-                      content text not null,
-                      content_hash text not null,
-                      embedding {want} not null,
-                      model text not null,
-                      updated_at timestamptz not null default now(),
-                      unique (article_id, chunk_index))"""
-            )
-            major, minor = (int(x) for x in self.pgvector_version.split(".")[:2])
-            method = "hnsw" if (major, minor) >= (0, 5) else "ivfflat"
-            await c.execute(f"create index if not exists seo_article_chunks_embedding_idx on seo_article_chunks using {method} (embedding vector_cosine_ops)")
-            await ensure_hybrid_columns(c)
-        self.available, self.reason = True, "ok"
+            existing = await self._vector_type(c, LIVE_TABLE)
+            self.rebuilding = bool(existing and existing != want)
+            if self.rebuilding:
+                # Never drop the live table here: a failed or reverted provider change keeps it. Ask the Blog answers
+                # with the fallback until the full reindex below has filled the new table and swapped it in.
+                log.warning(
+                    "embeddings dimension changed (%s → %s): building %s; run a full reindex to swap it in (Ask the Blog falls back until then)",
+                    existing,
+                    want,
+                    NEXT_TABLE,
+                )
+                if (await self._vector_type(c, NEXT_TABLE)) not in (None, want):
+                    await c.execute(f"drop table {NEXT_TABLE}")  # a half-built table for yet another dimension
+            else:
+                await c.execute(f"drop table if exists {NEXT_TABLE}")  # a rebuild abandoned by switching back
+            table = self.write_table
+            await c.execute(_chunks_ddl(table, want))
+            method = "hnsw" if _version_tuple(self.pgvector_version) >= (0, 5) else "ivfflat"
+            await c.execute(f"create index if not exists {table}_embedding_idx on {table} using {method} (embedding vector_cosine_ops)")
+            await ensure_hybrid_columns(c, table)
+        self.available, self.reason = True, "ok" if not self.rebuilding else "rebuilding for a new embeddings dimension"
         return True
 
+    async def _swap(self, c: Any) -> None:
+        """The rebuilt table replaces the live one in one transaction: readers see the old table or the new, never none."""
+        async with c.transaction():
+            await c.execute(f"drop table {LIVE_TABLE}")
+            for ddl in _SWAP_RENAMES:
+                await c.execute(ddl)
+        self.rebuilding = False
+        self.reason = "ok"
+        log.warning("embeddings rebuild complete: %s swapped in", LIVE_TABLE)
+
     async def reindex(self, articles: list[dict[str, Any]], *, full: bool = False, only: set[str] | None = None, force: bool = False) -> dict[str, int]:
-        """Incremental: only chunks whose content_hash (or model) changed are embedded. `articles` = every published
-        article (id, title, body); chunks of articles no longer in the list are removed (unpublished/deleted).
-        `force` skips the safety guard below, after a human has checked that the article list is right."""
+        """Incremental: only chunks whose content_hash (or model) changed are embedded, and a changed chunk whose text
+        already exists elsewhere in the same article (a paragraph inserted above shifts every later chunk_index)
+        reuses that stored vector. `articles` = every published article (id, title, body); chunks of articles no
+        longer in the list are removed (unpublished/deleted). `force` skips the safety guard below, after a human has
+        checked that the article list is right. During a rebuild (dimension change) it writes the new table, and a
+        complete run swaps it in."""
         if not self.available:
             return {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0}
-        stats = {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0}
+        stats = {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0, "reused": 0}
         live = {a["id"] for a in articles}
+        table = self.write_table
         async with self.pool.connection() as c:
             if only is None:
                 if not force:
                     # Guard: an empty or truncated article list (web app error, bad deploy) must not wipe the index.
-                    cur = await c.execute("select count(distinct article_id) as n from seo_article_chunks")
+                    # Counted on the live table, also during a rebuild (the new table starts empty).
+                    cur = await c.execute(f"select count(distinct article_id) as n from {LIVE_TABLE}")  # noqa: S608 - constant table names
                     indexed = int((await cur.fetchone())["n"])
                     if refuse_reindex(len(live), indexed):
                         raise IndexSafetyError(f"refusing reindex: {len(live)} published articles vs {indexed} indexed; check the list, then rerun with force=true")
                 # Unpublished/deleted articles' chunks go on every full or weekly run; `force` skips only the guard.
-                cur = await c.execute("delete from seo_article_chunks where not (article_id::text = any(%s)) returning 1", (list(live),))
+                cur = await c.execute(f"delete from {table} where not (article_id::text = any(%s)) returning 1", (list(live),))  # noqa: S608
                 stats["deleted"] += len(await cur.fetchall())
             for a in articles:
                 if only is not None and a["id"] not in only:
                     continue
                 stats["articles"] += 1
                 chunks = chunk_markdown(str(a.get("body", "")), str(a.get("title", "")), self.counter)
-                cur = await c.execute("select chunk_index, content_hash, model from seo_article_chunks where article_id = %s", (a["id"],))
+                cur = await c.execute(f"select chunk_index, content_hash, model from {table} where article_id = %s", (a["id"],))  # noqa: S608
                 have = {r["chunk_index"]: (r["content_hash"], r["model"]) for r in await cur.fetchall()}
                 title = str(a.get("title", ""))
                 hashes = {ch.index: _embed_hash(title, ch.content_hash) for ch in chunks}
                 todo = [ch for ch in chunks if full or have.get(ch.index) != (hashes[ch.index], self.emb.name)]
                 stats["unchanged"] += len(chunks) - len(todo)
                 if todo:
-                    # Title + heading path are embedded with the text: they carry most of the topical signal.
-                    inputs = [embed_input(title, ch) for ch in todo]
-                    observe_chunk_tokens(self.counter, todo, inputs)
-                    vecs = await self.emb.embed(inputs)
-                    for ch, v in zip(todo, vecs, strict=True):
-                        await c.execute(
-                            """insert into seo_article_chunks (article_id, chunk_index, heading_path, anchor, content, content_hash, embedding, model, updated_at,
-                                 title, part, parts, embed_text, identifiers)
-                               values (%s, %s, %s, %s, %s, %s, %s::vector, %s, now(), %s, %s, %s, %s, %s)
-                               on conflict (article_id, chunk_index) do update set heading_path = excluded.heading_path, anchor = excluded.anchor,
-                                 content = excluded.content, content_hash = excluded.content_hash, embedding = excluded.embedding,
-                                 model = excluded.model, updated_at = now(), title = excluded.title, part = excluded.part, parts = excluded.parts,
-                                 embed_text = excluded.embed_text, identifiers = excluded.identifiers""",
-                            (a["id"], ch.index, ch.heading_path, ch.anchor, ch.content, hashes[ch.index], _vec(v), self.emb.name, title, ch.part, ch.parts, ch.embed_text, ch.identifiers),
+                    vec_of: dict[int, str] = {}
+                    stored = {h for h, m in have.values() if m == self.emb.name}
+                    if not full and any(hashes[ch.index] in stored for ch in todo):
+                        # Same text (same stored hash, same model) at another chunk_index: reuse its vector.
+                        cur = await c.execute(
+                            f"select distinct on (content_hash) content_hash, embedding::text as e from {table} where article_id = %s and model = %s and content_hash = any(%s)",  # noqa: S608
+                            (a["id"], self.emb.name, list({hashes[ch.index] for ch in todo})),
                         )
-                    stats["embedded"] += len(todo)
-                    metrics.REINDEX_CHUNKS.inc(len(todo))
-                cur = await c.execute("delete from seo_article_chunks where article_id = %s and chunk_index >= %s returning 1", (a["id"], len(chunks)))
+                        by_hash = {r["content_hash"]: r["e"] for r in await cur.fetchall()}
+                        vec_of = {ch.index: by_hash[hashes[ch.index]] for ch in todo if hashes[ch.index] in by_hash}
+                    fresh = [ch for ch in todo if ch.index not in vec_of]
+                    if fresh:
+                        # Title + heading path are embedded with the text: they carry most of the topical signal.
+                        inputs = [embed_input(title, ch) for ch in fresh]
+                        observe_chunk_tokens(self.counter, fresh, inputs)
+                        for ch, v in zip(fresh, await self.emb.embed(inputs), strict=True):
+                            vec_of[ch.index] = _vec(v)
+                    rows = [(a["id"], ch.index, ch.heading_path, ch.anchor, ch.content, hashes[ch.index], vec_of[ch.index], self.emb.name, title, ch.part, ch.parts, ch.embed_text, ch.identifiers) for ch in todo]
+                    async with c.transaction(), c.cursor() as wc:  # one round trip per article, all or nothing
+                        await wc.executemany(INSERT_CHUNK.format(table=table), rows)
+                    stats["embedded"] += len(fresh)
+                    stats["reused"] += len(todo) - len(fresh)
+                    metrics.REINDEX_CHUNKS.inc(len(fresh))
+                    metrics.REINDEX_REUSED.inc(len(todo) - len(fresh))
+                cur = await c.execute(f"delete from {table} where article_id = %s and chunk_index >= %s returning 1", (a["id"], len(chunks)))  # noqa: S608
                 stats["deleted"] += len(await cur.fetchall())
+            if self.rebuilding and only is None:
+                await self._swap(c)
+                stats["swapped"] = 1
         self._version_cache = None
         return stats
 
     async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]:
         """Hybrid (or vector) retrieval: candidate lists from Postgres, fusion in app/retrieval.py. `min_score` is a
         cosine pre-filter on every candidate (Ask the Blog's ASK_BLOG_MIN_SCORE)."""
-        if not self.available or not query.strip():
+        if not self.available or self.rebuilding or not query.strip():
             return []
         cfg = self.config
         [v] = await self.emb.embed([query], query=True)
         qids = question_identifiers(query) if cfg.mode == "hybrid" else []
         async with self.pool.connection() as c:
-            cands = await self.candidates(c, query, _vec(v), qids, cfg.candidates, exclude_article)
+            # The pool is autocommit: a transaction scopes the set_config(..., is_local => true) calls to this search.
+            async with c.transaction():
+                for name, value in search_settings(self.pgvector_version, cfg.candidates):
+                    await c.execute("select set_config(%s, %s, true)", (name, value))
+                cands = await self.candidates(c, query, _vec(v), qids, cfg.candidates, exclude_article)
         fused = fuse(cands, replace_cfg(cfg, min_score))
         if self.reranker is not None:
             top = [to_hit(x) for x in diversify(fused, cfg.candidates, cfg.max_per_article)]

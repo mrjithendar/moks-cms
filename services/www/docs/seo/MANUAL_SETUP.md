@@ -178,7 +178,9 @@ or wait for the Sunday CronJob. Turn it off the same way with `"false"`.
 ## 19. Embeddings model choice
 The default is `EMBEDDINGS_PROVIDER=onnx` (bge-small-en-v1.5, baked into the image). To use an Ollama already in the
 cluster: set `EMBEDDINGS_PROVIDER=ollama`, `OLLAMA_URL`, `OLLAMA_EMBED_MODEL` in `seo-agent-config`, allow egress to it
-in the `seo-agent` NetworkPolicy, restart, then run a full reindex (the table is rebuilt for the new dimension). A
+in the `seo-agent` NetworkPolicy, restart, then run a full reindex right away: the new-dimension table is built next
+to the old one and swapped in when the reindex completes; until then Ask the Blog answers with the fallback (RAG.md
+"Embeddings"). A
 third-party API (`EMBEDDINGS_PROVIDER=api`) needs `EMBEDDINGS_API_URL`/`EMBEDDINGS_API_KEY` in `seo-agent-env`, and
 it sends article text to that provider.
 
@@ -340,7 +342,7 @@ kubectl -n jithendar create job --from=cronjob/seo-flow-reindex seo-reindex-v5
 1. **Query groupings (clusters):** ML models → **Ask Claude for suggestions** (one Haiku call), then Labelling →
    Query groupings. Confirm or change the group of each of the 200 queries. The clustering model can be activated
    once ≥ 100 are confirmed and it beats the token-set rule.
-2. **Intent disagreements:** after the first training with ≥ 60 Haiku labels, Labelling → Intent disagreements:
+2. **Intent disagreements:** after the first training with ≥ 300 Haiku labels, Labelling → Intent disagreements:
    pick the right intent for up to 50 queries. The classifier is used only after these 50 checks and macro-F1 ≥ 0.85.
 3. **Decay back-test review:** when ML models shows the decay model as "needs review", read its real back-test (alert
    rate vs the rule, agreement) and click **Reviewed: use the model** if it looks right.

@@ -31,7 +31,10 @@
 | `news_quality_failures_total` | gate |
 | `news_images_generated_total` | provider, status |
 | `news_cost_usd_total` | kind (llm, image) |
-| `news_model_auc` | model (ranker = AUC, classifier = macro F1) |
+| `news_model_auc` | model (ranker = AUC, classifier = macro F1) of the **serving** model; kept for the dashboard |
+| `news_model_macro_f1`, `news_model_holdout_auc` | model: the same numbers under correct names (classifier, ranker) |
+| `news_model_score_psi` | model: score drift of the serving model vs its training rows (> 0.25: drift; docs/news/ML.md "Monitoring") |
+| `news_topic_assignments_total` | method (model, model_low_conf, claude, rules) |
 | `news_budget_used_ratio` | scope (global/job × llm/image × day/month) |
 | `news_job_consecutive_failures`, `news_job_last_draft_timestamp_seconds` | news_job (DB-computed) |
 | `news_source_failing_seconds`, `news_quality_failure_ratio_7d` | — (DB-computed) |
@@ -71,6 +74,13 @@ keyword filters too narrow, everything already covered, sources failing).
 - **A draft is stuck "drafting"**: the agent restarted mid-run; runs are failed on start-up (v4 D-57) and the article is
   marked failed; retry from the run.
 - **Wrong category**: fix it in review; it becomes a human label for the next training.
+- **Model rollback**: list versions with the MCP tool `list_news_models` (read-only) or
+  `select kind, version, active, metrics->>'macro_f1', notes, trained_at from news_models order by trained_at desc`.
+  Activate an earlier version (it must have an artefact) with `NewsStore.activate_model(kind, version)` /
+  `app.news.desk.activate_model_version`, or in SQL, in one transaction:
+  `begin; update news_models set active = false where kind = 'ranker' and active; update news_models set active = true where kind = 'ranker' and version = '<version>'; commit;`
+  The gauges follow within 15 minutes (dispatcher). There is no MCP tool that changes the serving model: like
+  approval, it stays an owner action.
 - **A correction**: review page of the published draft → *Add correction / update*.
 - **Retention**: logs 90 days, unused items/candidates 180 days (Settings); pruned daily at 03:00 UTC by the dispatcher.
 - **Source test**: Sources → *Test now* (a `news_ingest_flow` run for that source).

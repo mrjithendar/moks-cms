@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import asdict
 from datetime import date, timedelta
 from typing import Any
 
@@ -57,13 +58,22 @@ async def register(
     notes: str | None = None,
     artifact: bytes | None = None,
     flat: dict[str, float] | None = None,
+    review_key: dict[str, Any] | None = None,
+    carry_review: bool = True,
 ) -> dict[str, Any]:
+    """`review_key` (needs_review models): what a review approves, e.g. method + config hash; stored in the metrics.
+    The latest version's review carries over only when the new version still beats the rule, `carry_review` holds (the
+    caller's real-data check against the reviewed version) and, with a `review_key`, the latest version has the same
+    key. Without a key, a review carries over to any retrain that still wins (kinds whose review isn't required)."""
     latest = await store.latest_model(kind)
     prev_active = await store.active_model(kind)
     version = next_version(latest)
-    # A review approves the method on real data; it carries over to a retrain of the same method that still wins.
-    reviewed_by = (latest or {}).get("reviewed_by") if beats else None
-    reviewed_at = (latest or {}).get("reviewed_at") if beats else None
+    if review_key is not None:
+        model_metrics = {**model_metrics, "review_key": review_key}
+    same_method = review_key is None or ((latest or {}).get("metrics") or {}).get("review_key") == review_key
+    carry = beats and carry_review and same_method
+    reviewed_by = (latest or {}).get("reviewed_by") if carry else None
+    reviewed_at = (latest or {}).get("reviewed_at") if carry else None
     activate = beats and (not needs_review or bool(reviewed_by))
     st = status or ("trained" if activate else "needs_review" if beats and needs_review else "trained")
     run_status = "activated" if activate else ("fallback_to_rule" if prev_active else ("needs_review" if st == "needs_review" else "rule_kept"))
@@ -85,6 +95,18 @@ async def register(
 # --- 3.1 decay -------------------------------------------------------------------------------------------------------
 
 
+def _reviewed_reference(latest: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The back-test the owner actually reviewed. A version reviewed directly is its own reference; one that inherited
+    a review keeps the reference it inherited (so the agreement floor doesn't drift a little with every retrain)."""
+    if not latest or not latest.get("reviewed_by"):
+        return None
+    lm = latest.get("metrics") or {}
+    ref = lm.get("reviewed_reference")
+    if isinstance(ref, dict) and ref.get("reviewed_at") == str(latest.get("reviewed_at")):
+        return ref
+    return {"version": latest.get("version"), "reviewed_at": str(latest.get("reviewed_at")), "review_key": lm.get("review_key"), "backtest": lm.get("backtest")}
+
+
 async def run_decay(store: MlStore, cfg: dc.DecayConfig = dc.DEFAULT_CONFIG) -> dict[str, Any]:
     end = await store.latest_gsc_date()
     bench = dc.benchmark(cfg)
@@ -95,17 +117,38 @@ async def run_decay(store: MlStore, cfg: dc.DecayConfig = dc.DEFAULT_CONFIG) -> 
     series = dc.daily_series(rows, end)
     signals = [dc.detect(c, i, end, page, cfg) for page, (c, i) in series.items()]
     bt = dc.backtest(series, end, cfg)
-    beats = bool(bench["beats_rule"])
+    # The synthetic benchmark is the same held-out seeds every week, so it can't tell one week's retrain from the next;
+    # the real back-test gates activation too.
+    alerts_ok = dc.alert_rate_ok(bt)
+    beats = bool(bench["beats_rule"]) and alerts_ok
+    latest = await store.latest_model("decay")
+    reference = _reviewed_reference(latest)
+    agrees = dc.agreement_ok(bt, reference["backtest"] if reference else None)
+    gates = {"benchmark_beats_rule": bool(bench["beats_rule"]), "backtest_alert_rate_ok": alerts_ok, "agreement_with_reviewed_ok": agrees if reference else None, "max_alert_rate_ratio": dc.MAX_ALERT_RATE_RATIO, "max_jaccard_drop": dc.MAX_JACCARD_DROP}
     flat = {"model_false_alarm_rate": bench["model"]["false_alarm_rate"], "rule_false_alarm_rate": bench["rule"]["false_alarm_rate"], "model_drop_recall": bench["model"]["drop_recall"], "rule_drop_recall": bench["rule"]["drop_recall"]}
     reg = await register(
         store,
         "decay",
         n=len(series),
-        model_metrics={"benchmark": bench["model"], "backtest": bt, "pages_with_history": sum(1 for s in signals if s.method_version == dc.METHOD), "decaying": sum(1 for s in signals if s.decaying)},
+        model_metrics={
+            "benchmark": bench["model"],
+            "backtest": bt,
+            "gates": gates,
+            "reviewed_reference": reference,
+            "config": asdict(cfg),
+            "pages_with_history": sum(1 for s in signals if s.method_version == dc.METHOD),
+            "decaying": sum(1 for s in signals if s.decaying),
+        },
         rule_metrics={"benchmark": bench["rule"], "backtest_alert_rate": bt["rule_alert_rate"]},
         beats=beats,
         needs_review=True,
-        notes="Activation: fewer false alarms than the rule on held-out synthetic series without lower drop recall, then the owner's review of the real back-test.",
+        review_key=dc.review_key(cfg),
+        carry_review=agrees,
+        notes=(
+            "Activation: fewer false alarms than the rule on held-out synthetic series without lower drop recall, back-test alerts within "
+            f"{dc.MAX_ALERT_RATE_RATIO}× the rule's, then the owner's review of the real back-test (kept for the same method and configuration "
+            f"while agreement with the rule stays within {dc.MAX_JACCARD_DROP} of the reviewed version's)."
+        ),
         flat=flat,
     )
     await store.replace_outputs("seo_ml_decay_signals", [s.row() for s in signals])
@@ -217,13 +260,13 @@ async def run_intent(store: MlStore, embed: Embed, model_name: str) -> dict[str,
     x = np.stack([it.featurize(v, q) for v, q in zip(vecs, queries, strict=True)])
     latest = await store.latest_model("intent")
     version = next_version(latest)
-    model, m, test_idx = it.train(x, y, version)
+    model, m, oof = it.train(x, y, version)
     if model is None:
         reg = await register(store, "intent", n=len(data), model_metrics=m, rule_metrics={}, beats=False, status="collecting_data")
         return {"labels": len(data), "register": reg}
-    rule_f1 = it.rule_macro_f1([queries[i] for i in test_idx], [y[i] for i in test_idx])
-    preds = model.predict(x[test_idx])
-    disagreements = [(queries[i], {"haiku": y[i], "model": p, "confidence": c}) for i, (p, c) in zip(test_idx, preds, strict=True) if p != y[i]]
+    # the rule isn't trained, so it is scored on every label; the model's disagreements are out-of-fold predictions
+    rule_f1 = it.rule_macro_f1(queries, y)
+    disagreements = [(queries[i], {"haiku": y[i], "model": p, "confidence": c}) for i, p, c in oof if p != y[i]]
     await store.add_label_tasks("intent_check", disagreements[: it.SPOT_CHECKS])
     checks = await store.labels("intent_check")
     spot_checked = sum(1 for r in checks if r["status"] != "pending")
@@ -234,7 +277,7 @@ async def run_intent(store: MlStore, embed: Embed, model_name: str) -> dict[str,
         "intent",
         n=len(data),
         model_metrics={**m, "spot_checked": spot_checked, "disagreements": len(disagreements), "activation": why},
-        rule_metrics={"macro_f1": rule_f1, "what": "keywords.ts intentByRules on the same held-out queries"},
+        rule_metrics={"macro_f1": rule_f1, "what": "keywords.ts intentByRules on every labelled query (the model's score is out-of-fold on the same queries)"},
         beats=beats and ok,
         status=None if ok or not beats else "needs_review",
         notes=why,
@@ -259,29 +302,8 @@ async def run_intent(store: MlStore, embed: Embed, model_name: str) -> dict[str,
 
 
 async def run_priority(store: MlStore) -> dict[str, Any]:
-    raw = await store.outcomes()
-    rows = []
-    for r in raw:
-        base, post = r.get("baseline_metrics") or {}, r.get("post_metrics_28d") or {}
-        if "clicks" not in base or "clicks" not in post:
-            continue
-        si = r.get("score_inputs") or {}
-        inputs = si.get("inputs") if isinstance(si, dict) else None
-        rows.append(
-            {
-                "inputs": inputs or {},
-                "category": r.get("category"),
-                "position": r.get("position"),
-                "impressions": r.get("impressions") or base.get("impressions"),
-                "ctr_gap": (inputs or {}).get("qualityGap") if r.get("category") == "low_ctr" else 0.0,
-                "decaying": r.get("decaying"),
-                "words": r.get("words"),
-                "internal_links": r.get("internal_links"),
-                "cluster_size": r.get("cluster_size"),
-                "intent": r.get("intent"),
-                "lift": pr.lift(float(base["clicks"]), float(post["clicks"]), r.get("pre_baseline_clicks")),
-            }
-        )
+    # pre-change snapshots only (priority.training_row); oldest first, as outcomes() orders them
+    rows = [t for r in await store.outcomes() if (t := pr.training_row(r)) is not None]
     current = await store.current_weights()
     latest = await store.latest_model("priority")
     version = next_version(latest)
@@ -289,7 +311,8 @@ async def run_priority(store: MlStore) -> dict[str, Any]:
     if proposal is None:
         reg = await register(store, "priority", n=len(rows), model_metrics=m, rule_metrics={"weights": current}, beats=False, status="collecting_data", notes=f"collecting data: {len(rows)}/{pr.MIN_OUTCOMES}", flat={"n": len(rows)})
         return {"outcomes": len(rows), "register": reg}
-    better = m["ndcg10_proposed"] > m["ndcg10_current"]
+    # Offered only when the bootstrap CI of the cross-validated NDCG@10 difference (proposed − current) is above 0.
+    better = bool(m["promote"])
     # The model itself is never "active": it only proposes weights; a proposal is offered only when it ranks better.
     reg = await register(
         store,
@@ -299,7 +322,11 @@ async def run_priority(store: MlStore) -> dict[str, Any]:
         rule_metrics={"weights": current, "ndcg10": m["ndcg10_current"]},
         beats=False,
         status="trained",
-        notes="proposal offered for approval" if better else "proposed weights do not rank held-out outcomes better; no proposal",
+        notes=(
+            f"proposal offered for approval (NDCG@10 difference {m['ndcg10_diff']:+.3f}, {int(pr.CI_LEVEL * 100)} % CI {m['ndcg10_diff_ci'][0]:+.3f}…{m['ndcg10_diff_ci'][1]:+.3f})"
+            if better
+            else f"no proposal: the {int(pr.CI_LEVEL * 100)} % CI of the held-out NDCG@10 difference ({m['ndcg10_diff_ci'][0]:+.3f}…{m['ndcg10_diff_ci'][1]:+.3f}) is not above 0"
+        ),
         flat={"ndcg10_current": m["ndcg10_current"], "ndcg10_proposed": m["ndcg10_proposed"], "n": len(rows)},
     )
     if better:

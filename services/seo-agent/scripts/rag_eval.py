@@ -16,6 +16,11 @@ Configurations (RetrievalConfig in app/retrieval.py; chunker in app/embeddings.p
   token-hybrid         token chunker, RRF + identifier boost, ≤ 3 per article  (RAG_MODE=hybrid)
   (--max-per-article N overrides the diversification of every config except the baseline)
   token-hybrid-rerank  token-hybrid + the optional cross-encoder reranker (needs --reranker-dir)
+
+Opt-in end-to-end generation eval (real Anthropic calls, ANTHROPIC_API_KEY; capped by --generation-max-usd): Ask the
+Blog's own pipeline over the eval set on the --generation-config index, answers scored for citation precision and
+faithfulness by an LLM judge (app/rag_eval.py generation_eval). Writes <date>-generation.md.
+  ANTHROPIC_API_KEY=… uv run python scripts/rag_eval.py --configs token-hybrid --generation --generation-max-usd 2
 """
 
 from __future__ import annotations
@@ -91,6 +96,10 @@ async def main() -> int:
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--date", default=dt.date.today().isoformat())
     ap.add_argument("--json", action="store_true", help="also print the metrics as JSON")
+    ap.add_argument("--generation", action="store_true", help="opt-in: also run the end-to-end generation eval (real model calls)")
+    ap.add_argument("--generation-config", default="token-hybrid")
+    ap.add_argument("--generation-max-usd", type=float, default=2.0)
+    ap.add_argument("--judge-model", default="claude-opus-5-5")
     a = ap.parse_args()
 
     emb = CachedEmbeddings(OnnxEmbeddings(a.model_dir) if a.embeddings == "onnx" else HashEmbeddings())
@@ -157,6 +166,37 @@ async def main() -> int:
         print(json.dumps({n: {**r.metrics, "calibrated_floor": r.calibrated_floor, "p95_ms": r.latency_ms["p95"]} for n, r, _ in results}, indent=2))
     if overlap is not None:
         print(f"similar-articles overlap v4 vs token: {overlap}")
+    if a.generation:
+        return await run_generation(a, emb, articles, questions, out)
+    return 0
+
+
+async def run_generation(a: argparse.Namespace, emb: object, articles: list, questions: list, out: Path) -> int:
+    import os
+    from types import SimpleNamespace
+
+    from app.config import Settings
+    from app.llm import AnthropicLlm, BudgetGuard, MemorySpendStore
+    from app.rag_eval import generation_eval, render_generation_markdown
+    from app.services.ask_pipeline import AskPipeline
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("--generation needs ANTHROPIC_API_KEY (real model calls)", file=sys.stderr)
+        return 2
+    chunker, cfg = CONFIGS[a.generation_config]
+    ix = LocalIndex(emb, cfg, chunker=chunker, dsn=a.dsn if cfg.mode == "hybrid" else None)
+    await ix.build(articles)
+    s = Settings()
+    # A local guard: the run's own cap (the estimate is checked before every call), nothing written to the shared table.
+    guard = BudgetGuard(MemorySpendStore(), monthly_usd=a.generation_max_usd, ask_daily_usd=a.generation_max_usd)
+    llm = AnthropicLlm(os.environ["ANTHROPIC_API_KEY"], guard)
+    deps = SimpleNamespace(settings=s, llm=llm, retriever=ix)
+    res = await generation_eval(AskPipeline(deps), llm, a.judge_model, questions, max_usd=a.generation_max_usd)
+    meta = {"date": a.date, "answer_model": s.draft_model, "grade_model": s.classify_model, "judge_model": a.judge_model}
+    (out / f"{a.date}-generation.md").write_text(render_generation_markdown(res, meta))
+    m = res.metrics
+    print(f"generation: answered {pct(m['answered_rate'])} abstain {pct(m['abstain_rate'])} cite-label {pct(m['label_citation_precision'])} "
+          f"cite-judge {pct(m['judge_citation_precision'])} faithful {pct(m['faithfulness'])} cost ${res.cost_usd:.4f} ({res.n} questions)")
     return 0
 
 

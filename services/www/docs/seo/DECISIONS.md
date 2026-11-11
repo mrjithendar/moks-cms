@@ -538,3 +538,43 @@ planner. GA4 page-pair data is fetched outside `GA4_REPORTS`, so a property that
 The owner asked for better SEO settings mid-build and chose: organise the form (tabs, change tracking, defaults, field
 errors), a connections card, and ML/RAG controls. The first two were committed separately (`de84e76`); the ML/RAG
 card ships with Phase 3 because it needs the model registry.
+
+## D-81 SEO-ML review fixes: reviews bound to a configuration, leakage-free priority, honest intent metrics
+- **Decay.** The activation benchmark is a fixed set of held-out seeds, so it gives the same answer every week, and a
+  review used to carry over to every retrain that passed it, even after `DecayConfig` or the method changed. A review
+  now binds to `review_key` (method + a hash of the config) and carries over only while the key matches and the real
+  back-test's Jaccard agreement with the rule stays within 0.15 of the reviewed version's. Activation also needs the
+  back-test's alerts within 1.5 × the rule's (+ 2). The benchmark gained zero-inflated pages and step changes (gain:
+  negative; loss: positive), which showed the detector catches fewer abrupt step losses than the rule; that is
+  reported, not tuned away.
+- **Priority.** `outcomes()` used the post body, decay signal, intent and cluster as they are today, i.e. after the
+  change it measures. With no snapshot of those at implementation time, they were dropped rather than kept (no
+  web-app change: `score_inputs` and the evidence are already frozen once a recommendation leaves review, and
+  `baseline_metrics` is captured at "implemented"). One 10-row hold-out was replaced by expanding-window CV and a
+  bootstrap CI; a proposal needs the CI's lower bound above 0.
+- **Intent.** `MIN_TRAIN` 60 → 300; stratified 5-fold × 2 for the metrics; the threshold is tuned on a calibration
+  split of each training fold, so "accuracy when confident" is no longer measured on the rows that chose the threshold.
+
+## D-82 LLM review fixes: book every call once, reserve before calling
+A call that stops at `max_tokens` raises `Truncated` (a subclass of `InvalidOutput`, so existing handlers fall back
+instead of shipping half a text); a stream closed by the client is booked from an upper-bound estimate in its
+`finally`; a schema miss the SDK raises before returning the message is booked as an estimate (`schema_estimated`)
+rather than not at all, because `messages.parse` has no raw-response variant to read usage from. The budget guard holds
+each call's estimate as pending spend until it is booked: concurrent calls no longer pass on the same reading.
+In-process only; a cross-replica reservation (row or advisory lock on `seo_llm_usage`) waits for a second replica.
+Spans are emitted after the call (start time kept), because a streamed call lives across generator yields where a
+context-managed current span would be detached in another context.
+
+## D-83 Dimension change: build next to the live table, swap when complete
+Dropping the live table on start-up lost the index on a failed or reverted provider change. The new table is built
+as `seo_article_chunks_next` and swapped in one transaction after a complete reindex. Answers still fall back until
+the swap (old vectors can't be searched with the new model), so no automatic reindex was added to start-up: the
+container builds before the web app is guaranteed reachable, and the manual step was already documented.
+
+## D-84 Ask the Blog: stream only after a valid citation; narrower injection filter
+Deltas used to go out before `guard_output`, so a link or an uncited (later discarded) answer could reach the reader.
+Streaming now starts at the first in-range `[n]` and strips links per whitespace-bounded piece. The injection filter
+refused honest questions on an AI blog ("how do I write a system prompt…", a reader named Dan): it now matches only
+phrasing aimed at this assistant's prompt and a capitalised `DAN`. The eval set's hard questions and the opt-in
+generation eval (citation precision, faithfulness via an `eval_judge` call) replace a CI recall gate, which hashed
+embeddings can't make meaningful.
