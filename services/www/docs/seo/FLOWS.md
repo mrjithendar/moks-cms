@@ -16,7 +16,7 @@ flowchart LR
   subgraph k8s["namespace jithendar"]
     cron["CronJobs seo-flow-*\n(python -m app.trigger <flow>)"]
     subgraph web["jithendar-com pods (Next.js)"]
-      ui["/admin/seo review UI\n(approve = only here)"]
+      ui["/admin/review UI\n(approve = only here)"]
       cb[":9465 callback API\n(v1/v2 functions)"]
       oauth["OAuth AS for /mcp/admin"]
     end

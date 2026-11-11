@@ -1,6 +1,6 @@
 # SEO intelligence platform: architecture, schema, API, configuration
 
-Admin-only (`/admin/seo`, role `admin`). Reads Google Search Console (GSC) and GA4, turns the data into
+Admin-only (role `admin`): ordinary CMS admin pages since D-86 (`/admin/search`, `/admin/review`, `/admin/automation`…; old `/admin/seo/*` URLs redirect). Reads Google Search Console (GSC) and GA4, turns the data into
 evidence-backed recommendations, and feeds the CMS editor. **It never publishes or edits a post on its own.**
 
 ## Architecture
@@ -24,7 +24,7 @@ flowchart LR
     R --> P[reports]
     E -. optional .-> LLM[callModel<br/>OpenAI-compatible / Gemini / Bedrock]
     API[/api/admin/seo/*<br/>seoRoute guard/] --> Q
-    UI[/admin/seo/*/] --> RM[read models<br/>queries.ts]
+    UI[/admin pages/] --> RM[read models<br/>queries.ts]
     API --> RM
     UI -->|accept proposal| AS[(autosave =<br/>editor working copy)]
     M[/metrics :9464/]
@@ -144,14 +144,14 @@ route, zod validation (400 + `issues`), audit log on mutations, `no-store` + `no
 | `SITE_URL` | Deployment (existing) | yes | Canonical origin; crawler allowlist |
 
 All schedules, thresholds, weights, crawler limits, LLM provider/model and report recipients are in Settings
-(`/admin/seo/settings`).
+(`/admin/automation`).
 
 ## Local development
 
 ```bash
 cd www && export PATH=/opt/homebrew/bin:$PATH
 npx tsx scripts/seo-seed-fixtures.ts   # DEMO DATA into .data/pglite (refuses if DATABASE_URL is set)
-npm run dev                            # http://localhost:3000/admin/seo (sign in as an admin)
+npm run dev                            # http://localhost:3000/admin (sign in as an admin; search pages are in the sidebar)
 npx vitest run tests/seo-intel-*       # the platform's tests (fake Google, PGlite)
 ```
 
@@ -172,7 +172,7 @@ flowchart LR
     LLM --> VAL["changeset.ts validators<br/>(code untouched, no invented URLs,<br/>lengths, duplicates, rewrite %)"]
     LINKS["internal-links.ts<br/>(rule-based, hard limits)"] --> VAL
     VAL --> Q[("seo_drafts<br/>ready_for_review")]
-    Q --> UI["/admin/seo/review<br/>diff view (jsdiff)"]
+    Q --> UI["/admin/review<br/>diff view (jsdiff)"]
     UI -->|"Approve (one article, admin)"| PUB["publish.ts → updatePost()<br/>(CMS update path, base-version guard)"]
     PUB --> VER["seo_verify job<br/>200 · canonical · noindex · title · JSON-LD"]
     VER -->|pass| SUB["submission.ts"]

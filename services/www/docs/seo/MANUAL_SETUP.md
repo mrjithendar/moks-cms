@@ -1,6 +1,6 @@
 # SEO intelligence platform: manual setup
 
-Steps only a person can do. Until they are done, `/admin/seo` shows **Disconnected** and no Google data is fetched.
+Steps only a person can do. Until they are done, the admin Dashboard's Search & traffic view and Admin → Integrations show **Disconnected** and no Google data is fetched.
 
 ## 1. Google Cloud project and APIs
 1. https://console.cloud.google.com → select or create a project (e.g. `jithendar-seo`). No billing is needed for these
@@ -81,7 +81,7 @@ Admin → SEO intelligence → Settings (which then win).
    kubectl -n jithendar rollout restart deployment/jithendar-com
    ```
    The budget is a hard cap on month-to-date spend (UTC month) across all SEO Claude calls; Settings can lower it but
-   not raise it. When reached, jobs pause and every `/admin/seo` page shows a banner.
+   not raise it. When reached, jobs pause and the search, review and automation admin pages show a banner.
 4. Verify: Admin → SEO → Settings → **Claude usage this month** says "Key: configured". On an article's SEO panel,
    **Draft with Claude** → the draft appears in the Review queue within a minute; the usage card shows the call and
    its cost.
