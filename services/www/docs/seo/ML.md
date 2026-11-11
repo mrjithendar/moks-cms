@@ -47,21 +47,38 @@ falls back to the rule at once, `seo_ml_train_runs_total{status="fallback_to_rul
   (`stl-v1` | `insufficient_history`), and evidence holding 120 days of actual clicks and the trend. The
   recommendation shows the evidence as a trend-vs-actual chart.
 - **Evaluation:**
-  1. Labelled synthetic series (stable weekly pattern, holiday dips of 7–14 days at −50 to −70 %, sustained declines of
-     35–60 %), 180-day and 800-day (with a ±30 % yearly wave), on **held-out seeds**. The detector was designed while
-     looking at other seeds.
-  2. A back-test on the real history: model and rule alert rates on 12 two-week cut-offs, and their agreement.
-- **Activation:** fewer false alarms than the rule on the noise series without lower drop recall, **then your review**
-  of the real back-test (ML models → "Reviewed: use the model"). A retrain that still wins keeps the review.
-- **Measured** (held-out seeds; 60 × 180-day + 30 × 800-day series per kind, 2026-11-10):
+  1. Labelled synthetic series, 180-day and 800-day (with a ±30 % yearly wave), on **held-out seeds**. The detector was
+     designed while looking at other seeds of the first three negative/positive kinds; the later kinds were added
+     without changing it.
+     - negatives: stable weekly pattern; holiday dips of 7–14 days at −50 to −70 %; zero-inflated low-traffic pages
+       (2–6 clicks a day, 20–50 % of days at zero); a ranking gain that steps the level up 30–80 % and stays;
+     - positives: sustained declines of 35–60 % over 30–50 days; a ranking loss that steps the level down 35–60 % at
+       once, 25–50 days before the end.
+  2. A back-test on the real history: model and rule alerts on 8 two-week cut-offs of the top 80 pages, and their
+     agreement (Jaccard of flagged page-windows).
+- **Activation** (all of them):
+  - fewer false alarms than the rule on the synthetic negatives, without lower recall on the positives;
+  - real back-test: the model flags at most **1.5 ×** the rule's page-windows, plus 2 (`MAX_ALERT_RATE_RATIO`,
+    `ALERT_SLACK`). The synthetic benchmark is the same seeds every week, so on its own it would pass every retrain;
+  - **your review** of the real back-test (ML models → "Reviewed: use the model").
+- **When a review carries over:** a review approves one method (`stl-v1`) with one `DecayConfig`; the version stores
+  both as `review_key` (method + a hash of the config). A retrain keeps the review only when its key matches **and**
+  the back-test's agreement with the rule is no more than **0.15** below the agreement of the version you reviewed
+  (`MAX_JACCARD_DROP`; the reference stays the reviewed version, it doesn't drift with each retrain). Otherwise the
+  new version waits for a new review (`needs_review`) and the site uses the rule. Versions trained before review keys
+  existed have none, so the first retrain after this change asks for one new review.
+- **Measured** (held-out seeds; 40 × 180-day + 20 × 800-day series per kind, the flow's default, 2026-11-11):
 
-  | | False alarms (stable + holiday) | Sustained drops caught |
+  | | False alarms (4 negative kinds) | Drops caught (sustained + step) |
   |---|---|---|
-  | STL model | 2 / 180 (1.1 %) | 82 / 90 (91 %) |
-  | 28-day rule | 13 / 180 (7.2 %) | 42 / 90 (47 %) |
+  | STL model | 4 / 240 (1.7 %) | 98 / 120 (82 %) |
+  | 28-day rule | 15 / 240 (6.2 %) | 79 / 120 (66 %) |
 
-  On the 800-day series alone the rule catches one more drop than the model (29 vs 28 of 30, in a separate check),
-  while raising 14 false alarms against the model's 2.
+  By kind: the model's 4 false alarms are all holiday dips (rule: 9 holiday, 6 zero-inflated); neither flags a
+  ranking gain. The model catches 57 / 60 gradual declines (rule 33) but **fewer step losses than the rule (41 vs 46
+  of 60)**: a step 25–30 days before the end hasn't yet given the trend 21 falling days. An earlier run on the first
+  three kinds only (60 × 180-day + 30 × 800-day, 2026-11-10) gave 2 / 180 vs 13 / 180 false alarms and 82 / 90 vs
+  42 / 90 drops.
 
   The real back-test needs production data. It runs on the first `seo_ml_flow` in the cluster.
 
@@ -92,32 +109,47 @@ falls back to the rule at once, `seo_ml_train_runs_total{status="fallback_to_rul
 - **Features:** query embedding ⊕ 10 lexical features ("how to", "what is", vs/or/compare, error words, version
   pattern, commercial words, navigational words, tutorial words, length, question mark).
 - **Model:** multinomial logistic regression (balanced), stored as numpy arrays (no pickle), like the news classifier.
-- **Threshold:** the lowest confidence at which held-out accuracy of the predictions at or above it stays ≥ 90 %, kept
-  within [0.5, 0.95].
+- **Threshold:** the lowest confidence at which the accuracy of the predictions at or above it stays ≥ 90 %, kept
+  within [0.5, 0.95]. It is tuned on a **calibration split** (25 % of the training rows, stratified) that the model
+  wasn't fitted on, never on the rows its accuracy is reported on. The stored model is fitted on 75 % of the labels
+  and calibrated on the other 25 % the same way. Stored as numpy arrays with the threshold (`allow_pickle=False`).
 - **Use:** the daily keyword refresh takes the model's intent for new queries at confidence ≥ the threshold
   (`source = model`, `model = "model vN"`). The rest go to Haiku, and Haiku's answers become new training data; without
   Haiku they get the rules.
-- **Evaluation:** macro-F1 against held-out Haiku labels (20 % split), next to the rules' macro-F1 on the same queries.
-  Up to 50 model/Haiku disagreements become tasks on **Labelling → Intent disagreements**.
+- **Evaluation:** stratified 5-fold cross-validation, repeated twice. In each fold the model is fitted on part of the
+  training fold, its threshold is tuned on the calibration part, and macro-F1, "answered without Claude" and
+  "accuracy when confident" are measured on the test fold. The Models page shows the means (and macro-F1's spread),
+  next to the rules' macro-F1 on all labelled queries (the rules aren't trained). Up to 50 out-of-fold model/Haiku
+  disagreements become tasks on **Labelling → Intent disagreements**.
 - **Activation:** macro-F1 ≥ 0.85 **and** at least 50 spot-checked disagreements (all of them if fewer exist).
 - **Savings:** reported as "answered without Claude" on the Models page; COSTS.md has the estimate.
-- **Measured:** synthetic separable data only (tests). The real numbers need ≥ 60 Haiku labels from production.
+- **Minimum:** 300 labels (`MIN_TRAIN`, about 60 per intent). With the earlier minimum of 60 the 20 % test split held
+  ~12 queries, two or three per intent, so macro-F1 swung by whole points on one query.
+- **Measured:** synthetic separable data only (tests). The real numbers need ≥ 300 Haiku labels from production.
 
 ## 3.4 Learned priority: weight proposals (`app/seo_ml/priority.py`, SCORING.md)
 
 - **Data:** implemented recommendations with baseline and 28-day outcome metrics, oldest first.
 - **Lift:** (clicks in the 28 days after − clicks in the 28 days before) − (the 28 days before − the 28 days before
   those), divided by max(clicks before, 10). This is relative to the page's own trend.
-- **Features:** the six score inputs, category, position band, impressions, CTR gap, decay signal, length,
-  internal-link count, intent, cluster size and effort.
+- **Features: only what was known before the change** (`priority.training_row`): the six score inputs as frozen on
+  the recommendation when it left review, category, position band and impressions from the baseline window captured
+  at "implemented" (else the recommendation's evidence, frozen with the inputs), and baseline clicks. Earlier versions
+  also used the post's length and internal-link count, the decay signal, the query's intent and its cluster size,
+  read from **today's** tables, i.e. after the change; they described the outcome, not the recommendation, and were
+  dropped (no snapshot of them exists). A CTR-gap feature duplicated `qualityGap` and a second effort feature
+  duplicated the input; both were removed.
 - **Model:** LightGBM regression (deterministic). Proposed weights come from a non-negative least-squares fit of the
   lift's rank on the six inputs (renormalised like `scoreOf`), scaled to 100. LightGBM's gain importance is shown
   beside them.
-- **Evaluation:** NDCG@10 on the newest 20 % of outcomes: the proposed weights vs the current ones (and LightGBM's own
-  ranking as a reference).
-- **Never applied automatically.** A proposal is stored only when it ranks the held-out outcomes better. You approve or
-  dismiss it on Settings → "ML models & retrieval"; approval writes a new weights version into the audited settings
-  document.
+- **Evaluation:** time-ordered cross-validation with an expanding window: the oldest 50 % trains the first fold, the
+  rest is cut into 4 test blocks, and each block is scored with weights fitted on everything older. NDCG@10 of the
+  proposed vs the current weights per block (and LightGBM's own ranking as a reference), averaged; then a bootstrap
+  (1,000 resamples of each block) gives a 95 % interval of the difference, proposed − current.
+- **Never applied automatically.** A proposal is stored only when the interval's **lower bound is above 0**, i.e. the
+  proposed weights rank later outcomes better by more than resampling noise. You approve or dismiss it on Settings →
+  "ML models & retrieval"; approval writes a new weights version into the audited settings document. The weights
+  offered are fitted on all outcomes.
 - **Below 50 outcomes:** "collecting data: N/50".
 
 ## 3.5 Related articles (`app/seo_ml/related.py`)

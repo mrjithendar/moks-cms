@@ -78,8 +78,10 @@ The quarterly manual recalibration above now has a measured helper ([ML.md "Lear
   in clicks in the 28 days after "implemented" vs the 28 days before, minus the page's own trend before that, divided
   by max(clicks before, 10). It uses LightGBM on the recommendation's features, and a non-negative least-squares fit of
   the lift's rank on the six score inputs. The NNLS fit is what gives **proposed weights**, scaled to 100.
-- The proposal is compared with the current weights on the **newest 20 %** of outcomes (held out), by NDCG@10 of each
-  ranking against the lifts. It is offered only when it ranks better.
+- The proposal is compared with the current weights by NDCG@10 of each ranking against the lifts, in time-ordered
+  cross-validation (expanding window: each of 4 blocks of newer outcomes is scored with weights fitted on the older
+  ones). It is offered only when the lower bound of a bootstrap 95 % interval of the difference (proposed − current)
+  is above 0. Features are pre-change snapshots only (the inputs frozen at review, the baseline at "implemented").
 - **Never applied automatically.** Settings → "ML models & retrieval" shows current and proposed weights side by
   side with both NDCG@10 values; **Approve** writes them into the settings document (audit-logged as
   `seo.ml.weights.approve`, a new weights version), and **Dismiss** leaves everything as it is.

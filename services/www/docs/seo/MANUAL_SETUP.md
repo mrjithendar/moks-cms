@@ -340,7 +340,7 @@ kubectl -n jithendar create job --from=cronjob/seo-flow-reindex seo-reindex-v5
 1. **Query groupings (clusters):** ML models → **Ask Claude for suggestions** (one Haiku call), then Labelling →
    Query groupings. Confirm or change the group of each of the 200 queries. The clustering model can be activated
    once ≥ 100 are confirmed and it beats the token-set rule.
-2. **Intent disagreements:** after the first training with ≥ 60 Haiku labels, Labelling → Intent disagreements:
+2. **Intent disagreements:** after the first training with ≥ 300 Haiku labels, Labelling → Intent disagreements:
    pick the right intent for up to 50 queries. The classifier is used only after these 50 checks and macro-F1 ≥ 0.85.
 3. **Decay back-test review:** when ML models shows the decay model as "needs review", read its real back-test (alert
    rate vs the rule, agreement) and click **Reviewed: use the model** if it looks right.
