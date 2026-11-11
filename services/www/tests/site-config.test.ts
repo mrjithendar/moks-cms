@@ -11,8 +11,11 @@ import { freshDb } from "./db-helpers";
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 let cookieValue: string | undefined;
+// Draft mode is what /api/admin/appearance/preview turns on with the preview cookie (pages are ISR-cached otherwise).
+let draftEnabled = true;
 vi.mock("next/headers", () => ({
   headers: async () => new Headers(),
+  draftMode: async () => ({ isEnabled: draftEnabled }),
   cookies: async () => ({ get: (name: string) => (name === "site_preview" && cookieValue ? { name, value: cookieValue } : undefined) }),
 }));
 let sessionUser: { id: string; role: string; name: string; email: string } | null = null;
@@ -314,6 +317,12 @@ describe("draft preview", () => {
     sessionUser = { id: admin.id, role: "admin", name: "Admin", email: admin.label };
     cookieValue = "forged-token-forged-token-forged";
     expect((await getSiteConfig()).preview).toBe(false);
+
+    // A valid token without draft mode is not read at all: the request stays a cached (ISR) page.
+    cookieValue = token;
+    draftEnabled = false;
+    expect((await getSiteConfig()).preview).toBe(false);
+    draftEnabled = true;
     await expect(createConfigPreview(author)).rejects.toMatchObject({ status: 403 });
   });
 });

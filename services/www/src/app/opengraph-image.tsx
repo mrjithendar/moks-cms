@@ -7,7 +7,9 @@ export const alt = "Jithendar.com";
 export const size = ogSize;
 export const contentType = "image/png";
 // Reflects the published configuration (Admin → Appearance → Branding / General).
-export const dynamic = "force-dynamic";
+// ISR (lib/page-cache.ts): rendered once, served from the page cache, re-rendered after 300 s (PAGE_REVALIDATE_SECONDS)
+// and cleared on every replica when content or settings change.
+export const revalidate = 300;
 
 /**
  * Default share image for pages without their own: the configured social image (PNG or JPEG, read from our

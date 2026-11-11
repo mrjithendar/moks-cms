@@ -8,12 +8,17 @@ import { PageView } from "@/lib/pages/page-view";
 import { getSettings } from "@/lib/settings";
 import { turnstileKeys } from "@/lib/turnstile";
 import { findRedirect } from "@/lib/redirects";
-import { getSessionUser } from "@/lib/session";
 
 type Props = { params: Promise<{ page: string }> };
 
-// Only pages that exist in the database render; everything else at this level is a 404.
-export const dynamic = "force-dynamic";
+// Only pages that exist in the database render; everything else at this level is a 404 (cached like a page).
+// ISR (lib/page-cache.ts): rendered once, served from the page cache, re-rendered after 300 s (PAGE_REVALIDATE_SECONDS)
+// and cleared on every replica when content or settings change.
+export const revalidate = 300;
+// No paths at build time (the build has no database): each one is rendered on its first request, then cached.
+export async function generateStaticParams() {
+  return [];
+}
 
 async function load(slug: string) {
   const page = await getPage(slug);
@@ -52,7 +57,7 @@ export default async function StaticPage({ params }: Props) {
   const page = await load((await params).page);
   const contactForm =
     page.slug === "contact" && (await getSettings()).features.contactForm ? (
-      <ContactForm siteKey={(await turnstileKeys()).siteKey} signedIn={!!(await getSessionUser())} />
+      <ContactForm siteKey={(await turnstileKeys()).siteKey} />
     ) : undefined;
   return <PageView page={page} after={contactForm} />;
 }

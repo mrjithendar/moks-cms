@@ -1,5 +1,35 @@
 # Progress log — jithendar.com
 
+## SSG + ISR for public pages (2026-11-11, owner request)
+
+Public pages were `force-dynamic` (rendered from Postgres on every request; production TTFB 0.48–1.03 s, `Cache-Control:
+private, no-store`), against D-6 "static-first". They are now ISR pages served from an in-memory page cache, cleared on
+every replica when anything they show changes. See `docs/CONTENT_MODEL.md` "Rendering and caching (SSG + ISR)".
+
+- `cache-handler.mjs` (+ `.d.mts`): custom `cacheHandler`, `cacheMaxMemorySize: 0`. Generation counter on globalThis, so
+  a cache-bus message (outside any request, where `revalidatePath` throws) can clear it; a render that started before a
+  clear is not stored; LRU by bytes (`PAGE_CACHE_MAX_MB`, 64). `isrFlushToDisk` removed (no effect with a custom handler).
+- `src/lib/page-cache.ts`: clears on bus kinds content/categories/settings/integrations (not practice); imported by
+  `instrumentation.ts`. `src/lib/warm.ts` `startPageWarmup`/`warmPages`: renders every sitemap URL after start and 10 s
+  after each clear (127.0.0.1, 2 at a time; `PAGE_WARMUP=false`).
+- 24 public routes: `revalidate = 300`; dynamic ones `generateStaticParams() → []`. Build: content comes from the bundled
+  MDX during `next build` (no database); that output is never served (the handler starts empty).
+- Root layout no longer opts every page out: `getSiteConfig()` reads the appearance-preview cookie only in draft mode,
+  which `/api/admin/appearance/preview` now enables/disables. Contact form: signed-in check moved to the browser.
+
+**Commands → result**: `npm run lint`, `npm run typecheck`: pass. `npm test`: 873 passed, 1 skipped (new
+`tests/page-cache.test.ts`, 39 tests; `site-config.test.ts` mock gains `draftMode`). `next build` (APP_ENV=production, no
+database): pass, public routes `○`/`●` with 5m revalidate. Standalone server on PostgreSQL 18: first render 0.49 s, then
+cache hits 5–9 ms; startup warm-up renders the sitemap; an edit through `/api/v1/posts` shows on the next request, an
+unpublish 404s at once; two replicas over Redis: an edit on one is served fresh by the other on its next request;
+draft-mode requests render per request and are not stored.
+
+**Open / manual**: none required. Optional: set `PAGE_CACHE_MAX_MB` if the site grows past ~64 MB of rendered pages.
+Direct SQL edits are not seen until 300 s or a pod restart.
+
+**Article**: `content/blog/ssg-isr-nextjs-jithendar-com.mdx` (`status: review`) explains the change; notes and the
+facts to re-check in `docs/knowledge-sharing/ssg-isr/README.md`. Manual: deploy, re-measure live TTFB, review, publish.
+
 ## Cache bus: cross-replica cache invalidation over the shared Valkey, pub/sub only (2026-11-10, owner request)
 
 Edits now reach both replicas within about a second instead of up to the cache TTL. `src/lib/cache-bus.ts` has its own

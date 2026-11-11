@@ -36,12 +36,15 @@ const nextConfig: NextConfig = {
   // Content is read from disk at request time (sitemaps, ISR), so ship it with the server.
   // Content is the one-time import source for /setup; migrations run at server start (instrumentation.ts).
   outputFileTracingIncludes: { "/**/*": [path.join("content", "**", "*"), path.join("src", "db", "migrations", "**", "*")] },
-  // Pods run with a read-only root filesystem, and Next 16 writes regenerated ISR pages into
-  // .next/server (route-cache) next to the build output. Keep the ISR cache in memory instead:
-  // content ships inside the image, so a restarted pod simply regenerates pages on demand.
+  // ISR: public pages are rendered once and served from memory (cache-handler.mjs), re-rendered after their
+  // `revalidate` and cleared at once on every replica when content or settings change (src/lib/page-cache.ts).
+  // The handler is the only cache layer (cacheMaxMemorySize: 0) and never writes to disk (read-only root filesystem);
+  // a restarted pod starts empty and src/lib/warm.ts renders the site again.
+  cacheHandler: path.join(siteRoot, "cache-handler.mjs"),
+  cacheMaxMemorySize: 0,
   // Server actions accept image uploads up to 10 MB (plus multipart overhead); larger files
   // (video, audio, PDF) go straight to R2 with presigned URLs and never pass through the app.
-  experimental: { isrFlushToDisk: false, serverActions: { bodySizeLimit: "11mb" } },
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
   // PGlite (local dev only) loads its WASM from a file URL that bundling breaks: load it from
   // node_modules instead of bundling.
   serverExternalPackages: ["@electric-sql/pglite"],

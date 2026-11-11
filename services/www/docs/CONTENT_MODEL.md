@@ -62,6 +62,31 @@ Everything else is invisible. Draft, review, archived and future-dated items ret
 
 **Scheduled publishing.** A merged item with a future `publishedAt` goes live on the first request after that time. Article pages revalidate every 5 minutes, so a 404 cached before go-live can last up to 5 minutes.
 
+## Rendering and caching (SSG + ISR)
+
+Public pages (home, `[page]`, blog, news, projects, categories, tags, authors, feeds, `sitemap.xml`,
+`search-index.json`, the site Open Graph image) are **static pages with incremental regeneration**:
+
+- **Rendered once, served from memory.** The ISR page cache is `cache-handler.mjs` (`cacheHandler` in
+  `next.config.ts`): in memory per pod, up to `PAGE_CACHE_MAX_MB` (default 64), least recently used out first, never on
+  disk (read-only root filesystem). Responses carry `Cache-Control: s-maxage=300, stale-while-revalidate`.
+- **Refreshed in the background** after 300 s (`export const revalidate = 300` on each route, `PAGE_REVALIDATE_SECONDS`
+  in `src/lib/page-cache.ts`). This is also the longest a scheduled post (future `publishedAt`) waits to appear.
+- **Cleared at once on every change.** A change to content, categories, appearance settings or integrations clears
+  the page cache on the replica that made it and, through the cache bus (`src/lib/cache-bus.ts`, `CACHE_BUS_REDIS_URL`),
+  on the others. Without the bus, other replicas catch up within 300 s. A raw SQL change bypasses this: wait 300 s or
+  restart the pods.
+- **"SSG" at startup.** The build has no database, so nothing database-backed is prerendered at build time (dynamic
+  routes return `[]` from `generateStaticParams`; the few parameterless routes the build renders use the bundled MDX
+  and are never served). Instead each pod renders every URL in its sitemap into the cache once it is up, and again
+  10 s after the cache is cleared (`src/lib/warm.ts`; `PAGE_WARMUP=false` turns it off). Visitors get cached pages from
+  the first request; a page the warm-up missed is rendered on its first request.
+- **Stays per request**: admin, account, sign-in, search, Python practice, previews, `news-sitemap.xml` (48 h window),
+  article Open Graph images, APIs. Per-user parts of public pages (account menu, comments, the contact form's
+  signed-in check) are client-side.
+- **Appearance preview** (Admin → Appearance → Preview) turns on Next's draft mode for that admin's browser: those
+  requests render per request with the draft configuration and are never stored in the cache.
+
 ## Previewing unpublished work
 
 `npm run preview` starts the dev server with `CONTENT_PREVIEW=true`. Items in `review` then appear everywhere with a **Preview: not published** badge (dated now if they have no `publishedAt`). Preview is ignored whenever `APP_ENV=production`, so it can never reach the live site.

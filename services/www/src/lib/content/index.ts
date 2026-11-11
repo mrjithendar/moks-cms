@@ -29,7 +29,10 @@ async function store(root?: string): Promise<ContentStore> {
   const hit = cache.get(key);
   const fresh = hit && (fileRoot ? process.env.NODE_ENV !== "development" : Date.now() - hit.at < DB_TTL_MS);
   if (hit && fresh) return hit.store;
-  let loaded = fileRoot ? loadContent(fileRoot) : await loadContentFromDb();
+  // `next build` prerenders the routes without parameters but has no database. That output is never served: the ISR
+  // page cache (cache-handler.mjs) starts empty and renders each page from Postgres on its first request.
+  const building = process.env.NEXT_PHASE === "phase-production-build";
+  let loaded = fileRoot ? loadContent(fileRoot) : building ? loadContent(contentRoot()) : await loadContentFromDb();
   // Fresh installation (nothing imported yet): serve the bundled content so pages work before /setup.
   if (!fileRoot && loaded.articles.length === 0 && loaded.pages.size === 0 && loaded.authors.size === 0) {
     loaded = loadContent(contentRoot());

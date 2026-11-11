@@ -32,6 +32,8 @@ export async function register() {
   });
   if (metricsPort) log.info("metrics listening", { event: "metrics_listening", port: metricsPort });
 
+  // ISR page cache: clears on content/settings invalidations from this replica and (via the bus) the others.
+  await import("./lib/page-cache");
   const { listenForInvalidations } = await import("./lib/cache-bus");
   await listenForInvalidations().catch((err) => log.warn("cache invalidation listener unavailable", { err }));
 
@@ -68,6 +70,9 @@ export async function register() {
   // Warm the caches so the first visitor gets a fast page, not a cold one.
   const { warmCaches } = await import("./lib/warm");
   void warmCaches().catch((err) => log.warn("cache warm-up failed", { err }));
+  // …and render every public page into the ISR page cache once this pod is serving (lib/warm.ts).
+  const { startPageWarmup } = await import("./lib/warm");
+  void startPageWarmup().catch((err) => log.warn("page warm-up failed", { err }));
 }
 
 /**

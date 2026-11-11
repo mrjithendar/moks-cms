@@ -534,10 +534,12 @@ async def test_dimension_change_builds_a_new_table_then_swaps_it_in(pool: Any) -
     async with pool.connection() as c:
         t = await new._vector_type(c, "seo_article_chunks")
         gone = await new._vector_type(c, "seo_article_chunks_next")
-        names = {r["n"] for r in await (await c.execute("select conname as n from pg_constraint where conrelid = to_regclass('seo_article_chunks')")).fetchall()}
+        cons = {r["n"]: r["t"] for r in await (await c.execute("select conname as n, contype::text as t from pg_constraint where conrelid = to_regclass('seo_article_chunks')")).fetchall()}
         idx_names = {r["n"] for r in await (await c.execute("select indexname as n from pg_indexes where tablename = 'seo_article_chunks'")).fetchall()}
     assert t == "vector(64)" and gone is None
-    assert names == {"seo_article_chunks_pkey", "seo_article_chunks_article_id_fkey", "seo_article_chunks_article_id_chunk_index_key"}
+    # PostgreSQL 18 also lists named NOT NULL constraints (contype 'n'); every name must have lost the build prefix.
+    assert {n for n, t in cons.items() if t != "n"} == {"seo_article_chunks_pkey", "seo_article_chunks_article_id_fkey", "seo_article_chunks_article_id_chunk_index_key"}
+    assert not [n for n in cons if n.startswith("seo_article_chunks_next")]
     assert {"seo_article_chunks_embedding_idx", "seo_article_chunks_tsv_idx", "seo_article_chunks_identifiers_idx"} <= idx_names
     assert (await new.search("cert-manager renews certificates thirty days", k=1))[0].anchor == "renewal"
     again = PgVectorIndex(pool, _CountingEmbeddings(64))

@@ -7,7 +7,8 @@ export type ResolvedConfig = { config: SiteConfig; preview: boolean };
 
 /**
  * The configuration for the current request: the published one, or the private draft when the viewer is an
- * admin with a valid preview token (cookie set by /api/admin/appearance/preview). Memoised per request.
+ * admin with a valid preview token (cookie set by /api/admin/appearance/preview, together with Next's draft mode,
+ * which bypasses the ISR page cache for that browser only). Memoised per request.
  * Only pages and layouts call this; library code (auth, comments…) uses the published config.
  */
 export const getSiteConfig = cache(async (): Promise<ResolvedConfig> => {
@@ -21,7 +22,10 @@ export const getSiteConfig = cache(async (): Promise<ResolvedConfig> => {
 
 async function previewToken(): Promise<string | undefined> {
   try {
-    const { cookies } = await import("next/headers");
+    const { cookies, draftMode } = await import("next/headers");
+    // Draft mode is on only for the admin who opened a preview (/api/admin/appearance/preview). Checking it first
+    // keeps every other request static: reading cookies() would make each page render per request (no ISR).
+    if (!(await draftMode()).isEnabled) return undefined;
     return (await cookies()).get(PREVIEW_COOKIE)?.value;
   } catch {
     return undefined; // outside a request (build, scripts)
