@@ -6,6 +6,7 @@
 #            "section-anchor hit". Empty for no-answer questions.
 #   type:    concept | how-to | exact-term (a command, flag, config key, error string or version) | troubleshooting |
 #            no-answer (not covered on the site: retrieval should give the grader nothing convincing)
+#   tags:    optional, reported per tag: paraphrase | multi-hop | exact | near-miss (the hard set, ids x01…)
 # Rules for editing: keep at least 40 questions and at least 6 no-answer; don't tune questions to a retriever (write
 # them the way a reader would ask); when an article is renamed or restructured, fix its slugs/anchors here.
 version: 1
@@ -292,5 +293,250 @@ questions:
   - id: n08
     question: Explain CVE-2021-44228 Log4Shell mitigation in Java
     type: no-answer
+    slugs: []
+    anchors: []
+
+  # --- hard set (2026-11-11): the first 55 saturated (Recall@3 = 100 %). `tags` marks what makes each one hard:
+  #   paraphrase: asked without the article's own vocabulary; multi-hop: needs two articles (any one is a hit, the
+  #   generation eval checks the answer uses both); exact: an error string or flag quoted verbatim; near-miss: a
+  #   no-answer question next to a covered topic.
+  - id: x01
+    question: What stops automated scripts from spamming the contact form on this site?
+    type: concept
+    tags: [paraphrase]
+    slugs: [cloudflare-turnstile-nextjs-bot-protection]
+    anchors: [1-why-a-website-needs-bot-protection, 3-where-jithendarcom-uses-turnstile, path-1-the-contact-form]
+  - id: x02
+    question: How does a pipeline running in the cloud get permission to deploy to the home lab cluster?
+    type: how-to
+    tags: [paraphrase]
+    slugs: [github-actions-authenticate-minikube]
+    anchors: [1-the-short-version, 4-the-identity-one-serviceaccount-one-role, 5-the-token, 7-building-the-kubeconfig-in-the-job]
+  - id: x03
+    question: Why do some library bumps arrive bundled in a single pull request while others come alone?
+    type: concept
+    tags: [paraphrase]
+    slugs: [dependabot-setup-five-repositories]
+    anchors: [4-groups-fewer-prs-but-only-the-right-ones-together, will-grouping-hide-a-broken-update]
+  - id: x04
+    question: Why wait a few days before taking a version of a package that was published yesterday?
+    type: concept
+    tags: [paraphrase]
+    slugs: [dependabot-setup-five-repositories]
+    anchors: [5-cooldown-let-new-releases-settle-first]
+  - id: x05
+    question: How does each application get its own login on the shared database server?
+    type: how-to
+    tags: [paraphrase]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [44-one-database-and-one-role-per-application, how-do-i-rotate-an-applications-password]
+  - id: x06
+    question: What happens to the in-memory cache when the node holding the writable copy dies?
+    type: concept
+    tags: [paraphrase]
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [42-topology-persistence-and-failover, 54-the-failover-test]
+  - id: x07
+    question: How do you stop the investigation agent from doing something destructive unless a person says yes?
+    type: concept
+    tags: [paraphrase]
+    slugs: [four-ai-systems-one-cluster]
+    anchors: [action-plans-approvals-and-at-most-once-execution, two-layers-of-authorization]
+  - id: x08
+    question: How could I tell if someone quietly edited the record of what the agent did?
+    type: concept
+    tags: [paraphrase]
+    slugs: [four-ai-systems-one-cluster]
+    anchors: [the-hash-chained-audit-log]
+  - id: x09
+    question: Why isn't the document that looks closest to the question always the best evidence?
+    type: concept
+    tags: [paraphrase]
+    slugs: [pytorch-rag-reranking-moks-sre-agent]
+    anchors: [the-problem-related-is-not-the-same-as-the-best-evidence, the-short-version]
+  - id: x10
+    question: What happens to the evidence ranking when the scoring model service is unavailable?
+    type: troubleshooting
+    tags: [paraphrase]
+    slugs: [pytorch-rag-reranking-moks-sre-agent]
+    anchors: [moks-integration-and-fallback, live-fallback-and-what-is-not-measured, what-the-model-is-not-allowed-to-override]
+  - id: x11
+    question: How do diagrams written as text keep up when a reader switches to the dark colour scheme?
+    type: how-to
+    tags: [paraphrase]
+    slugs: [mermaid-diagrams-on-jithendar-com]
+    anchors: [step-3-follow-the-sites-theme]
+  - id: x12
+    question: Is it safe to put the generated picture markup straight into the page?
+    type: concept
+    tags: [paraphrase]
+    slugs: [mermaid-diagrams-on-jithendar-com]
+    anchors: [why-the-svg-is-safe-to-insert]
+  - id: x13
+    question: Why does an empty list given as a default parameter remember values between calls?
+    type: concept
+    tags: [paraphrase]
+    slugs: [python-tutorial-beginners-real-projects, python-vs-typescript, python-vs-go-vs-typescript]
+    anchors: [the-mutable-default-argument-mistake, pythons-mutable-default-arguments, mutable-default-arguments-in-python]
+  - id: x14
+    question: How did you track one sluggish page load down to its cause?
+    type: troubleshooting
+    tags: [paraphrase]
+    slugs: [logging-tracing-observability-jithendar-com]
+    anchors: [7-an-investigation-one-slow-request, 5-how-logs-and-traces-are-correlated]
+  - id: x15
+    question: How do I send a tenth of the users to a new version and give up on slow calls?
+    type: how-to
+    tags: [paraphrase]
+    slugs: [istio-service-mesh-minikube-features-setup-troubleshooting]
+    anchors: [example-a-9010-canary-with-timeout-and-retries, 3-key-features]
+  - id: x16
+    question: Can I try out an access rule between services without actually blocking anyone?
+    type: how-to
+    tags: [paraphrase]
+    slugs: [istio-service-mesh-minikube-features-setup-troubleshooting]
+    anchors: [62-authorizationpolicy-dry-run-first]
+  - id: x17
+    question: Why are the database pods left outside the mesh proxies?
+    type: concept
+    tags: [paraphrase]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [why-no-istio-sidecars-in-postgres-db, 45-the-namespace]
+  - id: x18
+    question: Will the store's chat helper actually place an order on my behalf?
+    type: concept
+    tags: [paraphrase]
+    slugs: [roboshop-ai-architecture, roboshop-ai-shopping-agent]
+    anchors: [can-a-shopper-buy-something-through-the-assistant, actions-with-side-effects, product-discovery-cart-and-checkout]
+  - id: x19
+    question: How do I keep passwords from ending up in my program's log output?
+    type: how-to
+    tags: [paraphrase]
+    slugs: [python-tutorial-beginners-real-projects, moks-observability-logging-tracing-ai-agent-monitoring]
+    anchors: [logging-and-keeping-secrets-out-of-logs, 8-files-json-and-configuration, privacy-retention-and-cost]
+  - id: x20
+    question: How do the RoboShop shopping assistant and its MCP server fit together?
+    type: concept
+    tags: [multi-hop]
+    slugs: [roboshop-ai-architecture, roboshop-ai-mcp-server, roboshop-ai-shopping-agent]
+    anchors: [does-the-assistant-use-the-mcp-server, an-ai-assisted-shopping-request, who-plays-which-role]
+  - id: x21
+    question: Which tools scale RoboShop's pods and nodes on EKS, and how does each compare with its alternative?
+    type: concept
+    tags: [multi-hop]
+    slugs: [roboshop-ai-eks-system-design, 15-essential-kubernetes-tools-devops-engineers-2026-part-2]
+    anchors: [scaling-keda-for-pods-karpenter-for-nodes, keda-or-hpa, karpenter-or-cluster-autoscaler]
+  - id: x22
+    question: What do the MOKS and jithendar.com observability setups have in common?
+    type: concept
+    tags: [multi-hop]
+    slugs: [moks-observability-logging-tracing-ai-agent-monitoring, logging-tracing-observability-jithendar-com]
+    anchors: [two-kinds-of-telemetry-in-the-same-backends, the-tools, 2-the-tools, 5-how-logs-and-traces-are-correlated]
+  - id: x23
+    question: How does putting Istio in front of RoboShop on EKS differ from the gateway setup on minikube?
+    type: concept
+    tags: [multi-hop]
+    slugs: [deploy-roboshop-ai-amazon-eks, istio-service-mesh-minikube-features-setup-troubleshooting]
+    anchors: [step-4-put-the-nlb-in-front-of-istio, 5-on-my-cluster-the-istio-gateway-is-the-only-edge]
+  - id: x24
+    question: Why did both the PostgreSQL and the Valkey clusters need a first install in stages?
+    type: troubleshooting
+    tags: [multi-hop]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform, valkey-redis-sentinel-minikube-terraform]
+    anchors: [52-the-first-install-has-to-be-staged]
+  - id: x25
+    question: How does the FastAPI layer of the RoboShop gateway relate to the shopping agent behind it?
+    type: concept
+    tags: [multi-hop]
+    slugs: [fastapi-and-fastmcp-ai-projects, roboshop-ai-gateway]
+    anchors: [roboshop-gateway-fastapi-as-a-transport-shell, following-one-chat-request, endpoints-and-internal-modules]
+  - id: x26
+    question: Which RoboShop service is written in Go, and why that language for it?
+    type: concept
+    tags: [multi-hop]
+    slugs: [python-vs-go-vs-typescript, roboshop-ai-microservices-architecture]
+    anchors: [go-the-currency-rate-service, real-examples-from-my-projects, 2-prices-in-your-currency]
+  - id: x27
+    question: "WRONGPASS invalid username-password pair or user is disabled"
+    type: exact-term
+    tags: [exact]
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [wrongpass-invalid-username-password-pair]
+  - id: x28
+    question: "OOM command not allowed when used memory > 'maxmemory'"
+    type: exact-term
+    tags: [exact]
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [oom-command-not-allowed-when-used-memory--maxmemory]
+  - id: x29
+    question: "NOPERM user has no permissions to access database"
+    type: exact-term
+    tags: [exact]
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [noperm--has-no-permissions-to-access-database]
+  - id: x30
+    question: replica stuck at "waiting for checkpoint to complete"
+    type: exact-term
+    tags: [exact]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [a-replica-is-stuck-at-waiting-for-checkpoint-to-complete]
+  - id: x31
+    question: "psql: invalid connection option sslnegotiation"
+    type: exact-term
+    tags: [exact]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [psql-says-invalid-connection-option-sslnegotiation-or-hangs-at-the-gateway]
+  - id: x32
+    question: 'terraform plan: no matches for kind "Cluster" in version postgresql.cnpg.io/v1'
+    type: exact-term
+    tags: [exact]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [plan-fails-with-no-matches-for-kind-cluster-or-database]
+  - id: x33
+    question: "Provider produced inconsistent result after apply"
+    type: exact-term
+    tags: [exact]
+    slugs: [cloudnativepg-postgres-cluster-minikube-terraform]
+    anchors: [provider-produced-inconsistent-result-after-apply-on-the-operator-release]
+  - id: x34
+    question: while IFS= read -r line
+    type: exact-term
+    tags: [exact]
+    slugs: [shell-scripting-vs-python]
+    anchors: [reading-lines-safely-with-ifs-read--r, reading-files-line-by-line]
+  - id: x35
+    question: terraform removed block lifecycle destroy = false
+    type: exact-term
+    tags: [exact]
+    slugs: [learning-terraform-real-project-tools-repository]
+    anchors: [removing-from-terraform-without-deleting-the-removed-block]
+  - id: x36
+    question: "Please connect an LLM to get results."
+    type: exact-term
+    tags: [exact]
+    slugs: [roboshop-ai-gateway]
+    anchors: [every-answer-says-please-connect-an-llm-to-get-results]
+  - id: x37
+    question: "Error: error getting credentials when Terraform pulls the Valkey chart"
+    type: exact-term
+    tags: [exact]
+    slugs: [valkey-redis-sentinel-minikube-terraform]
+    anchors: [terraform-cannot-pull-the-chart-error-getting-credentials]
+  - id: x38
+    question: How do I back up Velero to Azure Blob Storage?
+    type: no-answer
+    tags: [near-miss]
+    slugs: []
+    anchors: []
+  - id: x39
+    question: How do I stream PostgreSQL changes into Kafka with Debezium?
+    type: no-answer
+    tags: [near-miss]
+    slugs: []
+    anchors: []
+  - id: x40
+    question: How do I schedule batch jobs with HashiCorp Nomad instead of Kubernetes?
+    type: no-answer
+    tags: [near-miss]
     slugs: []
     anchors: []

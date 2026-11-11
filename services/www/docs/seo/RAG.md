@@ -25,7 +25,9 @@ flowchart LR
   `[n]` for every statement or reply `NO_ANSWER`. Citations are built from the excerpts the answer actually cites, as
   `/blog/slug#heading` links. The model never writes links itself. An answer that cites nothing is treated as unknown.
 - **Input guards:** at most 500 characters; mostly Latin script (the site is in English); refusal for
-  prompt-injection patterns ("ignore previous instructions", "system prompt", "you are now", `</data>`…), personal
+  prompt-injection patterns ("ignore previous instructions", "reveal/print your system prompt", "you are now", `</data>`…;
+  "DAN" only in capitals, so a reader named Dan passes, and a bare "system prompt" is allowed because this blog writes
+  about agents: "how do I write a system prompt for my agent?" is a fair question), personal
   data (emails, phone numbers, keys) and obvious off-topic requests. Anything else off-topic fails the relevance
   grade and gets the fallback.
 - **Retrieval input:** the question is embedded as asked (whitespace collapsed). The normalized form (lower-case,
@@ -40,8 +42,14 @@ flowchart LR
 - **Citations** are accepted as `[1]`, `[1][2]`, `[1, 2]` or `[1; 2]`.
 - **Output guards:** links are stripped unless they point to this site or an allowlisted documentation domain.
 - **Streaming:** server-sent events: `delta` events while the answer streams, then one `final` event with the guarded
-  answer and citations, which replaces the streamed text in the widget. The start of the stream is held back until
-  it's clear the answer isn't `NO_ANSWER`.
+  answer and citations, which replaces the streamed text in the widget. Nothing is streamed until the buffered text
+  cites an excerpt that exists (`[n]`, n ≤ the excerpts sent): an uncited answer is dropped by `guard_output`, so its
+  text must never have been shown, and this also holds back `NO_ANSWER`. After that, text goes out in
+  whitespace-bounded pieces (never inside a URL or an unclosed `[…](…)`) with the same link stripping as the final
+  answer. A truncated answer (`max_tokens`) falls back. If the reader closes the tab, the answer still finishes in its
+  own task and is cached and logged (its spend is real).
+- **Cost in `seo_ask_log.cost_usd`:** grader + answer (the streamed step reports its usage through `on_usage`),
+  including a grader whose output didn't validate; a cache hit logs 0.
 
 ## Abuse and cost controls
 
@@ -55,6 +63,20 @@ flowchart LR
 | Answer cache | in-process, keyed on the normalised question + index version (any reindex changes the key) | 15 min |
 
 Kong, the ingress and Istio routing are unchanged.
+
+**LLM accounting (every call, `app/llm.py`):** each call is booked exactly once in `seo_llm_usage`, whatever its
+ending: `ok`, `invalid` (schema miss; when the SDK raises before returning the message the row is the upper-bound
+estimate, `error_code` `schema_estimated`), `truncated` (`stop_reason` `max_tokens` on text/stream: raises
+`Truncated`, a subclass of `InvalidOutput`; structured output keeps `invalid` with `error_code` `max_tokens`),
+`refused`, and `cancelled` (a stream closed early, e.g. a client disconnect: booked from the stream's input-token
+snapshot and streamed characters ÷ 3.5, never more than `max_tokens`). Rows are priced on the model that answered
+(`msg.model`; a server-side fallback can switch models; dated ids price as their family). The budget guard
+**reserves** each call's upper-bound estimate (per scope, under an asyncio lock) until it is booked, so concurrent
+calls can't all pass on the same spend; the reservation is in-process (the agent runs one replica). Each call also
+emits one `llm.call` span (model, purpose, prompt version, token counts, `cost_usd`, outcome, `run_id`/`agent` when
+the call spec carries them) and `seo_llm_calls_total{purpose,outcome}`. `run_id`/`agent` are also written to
+`seo_llm_usage` once web-app migration 0022 has added the columns (checked once per process, so either side can deploy
+first).
 
 ## Privacy
 
@@ -109,8 +131,13 @@ LangChain's `MarkdownHeaderTextSplitter` was tried in v3 and dropped (D-45).
 | `api` | OpenAI-compatible `/embeddings` | Third party, off by default (`EMBEDDINGS_API_URL`, `EMBEDDINGS_API_KEY`) |
 | `hash` | hashed bag of words | Tests and local development only |
 
-Changing the provider changes the vector dimension. `ensure_schema` then recreates `seo_article_chunks` (derived
-data only), and the next reindex rebuilds it.
+Changing the provider changes the vector dimension. `ensure_schema` then **keeps** the live `seo_article_chunks`,
+creates `seo_article_chunks_next` with the new dimension and logs a warning; the next complete reindex (weekly or
+`{"full": true}`) fills it and swaps it in inside one transaction (drop old, rename new and its constraints/indexes).
+Until the swap, search returns nothing, because the new query vectors can't be compared with the old ones, so Ask the
+Blog answers with the fallback: run the full reindex right after the restart (MANUAL_SETUP.md §19). A single-article
+reindex during a rebuild writes the new table but never swaps. Switching the provider back before the swap drops the
+half-built table and serves the old one again.
 
 ## Index and reindexing
 
@@ -121,6 +148,14 @@ data only), and the next reindex rebuilds it.
   article title too (the title is part of the embedded text), so renaming an article re-embeds its chunks.
   Deploying this change re-embeds every chunk once (the stored hashes change format), so expect the first weekly run
   after it to take as long as a full reindex.
+- **Moved, not changed:** inserting a paragraph shifts every later `chunk_index`, so their rows "change". Before
+  embedding, the reindex looks up the article's stored rows by content hash (same model) and reuses those vectors; only
+  genuinely new text is embedded (`seo_embeddings_reindex_reused_total`). A `full` reindex re-embeds everything. Each
+  article's rows are written with one `executemany` in a transaction.
+- **Search settings:** each search runs in a transaction with `hnsw.ef_search` = max(40, 2 × `RAG_CANDIDATES`)
+  (pgvector ≥ 0.5) and `hnsw.iterative_scan = relaxed_order` (≥ 0.8), set with `set_config(…, true)`. HNSW returns
+  at most `ef_search` rows before the `published`/`exclude_article` filters, which could otherwise leave fewer than N
+  candidates. Nothing is set on older versions (IVFFlat).
 - **Safety:** a full or weekly reindex refuses to run (`IndexSafetyError`) when the web app returns no published
   articles, or (with 10 or more articles indexed) fewer than half of the indexed ones, instead of deleting the index.
   After checking the list, rerun `reindex_flow` with `{"force": true}`. Single-article reindexes (publish_flow) never
@@ -161,14 +196,35 @@ data only), and the next reindex rebuilds it.
 
 ## Evaluation
 
-The question set `services/seo-agent/tests/fixtures/rag_eval.yaml`: **55 questions** written from the published
+The question set `services/seo-agent/tests/fixtures/rag_eval.yaml`: **55 questions** (plus the 40-question hard set
+below) written from the published
 articles (14 concept, 12 how-to, 11 exact-term, 10 troubleshooting, **8 no-answer**), each with its expected article(s)
 and acceptable section anchors. `scripts/rag_eval.py` reports Recall@1/3/6, MRR, section-anchor hit rate, the
 no-answer false-positive rate (a no-answer question whose top 6 contain a chunk over the floor would reach the grader),
 the calibrated floor and latency, into `docs/seo/rag-eval/<date>-<config>.md` plus a `-summary.md`.
 
+- **Hard set (2026-11-11), 40 more questions (ids `x01`–`x40`, 95 in all):** the first 55 saturated (Recall@3 =
+  100 %), so these are written to be hard and tagged: **paraphrase** (19, asked without the article's vocabulary),
+  **multi-hop** (7, two articles; any one is a retrieval hit, the generation eval checks the answer), **exact** (11,
+  error strings and flags quoted verbatim) and **near-miss** (3 no-answer questions next to covered topics). The
+  report adds a "Hard set by tag" table. With hashed embeddings paraphrase Recall@3 is 47 % and exact 100 %, which is
+  what a bag of words does, not a measurement: rerun with ONNX before reading anything into it.
+- **Mining real questions:** `scripts/rag_mine_eval.py --dsn … [--days 30 --low-score 0.72]` (read-only) writes
+  candidate entries from `seo_ask_gaps` (open gaps) and `seo_ask_log` (fallbacks, and answers whose best cosine was
+  under `--low-score`), skipping questions already in the set. `type`/`slugs`/`anchors` are left empty on purpose: a
+  person labels them from the articles; the `mined` hint (reason, times asked, best cosine, what was retrieved) is
+  deleted when an entry moves into the set.
+- **Generation eval (opt-in, real calls):** `scripts/rag_eval.py --generation [--generation-config token-hybrid
+  --generation-max-usd 2 --judge-model claude-opus-5-5]` with `ANTHROPIC_API_KEY` runs Ask the Blog's own pipeline
+  over the set and writes `<date>-generation.md`: answered rate, abstain rate on no-answer questions, **citation
+  precision** by labels (cited article ∈ expected slugs) and by an LLM judge (the cited excerpt supports the sentence),
+  and **faithfulness** (judge: share of the answer's claims the excerpts support). The judge is a normal `Llm` call
+  (`purpose` `eval_judge`, prompt `eval-judge-v1`) under a local budget guard capped at `--generation-max-usd`; tests
+  run it with `FakeLlm`.
 - **CI:** pytest runs it with hashed embeddings (in memory and on Postgres) and the `ci-seo-agent` job runs the script
-  once: a smoke test that it runs; the numbers mean nothing.
+  once: a smoke test that it runs; the numbers mean nothing. There is deliberately **no recall threshold in CI**:
+  hashed embeddings are lexical, so they score exact-term questions at 100 % even in vector-only mode and paraphrases
+  at ~50 % whatever the retriever does; a gate on them would track tokenisation, not retrieval quality.
 - **For real:** locally (ONNX model + any Postgres for full text; no pgvector needed, the vector list is exact cosine,
   ≈ HNSW at this size), or the manual workflow **RAG eval** (`rag-eval.yml`), which fetches the model at the image's
   pinned revision and checksums.

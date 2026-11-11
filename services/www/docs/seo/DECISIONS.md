@@ -554,3 +554,27 @@ card ships with Phase 3 because it needs the model registry.
   bootstrap CI; a proposal needs the CI's lower bound above 0.
 - **Intent.** `MIN_TRAIN` 60 → 300; stratified 5-fold × 2 for the metrics; the threshold is tuned on a calibration
   split of each training fold, so "accuracy when confident" is no longer measured on the rows that chose the threshold.
+
+## D-82 LLM review fixes: book every call once, reserve before calling
+A call that stops at `max_tokens` raises `Truncated` (a subclass of `InvalidOutput`, so existing handlers fall back
+instead of shipping half a text); a stream closed by the client is booked from an upper-bound estimate in its
+`finally`; a schema miss the SDK raises before returning the message is booked as an estimate (`schema_estimated`)
+rather than not at all, because `messages.parse` has no raw-response variant to read usage from. The budget guard holds
+each call's estimate as pending spend until it is booked: concurrent calls no longer pass on the same reading.
+In-process only; a cross-replica reservation (row or advisory lock on `seo_llm_usage`) waits for a second replica.
+Spans are emitted after the call (start time kept), because a streamed call lives across generator yields where a
+context-managed current span would be detached in another context.
+
+## D-83 Dimension change: build next to the live table, swap when complete
+Dropping the live table on start-up lost the index on a failed or reverted provider change. The new table is built
+as `seo_article_chunks_next` and swapped in one transaction after a complete reindex. Answers still fall back until
+the swap (old vectors can't be searched with the new model), so no automatic reindex was added to start-up: the
+container builds before the web app is guaranteed reachable, and the manual step was already documented.
+
+## D-84 Ask the Blog: stream only after a valid citation; narrower injection filter
+Deltas used to go out before `guard_output`, so a link or an uncited (later discarded) answer could reach the reader.
+Streaming now starts at the first in-range `[n]` and strips links per whitespace-bounded piece. The injection filter
+refused honest questions on an AI blog ("how do I write a system prompt…", a reader named Dan): it now matches only
+phrasing aimed at this assistant's prompt and a capitalised `DAN`. The eval set's hard questions and the opt-in
+generation eval (citation precision, faithfulness via an `eval_judge` call) replace a CI recall gate, which hashed
+embeddings can't make meaningful.

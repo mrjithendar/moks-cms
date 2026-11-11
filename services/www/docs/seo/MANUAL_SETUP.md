@@ -178,7 +178,9 @@ or wait for the Sunday CronJob. Turn it off the same way with `"false"`.
 ## 19. Embeddings model choice
 The default is `EMBEDDINGS_PROVIDER=onnx` (bge-small-en-v1.5, baked into the image). To use an Ollama already in the
 cluster: set `EMBEDDINGS_PROVIDER=ollama`, `OLLAMA_URL`, `OLLAMA_EMBED_MODEL` in `seo-agent-config`, allow egress to it
-in the `seo-agent` NetworkPolicy, restart, then run a full reindex (the table is rebuilt for the new dimension). A
+in the `seo-agent` NetworkPolicy, restart, then run a full reindex right away: the new-dimension table is built next
+to the old one and swapped in when the reindex completes; until then Ask the Blog answers with the fallback (RAG.md
+"Embeddings"). A
 third-party API (`EMBEDDINGS_PROVIDER=api`) needs `EMBEDDINGS_API_URL`/`EMBEDDINGS_API_KEY` in `seo-agent-env`, and
 it sends article text to that provider.
 

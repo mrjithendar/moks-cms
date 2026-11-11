@@ -30,12 +30,21 @@ EXCERPT_CHARS = 1500
 _CITE = re.compile(r"\[(\d{1,2}(?:\s*[,;]\s*\d{1,2})*)\]")
 NO_ANSWER = "NO_ANSWER"
 
+# An AI blog gets honest questions about system prompts and agents ("how do I write a system prompt for my agent?"),
+# and readers named Dan: only phrasing aimed at THIS assistant's prompt counts. "DAN" (the jailbreak persona) is matched
+# case-sensitively, as a separate pattern, so "Dan" and "dan" pass.
 INJECTION = re.compile(
     r"(ignore|disregard|forget)\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|your)\s+(instructions|prompts?|rules)"
-    r"|system\s*prompt|you\s+are\s+now\b|developer\s+mode|jailbreak|\bDAN\b|act\s+as\s+(an?\s+)?(unfiltered|evil|uncensored)"
-    r"|reveal\s+(your|the)\s+(instructions|prompt|rules|system)|<\s*/?\s*(system|data|instructions)\s*>|BEGIN\s+(SYSTEM|PROMPT)",
+    r"|\b(reveal|show|print|repeat|output|display|give|tell|leak|dump|share)\s+(me\s+)?(your|this\s+assistant'?s?)\s+(full\s+|original\s+|hidden\s+|initial\s+|exact\s+)?"
+    r"(system\s*prompt|instructions|prompt|rules|system\s+message)"
+    r"|\b(reveal|show|print|repeat|output|display|leak|dump)\s+(me\s+)?the\s+(hidden|original|initial|secret)\s+(system\s*prompt|instructions|prompt|rules)"
+    r"|\breveal\s+the\s+(system\s*prompt|instructions|prompt|rules|system)"
+    r"|\bwhat\s+(is|are|was)\s+your\s+(system\s*prompt|instructions|rules)\b|\byour\s+system\s*prompt\b"
+    r"|you\s+are\s+now\b|developer\s+mode|jailbreak|act\s+as\s+(an?\s+)?(unfiltered|evil|uncensored)"
+    r"|<\s*/?\s*(system|data|instructions)\s*>|BEGIN\s+(SYSTEM|PROMPT)",
     re.I,
 )
+INJECTION_CASED = re.compile(r"\bDAN\b")
 OFF_TOPIC = re.compile(r"\b(write|compose)\s+(me\s+)?(a\s+)?(poem|song|essay|story|cover letter)\b|\bhomework\b|\b(medical|legal|financial)\s+advice\b", re.I)
 
 ANSWER_RULES = """You answer questions for readers of jithendar.com, a technical blog, using ONLY the numbered article excerpts provided in <data name="excerpts">.
@@ -89,7 +98,7 @@ def check_input(q: str) -> str | None:
         return "too_short"
     if latin_ratio(q) < 0.6:
         return "language"
-    if INJECTION.search(q):
+    if INJECTION.search(q) or INJECTION_CASED.search(q):
         return "injection"
     if EMAIL.search(q) or PHONE.search(q) or SECRETISH.search(q):
         return "personal_data"
@@ -108,9 +117,7 @@ REFUSALS = {
 }
 
 
-def guard_answer(text: str, allowed_hosts: set[str]) -> str:
-    """No links outside the site (and cited official docs): strip any URL or Markdown link the model wrote anyway."""
-
+def strip_links(text: str, allowed_hosts: set[str]) -> str:
     def keep(url: str) -> bool:
         if url.startswith("/") and not url.startswith("//"):
             return True
@@ -118,8 +125,64 @@ def guard_answer(text: str, allowed_hosts: set[str]) -> str:
         return h in allowed_hosts
 
     text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", lambda m: m.group(0) if keep(m.group(2)) else m.group(1), text)
-    text = re.sub(r"https?://[^\s)\]]+", lambda m: m.group(0) if keep(m.group(0)) else "[link removed]", text)
-    return text.strip()
+    return re.sub(r"https?://[^\s)\]]+", lambda m: m.group(0) if keep(m.group(0)) else "[link removed]", text)
+
+
+def guard_answer(text: str, allowed_hosts: set[str]) -> str:
+    """No links outside the site (and cited official docs): strip any URL or Markdown link the model wrote anyway."""
+    return strip_links(text, allowed_hosts).strip()
+
+
+def safe_cut(text: str, start: int) -> int:
+    """End of the part of `text[start:]` that can be streamed now: up to the last whitespace (a URL or a word in
+    progress is never split), and never inside a Markdown link or citation that has not closed yet ("[…" or
+    "[…](…" without its ")"), so strip_links sees every link whole."""
+    cut = max(text.rfind(" ", start), text.rfind("\n", start), text.rfind("\t", start))
+    if cut <= start:
+        return start
+    seg = text[start:cut]
+    opened = seg.rfind("[")
+    if opened != -1:
+        rest = seg[opened:]
+        close = rest.find("]")
+        if close == -1 or (rest[close + 1 : close + 2] == "(" and ")" not in rest[close + 1 :]):
+            return start + opened
+    return cut
+
+
+class StreamGate:
+    """What reaches the reader while the answer streams (the final event still carries the guarded answer):
+
+    - nothing until the buffered text cites an excerpt that exists ([n], n ≤ number of excerpts): an answer that
+      never cites anything is dropped by guard_output, so its text must never have been shown; this also holds back
+      the NO_ANSWER sentinel;
+    - after that, text in whitespace-bounded pieces with links outside the site stripped (strip_links, as in
+      guard_answer), so a URL is never streamed before it can be checked."""
+
+    def __init__(self, n_hits: int, allowed_hosts: set[str]):
+        self.n_hits, self.hosts = n_hits, allowed_hosts
+        self.buf = ""
+        self.sent = 0
+        self.open = False
+
+    def feed(self, tok: str) -> str:
+        self.buf += tok
+        if not self.open:
+            if self.buf.lstrip().startswith(NO_ANSWER) or not cited_numbers(self.buf, self.n_hits):
+                return ""
+            self.open = True
+        cut = safe_cut(self.buf, self.sent)
+        if cut <= self.sent:
+            return ""
+        out, self.sent = self.buf[self.sent : cut], cut
+        return strip_links(out, self.hosts)
+
+    def close(self) -> str:
+        """The rest, once the stream has ended (only if streaming had started)."""
+        if not self.open or self.sent >= len(self.buf):
+            return ""
+        out, self.sent = self.buf[self.sent :], len(self.buf)
+        return strip_links(out, self.hosts)
 
 
 def select_excerpts(hits: list[dict[str, Any]], grade: Relevance) -> list[dict[str, Any]]:
@@ -176,8 +239,8 @@ class AskPipeline:
             spec = CallSpec(model=deps.settings.classify_model, purpose="ask_grade", prompt_version=PROMPT_VERSION, cached_system=[GRADE_RULES], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=200)
             try:
                 r, u = await deps.llm.structured(spec, Relevance)
-            except InvalidOutput:
-                return {"relevant": False}
+            except InvalidOutput as e:  # still billed: the logged cost includes it
+                return {"relevant": False, "cost_usd": s.get("cost_usd", 0) + (e.usage.cost_usd() if e.usage else 0.0)}
             return {"relevant": bool(r.relevant), "answer_hits": select_excerpts(s["hits"], r), "cost_usd": s.get("cost_usd", 0) + u.cost_usd()}
 
         async def answer_with_citations(s: dict[str, Any]) -> dict[str, Any]:
@@ -186,23 +249,22 @@ class AskPipeline:
             excerpts = [{"n": i + 1, "title": h["title"], "section": h["section"], "text": h["content"]} for i, h in enumerate(hits)]
             spec = CallSpec(model=deps.settings.draft_model, purpose="ask_answer", prompt_version=PROMPT_VERSION, cached_system=[ANSWER_RULES], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=700)
             q: asyncio.Queue[str | None] | None = s.get("stream")
+            gate = StreamGate(len(hits), site_hosts)
             parts: list[str] = []
-            flushed = False
-            async for tok in deps.llm.stream(spec):
-                parts.append(tok)
-                if q is None:
-                    continue
-                if flushed:
-                    await q.put(tok)
-                    continue
-                # Hold back the start until it clearly is not the NO_ANSWER sentinel, then flush what we have.
-                joined = "".join(parts)
-                if len(joined.strip()) > len(NO_ANSWER) and not joined.strip().startswith(NO_ANSWER):
-                    await q.put(joined)
-                    flushed = True
+            spent: list[float] = []
+            try:
+                async for tok in deps.llm.stream(spec, on_usage=lambda u: spent.append(u.cost_usd())):
+                    parts.append(tok)
+                    if q is not None and (out := gate.feed(tok)):
+                        await q.put(out)
+            except InvalidOutput:  # truncated (max_tokens): half an answer is not shown; the fallback is
+                return {"relevant": False, "answer": "", "cost_usd": s.get("cost_usd", 0) + sum(spent)}
+            if q is not None and (out := gate.close()):
+                await q.put(out)
+            cost = s.get("cost_usd", 0) + sum(spent)
             text = "".join(parts).strip()
             if text.startswith(NO_ANSWER) or not text:
-                return {"relevant": False, "answer": ""}
+                return {"relevant": False, "answer": "", "cost_usd": cost}
             used = cited_numbers(text, len(hits))
             cites, seen = [], set()
             for n in used:
@@ -210,7 +272,7 @@ class AskPipeline:
                 if h["url"] not in seen:
                     seen.add(h["url"])
                     cites.append({"title": f"{h['title']}{' › ' + h['section'].split(' › ')[-1] if h['section'] and h['section'] != h['title'] else ''}", "url": h["url"]})
-            return {"answer": text, "citations": cites}
+            return {"answer": text, "citations": cites, "cost_usd": cost}
 
         async def guard_output(s: dict[str, Any]) -> dict[str, Any]:
             if not s.get("answer"):
