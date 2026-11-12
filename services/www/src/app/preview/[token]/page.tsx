@@ -102,6 +102,8 @@ export default async function PreviewPage({ params }: Props) {
     socialDescription: str(p.socialDescription) || undefined,
     socialImage: (p.socialImage as ArticleFrontmatter["socialImage"]) ?? undefined,
     noindex: p.noindex === true,
+    membersOnly: p.membersOnly === true,
+    previewPercent: typeof p.previewPercent === "number" ? p.previewPercent : undefined,
   };
   const check = collectionSchema(collection).safeParse(candidate);
   const issues = check.success ? [] : check.error.issues.map((i) => `${i.path.join(".") || "post"}: ${i.message}`);

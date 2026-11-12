@@ -18,6 +18,10 @@ branch for review; nothing merged).
   media library (R2), Cloudflare Stream, Mux or Bunny Stream. Each is switched on or off in Advanced settings → Video
   destinations; the dialog lists only enabled, fully configured ones. External players are whitelisted in `embedUrl()`;
   `::embed` gained `ratio`. `image_generation` gained `destination`, `external_id` (same migration 0027).
+- **Members-only articles** (owner request, same day): per-post switch and preview percentage (editor → Access), site
+  default in Advanced settings (`MEMBERS_PREVIEW_PERCENT`, 30). Migration 0028 (`post.members_only`,
+  `post.preview_percent`), `lib/members.ts`, `components/MembersGate.tsx`, `app/_actions/members.tsx`; JSON-LD and the
+  public Ask index respect it. See `docs/EDITOR.md`.
 - **CI**: `ci-jithendar-com.yml`, `ci-seo-agent.yml`, `ci-practice-executor.yml`, `deploy-minikube.yml`,
   `grafana-dashboards.yml`, `ci-repo.yml` no longer have a `push` trigger. Images are built only when a pull request is
   merged into `master`, tagged `pr-<number>` and `latest`. `ci-content.yml` is unchanged (owner instruction);
@@ -41,6 +45,8 @@ branch for review; nothing merged).
 - Cloudflare Stream, Mux and Bunny Stream **require manual configuration** and one real upload each to confirm the API
   shapes and the players' loop options. Videos sent there are not listed or deletable in Admin → Media, Uploaded videos
   sent to a service also keep their copy in the media library (`lib/video-publish.ts`).
+- Members-only: search engines index only the preview (the full text is not served to crawlers). Comments under a
+  gated article stay visible to everyone. Signed-in readers see the sign-in prompt for a moment while the rest loads.
 - Generated images and videos from the editor carry no embedded AI-provenance metadata (the news desk's covers do).
 - A pull request that changes only `minikube/seo-agent-*.yaml` or `minikube/practice-executor-*.yaml` still rebuilds
   that image on merge (the site workflow skips such merges through its `scope` job).

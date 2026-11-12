@@ -12,6 +12,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ContentTypeBadge, PreviewBadge, SponsoredBadge } from "@/components/ContentTypeBadge";
 import { JsonLd } from "@/components/JsonLd";
 import { mdxComponents } from "@/components/Mdx";
+import { MembersGate } from "@/components/MembersGate";
 import { TableOfContents } from "@/components/TableOfContents";
 import { TagList } from "@/components/TagList";
 import { AdSlot } from "@/components/integrations/AdSlot";
@@ -27,6 +28,7 @@ import { relatedForArticle } from "@/lib/seo-intel/related-ab";
 import { ScrollSpy } from "@/components/ScrollSpy";
 import { formatDateTime } from "@/lib/dates";
 import { compileMdx } from "@/lib/mdx/compile";
+import { previewPercentFor, sitePreviewPercent, splitForMembers } from "@/lib/members";
 import { canonicalFor } from "@/lib/seo/canonical";
 import { getSiteConfig } from "@/lib/site-config";
 import { ShareLinks } from "@/components/ShareLinks";
@@ -103,7 +105,12 @@ export async function ArticleView({
   notice?: ReactNode;
 }) {
   const fm = article.frontmatter;
-  const { Content, headings } = await compileMdx(article.body);
+  // Members only: the public page is built from the preview alone; the rest is loaded for signed-in readers by
+  // MembersGate and never reaches a signed-out reader. The editor preview shows the whole article.
+  const membersPercent = fm.membersOnly ? previewPercentFor(fm.previewPercent, sitePreviewPercent(await (await import("@/lib/runtime-settings")).effectiveEnv())) : null;
+  const split = membersPercent !== null && !article.preview ? splitForMembers(article.body, membersPercent) : null;
+  const gated = Boolean(split?.rest);
+  const { Content, headings } = await compileMdx(gated ? split!.preview : article.body);
   const { config } = await getSiteConfig();
   // Presentation options (Admin → Appearance → Blog). Structured data below never depends on them.
   const a = config.blog.article;
@@ -209,6 +216,11 @@ export async function ArticleView({
                 )}
               </p>
             )}
+            {article.preview && membersPercent !== null && (
+              <p className="mb-8 rounded-lg border border-line bg-surface-muted p-4 text-sm leading-6 text-fg-muted">
+                Members only: signed-out readers will see about the first {membersPercent}% of this article and a prompt to sign in. This preview shows all of it.
+              </p>
+            )}
             {fm.contentType === "curated" && (
               <p className="mb-8 rounded-lg border border-line bg-surface-muted p-4 text-sm leading-6 text-fg-muted">
                 Curated summary: this piece summarises the sources listed at the end. Read them for full detail.
@@ -229,6 +241,7 @@ export async function ArticleView({
 
             <div className="article-body prose max-w-none dark:prose-invert">
               <Content components={{ ...mdxComponents, nav: () => <TableOfContents headings={headings} id="toc-inline" /> }} />
+              {gated && <MembersGate collection={collection} slug={article.slug} path={article.path} />}
             </div>
 
             {a.share.enabled && a.share.networks.length > 0 && <ShareLinks url={canonicalFor(article)} title={fm.title} networks={a.share.networks} />}

@@ -411,6 +411,31 @@ export function PostEditor({
             </Field>
           </Panel>
 
+          <Panel title="Access">
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={v.membersOnly} onChange={(e) => set("membersOnly", e.target.checked)} />
+              <span>Members only: readers must sign in or create an account to read the whole article</span>
+            </label>
+            {v.membersOnly && (
+              <Field label="Public preview (%)" optional htmlFor="previewPercent" hint="How much of this article signed-out readers can read (5–95). Empty uses the site default from Admin → Advanced settings → Members-only articles. The cut falls between paragraphs.">
+                <Input
+                  id="previewPercent"
+                  type="number"
+                  min={5}
+                  max={95}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="Site default"
+                  value={v.previewPercent ?? ""}
+                  onChange={(e) => {
+                    const n = Math.round(Number(e.target.value));
+                    set("previewPercent", e.target.value.trim() === "" || !Number.isFinite(n) ? null : n);
+                  }}
+                />
+              </Field>
+            )}
+          </Panel>
+
           <Panel title="Search appearance" open>
             <SearchPreview url={`jithendar.com${publicPath}`} title={v.seoTitle || v.title} description={v.seoDescription || v.description} />
             <Field label="SEO title (optional)" htmlFor="seoTitle" hint={`${(v.seoTitle ?? "").length} characters. Defaults to the post title.`}>

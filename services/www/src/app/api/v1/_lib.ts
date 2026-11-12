@@ -52,6 +52,8 @@ export function serialize(p: PostRow) {
     sponsored: p.sponsored,
     sponsor: p.sponsor,
     related: p.related,
+    membersOnly: p.membersOnly,
+    previewPercent: p.previewPercent,
     authorId: p.authorId,
     createdAt: iso(p.createdAt),
     savedAt: iso(p.savedAt),

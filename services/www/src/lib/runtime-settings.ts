@@ -120,6 +120,13 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "members",
+    title: "Members-only articles",
+    description:
+      "A post marked “Members only” in the editor shows signed-out readers the first part of the article and a prompt to sign in or create an account. This is how much they see by default; a single post can set its own percentage in the editor.",
+    fields: [{ env: "MEMBERS_PREVIEW_PERCENT", label: "Public preview (% of the article)", type: "number", min: 5, max: 95, placeholder: "30", hint: "The cut is made between paragraphs, so the real share is the nearest whole block at or above this." }],
+  },
+  {
     id: "video-destinations",
     title: "Video destinations",
     description:

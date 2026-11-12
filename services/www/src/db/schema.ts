@@ -158,6 +158,10 @@ export const post = pgTable(
     socialImage: jsonb("social_image").$type<FeaturedImage | null>(),
     /** Published but kept out of search results (noindex, not in sitemaps). */
     noindex: boolean("noindex").notNull().default(false),
+    /** Members only: signed-out readers see the first part and a sign-in prompt (lib/members.ts). */
+    membersOnly: boolean("members_only").notNull().default(false),
+    /** How much of a members-only post is public, in percent; null = the site default. */
+    previewPercent: integer("preview_percent"),
     /** Discussion under the post: open, locked (shown, no new comments or edits) or closed (not shown). */
     discussion: text("discussion").notNull().default("open"),
     /** Optimistic concurrency: incremented by every committed save. */

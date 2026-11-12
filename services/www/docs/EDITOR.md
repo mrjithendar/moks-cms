@@ -39,6 +39,17 @@ stored Markdown ─parse─▶ editor document ─serialize─▶ stored Markdow
   GIF-style, controls kept) or a normal player; when an admin has switched on more than one video destination
   (R2, Cloudflare Stream, Mux, Bunny Stream) the dialog asks where to save it, and external ones insert `::embed`. Both are disabled with the reason as a tooltip until configured
   (MEDIA.md → *Generate image*, *Generate video*).
+- **Members only** (sidebar → Access): signed-out readers get the first part of the article and a prompt to sign in or
+  create an account; any signed-in reader gets all of it. How much is public: the site default (Admin → Advanced
+  settings → Members-only articles, `MEMBERS_PREVIEW_PERCENT`, 30 when unset) or the post's own "Public preview (%)"
+  (5–95). The cut is between blocks (never inside a paragraph, list, table or code block), so the preview is the
+  smallest run of whole blocks reaching the percentage; an article of a single block cannot be gated. The rest is not
+  in the public page at all: `lib/members.ts` splits the body, the page renders the preview, and
+  `app/_actions/members.tsx` returns the remainder only to a signed-in session. The public "Ask" index gets the
+  preview only (re-index after changing the setting). Structured data marks the page `isAccessibleForFree: false`
+  with the gated section `.members-only`. Search engines therefore see and index only the preview. The API
+  (`/api/v1/posts`, key with `posts:read`) and the editor preview show the whole article. In MDX files:
+  `membersOnly: true`, optional `previewPercent`.
 - Focus mode hides the admin chrome; on phones the settings open as a full-screen drawer.
 
 ## Saving and publishing

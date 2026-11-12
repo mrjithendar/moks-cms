@@ -31,6 +31,8 @@ export function articleRow(a: Article, authorId: string) {
     sponsored: fm.sponsored,
     sponsor: fm.sponsor ?? null,
     related: fm.related,
+    membersOnly: fm.membersOnly,
+    previewPercent: fm.previewPercent ?? null,
     authorId,
   };
 }
