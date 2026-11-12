@@ -6,10 +6,11 @@ import { JsonLd } from "@/components/JsonLd";
 import { ArrowRight, CheckBadge, GitHubIcon, LinkedInIcon } from "@/components/icons";
 import { BookingLink } from "@/components/hire/BookingLink";
 import { EnquiryForm } from "@/components/hire/EnquiryForm";
-import { absoluteUrl } from "@/config/site";
+import { absoluteUrl, site } from "@/config/site";
 import { CERTIFICATIONS, EXPERIENCE, HIGHLIGHTS, PROCESS, PROFILE, SELECTED_WORK, SKILLS } from "@/config/hire-me-profile";
 import { calEmbedTarget } from "@/lib/calcom";
 import { AVAILABILITY_LABEL, activeOffers, bookingUrlFor, priceLabel } from "@/lib/hire-me";
+import { shareImages } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 import { turnstileKeys } from "@/lib/turnstile";
 
@@ -24,7 +25,15 @@ const DESCRIPTION =
 export async function generateMetadata(): Promise<Metadata> {
   const { config } = await getSiteConfig();
   if (!config.hireMe.enabled) return { title: "Not found", robots: { index: false } };
-  return { title: TITLE, description: DESCRIPTION, alternates: { canonical: "/hire-me" }, openGraph: { title: TITLE, description: DESCRIPTION, url: "/hire-me", type: "profile" } };
+  // An openGraph object here replaces the site's, image included: add the default share image back explicitly.
+  const images = shareImages();
+  return {
+    title: TITLE,
+    description: DESCRIPTION,
+    alternates: { canonical: "/hire-me" },
+    openGraph: { title: TITLE, description: DESCRIPTION, url: "/hire-me", type: "profile", siteName: site.name, locale: site.locale, images: images.og },
+    twitter: { ...images.twitter, title: TITLE, description: DESCRIPTION },
+  };
 }
 
 const DOT: Record<string, string> = { available: "bg-emerald-500", limited: "bg-amber-500", unavailable: "bg-slate-400" };

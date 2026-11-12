@@ -1,10 +1,9 @@
-import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, setDbForTests, type Db } from "@/db";
-import { buildBackup, saveGeneral } from "@/lib/backups";
+import { buildBackup, parseBackup, readBackupConfig, saveGeneral, unzipBackup } from "@/lib/backups";
 import { browseTable, runMaintenance, tableStats } from "@/lib/db-admin";
 import type { Actor } from "@/lib/posts";
-import { decryptWithPassphrase, seal } from "@/lib/secrets";
+import { seal } from "@/lib/secrets";
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
@@ -62,24 +61,45 @@ describe("database admin", () => {
 });
 
 describe("backups", () => {
-  it("only admins configure backups, and a passphrase is required", async () => {
-    await expect(saveGeneral(author, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "long-enough-phrase" })).rejects.toThrow();
-    await expect(saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "" })).rejects.toThrow("passphrase");
-    await expect(saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "short" })).rejects.toThrow("12 characters");
+  it("only admins configure backups; encrypting needs a passphrase, a plain zip does not", async () => {
+    await expect(saveGeneral(author, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "long-enough-phrase", encrypt: "on" })).rejects.toThrow();
+    await expect(saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "", encrypt: "on" })).rejects.toThrow("passphrase");
+    await expect(saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "short", encrypt: "on" })).rejects.toThrow("12 characters");
+    await saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "" });
+    expect(await readBackupConfig()).toMatchObject({ encrypt: false, passphrase: null });
   });
 
-  it("produces an encrypted archive without password hashes, sessions or credentials", async () => {
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "correct horse battery staple" });
-    const { filename, data } = await buildBackup();
-    expect(filename).toMatch(/^jithendar-backup-\d{8}-\d{6}\.json\.gz\.enc$/);
-    expect(data.toString("utf8")).not.toContain("admin@example.com");
-    await expect(decryptWithPassphrase(data, "wrong passphrase!!")).rejects.toThrow();
-    const payload = JSON.parse(gunzipSync(await decryptWithPassphrase(data, "correct horse battery staple")).toString("utf8"));
+  it("encryption defaults to on for settings saved before the switch existed", async () => {
+    await db.insert(schema.setting).values({ key: "backups", value: { passphrase: seal("correct horse battery staple"), schedule: "daily", hourUtc: 3, retention: 7, r2: null } });
+    expect((await readBackupConfig()).encrypt).toBe(true);
+  });
+
+  it("produces an AES-256 zip without password hashes, sessions or credentials", async () => {
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "correct horse battery staple", encrypt: "on" });
+    const { filename, data, encrypted } = await buildBackup();
+    expect(filename).toMatch(/^jithendar-backup-\d{8}-\d{6}\.zip$/);
+    expect(encrypted).toBe(true);
+    expect(data.subarray(0, 4).toString("latin1")).toBe("PK\x03\x04");
+    expect(data.toString("latin1")).not.toContain("admin@example.com");
+    await expect(unzipBackup(data)).rejects.toThrow("encrypted");
+    await expect(unzipBackup(data, "wrong passphrase!!")).rejects.toThrow("could not be decrypted");
+    const payload = parseBackup(await unzipBackup(data, "correct horse battery staple"));
     expect(payload.format).toBe("jithendar-backup");
-    expect(payload.tables.user.map((u: { email: string }) => u.email)).toContain("admin@example.com");
+    expect((payload.tables.user ?? []).map((u) => u.email)).toContain("admin@example.com");
     const text = JSON.stringify(payload);
     for (const secret of ["super-secret-hash", "live-token", "s3-secret", "AKIA"]) expect(text).not.toContain(secret);
     expect(payload.tables.account).toBeUndefined();
     expect(payload.tables.session).toBeUndefined();
+  });
+
+  it("with encryption off, produces a plain zip any tool can read, and keeps the stored passphrase", async () => {
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "correct horse battery staple", encrypt: "on" });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "" });
+    expect((await readBackupConfig()).passphrase).not.toBeNull(); // older encrypted backups still need it
+    const { filename, data, encrypted } = await buildBackup();
+    expect(filename).toMatch(/\.zip$/);
+    expect(encrypted).toBe(false);
+    expect(data.toString("latin1")).toContain("README.txt");
+    expect(parseBackup(await unzipBackup(data)).format).toBe("jithendar-backup");
   });
 });

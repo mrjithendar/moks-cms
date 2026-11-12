@@ -1,0 +1,38 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { AuthCard } from "@/components/AuthCard";
+import { Alert } from "@/components/ui/form";
+import { ResetPasswordForm } from "./ResetPasswordForm";
+
+export const metadata: Metadata = { title: "Choose a new password", robots: { index: false, follow: false } };
+export const dynamic = "force-dynamic";
+
+/** Where the reset email's link lands: Better Auth checks the token, then redirects here with ?token= or ?error=. */
+export default async function ResetPasswordPage({ searchParams }: { searchParams: Promise<{ token?: string; error?: string }> }) {
+  const { token, error } = await searchParams;
+  const usable = typeof token === "string" && token.length > 0 && !error;
+
+  return (
+    <AuthCard
+      title="Choose a new password"
+      intro="Pick a password you don't use anywhere else. Every other signed-in device is signed out."
+      footer={
+        <Link href="/login" className="link">
+          Back to sign in
+        </Link>
+      }
+    >
+      {usable ? (
+        <ResetPasswordForm token={token} />
+      ) : (
+        <Alert>
+          This reset link is invalid or has expired (links work once, for an hour).{" "}
+          <Link href="/forgot-password" className="underline">
+            Ask for a new one
+          </Link>
+          .
+        </Alert>
+      )}
+    </AuthCard>
+  );
+}

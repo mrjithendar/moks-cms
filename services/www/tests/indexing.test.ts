@@ -46,14 +46,10 @@ describe("environment indexability", () => {
     expect(prod).not.toMatch(/Googlebot/);
   });
 
-  it("blocks other workloads' path routes without blocking site pages that share a prefix", () => {
+  it("does not name other workloads' path routes (that only advertised them) and blocks only the API", () => {
     const prod = robotsTxt(true);
-    for (const route of ["argocd", "grafana", "db", "opensearch-dashboards"]) {
-      expect(prod).toContain(`Disallow: /${route}$\n`);
-      expect(prod).toContain(`Disallow: /${route}/\n`);
-    }
-    expect(prod).not.toMatch(/^Disallow: \/db\n/m); // would also block e.g. /dbt-basics
-    expect(prod).not.toMatch(/^Disallow: \/(moks|search|admin|login)/m); // these carry noindex instead
+    expect(prod.match(/^Disallow: .*$/gm)).toEqual(["Disallow: /api/"]);
+    for (const route of ["argocd", "grafana", "vault", "db", "prometheus"]) expect(prod).not.toContain(route);
   });
 });
 

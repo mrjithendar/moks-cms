@@ -7,7 +7,7 @@ import { getSessionUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-/** Download a fresh encrypted backup, or `?file=` one already stored in R2 (admins only). */
+/** Download a fresh backup (a zip, encrypted if that is switched on), or `?file=` one already stored in R2 (admins only). */
 export const GET = handleErrors("backup download", async (request?: Request) => {
   const user = await getSessionUser();
   if (!user || user.role !== "admin") return new Response("Forbidden", { status: 403 });
@@ -17,7 +17,7 @@ export const GET = handleErrors("backup download", async (request?: Request) => 
     await audit(actorOf(user), "backup.download", filename, { stored: Boolean(stored) });
     return new Response(new Uint8Array(data), {
       headers: {
-        "Content-Type": "application/octet-stream",
+        "Content-Type": filename.endsWith(".zip") ? "application/zip" : "application/octet-stream",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
       },

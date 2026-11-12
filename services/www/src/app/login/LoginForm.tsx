@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Turnstile } from "@/components/Turnstile";
@@ -13,12 +14,15 @@ export function LoginForm({
   registrationOpen,
   next,
   initialMode = "signin",
+  canReset = false,
 }: {
   siteKey: string | undefined;
   registrationOpen: boolean;
   next: string;
   /** "signup" when a page sent the visitor here to register (e.g. /login?mode=signup from Python practice). */
   initialMode?: "signin" | "signup";
+  /** The site can send email: offer "Forgot password?" (it needs a reset link by email). */
+  canReset?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">(registrationOpen ? initialMode : "signin");
@@ -26,6 +30,7 @@ export function LoginForm({
   const [resetKey, setResetKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checkEmail, setCheckEmail] = useState(false);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -50,9 +55,16 @@ export function LoginForm({
         : await authClient.signUp.email({ email, password, name: String(form.get("name") ?? ""), fetchOptions });
     setBusy(false);
     if (result.error) {
-      setError(result.error.message ?? "Something went wrong. Please try again.");
+      // 403 EMAIL_NOT_VERIFIED: sign-in sent a fresh verification link (auth.ts, sendOnSignIn).
+      const unverified = result.error.code === "EMAIL_NOT_VERIFIED";
+      setError(unverified ? "Confirm your email address first: we've just sent you a new link." : (result.error.message ?? "Something went wrong. Please try again."));
       setToken(null);
       setResetKey((k) => k + 1); // tokens are single-use
+      return;
+    }
+    // Sign-up while verification is required returns no session: the account works once the emailed link is clicked.
+    if (mode === "signup" && !(result.data && "token" in result.data && result.data.token)) {
+      setCheckEmail(true);
       return;
     }
     router.push(next);
@@ -60,6 +72,9 @@ export function LoginForm({
   }
 
   if (!siteKey) return <Alert tone="info">Email sign-in is unavailable: human verification is not configured.</Alert>;
+  if (checkEmail) {
+    return <Alert tone="success">Almost done: we&apos;ve sent a link to your email address. Click it to confirm the address and you&apos;ll be signed in.</Alert>;
+  }
 
   return (
     <div>
@@ -102,6 +117,13 @@ export function LoginForm({
             aria-describedby={mode === "signup" ? "password-hint" : undefined}
           />
         </Field>
+        {mode === "signin" && canReset && (
+          <p className="-mt-2 text-right text-sm">
+            <Link href="/forgot-password" className="link">
+              Forgot password?
+            </Link>
+          </p>
+        )}
         <Turnstile siteKey={siteKey} onToken={setToken} resetKey={resetKey} />
         {error && <Alert>{error}</Alert>}
         <Button type="submit" loading={busy} size="lg" className="w-full">

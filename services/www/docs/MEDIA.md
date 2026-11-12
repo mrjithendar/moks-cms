@@ -114,8 +114,15 @@ like posts (shown under the page title and used as the share image).
 ## Backups (Admin → Backups)
 
 Cloudflare R2 only (S3, SFTP and Google Drive destinations were removed on 2026-10-29). Backups reuse the media
-R2 account and token and are written to `jithendar/backups/jithendar-backup-{yyyymmdd-hhmmss}.json.gz.enc` in
+R2 account and token and are written to `jithendar/backups/jithendar-backup-{yyyymmdd-hhmmss}.zip` in
 the media bucket or, recommended, a separate private bucket (the token needs Object Read & Write on it).
+
+Each backup is a standard zip: `backup.json` (the data) and `README.txt` (what it holds and how to open it).
+**Encryption is a switch** in Schedule and encryption: on (the default), `backup.json` is AES-256 encrypted inside
+the zip with the backup passphrase (WinZip AES via `@zip.js/zip.js`: opens in 7-Zip, Keka, WinRAR or `7z x`, not
+macOS Archive Utility); off, it is a plain zip anyone with the file can read. The switch applies to new backups.
+Backups from before the zip format (`….json.gz.enc`, gzip + AES-256-GCM) are still listed, downloaded and restored,
+and need the passphrase, which is kept when encryption is turned off.
 The page (Admin → Operations → Backups) lists the newest 10 backups in R2 with **Download** and **Restore**;
 the retention setting prunes older ones.
 

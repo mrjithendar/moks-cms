@@ -149,9 +149,9 @@ describe("integrations", () => {
 });
 
 describe("R2 backups", () => {
-  it("writes encrypted backups under jithendar/backups/, prunes old ones, and refuses odd names", async () => {
+  it("writes zip backups under jithendar/backups/, prunes old ones, and refuses odd names", async () => {
     const { listStoredBackups, readStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "1", passphrase: "correct horse battery staple" });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "1", passphrase: "correct horse battery staple", encrypt: "on" });
     await expect(saveDestination(admin, { enabled: true, bucket: "Bad_Bucket" })).rejects.toThrow(/Bucket names/);
     await saveDestination(admin, { enabled: true, bucket: "jithendar-backups" });
     bucket.set("jithendar-backups/jithendar/backups/jithendar-backup-20200101-000000.json.gz.enc", Buffer.from("old"));
@@ -159,8 +159,8 @@ describe("R2 backups", () => {
     expect(r).toMatchObject({ status: "success", results: [{ destination: "r2", ok: true }] });
     const stored = await listStoredBackups();
     expect(stored).toHaveLength(1);
-    expect(stored[0]!.name).toMatch(/^jithendar-backup-\d{8}-\d{6}\.json\.gz\.enc$/);
-    expect((await readStoredBackup(stored[0]!.name)).subarray(0, 5).toString()).toBe("JKBK1");
+    expect(stored[0]!.name).toMatch(/^jithendar-backup-\d{8}-\d{6}\.zip$/);
+    expect((await readStoredBackup(stored[0]!.name)).subarray(0, 2).toString()).toBe("PK");
     await expect(readStoredBackup("../../etc/passwd")).rejects.toThrow(/Unknown/);
   });
 });
@@ -170,7 +170,7 @@ describe("restore", () => {
     const { listStoredBackups, restoreStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
     const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
     await db.insert(schema.post).values({ ...base, slug: "kept", title: "Original title" });
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "correct horse battery staple" });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "correct horse battery staple", encrypt: "on" });
     await saveDestination(admin, { enabled: true, bucket: "" });
     await runBackup("manual", admin);
     const [snapshot] = await listStoredBackups();
@@ -192,6 +192,32 @@ describe("restore", () => {
     // The safety backup brings the later state back.
     await restoreStoredBackup(admin, r.safetyBackup);
     expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug).sort()).toEqual(["added-later", "kept"]);
+  });
+
+  it("still restores a backup from before the zip format (.json.gz.enc), and a plain zip without any passphrase", async () => {
+    const { gzipSync } = await import("node:zlib");
+    const { encryptWithPassphrase } = await import("@/lib/secrets");
+    const { restoreStoredBackup, saveDestination, saveGeneral, zipBackup } = await import("@/lib/backups");
+    const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
+    // A backup holds database rows: column names, not the schema's field names.
+    const row = { collection: "blog", description: base.description, category: "kubernetes", content_type: "tutorial", author_id: "author", status: "published", published_at: "2026-10-20T03:30:00.000Z" };
+    const payload = (slug: string) => JSON.stringify({ format: "jithendar-backup", version: 1, createdAt: "2026-10-01T00:00:00.000Z", tables: { post: [{ ...row, id: crypto.randomUUID(), slug, title: slug }] } });
+    await saveDestination(admin, { enabled: true, bucket: "" });
+
+    // Plain zip, no passphrase stored at all.
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "" });
+    bucket.set("media/jithendar/backups/jithendar-backup-20261001-000000.zip", await zipBackup(payload("from-plain-zip"), "2026-10-01T00:00:00.000Z"));
+    await restoreStoredBackup(admin, "jithendar-backup-20261001-000000.zip");
+    expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug)).toEqual(["from-plain-zip"]);
+
+    // Legacy gzip + AES-GCM: needs the passphrase.
+    const legacy = await encryptWithPassphrase(gzipSync(Buffer.from(payload("from-legacy"))), "correct horse battery staple");
+    bucket.set("media/jithendar/backups/jithendar-backup-20261002-000000.json.gz.enc", legacy);
+    await expect(restoreStoredBackup(admin, "jithendar-backup-20261002-000000.json.gz.enc")).rejects.toThrow("passphrase");
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "correct horse battery staple" });
+    await new Promise((r) => setTimeout(r, 1100)); // the safety backup gets its own timestamped name
+    await restoreStoredBackup(admin, "jithendar-backup-20261002-000000.json.gz.enc");
+    expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug)).toEqual(["from-legacy"]);
   });
 });
 
