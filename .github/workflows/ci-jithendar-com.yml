@@ -34,6 +34,10 @@ on:
       - '!services/www/content/**'
       - '!services/www/public/images/**'
       - '!services/www/Dockerfile.content*'
+      # Notes, article diagram sources and READMEs are not in the image (.dockerignore: docs, *.md), so a push that
+      # only changes them must not rebuild or restart the site. Pull requests still test them (tests read docs/ fixtures).
+      - '!services/www/docs/**'
+      - '!services/www/*.md'
       - '.github/workflows/ci-jithendar-com.yml'
       - 'scripts/image-size.sh'
 

@@ -7,6 +7,11 @@ name: wwww-content
 #           push registry.jithendar.com/jithendar/jithendar-content:latest to Harbor, then
 #           `kubectl rollout restart deploy/jithendar-com` so the init container "content" copies the new files
 #           into the pods (minikube/30-jithendar-com.yaml).
+#           The restart is skipped when a push only adds or edits articles that are not published (status draft or
+#           review in blog/, news/ or projects/, before and after the push) and only adds new images: such a push
+#           changes nothing a reader can see. The image is still pushed, so the next restart carries it. Publishing
+#           (status: published), editing or deleting a published article, any other content, a changed image, or a
+#           manual run restarts as before.
 #
 # ci-jithendar-com.yml ignores these paths, so writing a post never rebuilds the jithendar-com image.
 # Uses the same Harbor robot (HARBOR_USERNAME/HARBOR_PASSWORD, project jithendar) and the same cluster
@@ -68,6 +73,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: services/www/.nvmrc
@@ -99,8 +105,38 @@ jobs:
           echo "Copied $(find "$out/content" -name '*.mdx' | wc -l) MDX files and $(find "$out/images" -type f | wc -l) images"
       - name: Push
         run: docker push --quiet "$REGISTRY_IMAGE:latest"
+      # Drafts and articles in review are invisible on the site, so creating or editing one needs no restart.
+      - name: Decide whether readers would see a change
+        id: visible
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          published() { # exit 0 if <rev>:<path> exists and its frontmatter says status: published
+            git show "$1:$2" 2>/dev/null | awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit }
+              /^status:[[:space:]]*["'"'"']?published/ { found = 1 } END { exit !found }'
+          }
+          restart=true reason="manual run or unknown range"
+          if [[ "$EVENT" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            restart=false reason="only unpublished articles and new images changed"
+            while IFS=$'\t' read -r status path; do
+              case "$path" in
+                services/www/content/blog/*.mdx|services/www/content/news/*.mdx|services/www/content/projects/*.mdx)
+                  if published "$BEFORE" "$path" || published "$GITHUB_SHA" "$path"; then restart=true reason="published: $path"; break; fi ;;
+                services/www/public/images/*)
+                  if [[ "$status" != A ]]; then restart=true reason="image changed: $path"; break; fi ;;
+                *) restart=true reason="other change: $path"; break ;;
+              esac
+            done < <(git diff --name-status --no-renames "$BEFORE" "$GITHUB_SHA" -- services/www/content services/www/public/images \
+                       services/www/Dockerfile.content services/www/Dockerfile.content.dockerignore .github/workflows/ci-content.yml)
+          fi
+          echo "Restart: $restart ($reason)"
+          { echo "restart=$restart"; echo "reason=$reason"; } >> "$GITHUB_OUTPUT"
       # The init container pulls jithendar-content:latest (imagePullPolicy Always) whenever a pod starts.
       - name: Restart jithendar-com
+        if: steps.visible.outputs.restart == 'true'
         env:
           MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
           MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
@@ -119,6 +155,9 @@ jobs:
             exit 1
           fi
       - name: Record image
+        env:
+          RESTART: ${{ steps.visible.outputs.restart }}
+          REASON: ${{ steps.visible.outputs.reason }}
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {
@@ -127,5 +166,9 @@ jobs:
             echo "- Tag: \`$REGISTRY_IMAGE:latest\` (commit \`$GITHUB_SHA\`)"
             echo "- Digest: \`$digest\`"
             echo
-            echo "Deployed: deploy/jithendar-com restarted; init container copied the new content"
+            if [[ "$RESTART" == true ]]; then
+              echo "Deployed: deploy/jithendar-com restarted; init container copied the new content ($REASON)"
+            else
+              echo "Not deployed: $REASON. The image is pushed; the next restart of jithendar-com picks it up."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

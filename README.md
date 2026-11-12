@@ -27,6 +27,11 @@ validates the MDX (schema and internal links), packages both folders into the sm
 the site. The pods' init container `content` copies it over `/app/content` and `/app/public/images`. This takes about a
 minute, not a full build. A push that changes both code and content runs both workflows.
 
+**Drafts don't deploy.** A content push that only adds or edits articles with `status: draft` or `review` (plus new
+images) still pushes the content image but does not restart the site: readers would see nothing new. Setting an article to
+`status: published`, or editing or deleting a published one, restarts it as above. Changes under `services/www/docs/` and
+`services/www/*.md` (notes, article diagram sources) are not in the site image and never trigger a site build or deploy.
+
 Run `./deploy.sh` only after changing `minikube/` (it applies the manifests and restarts the site). It needs
 `kubectl` with the `mk4` context. First-time setup,
 Secrets, routing and rollback: [services/www/docs/DEPLOYMENT.md](services/www/docs/DEPLOYMENT.md).
