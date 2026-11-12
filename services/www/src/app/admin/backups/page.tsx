@@ -5,7 +5,7 @@ import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin
 import { Alert, Button, Field, Input, Select } from "@/components/ui/form";
 import Link from "next/link";
 import { adminActor } from "@/lib/admin";
-import { BACKUP_ROOT, backupSummary, listStoredBackups, recentRuns, restoreStoredBackup, runBackup, saveDestination, saveGeneral, testDestination } from "@/lib/backups";
+import { BACKUP_ROOT, backupSummary, isLegacyBackup, listStoredBackups, recentRuns, restoreStoredBackup, runBackup, saveDestination, saveGeneral, testDestination } from "@/lib/backups";
 import { RestoreButton } from "./RestoreButton";
 import { flash } from "@/lib/flash";
 import { PostError } from "@/lib/posts";
@@ -60,7 +60,7 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
     <>
       <AdminHeader
         title="Backups"
-        description="Encrypted backups of content and configuration. Excludes password hashes, sessions, API-key hashes and stored credentials."
+        description="Zip backups of content and configuration, encrypted if you choose. Excludes password hashes, sessions, API-key hashes and stored credentials."
         actions={
           <>
             <form action={runNow}><Button type="submit">Back up now</Button></form>
@@ -78,9 +78,23 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
             </Field>
             <Field label="Hour (UTC)" htmlFor="hourUtc" hint="21 UTC = 02:30 IST"><Input id="hourUtc" name="hourUtc" type="number" min={0} max={23} defaultValue={b.hourUtc} /></Field>
             <Field label="Keep last" htmlFor="retention" hint="Older backups are deleted."><Input id="retention" name="retention" type="number" min={1} max={365} defaultValue={b.retention} /></Field>
-            <Field label="Backup passphrase" htmlFor="passphrase" hint={b.hasPassphrase ? "Set. Leave empty to keep it." : "Required, 12+ characters. Store it safely: without it backups cannot be restored."}>
+            <Field
+              label="Backup passphrase"
+              htmlFor="passphrase"
+              hint={b.hasPassphrase ? "Set. Leave empty to keep it." : "Needed to encrypt, 12+ characters. Store it safely: without it encrypted backups cannot be restored."}
+            >
               <PasswordInput id="passphrase" name="passphrase" autoComplete="new-password" />
             </Field>
+            <div className="space-y-1 sm:col-span-4">
+              <label className="flex items-center gap-2 text-sm font-medium text-fg">
+                <input type="checkbox" name="encrypt" defaultChecked={b.encrypt} /> Encrypt backups with the passphrase (AES-256)
+              </label>
+              <p className="text-sm text-fg-muted">
+                On: backup.json inside the zip is encrypted; open it with 7-Zip, Keka or WinRAR and the passphrase (macOS Archive Utility cannot). Off: a plain zip anyone
+                with the file can read, so keep the bucket private. Applies to new backups; existing ones keep their format, and older encrypted ones still need the
+                passphrase to restore.
+              </p>
+            </div>
             <div className="sm:col-span-4"><Button type="submit">Save</Button></div>
           </form>
         </Card>
@@ -122,7 +136,8 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
                   <td className={td}>
                     <div className="flex items-center gap-4 whitespace-nowrap">
                       <a className="link" href={`/api/admin/backup?file=${encodeURIComponent(f.name)}`} download>Download</a>
-                      {b.hasPassphrase && <RestoreButton name={f.name} created={f.lastModified ?? f.name} action={restore} />}
+                      {/* Older .json.gz.enc backups are always encrypted; a zip asks for the passphrase only if it is encrypted. */}
+                      {(b.hasPassphrase || !isLegacyBackup(f.name)) && <RestoreButton name={f.name} created={f.lastModified ?? f.name} action={restore} />}
                     </div>
                   </td>
                 </tr>

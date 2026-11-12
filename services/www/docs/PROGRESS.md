@@ -1,5 +1,44 @@
 # Progress log — jithendar.com
 
+## Site review fixes (2026-11-12, owner request "review jithendar.com and find gaps", then "fix everything")
+
+Review of the live site, this repo and the cluster; changes left uncommitted (A3.12). Branch `fix/site-review`.
+
+- **Password reset** (open since the auth phase: reset emails pointed nowhere): `/forgot-password` (Turnstile, same answer
+  whether or not the address exists) and `/reset-password` (token from Better Auth's redirect; invalid/expired link
+  explained). "Forgot password?" on the sign-in form only when mail is configured. A reset revokes every session.
+- **Email verification**: required for email+password sign-in **only while mail can be sent** (`mailConfigured()`);
+  saving the email settings rebuilds the auth instance on every replica (`broadcastInvalidate("integrations")`).
+  Sign-up then shows "check your email"; an unverified sign-in resends the link. Migration
+  `0025_grandfather_email_verified.sql` marks existing accounts verified so nobody (the admin included) is locked out.
+- **Icons**: `public/favicon.ico` (16/32/48), `apple-touch-icon.png` (180, opaque), `icon-192/512.png`, all rendered
+  from `src/app/icon.svg`; in `public/` so a favicon uploaded in Admin → Branding still wins. `app/manifest.ts`.
+- **/hire-me** share image (its own `openGraph` dropped the default) and `summary_large_image` card.
+- **`/.well-known/security.txt`** (RFC 9116): Contact = /contact, Expires always 360 days ahead.
+- **404**: one robots tag (`noindex, follow`) instead of Next's `noindex` plus the layout's `index, follow`.
+- **robots.txt** no longer names /argocd, /vault, /db, … (it only advertised them). Deploy **after** Cloudflare Access
+  is enforced (miniKube `docs/cloudflare-access-and-db-backups.md`), which answers crawlers there with a login or 403.
+- **Deployment** (`minikube/30-jithendar-com.yaml`): topology spread now `DoNotSchedule` with `matchLabelKeys:
+  [pod-template-hash]` and `nodeTaintsPolicy: Honor` (both replicas had landed on worker3; one node = full outage);
+  memory limit 1Gi → 1536Mi (pods used 780–874Mi). `kubectl apply --dry-run=server` passed.
+
+- **Admin backups as zip, encryption optional** (owner request "enable backups in r2 in zip file and encryption is
+  optional"): each backup is `jithendar-backup-{stamp}.zip` with `backup.json` and an unencrypted `README.txt`. New
+  switch *Encrypt backups* (Admin → Backups, default on, also for settings saved before it existed): on, `backup.json`
+  is WinZip AES-256 with the passphrase (verified opening with `bsdtar --passphrase`; plain zip with `unzip`); off, a
+  plain zip and no passphrase needed. Turning it off keeps the passphrase for older backups. Legacy `.json.gz.enc`
+  backups are still listed, downloaded and restored. New dependency `@zip.js/zip.js@2.24.0` (BSD-3, no dependencies):
+  Node has no AES zip writer. `docs/MEDIA.md` updated.
+
+**Not changed, needs the owner:** HSTS `includeSubDomains` (deliberately left out in `next.config.ts`; every live
+subdomain is HTTPS, `db.jithendar.com` is a dangling record); the About page description (served from the database,
+Admin → Pages, not `content/pages/about.mdx`); a script-src Content-Security-Policy (AdSense, GA4, Cal.com, Turnstile
+need a tested allowlist); the news sitemap is empty only because nothing was published in the last 48 h.
+
+**Commands → result** (Node 26.13): `npm run lint` pass; `npm run typecheck` pass; `npm test` 951 passed, 1 skipped
+(new `tests/site-review.test.ts`; updated `tests/indexing.test.ts`, `admin-ops.test.ts`, `security-admin.test.ts`); `npm run build` pass (one pre-existing Edge
+Runtime warning in `src/lib/request-log.ts`).
+
 ## One CMS (D-86) follow-up: last /admin/seo links (2026-11-11, owner request "merge SEO dashboard and CMS in 1")
 
 Reviewed master after `6cb34e1` (D-86: SEO pages in `app/admin/(growth)`, one sidebar, SEO overview in the Dashboard,
