@@ -152,7 +152,8 @@ spec:
         resources:
           limits:
             cpu: '2'
-            memory: 1Gi
+            # 1Gi left ~150Mi headroom (780-874Mi in use, 2026-11-12): an OOM kill takes a replica out mid-request.
+            memory: 1536Mi
           requests:
             cpu: 250m
             memory: 512Mi
@@ -202,9 +203,14 @@ spec:
       - labelSelector:
           matchLabels:
             app: jithendar-com
+        # Spread only the current revision, and count only nodes the pods may run on (not the tainted control plane).
+        matchLabelKeys:
+        - pod-template-hash
+        nodeTaintsPolicy: Honor
         maxSkew: 1
         topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
+        # Required: with ScheduleAnyway both replicas once landed on one node, so one node failure was a full outage.
+        whenUnsatisfiable: DoNotSchedule
       volumes:
       - emptyDir:
           sizeLimit: 64Mi

@@ -7,7 +7,7 @@ import { adminAc, defaultStatements, userAc } from "better-auth/plugins/admin/ac
 import { createAccessControl } from "better-auth/plugins/access";
 import { isProductionEnv, siteUrl } from "@/config/site";
 import { getDb, schema } from "@/db";
-import { sendMail } from "./mail";
+import { mailConfigured, sendMail } from "./mail";
 import { auditLogin } from "./auth-audit";
 import { onInvalidate } from "./cache-bus";
 import { activeSocialProviderConfig } from "./integrations";
@@ -46,6 +46,9 @@ async function createAuth() {
   const redis = await getRedis();
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret && isProductionEnv()) throw new Error("BETTER_AUTH_SECRET is required in production.");
+  // Email and password sign-in needs a verified address, but only while the site can send the verification email:
+  // with mail off nobody could ever verify. Saving the email settings rebuilds this instance (mail.ts).
+  const verifyEmail = await mailConfigured();
 
   return betterAuth({
     appName: "Jithendar.com",
@@ -74,8 +77,11 @@ async function createAuth() {
       enabled: true,
       minPasswordLength: PASSWORD_MIN,
       maxPasswordLength: PASSWORD_MAX,
-      autoSignIn: true,
-      requireEmailVerification: false,
+      // Signed in straight after sign-up only when no verification is needed; otherwise after clicking the link.
+      autoSignIn: !verifyEmail,
+      requireEmailVerification: verifyEmail,
+      // A reset ends every session: whoever knew the old password is signed out everywhere (/reset-password says so).
+      revokeSessionsOnPasswordReset: true,
       // Sends through Amazon SES (admin-configured) or SMTP; if neither is set up, reset emails are skipped.
       sendResetPassword: async ({ user, url }) => {
         await sendMail(user.email, "Reset your Jithendar.com password", `Reset your password: ${url}\n\nIf you did not ask for this, ignore this email.`);
@@ -83,6 +89,9 @@ async function createAuth() {
     },
     emailVerification: {
       sendOnSignUp: true,
+      // An unverified sign-in attempt sends a fresh link (the first may have expired or been lost).
+      sendOnSignIn: true,
+      autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
         await sendMail(user.email, "Verify your Jithendar.com account", `Confirm your email address: ${url}`);
       },
@@ -194,7 +203,7 @@ async function createAuth() {
 type Auth = Awaited<ReturnType<typeof createAuth>>;
 const globalForAuth = globalThis as unknown as { __auth?: Promise<Auth> };
 
-// Social sign-in settings changed in the admin (on any replica): build a new instance on next use.
+// Social sign-in or email settings changed in the admin (on any replica): build a new instance on next use.
 onInvalidate("integrations", () => {
   globalForAuth.__auth = undefined;
 });

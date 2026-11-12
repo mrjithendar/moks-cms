@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { audit } from "./audit";
+import { broadcastInvalidate } from "./cache-bus";
 import { log } from "./log";
 import { recordMail } from "./metrics";
 import type { Actor } from "./posts";
@@ -123,6 +124,8 @@ async function writeConfig(actor: Actor, config: EmailConfig) {
     .insert(schema.setting)
     .values({ key: EMAIL_KEY, value: config, updatedBy: actor.id })
     .onConflictDoUpdate({ target: schema.setting.key, set: { value: config, updatedBy: actor.id, updatedAt: new Date() } });
+  // Whether mail works decides whether sign-in requires a verified email (auth.ts): rebuild it on every replica.
+  broadcastInvalidate("integrations");
 }
 
 // --- Status for the admin (never secrets) ---------------------------------------------------------------

@@ -1,6 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Container } from "@/components/Container";
 import { buttonClass } from "@/components/ui/form";
+
+// Next.js adds its own noindex to every 404; this replaces the layout's "index, follow" so the page does not carry both.
+export const metadata: Metadata = { title: "Page not found", robots: { index: false, follow: true } };
 
 export default function NotFound() {
   return (

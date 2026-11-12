@@ -6,6 +6,7 @@ import { Alert } from "@/components/ui/form";
 import { authErrorMessage } from "@/lib/auth-errors";
 import { safeNext } from "@/lib/safe-next";
 import { activeProviders } from "@/lib/integrations";
+import { mailConfigured } from "@/lib/mail";
 import { getSessionUser } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
 import { turnstileKeys } from "@/lib/turnstile";
@@ -28,6 +29,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const settings = await getSettings();
   const providers = await activeProviders();
   const { siteKey } = await turnstileKeys();
+  const canReset = await mailConfigured();
   const errorPath = `/login?next=${encodeURIComponent(next)}${confirming ? "&reauth=1" : ""}`;
   const message = authErrorMessage(error);
 
@@ -54,7 +56,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <span className="h-px flex-1 bg-line" />
             </div>
           )}
-          {(siteKey || providers.length === 0) && <LoginForm siteKey={siteKey} registrationOpen={settings.features.registration} next={next} initialMode={mode === "signup" ? "signup" : "signin"} />}
+          {(siteKey || providers.length === 0) && <LoginForm siteKey={siteKey} registrationOpen={settings.features.registration} next={next} initialMode={mode === "signup" ? "signup" : "signin"} canReset={canReset} />}
         </div>
         <p className="mt-6 text-center text-sm leading-6 text-fg-subtle">
           {siteKey ? "Email sign-in is protected by Cloudflare Turnstile. " : ""}See the{" "}
