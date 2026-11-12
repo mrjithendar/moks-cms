@@ -239,6 +239,7 @@ function destinations(ctx: Ctx) {
     { href: "/news", label: "News" },
     { href: "/projects", label: "Projects" },
     { href: "/search", label: "Search" },
+    { href: "/hire-me", label: "Hire me" },
     { href: "/feed.xml", label: "RSS feed" },
     { href: "/login", label: "Sign in" },
     ...ctx.pages.map((p) => ({ href: p.path, label: p.title })),
