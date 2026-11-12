@@ -8,6 +8,7 @@ import { rowsOf } from "@/db/rows";
 import { mediaSrc, mediaUsage, MEDIA_DETAIL_LIMITS } from "@/lib/media";
 import { requireRole } from "@/lib/session";
 import { MEDIA_KINDS, storageReady } from "@/lib/storage";
+import { uploadDestinations } from "@/lib/video-publish";
 import { MediaLibrary, type LibraryItem } from "./MediaLibrary";
 import { MediaUploader } from "./MediaUploader";
 
@@ -121,7 +122,7 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
       <Flash ok={sp.ok} error={sp.error} />
       {ready ? (
         <Card className="mb-6">
-          <MediaUploader />
+          <MediaUploader destinations={await uploadDestinations()} />
         </Card>
       ) : (
         <div className="mb-6">

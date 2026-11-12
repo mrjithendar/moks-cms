@@ -214,6 +214,7 @@ describe("video destinations", () => {
       const url = String(input);
       calls.push({ url, method: init?.method ?? "GET", headers: (init?.headers ?? {}) as Record<string, string>, body: init?.body });
       if (url === `https://api.cloudflare.com/client/v4/accounts/${ALL.CF_STREAM_ACCOUNT_ID}/stream`) return jsonReply({ success: true, result: { uid: CF_UID } });
+      if (url === `https://api.cloudflare.com/client/v4/accounts/${ALL.CF_STREAM_ACCOUNT_ID}/stream/copy`) return jsonReply({ success: true, result: { uid: CF_UID } });
       if (url.startsWith("https://api.cloudflare.com/")) return jsonReply({ success: true, result: {} });
       if (url === "https://api.mux.com/video/v1/assets") return jsonReply({ data: { id: "asset-1", status: "preparing", playback_ids: [{ id: MUX_PLAYBACK, policy: "public" }] } }, 201);
       if (url === "https://video.bunnycdn.com/library/759/videos") return jsonReply({ guid: BUNNY_GUID, title: "x" });
@@ -278,6 +279,34 @@ describe("video destinations", () => {
     expect(await rowOf(id)).toMatchObject({ status: "succeeded", destination: null });
     // The media library is still available as a destination for the same clip.
     expect(await acceptVideoGeneration(author, id, { description: "x", destination: "r2" }, { env: ALL })).toMatchObject({ destination: "r2", embed: false });
+  });
+
+  it("sends an uploaded video on from the media library, only to a destination that is switched on", async () => {
+    const { publishMediaVideo } = await import("@/lib/video-publish");
+    const mediaId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const storageKey = "jithendar/www/media/videos/2026/11/demo.mp4";
+    r2.objects.set(storageKey, { body: MP4, contentType: "video/mp4" });
+    await db.insert(schema.media).values({ id: mediaId, filename: "demo.mp4", contentType: "video/mp4", storageKey, storageBackend: "r2", kind: "videos", sizeBytes: MP4.length, title: "Demo clip", uploadedBy: "author" });
+    const { calls, fetchImpl } = services();
+    await expect(publishMediaVideo(author, mediaId, "mux", { env: {}, fetchImpl })).rejects.toMatchObject({ status: 400 });
+    await expect(publishMediaVideo(author, mediaId, "r2", { env: ALL, fetchImpl })).rejects.toMatchObject({ status: 400 });
+    await expect(publishMediaVideo(other, mediaId, "mux", { env: ALL, fetchImpl })).rejects.toMatchObject({ status: 404 });
+    await expect(publishMediaVideo(reader, mediaId, "mux", { env: ALL, fetchImpl })).rejects.toMatchObject({ status: 403 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    const mux = await publishMediaVideo(author, mediaId, "mux", { env: ALL, fetchImpl });
+    expect(mux).toMatchObject({ destination: "mux", src: `https://player.mux.com/${MUX_PLAYBACK}` });
+    expect(JSON.parse(String(calls[0]!.body)).inputs[0].url).toMatch(/^https:\/\/r2\.test\/.*media\/videos/);
+
+    const bunny = await publishMediaVideo(admin, mediaId, "bunny-stream", { env: ALL, fetchImpl });
+    expect(bunny.src).toBe(`https://iframe.mediadelivery.net/embed/759/${BUNNY_GUID}`);
+    expect(calls.at(-1)).toMatchObject({ method: "PUT" });
+
+    // The file stays in the media library, with the player addresses noted on it.
+    expect(r2.objects.has(storageKey)).toBe(true);
+    const [row] = await db.select().from(schema.media);
+    expect(row!.description).toContain(`Also on Mux: https://player.mux.com/${MUX_PLAYBACK}`);
+    expect(row!.description).toContain("Also on Bunny Stream: ");
   });
 
   it("embeds only the three players, keeping just the playback switches", async () => {

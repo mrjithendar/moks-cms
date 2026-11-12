@@ -140,6 +140,49 @@ export async function publishVideo(id: ExternalDestinationId, input: PublishInpu
   return { externalId: guid, embedSrc: `https://iframe.mediadelivery.net/embed/${library}/${guid}` };
 }
 
+export type StoredVideoInput = {
+  title: string;
+  /** A link the service can download the file from. */
+  signedUrl: () => Promise<string>;
+  /** The file as a stream, for a service that has to be sent the bytes (never buffered in memory: uploads can be 200 MB). */
+  open: () => Promise<ReadableStream<Uint8Array>>;
+};
+
+/**
+ * Send a video that is already in storage (an upload in the media library) to an external destination, without
+ * loading it into memory: Cloudflare Stream and Mux download it from a signed link
+ * (Cloudflare: POST …/stream/copy { url }), Bunny Stream is streamed the bytes.
+ */
+export async function publishStoredVideo(id: ExternalDestinationId, input: StoredVideoInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Published> {
+  const get = (name: string) => env[name]?.trim() ?? "";
+  if (id === "mux") return publishVideo("mux", { bytes: Buffer.alloc(0), title: input.title, signedUrl: input.signedUrl }, env, fetchImpl);
+  if (id === "cloudflare-stream") {
+    const what = DESTINATION_LABELS[id];
+    const code = get("CF_STREAM_CUSTOMER_CODE").replace(/^customer-/, "").replace(/\.cloudflarestream\.com$/, "");
+    if (!/^[a-z0-9]{6,40}$/.test(code)) throw new DestinationError("The Cloudflare Stream customer code is not valid. An admin must check it in Admin → Advanced settings → Video destinations.");
+    const body = (await send(
+      what,
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(get("CF_STREAM_ACCOUNT_ID"))}/stream/copy`,
+      { method: "POST", headers: { Authorization: `Bearer ${get("CF_STREAM_API_TOKEN")}`, "Content-Type": "application/json" }, body: JSON.stringify({ url: await input.signedUrl(), meta: { name: input.title } }) },
+      fetchImpl,
+    )) as { result?: { uid?: unknown } };
+    const uid = body.result?.uid;
+    if (typeof uid !== "string" || !ID.cloudflare.test(uid)) throw new DestinationError(`${what} did not return a video id.`);
+    return { externalId: uid, embedSrc: `https://customer-${code}.cloudflarestream.com/${uid}/iframe` };
+  }
+  const what = DESTINATION_LABELS[id];
+  const library = get("BUNNY_STREAM_LIBRARY_ID");
+  if (!/^\d{1,10}$/.test(library)) throw new DestinationError("The Bunny Stream library id is not valid. An admin must check it in Admin → Advanced settings → Video destinations.");
+  const headers = { AccessKey: get("BUNNY_STREAM_API_KEY"), Accept: "application/json" };
+  const created = (await send(what, `https://video.bunnycdn.com/library/${library}/videos`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ title: input.title }) }, fetchImpl)) as { guid?: unknown };
+  const guid = created.guid;
+  if (typeof guid !== "string" || !ID.bunny.test(guid)) throw new DestinationError(`${what} did not return a video id.`);
+  // A streamed request body needs duplex: "half" (not yet in TypeScript's RequestInit).
+  const upload = { method: "PUT", headers: { ...headers, "Content-Type": "application/octet-stream" }, body: await input.open(), duplex: "half" } as RequestInit;
+  await send(what, `https://video.bunnycdn.com/library/${library}/videos/${guid}`, upload, fetchImpl);
+  return { externalId: guid, embedSrc: `https://iframe.mediadelivery.net/embed/${library}/${guid}` };
+}
+
 /** Player address for the article: a silent loop starts by itself, muted, and repeats (each player's own options). */
 export function withPlayback(embedSrc: string, loop: boolean): string {
   if (!loop) return embedSrc;

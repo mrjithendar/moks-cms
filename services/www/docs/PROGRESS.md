@@ -39,8 +39,8 @@ branch for review; nothing merged).
 - The cluster still runs `:latest` (manifests, CronJobs and sandbox pods name it); `pr-<number>` is the same image kept
   for rollbacks.
 - Cloudflare Stream, Mux and Bunny Stream **require manual configuration** and one real upload each to confirm the API
-  shapes and the players' loop options. Videos sent there are not listed or deletable in Admin → Media, and uploaded
-  (not generated) videos still go to R2 only.
+  shapes and the players' loop options. Videos sent there are not listed or deletable in Admin → Media, Uploaded videos
+  sent to a service also keep their copy in the media library (`lib/video-publish.ts`).
 - Generated images and videos from the editor carry no embedded AI-provenance metadata (the news desk's covers do).
 - A pull request that changes only `minikube/seo-agent-*.yaml` or `minikube/practice-executor-*.yaml` still rebuilds
   that image on merge (the site workflow skips such merges through its `scope` job).

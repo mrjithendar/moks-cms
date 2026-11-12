@@ -137,7 +137,14 @@ as read on 2026-11-12, and the tests use canned responses. Generate one clip aft
   | Mux | `MUX_ENABLED`, token id + secret | asset created from a one-hour signed link to the private copy (Mux downloads it) | `::embed` of `player.mux.com/{playbackId}` |
   | Bunny Stream | `BUNNY_STREAM_ENABLED`, library id, library API key | video created, then bytes `PUT` | `::embed` of `iframe.mediadelivery.net/embed/{library}/{guid}` |
 
-  External videos are **not** in Admin → Media: they live in that service's account (the id is kept in
+  **Uploads** (Admin → Media): when at least one streaming service is on, each video in the upload list gets a "Save
+  the video to" choice. The file always lands in the media library first (verified as usual); choosing a service
+  then sends it on from there (`lib/video-publish.ts`: Cloudflare Stream and Mux download it through a one-hour signed
+  link, Bunny Stream is streamed the bytes) and the list shows the player address to paste into the editor's "Video
+  embed" block. The library copy stays (delete it later if you do not want both) with the player address noted in its
+  description. Private files are not sent anywhere.
+
+  Generated videos sent to a service are **not** in Admin → Media: they live in that service's account (the id is kept in
   `image_generation.external_id` and the audit log) and are deleted there. The services encode after upload, so the
   player can show "processing" for a minute. A silent loop adds `autoplay`, `loop` and `muted` to the player address
   (each player's own options; check them once per service). Readers' browsers then load a third-party player.
