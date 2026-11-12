@@ -106,6 +106,21 @@ requires each to equal a fact at the precision written ("14%" matches 14.1 %, "1
 dates). **Any mismatch fails the report**: the narrative isn't stored or sent, the run is `failed`
 (`report_mismatch`), and the numbers-only PDF is still saved.
 
+## Promotion Crew
+
+Two single-agent crews in `app/crews/promotion.py`, both **without tools** (nothing to fetch, post or write with) and
+with a 6,000-token output cap. Usage purpose `crew` (the monthly budget applies). See [PROMOTION.md](PROMOTION.md).
+
+| Agent | Job | Input | Output |
+|---|---|---|---|
+| Promotion copywriter | One post per requested channel for a published article, first person, only what the article says, the tagged link exactly as given | the article (title, description, opening text, top queries) and the channels to draft (guidance, length limit, link, thread titles) from the web app | `PromoPosts` (channel, title, body, notes) |
+| Content strategist | Article ideas that have an audience, each citing evidence copied from the signals | Search Console topics and queries, fetched Reddit threads, covered and planned titles | `ContentIdeas` (title, angle, outline, target_query, channels, evidence) |
+
+Which channels to draft, their scores and links are decided by the web app's deterministic code before the crew runs.
+After it, `clean_posts` keeps one post per requested channel and `clean_ideas` drops ideas without evidence (both clamp
+sizes to what the web app accepts); the web app then checks each draft and verifies each idea's evidence against its
+own data. Output that does not match the schema is `incomplete`, with nothing saved for that article.
+
 ## Internal linking (no crew)
 
 Enforced in code by v2's deterministic planner, fed with pgvector + shared-query relevance (INTERNAL_LINKING.md): ≤ 3
@@ -119,4 +134,6 @@ anchors from existing text and varied, never a redirect, `noindex` or 404 target
 the fake web app): schema validation, cited-but-unretrieved sources, token cap → incomplete, wall-clock timeout →
 incomplete, budget → re-raised, agents' tools and guardrails as built, per-agent models, the Optimization Crew end to end
 in its flow, injected instructions in article text changing nothing, the number check, and the Report Crew on the cheap
-model.
+model. `tests/test_promotion.py`: the two promotion flows with a fake crew (drafts saved for review, nothing
+published, switched off, budget pause, ideas kept only with verified evidence), the crew's output handling, and the
+Promotion Crew with the deterministic model.

@@ -50,6 +50,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/calendar", label: "Editorial calendar", section: "Editorial & AI" },
           { href: "/admin/review", label: "Review queue", badge: review, section: "Editorial & AI" },
           { href: "/admin/news", label: "News desk", section: "Editorial & AI" },
+          { href: "/admin/promotion", label: "Promotion", section: "Editorial & AI" },
         ]
       : []),
     // Insights: search and audience data.

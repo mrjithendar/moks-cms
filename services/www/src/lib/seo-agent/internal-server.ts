@@ -4,6 +4,7 @@ import { DraftError } from "../seo-intel/drafts";
 import * as cb from "./callbacks";
 import * as v4 from "./callbacks-v4";
 import * as news from "../news/callbacks";
+import * as promo from "./callbacks-promotion";
 import { callbackPort, callbackToken } from "./config";
 
 /**
@@ -31,6 +32,11 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/news\/site-signals$/, () => news.newsSiteSignals()],
   ["POST", /^\/news\/notify$/, (_m, b) => news.newsNotify(b)],
   ["POST", /^\/news\/performance$/, () => news.newsCollectPerformance()],
+  // Promotion (docs/seo/PROMOTION.md): channel opportunities, drafted posts and content ideas. Never posting.
+  ["POST", /^\/promotion\/collect$/, (_m, b) => promo.promoCollect(b)],
+  ["POST", /^\/promotion\/articles\/([^/]+)\/drafts$/, (m, b) => promo.promoSaveDrafts(m[1]!, b)],
+  ["POST", /^\/promotion\/ideas\/signals$/, () => promo.promoIdeaSignals()],
+  ["POST", /^\/promotion\/ideas$/, (_m, b) => promo.promoSaveIdeas(b)],
   // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns
   ["POST", /^\/jobs\/run$/, (_m, b) => v4.runJob(b)],
   ["GET", /^\/drafts\/open-articles$/, (_m, _b, q) => v4.openDraftArticles(q)],

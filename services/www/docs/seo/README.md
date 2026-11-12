@@ -16,4 +16,5 @@
 | [MCP.md](MCP.md) | v4: public and admin MCP servers, every tool/resource/prompt with scopes, OAuth flow, connecting from Claude and MCP Inspector, kill switches, revocation |
 | [RAG.md](RAG.md) | Ask the Blog (guards, abuse/cost controls, privacy), chunking, embeddings options, pgvector index and reindexing |
 | [COSTS.md](COSTS.md) | v4: tokens and cost per flow, monthly estimate for the current site, budget controls |
+| [PROMOTION.md](PROMOTION.md) | Promotion: channel opportunities and drafted posts for published articles, content ideas from Search Console and Reddit, the read-only Reddit client, flows, data, API, settings |
 | [AGENTS.md](AGENTS.md) | v3 (superseded): pointer to the v4 docs |

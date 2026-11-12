@@ -27,6 +27,7 @@ export const SEO_GROUPS: { label: string; items: Section[] }[] = [
     items: [
       { href: "/admin/technical", label: "Technical health", icon: "wrench", hint: "Crawl, indexability, structured data" },
       { href: "/admin/calendar", label: "Editorial calendar", icon: "calendar", hint: "Planned and suggested articles" },
+      { href: "/admin/promotion", label: "Promotion", icon: "bulb", hint: "Where to share articles, drafted posts, content ideas" },
       { href: "/admin/reports", label: "Reports", icon: "report", hint: "Weekly and monthly reports" },
     ],
   },
