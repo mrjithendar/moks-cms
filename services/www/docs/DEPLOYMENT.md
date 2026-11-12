@@ -1,12 +1,12 @@
 # Deployment — jithendar.com on mk4
 
-**CI builds, pushes `jithendar-com:latest` and restarts the site**; `./deploy.sh` (repository root) applies manifest changes with `kubectl apply -k`. Argo CD is not used for this site. The site always runs `:latest` with `imagePullPolicy: Always`, never a pinned digest (owner decision, 2026-11-03). CI restarts the Deployment after each image build and, from `deploy-minikube.yml`, applies the application manifests (see Release).
+**When a pull request is merged into `master`, CI builds, pushes `jithendar-com:pr-<number>` and `:latest` (one image) and restarts the site** (a plain push to `master` builds nothing: the workflows have no `push` trigger); `./deploy.sh` (repository root) applies manifest changes with `kubectl apply -k`. Argo CD is not used for this site. The site always runs `:latest` with `imagePullPolicy: Always`, never a pinned digest (owner decision, 2026-11-03). CI restarts the Deployment after each image build and, from `deploy-minikube.yml`, applies the application manifests (see Release).
 
 | Piece | Where |
 |---|---|
 | Image | `registry.jithendar.com/jithendar/jithendar-com:latest` in Harbor (arm64, `latest` is the only tag, last 10 builds kept; CI pushes as robot `robot$jithendar+jithendar-com`, secrets `HARBOR_USERNAME`/`HARBOR_PASSWORD`) |
-| Pipeline | `.github/workflows/ci-jithendar-com.yml`: `check` on pull requests; on `master`, `release` pushes `jithendar-com:latest` (the only tag) and runs `kubectl rollout restart` |
-| Deploy | Automatic on push to `master`. `./deploy.sh` for manifest changes, run by a person with the `mk4` kubeconfig |
+| Pipeline | `.github/workflows/ci-jithendar-com.yml`: `check` on pull requests; when a pull request that changes the image is merged into `master`, `release` pushes `jithendar-com:pr-<number>` and `:latest` and runs `kubectl rollout restart` |
+| Deploy | Automatic when a pull request is merged into `master` (never on a direct push). `./deploy.sh` for manifest changes, run by a person with the `mk4` kubeconfig |
 | Manifests | `minikube/` at the repository root, one file per component (see `minikube/README.md`); the image is `jithendar-com:latest` |
 | Image pulls | Secret `jithendar/harbor-pull` (read-only robot `robot$k8s-pull`, never expires), written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets` |
 | TLS | The Istio gateway's wildcard certificate (`jithendar.com`, `*.jithendar.com`, DNS-01), in the miniKube repo (`deploy/minikube/istio/edge`). `minikube/45-`, `50-` and `55-` are Traefik's certificate and TLSStore, kept only until Traefik is uninstalled (`minikube/README.md`, "Leaving Traefik"). |
@@ -55,7 +55,7 @@ delegate `jithendar-com-site` in `minikube/60-istio-routing.yaml`.
 
 ## Release
 
-Push to `master`. CI's `release` job lints, tests, builds `linux/arm64` with `GIT_SHA` baked in, pushes `jithendar-com:latest` and restarts `deploy/jithendar-com`, which pulls the new `:latest`. Nothing else to do.
+Merge a pull request into `master`. CI's `release` job lints, tests, builds `linux/arm64` with `GIT_SHA` baked in, pushes `jithendar-com:latest` and restarts `deploy/jithendar-com`, which pulls the new `:latest`. Nothing else to do.
 
 After changing `minikube/`, from an up-to-date checkout at the repository root:
 ```bash
@@ -91,7 +91,7 @@ The script checks health (and version), homepage, about, RSS, both sitemaps, rob
 
 ## Rollback
 
-`git revert` the bad commit and push: CI builds it, moves `:latest` and restarts the site. (`kubectl rollout undo` does not help: the previous pod template is also `:latest`.) A failed rollout leaves the old pods serving, so a broken image never takes the site down by itself.
+Fastest: `kubectl -n jithendar set image deploy/jithendar-com jithendar-com=registry.jithendar.com/jithendar/jithendar-com:pr-<last good number>` (every release keeps its `pr-<number>` tag; the next merge or `./deploy.sh` returns the Deployment to `:latest`). Or revert the bad change in a pull request and merge it: CI builds it, moves `:latest` and restarts the site. (`kubectl rollout undo` does not help: the previous pod template is also `:latest`.) A failed rollout leaves the old pods serving, so a broken image never takes the site down by itself.
 
 ## Limits
 

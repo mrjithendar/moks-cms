@@ -18,8 +18,10 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 
 ## Release
 
-Push to `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/jithendar-com:latest` (Harbor) and
-restarts the site, which always runs `:latest` with `imagePullPolicy: Always`. That is the whole release.
+Merge a pull request into `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/jithendar-com:pr-<number>`
+and `:latest` (Harbor; the same image) and restarts the site, which runs `:latest` with `imagePullPolicy: Always`. That is
+the whole release. A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
+only `ci-content.yml`, for articles and images, and `infra.yml` still run on push).
 
 **Content-only changes** (`services/www/content/**`, `services/www/public/images/**`) do not rebuild the site. `ci-content.yml`
 validates the MDX (schema and internal links), packages both folders into the small

@@ -1,15 +1,20 @@
 name: jithendar.com
 
-# check   → pull requests: lint, typecheck, test, build, render manifests
-# release → default branch: npm ci once; lint, tests and the production build (in turn); package the
+# check   → pull requests (opened, updated) and manual runs: lint, typecheck, test, build, render manifests
+# release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
+#           in the image (job `scope`): npm ci once; lint, tests and the production build (in turn); package the
 #           build into an arm64 image, smoke-test the image, push it to Harbor as
-#           registry.jithendar.com/jithendar/jithendar-com:latest (the only tag), then
-#           `kubectl rollout restart deploy/jithendar-com` so the cluster pulls the new :latest
+#           registry.jithendar.com/jithendar/jithendar-com:pr-<number> (the pull request's own tag, kept for
+#           rollbacks) and :latest (the same image), then `kubectl rollout restart deploy/jithendar-com` so the
+#           cluster pulls the new :latest
+#
+# There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds and deploys
+# nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com jithendar-com=…/jithendar-com:pr-<n>`.
 #
 # CI's only cluster access is that restart (kubeconfig template .github/jithendar-ci-deployer.yaml, filled
 # from variables MK4_API_SERVER, MK4_CA_DATA and secret MK4_CI_TOKEN set by scripts/setup-ci-deployer.sh); it
 # never applies manifests. ./deploy.sh applies minikube/ for manifest changes (see minikube/README.md). The site always
-# runs :latest; there is no digest pinning.
+# runs :latest (the manifests name it); every release is also kept as :pr-<number>.
 #
 # Both jobs run on GitHub-hosted runners, never on the mk4 server: builds there competed with the cluster
 # for memory and disk and froze the host (2026-10-29). The release job logs in to Harbor as robot
@@ -19,6 +24,7 @@ name: jithendar.com
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - 'services/www/**'
       # Content and images ship in their own image (ci-content.yml); they never rebuild this one.
@@ -28,25 +34,13 @@ on:
       - 'minikube/**'
       - '.github/workflows/ci-jithendar-com.yml'
       - 'scripts/image-size.sh'
-  push:
-    paths:
-      - 'services/www/**'
-      - '!services/www/content/**'
-      - '!services/www/public/images/**'
-      - '!services/www/Dockerfile.content*'
-      # Notes, article diagram sources and READMEs are not in the image (.dockerignore: docs, *.md), so a push that
-      # only changes them must not rebuild or restart the site. Pull requests still test them (tests read docs/ fixtures).
-      - '!services/www/docs/**'
-      - '!services/www/*.md'
-      - '.github/workflows/ci-jithendar-com.yml'
-      - 'scripts/image-size.sh'
 
 permissions:
   contents: read
 
-# Builds for the same ref run one at a time.
+# Runs for the same pull request go one at a time.
 concurrency:
-  group: jithendar-com-${{ github.ref }}
+  group: jithendar-com-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -57,7 +51,7 @@ jobs:
   check:
     # Pull requests from forks never run CI here (nothing in it needs them). Branches of this repository,
     # including Dependabot's, still run.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -82,19 +76,62 @@ jobs:
       - name: Render production manifests
         run: kubectl kustomize ../../minikube > /dev/null
 
+  # Did the merged pull request change anything that is in the image? Notes, article diagram sources, READMEs and
+  # manifests are not (.dockerignore: docs, *.md), so merging only those must not rebuild or restart the site.
+  scope:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      image: ${{ steps.files.outputs.image }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Files changed by the pull request
+        id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
+          image=false
+          while IFS= read -r f; do
+            case "$f" in
+              services/www/content/*|services/www/public/images/*|services/www/Dockerfile.content*|services/www/docs/*) ;;
+              services/www/*.md) ;;
+              services/www/*|.github/workflows/ci-jithendar-com.yml|scripts/image-size.sh) image=true ;;
+            esac
+          done < "$RUNNER_TEMP/files.txt"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Pull request #$PR changes the image: $image" >> "$GITHUB_STEP_SUMMARY"
+
   release:
-    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: scope
+    if: needs.scope.outputs.image == 'true'
     # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     permissions:
       contents: read
+    # Releases go one at a time, in the order the pull requests were merged.
+    concurrency:
+      group: jithendar-com-release
+      cancel-in-progress: false
     env:
       REGISTRY_IMAGE: registry.jithendar.com/jithendar/jithendar-com
+      PR_TAG: pr-${{ github.event.pull_request.number }}
+      RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The merge commit on the default branch, not the pull request's test merge.
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: services/www/.nvmrc
@@ -131,7 +168,7 @@ jobs:
           [[ -n "$HARBOR_USERNAME" && -n "$HARBOR_PASSWORD" ]] || { echo "::error::Secrets HARBOR_USERNAME and HARBOR_PASSWORD must be set"; exit 1; }
           printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
       - name: Package image
-        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$GITHUB_SHA" -t "$REGISTRY_IMAGE:latest" .
+        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$RELEASE_SHA" -t "$REGISTRY_IMAGE:$PR_TAG" -t "$REGISTRY_IMAGE:latest" .
       # Before the push: a release whose image grew more than 15 % over the stored baseline stops here.
       - name: Image size (summary; fails above +15 % of the stored baseline)
         run: ../../scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
@@ -146,14 +183,17 @@ jobs:
           trap 'docker logs "$name" | tail -50; docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
           port="$(docker port "$name" 3000/tcp | head -1 | sed 's/.*://')"
           for _ in $(seq 1 30); do curl -fsS "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break; sleep 1; done
-          curl -fsS "http://127.0.0.1:$port/api/health" | grep -q "\"version\":\"$GITHUB_SHA\""
+          curl -fsS "http://127.0.0.1:$port/api/health" | grep -q "\"version\":\"$RELEASE_SHA\""
           type="$(curl -fsS -o /dev/null -w '%{content_type}' -H 'Accept: image/avif,image/webp' \
             "http://127.0.0.1:$port/_next/image?url=%2Fimages%2Froboshop-ai%2Fcart.jpg&w=640&q=75")"
           [[ "$type" == image/avif* || "$type" == image/webp* ]] || { echo "Image optimiser returned: $type" >&2; exit 1; }
           echo "Image healthy; optimiser served $type"
       - name: Push
-        # One tag, latest; the commit is inside the image (/api/health reports it).
-        run: docker push --quiet "$REGISTRY_IMAGE:latest"
+        # Two tags for one image: pr-<number> stays as this release's own tag; latest is what the cluster runs.
+        # The commit is inside the image (/api/health reports it).
+        run: |
+          docker push --quiet "$REGISTRY_IMAGE:$PR_TAG"
+          docker push --quiet "$REGISTRY_IMAGE:latest"
       # The live deployment runs jithendar-com:latest with imagePullPolicy Always, so a restart pulls the image
       # just pushed. Signs in as ServiceAccount jithendar/github-ci-deployer, which may only restart and watch
       # deployment/jithendar-com: the template .github/jithendar-ci-deployer.yaml filled in with the values that
@@ -182,7 +222,7 @@ jobs:
           {
             echo '### jithendar.com image'
             echo
-            echo "- Tag: \`$REGISTRY_IMAGE:latest\` (commit \`$GITHUB_SHA\`)"
+            echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` (pull request #${PR_TAG#pr-}, commit \`$RELEASE_SHA\`)"
             echo "- Digest: \`$digest\`"
             echo
             echo "Deployed: deploy/jithendar-com restarted on \`:latest\`"
