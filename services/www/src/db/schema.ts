@@ -481,12 +481,24 @@ export const imageGeneration = pgTable(
     height: integer("height"),
     checksumSha256: text("checksum_sha256"),
     latencyMs: integer("latency_ms"),
+    /** "image" (lib/image-generation.ts) or "video" (lib/video-generation.ts; imageSize then holds the resolution). */
+    kind: text("kind").notNull().default("image"),
+    /** Video only: the provider's long-running operation, polled until it is done. */
+    operation: text("operation"),
+    durationSeconds: integer("duration_seconds"),
     mediaId: uuid("media_id").references(() => media.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull().defaultNow(),
     completedAt: ts("completed_at"),
   },
   (t) => [index("image_generation_user_created_idx").on(t.userId, t.createdAt), index("image_generation_status_idx").on(t.status, t.createdAt)],
 );
+
+/** content/ post files already turned into posts (lib/bundled-posts.ts): never created twice. */
+export const bundledImport = pgTable("bundled_import", {
+  collection: text("collection").notNull(),
+  slug: text("slug").notNull(),
+  importedAt: ts("imported_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.collection, t.slug], name: "bundled_import_pk" })]);
 
 export const apiKey = pgTable(
   "api_key",

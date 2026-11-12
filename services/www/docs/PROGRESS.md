@@ -1,5 +1,43 @@
 # Progress log — jithendar.com
 
+## In-article image and video generation, automatic drafts, pull-request-only CI (2026-11-12, owner request)
+
+Delivered as a pull request from a cloud session (branch `feat/editor-generation-pr-ci`, owner approved pushing a
+branch for review; nothing merged).
+
+- **Automatic drafts**: the "Import as draft" list on Admin → Posts is gone. `syncBundledPosts()` (`lib/bundled-posts.ts`,
+  called from `instrumentation.ts`) turns new `content/{blog,news,projects}/*.mdx` files into drafts at server start.
+  Ledger table `bundled_import` (migration 0027): each file once, so permanently deleted posts stay deleted. The first
+  start after this release also records every existing post's file.
+- **Generate in the article**: toolbar buttons and `/generate` slash commands in `BlockEditor.tsx`; the prompt is built
+  from the selection or the current section (`inlinePrompt`).
+- **Video generation**: `lib/video-generation.ts`, routes under `/api/admin/videos/`, `GenerateVideoDialog.tsx`,
+  `::video{loop="true"}` (GIF-style). `image_generation` gained `kind`, `operation`, `duration_seconds`; image limits
+  now count images only. Settings group "Video generation" in Advanced settings; `.env.example` updated.
+- **CI**: `ci-jithendar-com.yml`, `ci-seo-agent.yml`, `ci-practice-executor.yml`, `deploy-minikube.yml`,
+  `grafana-dashboards.yml`, `ci-repo.yml` no longer have a `push` trigger. Images are built only when a pull request is
+  merged into `master`, tagged `pr-<number>` and `latest`. `ci-content.yml` is unchanged (owner instruction);
+  `infra.yml` is unchanged too (see open issues).
+
+**Commands run → result**
+| Command | Result |
+|---|---|
+| `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` | **Not run.** The session could not install dependencies (no package registry access). They run in `check` on the pull request |
+| Syntax-only compile of the changed TypeScript files (no dependencies) | No syntax errors |
+| YAML parse of every workflow | Pass |
+| A real Veo generation | **Not run.** No Gemini key; tests use canned provider responses |
+
+**Open issues**
+- Video generation **requires manual configuration** (`GEMINI_VIDEO_MODEL`) and one real generation to confirm the API
+  shapes and the parameters the chosen model accepts.
+- `infra.yml` still applies Terraform on push to `master`: its `aws-infra` environment is restricted to the `master`
+  branch, and a `pull_request` run may not satisfy that rule. Decide whether to move it to the merged-pull-request trigger.
+- The cluster still runs `:latest` (manifests, CronJobs and sandbox pods name it); `pr-<number>` is the same image kept
+  for rollbacks.
+- Generated images and videos from the editor carry no embedded AI-provenance metadata (the news desk's covers do).
+- A pull request that changes only `minikube/seo-agent-*.yaml` or `minikube/practice-executor-*.yaml` still rebuilds
+  that image on merge (the site workflow skips such merges through its `scope` job).
+
 ## Paid calls with Razorpay on /hire-me (2026-11-12, owner request)
 
 "Make payment and book call; price based on minutes, per-minute rate from Admin → Hire me"; "from India INR, all

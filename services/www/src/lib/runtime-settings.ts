@@ -106,6 +106,20 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "video-generation",
+    title: "Video generation",
+    description:
+      "Short AI clips for articles (editor → Generate → Video), made with a Veo model through the Gemini API using the Gemini key from Integrations. Off until a model is set. Each clip costs far more than an image, so the limits are low.",
+    fields: [
+      { env: "GEMINI_VIDEO_MODEL", label: "Video model", type: "text", pattern: /^$|^[a-z0-9][a-z0-9.\-]{2,99}$/, placeholder: "veo-…", hint: "The model code from ai.google.dev (Veo). Empty turns video generation off." },
+      { env: "GEMINI_VIDEO_RESOLUTION", label: "Resolution (optional)", type: "text", pattern: /^$|^[0-9a-zA-Z]{2,8}$/, placeholder: "720p", hint: "Sent only when set; not every model accepts every value." },
+      { env: "GEMINI_VIDEO_SECONDS", label: "Clip length in seconds (optional)", type: "number", min: 1, max: 60, placeholder: "model default" },
+      { env: "GEMINI_VIDEO_USER_HOURLY_LIMIT", label: "Videos per author per hour", type: "number", min: 0, max: 100, placeholder: "3" },
+      { env: "GEMINI_VIDEO_DAILY_LIMIT", label: "Videos per day (whole site)", type: "number", min: 0, max: 1000, placeholder: "10" },
+      { env: "GEMINI_VIDEO_TIMEOUT_MS", label: "Give up after (milliseconds)", type: "number", min: 60000, max: 1800000, placeholder: "600000" },
+    ],
+  },
+  {
     id: "avatars",
     title: "Profile pictures",
     description: "Limits for pictures readers upload on their account page (always re-encoded to 512 px WebP).",

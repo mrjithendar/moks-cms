@@ -15,6 +15,8 @@ export type GenerateOptions = {
   /** Sizes the author may pick, smallest first. */
   sizes?: readonly string[];
   defaultSize?: string;
+  /** "Generate video" (GenerateVideoDialog); absent on surfaces that only take images. */
+  video?: { enabled: boolean; reason?: string; aspectRatios: readonly string[]; model?: string };
 };
 
 const QUALITY_LABEL: Record<string, string> = { fast: "Fast", pro: "Pro (best quality, slower)" };
@@ -27,6 +29,16 @@ export function defaultPrompt(title: string, summary: string): string {
     `Editorial cover illustration for a technology article titled "${title.trim() || "Untitled"}".`,
     summary.trim(),
     "Clean, modern, professional style suitable for a blog header. No text, letters, logos or watermarks.",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+/** Prompt for an image inside the article: about the text being illustrated, not the whole post. */
+export function inlinePrompt(title: string, hint: string): string {
+  const parts = [
+    `Illustration for a section of a technology article titled "${title.trim() || "Untitled"}".`,
+    hint.trim() ? `The section is about: ${hint.trim()}` : "",
+    "Clean, modern, professional explanatory style that makes the idea easy to grasp. No text, letters, logos or watermarks.",
   ];
   return parts.filter(Boolean).join(" ");
 }
@@ -46,6 +58,7 @@ export function GenerateImageDialog({
   options,
   replacing,
   acceptLabel = "Use as cover",
+  hint,
 }: {
   open: boolean;
   onClose: () => void;
@@ -57,6 +70,8 @@ export function GenerateImageDialog({
   replacing: boolean;
   /** Label of the button that keeps the image ("Use as cover", "Insert image"…). */
   acceptLabel?: string;
+  /** In-article images: the selected text or section to illustrate. Set (even empty) to use the in-article prompt. */
+  hint?: string;
 }) {
   const [prompt, setPrompt] = useState("");
   const [ratio, setRatio] = useState(options.aspectRatios[0] ?? "16:9");
@@ -76,7 +91,7 @@ export function GenerateImageDialog({
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      setPrompt(defaultPrompt(title, summary));
+      setPrompt(hint === undefined ? defaultPrompt(title, summary) : inlinePrompt(title, hint));
       setPhase({ name: "compose" });
       setError(null);
       setAlt("");
@@ -203,10 +218,10 @@ export function GenerateImageDialog({
           </>
         ) : (
           <>
-            <Field label="Prompt" htmlFor="gen-prompt" hint="Prefilled from the title and summary. Describe the subject, style and mood; avoid asking for text in the image.">
+            <Field label="Prompt" htmlFor="gen-prompt" hint={`Prefilled from the title and ${hint === undefined ? "summary" : "the text you selected or the section you are in"}. Describe the subject, style and mood; avoid asking for text in the image.`}>
               <Textarea id="gen-prompt" rows={6} value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={2000} disabled={generating} data-autofocus />
             </Field>
-            <Field label="Aspect ratio" htmlFor="gen-ratio" hint="Covers are shown at 16:9 on cards; other shapes are cropped to fit.">
+            <Field label="Aspect ratio" htmlFor="gen-ratio" hint={hint === undefined ? "Covers are shown at 16:9 on cards; other shapes are cropped to fit." : undefined}>
               <Select id="gen-ratio" value={ratio} onChange={(e) => setRatio(e.target.value)} disabled={generating}>
                 {options.aspectRatios.map((r) => (
                   <option key={r} value={r}>

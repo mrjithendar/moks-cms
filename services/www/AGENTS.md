@@ -29,7 +29,7 @@ See `docs/SEO_AUDIT.md`.
 | Host | Single server `46.224.38.14` running Minikube profile `mk4` | Shared with RoboShop AI, Argo CD, Grafana, Loki, JFrog |
 | Ingress | **Traefik + cert-manager (Let's Encrypt)** — not Cloudflare Tunnel | Owner decision 2026-10-27 |
 | TLS | Wildcard cert on the Istio gateway (miniKube `deploy/minikube/istio/edge`, DNS-01) | Formerly Traefik's `TLSStore default`, and before that the WordPress chart — see AUD-003 |
-| Deploy | **`./deploy.sh` (`kubectl apply -k minikube`) run by a person**, not Argo CD (owner decision 2026-10-27) | CI only builds and pushes the image; it has no cluster access. See `docs/DEPLOYMENT.md` |
+| Deploy | **`./deploy.sh` (`kubectl apply -k minikube`) run by a person**, not Argo CD (owner decision 2026-10-27) | CI builds and pushes the image and restarts the Deployment **only when a pull request is merged** (tags `pr-<number>` + `latest`; no `push` triggers, owner decision 2026-11-12; `ci-content.yml` and `infra.yml` unchanged). See `docs/DEPLOYMENT.md` |
 | CI | GitHub Actions, self-hosted ARM64 runners, Amazon ECR (`us-east-1`) | Existing pattern: `publish-ecr.yml` |
 | Automation / DB / AI | n8n, PostgreSQL, OpenAI API | n8n absent; a RoboShop Postgres exists in `roboshop-ai` ns — do not share it |
 | Observability | Prometheus, Grafana, Loki, OTel collector, Jaeger | Present for RoboShop |

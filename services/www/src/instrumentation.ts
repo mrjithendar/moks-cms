@@ -52,6 +52,10 @@ export async function register() {
   const { ensurePracticeSeeded } = await import("./lib/practice/seed");
   await ensurePracticeSeeded().catch((err) => log.warn("practice catalog seed failed", { err }));
 
+  // Post files added to content/ since the last start become drafts (never published; lib/bundled-posts.ts).
+  const { syncBundledPosts } = await import("./lib/bundled-posts");
+  await syncBundledPosts().catch((err) => log.warn("bundled post import failed", { err }));
+
   const { startBackupScheduler } = await import("./lib/backups");
   startBackupScheduler();
 

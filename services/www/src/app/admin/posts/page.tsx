@@ -4,10 +4,6 @@ import Link from "next/link";
 import { AdminHeader } from "@/components/admin/ui";
 import { Input, Select } from "@/components/ui/form";
 import { getDb, schema } from "@/db";
-import { redirect } from "next/navigation";
-import { staffActor } from "@/lib/admin";
-import { bundledPostsNotImported, importBundledPost } from "@/lib/bundled-posts";
-import { PostError } from "@/lib/posts";
 import { postCounts } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
 import { BulkPosts } from "./BulkPosts";
@@ -25,20 +21,6 @@ const STATUSES = [
   ["archived", "Archived"],
   ["trash", "Trash"],
 ] as const;
-
-/** Import a post file from content/ as a draft and open it in the editor. */
-async function importBundled(form: FormData) {
-  "use server";
-  const actor = await staffActor();
-  let id: string;
-  try {
-    id = await importBundledPost(actor, String(form.get("collection")), String(form.get("slug")));
-  } catch (error) {
-    if (error instanceof PostError) redirect(`/admin/posts?error=${encodeURIComponent(error.message)}`);
-    throw error;
-  }
-  redirect(`/admin/posts/${id}`);
-}
 
 const like = (q: string) => `%${q.replace(/[%_\\]/g, "\\$&")}%`;
 
@@ -66,7 +48,6 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
     db.select({ n: count() }).from(schema.post).where(where),
     postCounts(),
   ]);
-  const bundled = status === "trash" ? [] : await bundledPostsNotImported();
   const pages = Math.max(1, Math.ceil((total?.n ?? 0) / PAGE_SIZE));
   const href = (over: Partial<Search>) => {
     const p = new URLSearchParams(Object.entries({ q, status, collection, ...over }).filter(([, v]) => v) as [string, string][]);
@@ -83,25 +64,6 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
         actions={<Link href="/admin/posts/new" className="inline-flex items-center rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-on-accent">New post</Link>}
       />
       {error && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">{error}</p>}
-      {bundled.length > 0 && (
-        <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
-          <p>Post files in <code className="text-xs">content/</code> that are not in the admin yet (the database imports them only at first setup):</p>
-          <ul className="mt-2 space-y-1.5">
-            {bundled.map((b) => (
-              <li key={`${b.collection}/${b.slug}`} className="flex flex-wrap items-center gap-2">
-                <form action={importBundled}>
-                  <input type="hidden" name="collection" value={b.collection} />
-                  <input type="hidden" name="slug" value={b.slug} />
-                  <button type="submit" className="font-semibold underline">Import as draft</button>
-                </form>
-                <span>{b.title}</span>
-                <span className="font-mono text-xs opacity-70">/{b.collection}/{b.slug}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs opacity-80">Imported posts open in the editor as drafts; nothing is published until you publish it.</p>
-        </div>
-      )}
       <nav aria-label="Filter by status" className="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 text-sm">
         {STATUSES.map(([value, label]) => (
           <Link key={value} href={href({ status: value, page: undefined })} aria-current={status === value ? "page" : undefined}

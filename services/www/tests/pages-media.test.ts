@@ -53,16 +53,22 @@ describe("attachment details", () => {
 });
 
 describe("bundled posts added after setup", () => {
-  it("are listed until imported, and import as drafts", async () => {
+  it("become drafts automatically, once, and are not recreated after a permanent delete", async () => {
     vi.stubEnv("CONTENT_DIR", `${process.cwd()}/content`); // the real content/ folder, not the fixtures
-    const { bundledPostsNotImported, importBundledPost } = await import("@/lib/bundled-posts");
-    const before = await bundledPostsNotImported();
-    expect(before).toEqual(expect.arrayContaining([expect.objectContaining({ collection: "blog", slug: "roboshop-ai-microservices" })]));
-    const id = await importBundledPost(admin, "blog", "roboshop-ai-microservices");
-    const [row] = await db.select().from(schema.post);
-    expect(row).toMatchObject({ id, status: "draft", publishedAt: null, authorId: "admin" });
-    expect(row!.title).toMatch(/^RoboShop AI microservices/);
-    expect((await bundledPostsNotImported()).some((b) => b.slug === "roboshop-ai-microservices")).toBe(false);
-    await expect(importBundledPost(admin, "blog", "roboshop-ai-microservices")).rejects.toMatchObject({ status: 409 });
+    const { syncBundledPosts } = await import("@/lib/bundled-posts");
+    const { deletePost } = await import("@/lib/posts");
+    const first = await syncBundledPosts();
+    const hit = first.find((b) => b.collection === "blog" && b.slug === "roboshop-ai-microservices");
+    expect(hit).toBeDefined();
+    const rows = await db.select().from(schema.post);
+    expect(rows.length).toBe(first.length);
+    expect(rows.every((r) => r.status === "draft" && r.publishedAt === null)).toBe(true);
+    expect(rows.find((r) => r.id === hit!.id)!.title).toMatch(/^RoboShop AI microservices/);
+
+    // A second start imports nothing, and a permanently deleted post stays deleted.
+    expect(await syncBundledPosts()).toEqual([]);
+    await deletePost(admin, hit!.id);
+    expect(await syncBundledPosts()).toEqual([]);
+    expect((await db.select().from(schema.post)).some((r) => r.slug === "roboshop-ai-microservices")).toBe(false);
   });
 });

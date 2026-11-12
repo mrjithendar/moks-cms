@@ -33,6 +33,11 @@ stored Markdown ─parse─▶ editor document ─serialize─▶ stored Markdow
   caption, alignment (centered/wide/full) and size (small/medium/large) via `:::figure`. Galleries via `:::gallery`.
   Removing an image from a post never deletes the file; Media shows where a file is used and refuses deletion while used.
 - Featured image: choose, upload, **Generate image** (Gemini, see MEDIA.md), focal point; social image optional.
+- In the article: the toolbar's **✨🖼** / **✨🎬** buttons and the `/generate` slash commands create an image or a short
+  video for the selected text (or the section the cursor is in; the prompt is prefilled from it and editable). Images go
+  through the usual alt text / caption step; videos insert `::video{… loop="true"}` (muted, autoplaying, repeating:
+  GIF-style, controls kept) or a normal player. Both are disabled with the reason as a tooltip until configured
+  (MEDIA.md → *Generate image*, *Generate video*).
 - Focus mode hides the admin chrome; on phones the settings open as a full-screen drawer.
 
 ## Saving and publishing
@@ -63,8 +68,10 @@ stored Markdown ─parse─▶ editor document ─serialize─▶ stored Markdow
 
 ## Sending MDX files without a build (`npm run push-post`)
 
-Files in `content/{blog,news,projects}/` reach Admin → Posts only through the image (`bundled-posts.ts`), so a new
-file used to mean a build and deploy. `scripts/push-post.ts` sends them to the live site through `/api/v1/posts`
+Files in `content/{blog,news,projects}/` reach Admin → Posts through the content image: at server start every file that
+is not a post yet becomes a **draft** automatically (`bundled-posts.ts`, `syncBundledPosts()`; there is no "Import as
+draft" step any more). Each file is imported once (table `bundled_import`), so a post you delete permanently does not
+come back on the next start; nothing is published automatically. Without a deploy, `scripts/push-post.ts` sends them to the live site through `/api/v1/posts`
 instead:
 
 ```sh

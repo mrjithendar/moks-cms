@@ -7,6 +7,7 @@ import { getDb, schema } from "@/db";
 import type { FeaturedImage } from "@/db/schema";
 import { staffActor } from "@/lib/admin";
 import { acceptGeneration, discardGeneration } from "@/lib/image-generation";
+import { acceptVideoGeneration, discardVideoGeneration } from "@/lib/video-generation";
 import { publicRoot, readLocalImage } from "@/lib/images";
 import { completeUpload, createUploadIntent, mediaSrc, storeUpload, type UploadIntent, type UploadResult } from "@/lib/media";
 import { createPreview, type PreviewKind } from "@/lib/preview";
@@ -115,4 +116,21 @@ export async function acceptGeneratedImage(id: string, alt: string, context: str
 export async function discardGeneratedImage(id: string): Promise<void> {
   const actor = await staffActor();
   await discardGeneration(actor, id).catch(() => undefined);
+}
+
+/** The author chose "Insert video" for a generated clip: it joins the media library and its /media/… link comes back. */
+export async function acceptGeneratedVideo(id: string, description: string, context: string): Promise<{ ok: true; src: string; aspectRatio: string } | { ok: false; error: string }> {
+  const actor = await staffActor();
+  try {
+    const video = await acceptVideoGeneration(actor, id, { description, context, name: context.split("/").pop() });
+    return { ok: true, src: video.src, aspectRatio: video.aspectRatio };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Discard an unaccepted clip, or stop waiting for one still being generated. */
+export async function discardGeneratedVideo(id: string): Promise<void> {
+  const actor = await staffActor();
+  await discardVideoGeneration(actor, id).catch(() => undefined);
 }

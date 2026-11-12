@@ -102,6 +102,32 @@ are wrapped in a focusable horizontal scroll region; code blocks scroll inside t
   nothing is published). **Discard**/close deletes it; unaccepted results are deleted after 1 hour by the
   app and after 1 day by the R2 lifecycle rule (backstop).
 
+## Generate video (Veo through the Gemini API)
+
+**Requires manual configuration**: off until a video model is set in **Admin → Advanced settings → Video generation**
+(`GEMINI_VIDEO_MODEL`, a Veo model code from ai.google.dev). It uses the Gemini key from Integrations and needs R2.
+Not yet exercised against the real API (no key in development): request and response shapes follow Google's Veo guide
+as read on 2026-11-12, and the tests use canned responses. Generate one clip after configuring it.
+
+- API: `POST {base}/models/{model}:predictLongRunning` with `{ instances: [{ prompt }], parameters: { aspectRatio } }`
+  (`resolution` / `durationSeconds` only when `GEMINI_VIDEO_RESOLUTION` / `GEMINI_VIDEO_SECONDS` are set) → operation
+  name; `GET {base}/{operation}` until `done`; the clip is downloaded from
+  `response.generateVideoResponse.generatedSamples[0].video.uri` with the key in `x-goog-api-key`. The key is only sent
+  to the API host or another `*.googleapis.com` host.
+- A clip takes minutes, so nothing waits in memory: `POST /api/admin/videos/generate` returns the generation id
+  (row in `image_generation`, `kind = 'video'`), the dialog polls `GET …/generations/{id}/status` every 8 s, and the
+  poll that finds the operation done downloads the clip, checks it is an MP4 and stores it under `tmp/generated`
+  (one replica only: the row is claimed as `finalizing`). A poll that cannot reach Google keeps waiting; after
+  `GEMINI_VIDEO_TIMEOUT_MS` (10 min) the generation is closed as timed out.
+- Limits: `GEMINI_VIDEO_USER_HOURLY_LIMIT` (3), `GEMINI_VIDEO_DAILY_LIMIT` (10, whole site), one running video per
+  author. Counted separately from images. A cancelled video still counts: Google's operation cannot be cancelled and
+  is billed.
+- Lifecycle as for images: private preview (`GET /api/admin/videos/generations/{id}`, Range supported) → **Insert
+  video** copies it to `media/videos/…`, creates the media row (description required) and inserts `::video`;
+  **Discard**/close deletes it; unaccepted clips expire after 1 hour.
+- `::video{src="/media/…" loop="true"}` plays muted, by itself and repeating (GIF-style). The controls stay so a reader
+  can pause it. A real `.gif` file is not produced: an MP4 loop is a fraction of the size.
+
 ## Media library (Admin → Media)
 
 WordPress-style: grid or list view; filters by type, month and “missing alt text”; search over file name, alt
