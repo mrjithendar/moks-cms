@@ -486,6 +486,9 @@ export const imageGeneration = pgTable(
     /** Video only: the provider's long-running operation, polled until it is done. */
     operation: text("operation"),
     durationSeconds: integer("duration_seconds"),
+    /** Video only, once accepted: r2 | cloudflare-stream | mux | bunny-stream, and the video's id at an external service. */
+    destination: text("destination"),
+    externalId: text("external_id"),
     mediaId: uuid("media_id").references(() => media.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull().defaultNow(),
     completedAt: ts("completed_at"),

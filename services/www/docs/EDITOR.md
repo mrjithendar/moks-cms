@@ -36,7 +36,8 @@ stored Markdown ─parse─▶ editor document ─serialize─▶ stored Markdow
 - In the article: the toolbar's **✨🖼** / **✨🎬** buttons and the `/generate` slash commands create an image or a short
   video for the selected text (or the section the cursor is in; the prompt is prefilled from it and editable). Images go
   through the usual alt text / caption step; videos insert `::video{… loop="true"}` (muted, autoplaying, repeating:
-  GIF-style, controls kept) or a normal player. Both are disabled with the reason as a tooltip until configured
+  GIF-style, controls kept) or a normal player; when an admin has switched on more than one video destination
+  (R2, Cloudflare Stream, Mux, Bunny Stream) the dialog asks where to save it, and external ones insert `::embed`. Both are disabled with the reason as a tooltip until configured
   (MEDIA.md → *Generate image*, *Generate video*).
 - Focus mode hides the admin chrome; on phones the settings open as a full-screen drawer.
 

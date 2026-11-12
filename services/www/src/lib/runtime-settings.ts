@@ -120,6 +120,25 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "video-destinations",
+    title: "Video destinations",
+    description:
+      "Where a generated video can go when an author inserts it. The editor offers only destinations that are switched on here and fully filled in. This site's own media library (R2) plays the file directly; Cloudflare Stream, Mux and Bunny Stream encode it for adaptive streaming and the article embeds their player (the video then lives in that service's account, not in Admin → Media).",
+    fields: [
+      { env: "VIDEO_DEST_R2_DISABLED", label: "Turn OFF this site's own media library (R2) as a destination", type: "boolean", hint: "It is on unless this is ticked." },
+      { env: "CF_STREAM_ENABLED", label: "Cloudflare Stream", type: "boolean" },
+      { env: "CF_STREAM_ACCOUNT_ID", label: "Cloudflare account ID", type: "text", pattern: /^$|^[a-f0-9]{32}$/ },
+      { env: "CF_STREAM_API_TOKEN", label: "Cloudflare API token", type: "secret", pattern: /^$|^[A-Za-z0-9_\-]{20,200}$/, hint: "A token with the Stream: Edit permission only." },
+      { env: "CF_STREAM_CUSTOMER_CODE", label: "Stream customer code", type: "text", pattern: /^$|^[a-z0-9]{6,40}$/, placeholder: "the code in customer-<code>.cloudflarestream.com", hint: "Shown in any Stream embed code in the Cloudflare dashboard." },
+      { env: "MUX_ENABLED", label: "Mux", type: "boolean" },
+      { env: "MUX_TOKEN_ID", label: "Mux token ID", type: "text", pattern: /^$|^[A-Za-z0-9\-]{10,100}$/ },
+      { env: "MUX_TOKEN_SECRET", label: "Mux token secret", type: "secret", pattern: /^$|^[A-Za-z0-9+\/=_\-]{20,200}$/, hint: "An access token with Mux Video read and write." },
+      { env: "BUNNY_STREAM_ENABLED", label: "Bunny Stream", type: "boolean" },
+      { env: "BUNNY_STREAM_LIBRARY_ID", label: "Bunny video library ID", type: "text", pattern: /^$|^\d{1,10}$/ },
+      { env: "BUNNY_STREAM_API_KEY", label: "Bunny library API key", type: "secret", pattern: /^$|^[A-Za-z0-9\-]{20,100}$/, hint: "The Stream library's own key (Stream → library → API), not the account key." },
+    ],
+  },
+  {
     id: "avatars",
     title: "Profile pictures",
     description: "Limits for pictures readers upload on their account page (always re-encoded to 512 px WebP).",

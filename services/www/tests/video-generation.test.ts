@@ -11,6 +11,8 @@ vi.mock("@/lib/storage", async (importOriginal) => ({ ...(await importOriginal<t
 
 const { acceptVideoGeneration, checkVideoOperation, discardVideoGeneration, downloadVideo, startVideoGeneration, videoConfig, videoGenerationProgress, VideoGenError } = await import("@/lib/video-generation");
 const { markdownToHtml } = await import("@/lib/mdx/html");
+const { embedUrl } = await import("@/lib/mdx/shortcodes");
+const { destinationStates, offeredDestinations } = await import("@/lib/video-destinations");
 
 const admin: Actor = { id: "admin", role: "admin", label: "admin@example.com" };
 const author: Actor = { id: "author", role: "author", label: "a@example.com" };
@@ -180,6 +182,113 @@ describe("video generation workflow", () => {
     await discardVideoGeneration(admin, next.id);
     expect(await rowOf(next.id)).toMatchObject({ status: "discarded", tempKey: null });
     expect([...r2.objects.keys()].some((k) => k.includes("/tmp/"))).toBe(false);
+  });
+});
+
+describe("video destinations", () => {
+  const ALL = {
+    CF_STREAM_ENABLED: "true", CF_STREAM_ACCOUNT_ID: "a".repeat(32), CF_STREAM_API_TOKEN: "cf-token-0123456789abcdef", CF_STREAM_CUSTOMER_CODE: "abc123def456",
+    MUX_ENABLED: "true", MUX_TOKEN_ID: "mux-token-id", MUX_TOKEN_SECRET: "mux-token-secret-0123456789",
+    BUNNY_STREAM_ENABLED: "true", BUNNY_STREAM_LIBRARY_ID: "759", BUNNY_STREAM_API_KEY: "bunny-key-0123456789abcdef",
+  };
+  const CF_UID = "ea95132c15732419d526b5cae4c20c56";
+  const BUNNY_GUID = "eb1c4f77-0cda-46be-b47d-1118ad7c2ffe";
+  const MUX_PLAYBACK = "TXjw00EgPBPS6acv7gBUEJ14PEr5XNWOe";
+
+  it("offers only destinations that are switched on and fully configured", () => {
+    const ids = (env: Record<string, string>, r2 = true) => offeredDestinations(env, r2).map((d) => d.id);
+    expect(ids({})).toEqual(["r2"]);
+    expect(ids({}, false)).toEqual([]);
+    expect(ids({ VIDEO_DEST_R2_DISABLED: "true" })).toEqual([]);
+    expect(ids(ALL)).toEqual(["r2", "cloudflare-stream", "mux", "bunny-stream"]);
+    expect(ids({ ...ALL, MUX_ENABLED: "" })).toEqual(["r2", "cloudflare-stream", "bunny-stream"]);
+    // Switched on but a credential is missing: not offered, and the admin view says what is missing.
+    expect(ids({ ...ALL, BUNNY_STREAM_API_KEY: "" })).toEqual(["r2", "cloudflare-stream", "mux"]);
+    expect(destinationStates({ ...ALL, BUNNY_STREAM_API_KEY: "" }, true).find((d) => d.id === "bunny-stream")).toMatchObject({ enabled: true, ready: false, missing: ["BUNNY_STREAM_API_KEY"] });
+  });
+
+  /** Canned Cloudflare Stream, Mux and Bunny Stream APIs, recording what they were sent. */
+  function services() {
+    const calls: { url: string; method: string; headers: Record<string, string>; body: unknown }[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      calls.push({ url, method: init?.method ?? "GET", headers: (init?.headers ?? {}) as Record<string, string>, body: init?.body });
+      if (url === `https://api.cloudflare.com/client/v4/accounts/${ALL.CF_STREAM_ACCOUNT_ID}/stream`) return jsonReply({ success: true, result: { uid: CF_UID } });
+      if (url.startsWith("https://api.cloudflare.com/")) return jsonReply({ success: true, result: {} });
+      if (url === "https://api.mux.com/video/v1/assets") return jsonReply({ data: { id: "asset-1", status: "preparing", playback_ids: [{ id: MUX_PLAYBACK, policy: "public" }] } }, 201);
+      if (url === "https://video.bunnycdn.com/library/759/videos") return jsonReply({ guid: BUNNY_GUID, title: "x" });
+      if (url === `https://video.bunnycdn.com/library/759/videos/${BUNNY_GUID}`) return jsonReply({ success: true, message: "OK" });
+      return new Response("not found", { status: 404 });
+    });
+    return { calls, fetchImpl };
+  }
+
+  async function ready(actor: Actor) {
+    const fetchImpl = provider(done);
+    const { id } = await startVideoGeneration(actor, { prompt: PROMPT, aspectRatio: "16:9" }, { config, fetchImpl, limits });
+    await videoGenerationProgress(actor, id, { config, fetchImpl });
+    return id;
+  }
+
+  it("sends an accepted clip to Cloudflare Stream and returns its player, without touching the media library", async () => {
+    const id = await ready(author);
+    const { calls, fetchImpl } = services();
+    const video = await acceptVideoGeneration(author, id, { description: "Packets between pods", destination: "cloudflare-stream", loop: true }, { env: ALL, fetchImpl });
+    expect(video).toMatchObject({ destination: "cloudflare-stream", embed: true, id: CF_UID, src: `https://customer-abc123def456.cloudflarestream.com/${CF_UID}/iframe?autoplay=true&loop=true&muted=true` });
+    expect(calls[0]).toMatchObject({ method: "POST", headers: { Authorization: `Bearer ${ALL.CF_STREAM_API_TOKEN}` } });
+    expect(calls[0]!.body).toBeInstanceOf(FormData);
+    expect(await db.select().from(schema.media)).toEqual([]);
+    expect(await rowOf(id)).toMatchObject({ status: "accepted", destination: "cloudflare-stream", externalId: CF_UID, tempKey: null });
+    expect(r2.objects.size).toBe(0);
+    expect(embedUrl(video.src)).toBe(video.src);
+  });
+
+  it("gives Mux a signed link to fetch the clip from, and keeps the private copy for it", async () => {
+    const id = await ready(author);
+    const { calls, fetchImpl } = services();
+    const video = await acceptVideoGeneration(author, id, { description: "Packets between pods", destination: "mux", loop: false }, { env: ALL, fetchImpl });
+    expect(video).toMatchObject({ destination: "mux", embed: true, id: "asset-1", src: `https://player.mux.com/${MUX_PLAYBACK}` });
+    expect(calls[0]!.headers.Authorization).toBe(`Basic ${Buffer.from("mux-token-id:mux-token-secret-0123456789").toString("base64")}`);
+    const sent = JSON.parse(String(calls[0]!.body));
+    expect(sent).toMatchObject({ playback_policies: ["public"], inputs: [{ url: expect.stringMatching(/^https:\/\/r2\.test\/.*tmp\/generated/) }] });
+    expect((await rowOf(id)).tempKey).not.toBeNull();
+    expect(embedUrl(video.src)).toBe(video.src);
+  });
+
+  it("creates the Bunny Stream video, then uploads the bytes", async () => {
+    const id = await ready(author);
+    const { calls, fetchImpl } = services();
+    const video = await acceptVideoGeneration(author, id, { description: "Packets between pods", destination: "bunny-stream", loop: true }, { env: ALL, fetchImpl });
+    expect(video.src).toBe(`https://iframe.mediadelivery.net/embed/759/${BUNNY_GUID}?autoplay=true&loop=true&muted=true`);
+    expect(calls.map((c) => c.method)).toEqual(["POST", "PUT"]);
+    expect(calls.every((c) => c.headers.AccessKey === ALL.BUNNY_STREAM_API_KEY)).toBe(true);
+    expect(JSON.parse(String(calls[0]!.body))).toEqual({ title: "Packets between pods" });
+    expect((calls[1]!.body as Uint8Array).length).toBe(MP4.length);
+    expect(embedUrl(video.src)).toBe(video.src);
+  });
+
+  it("refuses a destination that is not switched on, and a failed upload leaves the clip ready to try again", async () => {
+    const id = await ready(author);
+    const { fetchImpl } = services();
+    await expect(acceptVideoGeneration(author, id, { description: "x", destination: "mux" }, { env: {}, fetchImpl })).rejects.toMatchObject({ status: 400 });
+    await expect(acceptVideoGeneration(author, id, { description: "x", destination: "youtube" }, { env: ALL, fetchImpl })).rejects.toMatchObject({ status: 400 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const rejected = vi.fn<typeof fetch>(async () => jsonReply({ error: "bad token" }, 401));
+    await expect(acceptVideoGeneration(author, id, { description: "x", destination: "bunny-stream" }, { env: ALL, fetchImpl: rejected })).rejects.toMatchObject({ status: 502, message: expect.stringMatching(/rejected the credentials/) });
+    expect(await rowOf(id)).toMatchObject({ status: "succeeded", destination: null });
+    // The media library is still available as a destination for the same clip.
+    expect(await acceptVideoGeneration(author, id, { description: "x", destination: "r2" }, { env: ALL })).toMatchObject({ destination: "r2", embed: false });
+  });
+
+  it("embeds only the three players, keeping just the playback switches", async () => {
+    expect(embedUrl(`https://customer-abc123def456.cloudflarestream.com/${CF_UID}/iframe?autoplay=true&evil=1`)).toBe(`https://customer-abc123def456.cloudflarestream.com/${CF_UID}/iframe?autoplay=true`);
+    expect(embedUrl(`https://player.mux.com/${MUX_PLAYBACK}?autoplay=muted&loop=true`)).toBe(`https://player.mux.com/${MUX_PLAYBACK}?autoplay=muted&loop=true`);
+    expect(embedUrl(`https://player.mediadelivery.net/embed/759/${BUNNY_GUID}`)).toBe(`https://player.mediadelivery.net/embed/759/${BUNNY_GUID}`);
+    expect(embedUrl(`https://customer-abc123def456.cloudflarestream.com.evil.example/${CF_UID}/iframe`)).toBeNull();
+    expect(embedUrl("https://player.mux.com/../x")).toBeNull();
+    const html = await markdownToHtml(`::embed{src="https://player.mux.com/${MUX_PLAYBACK}?autoplay=muted&loop=true&muted=true" title="Demo" ratio="9:16"}`);
+    expect(html).toContain('class="media-frame ratio-9-16"');
+    expect(html).toMatch(/allow="autoplay; /);
   });
 });
 

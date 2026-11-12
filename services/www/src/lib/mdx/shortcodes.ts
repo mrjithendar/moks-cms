@@ -67,6 +67,29 @@ export function embedUrl(raw: string | null | undefined): string | null {
     const v = /^\/(?:video\/)?(\d{4,12})$/.exec(u.pathname)?.[1];
     if (v) return `https://player.vimeo.com/video/${v}?dnt=1`;
   }
+  // Players of the video destinations (lib/video-destinations.ts). Only the three playback switches survive.
+  const playback = (allowed: Record<string, string[]>) => {
+    const q = new URLSearchParams();
+    for (const [name, values] of Object.entries(allowed)) {
+      const v = u.searchParams.get(name);
+      if (v && values.includes(v)) q.set(name, v);
+    }
+    const s = q.toString();
+    return s ? `?${s}` : "";
+  };
+  const SWITCH = { autoplay: ["true"], loop: ["true"], muted: ["true"] };
+  if (/^customer-[a-z0-9]{6,40}\.cloudflarestream\.com$/.test(u.hostname)) {
+    const v = /^\/([a-f0-9]{32})\/iframe$/.exec(u.pathname)?.[1];
+    if (v) return `https://${u.hostname}/${v}/iframe${playback(SWITCH)}`;
+  }
+  if (u.hostname === "player.mux.com") {
+    const v = /^\/([A-Za-z0-9]{10,80})$/.exec(u.pathname)?.[1];
+    if (v) return `https://player.mux.com/${v}${playback({ ...SWITCH, autoplay: ["true", "muted"] })}`;
+  }
+  if (u.hostname === "iframe.mediadelivery.net" || u.hostname === "player.mediadelivery.net") {
+    const m = /^\/embed\/(\d{1,10})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(u.pathname);
+    if (m) return `https://${u.hostname}/embed/${m[1]}/${m[2]}${playback(SWITCH)}`;
+  }
   return null;
 }
 
@@ -137,7 +160,7 @@ export function remarkShortcodes() {
           const frame = {
             type: "element",
             tagName: "div",
-            properties: { className: ["media-frame", "ratio-16-9"] },
+            properties: { className: ["media-frame", RATIOS[attrs.ratio ?? ""] ?? "ratio-16-9"] },
             children: [
               {
                 type: "element",
@@ -146,7 +169,8 @@ export function remarkShortcodes() {
                   src,
                   title,
                   loading: "lazy",
-                  allow: "encrypted-media; picture-in-picture; fullscreen",
+                  // A silent loop (autoplay=… in the player address) needs the autoplay permission.
+                  allow: /[?&]autoplay=/.test(src) ? "autoplay; encrypted-media; picture-in-picture; fullscreen" : "encrypted-media; picture-in-picture; fullscreen",
                   allowFullScreen: true,
                   referrerPolicy: "strict-origin-when-cross-origin",
                   sandbox: "allow-scripts allow-same-origin allow-presentation allow-popups",

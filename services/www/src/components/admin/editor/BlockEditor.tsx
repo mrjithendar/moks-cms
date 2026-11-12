@@ -176,14 +176,14 @@ export const BLOCKS: BlockDef[] = [
   },
   {
     id: "embed",
-    label: "Video embed (YouTube / Vimeo)",
-    keywords: "youtube vimeo video",
+    label: "Video embed (YouTube, Vimeo, Cloudflare Stream, Mux, Bunny)",
+    keywords: "youtube vimeo video cloudflare stream mux bunny player",
     run: (e, ui) =>
       ui.ask({
         title: "Embed a video",
-        fields: [{ name: "src", label: "YouTube or Vimeo URL", placeholder: "https://www.youtube.com/watch?v=…" }, { name: "title", label: "Title (for screen readers)" }],
+        fields: [{ name: "src", label: "Video or player URL", hint: "YouTube or Vimeo link, or a Cloudflare Stream, Mux or Bunny Stream player address.", placeholder: "https://www.youtube.com/watch?v=…" }, { name: "title", label: "Title (for screen readers)" }],
         submit: (v) => {
-          if (!embedUrl(v.src)) return "Only YouTube and Vimeo links are allowed.";
+          if (!embedUrl(v.src)) return "Only YouTube and Vimeo links and Cloudflare Stream, Mux or Bunny Stream player addresses are allowed.";
           insertShortcode(e, `::embed{src="${attr(v.src!)}" title="${attr(v.title || "Video")}"}`);
           return null;
         },
@@ -554,7 +554,10 @@ export function BlockEditor({
   }
 
   function insertVideo(v: InsertedVideo) {
-    const source = `::video{src="${v.src}" ratio="${v.ratio}"${v.caption ? ` caption="${attr(v.caption)}"` : ""}${v.loop ? ' loop="true"' : ""}}`;
+    // An external player (Cloudflare Stream, Mux, Bunny Stream) is an embed; a file in the media library is a video.
+    const source = v.embed
+      ? `::embed{src="${v.src}" title="${attr(v.title || "Video")}" ratio="${v.ratio}"${v.caption ? ` caption="${attr(v.caption)}"` : ""}}`
+      : `::video{src="${v.src}" ratio="${v.ratio}"${v.caption ? ` caption="${attr(v.caption)}"` : ""}${v.loop ? ' loop="true"' : ""}}`;
     if (mode === "source" || !editor) {
       const next = `${latest.current.trimEnd()}\n\n${source}\n`;
       latest.current = next;

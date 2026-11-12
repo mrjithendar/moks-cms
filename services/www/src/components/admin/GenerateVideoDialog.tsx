@@ -5,8 +5,9 @@ import { acceptGeneratedVideo, discardGeneratedVideo } from "@/app/admin/_action
 import { Alert, Button, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Dialog } from "./Dialog";
 
-export type GenerateVideoOptions = { enabled: boolean; reason?: string; aspectRatios: readonly string[]; model?: string };
-export type InsertedVideo = { src: string; ratio: string; caption: string; loop: boolean };
+export type GenerateVideoOptions = { enabled: boolean; reason?: string; aspectRatios: readonly string[]; model?: string; destinations?: { id: string; label: string }[] };
+/** `embed`: `src` is an external player (::embed, playback options already in the address); otherwise a /media/… file (::video). */
+export type InsertedVideo = { src: string; ratio: string; caption: string; loop: boolean; embed: boolean; title: string };
 
 type Phase = { name: "compose" } | { name: "generating"; id: string | null } | { name: "preview"; id: string; previewUrl: string; model: string };
 type Progress = { status?: "running" | "succeeded" | "failed"; previewUrl?: string; model?: string; error?: string };
@@ -51,6 +52,8 @@ export function GenerateVideoDialog({
   const [description, setDescription] = useState("");
   const [caption, setCaption] = useState("");
   const [loop, setLoop] = useState(true);
+  const destinations = options.destinations ?? [];
+  const [destination, setDestination] = useState(destinations[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   /** The generation this dialog is waiting for or previewing; discarded when the dialog closes. */
@@ -159,14 +162,14 @@ export function GenerateVideoDialog({
   async function accept(id: string) {
     setSaving(true);
     setError(null);
-    const r = await acceptGeneratedVideo(id, description, context);
+    const r = await acceptGeneratedVideo(id, description, context, destination, loop);
     setSaving(false);
     if (!r.ok) {
       setError(r.error);
       return;
     }
     pendingId.current = null;
-    onInsert({ src: r.src, ratio: r.aspectRatio, caption: caption.trim(), loop });
+    onInsert({ src: r.src, ratio: r.aspectRatio, caption: caption.trim(), loop, embed: r.embed, title: description.trim() });
   }
 
   const generating = phase.name === "generating";
@@ -180,7 +183,7 @@ export function GenerateVideoDialog({
           Regenerate
         </Button>
         <Button type="button" onClick={() => accept(phase.id)} disabled={saving || !description.trim()}>
-          {saving ? "Saving…" : "Insert video"}
+          {saving ? "Sending…" : "Insert video"}
         </Button>
       </div>
     ) : (
@@ -200,6 +203,19 @@ export function GenerateVideoDialog({
       </div>
     );
 
+  // Only destinations an admin switched on are listed; with a single one there is nothing to choose.
+  const destinationField = destinations.length > 1 && (
+    <Field label="Save the video to" htmlFor="gen-video-destination" hint="This site plays the file directly. A streaming service encodes it first, so its player can show “processing” for a minute after you insert it.">
+      <Select id="gen-video-destination" value={destination} onChange={(e) => setDestination(e.target.value)} disabled={saving}>
+        {destinations.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.label}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+
   return (
     <Dialog open={open} onClose={onClose} title="Generate a video" size="md" footer={footer}>
       <div className="space-y-5">
@@ -216,6 +232,7 @@ export function GenerateVideoDialog({
             <Field label="Caption (optional)" htmlFor="gen-video-caption">
               <Input id="gen-video-caption" value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} />
             </Field>
+            {destinationField}
             <label className="flex items-start gap-3 text-sm">
               <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} className="mt-1 h-4 w-4" />
               <span>
@@ -238,6 +255,7 @@ export function GenerateVideoDialog({
                 ))}
               </Select>
             </Field>
+            {destinationField}
             {generating ? (
               <p role="status" className="flex items-center gap-3 text-sm text-fg-muted">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" aria-hidden="true" />

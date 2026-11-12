@@ -8,7 +8,8 @@ import { log } from "./log";
 import { mediaSrc, sanitizeFilename, sniffContentType } from "./media";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
-import { copyObject, deleteObject, getObject, headObject, mediaObjectKey, normaliseContext, putObject, storageReady, tempObjectKey } from "./storage";
+import { copyObject, deleteObject, getObject, headObject, mediaObjectKey, normaliseContext, presignGet, putObject, storageReady, tempObjectKey } from "./storage";
+import { DESTINATIONS, DestinationError, offeredDestinations, publishVideo, withPlayback, type DestinationId } from "./video-destinations";
 
 /**
  * "Generate video" for the editor: a short clip from a text prompt with Google's Veo models through the Gemini API
@@ -85,14 +86,24 @@ export async function resolveVideoConfig(): Promise<VideoConfig | null> {
   return videoConfig(image?.apiKey, await effective());
 }
 
-export type VideoGenerationStatus = { enabled: boolean; reason?: string; aspectRatios: readonly VideoAspectRatio[]; model?: string };
+export type VideoGenerationStatus = {
+  enabled: boolean;
+  reason?: string;
+  aspectRatios: readonly VideoAspectRatio[];
+  model?: string;
+  /** Where an inserted clip can go: only destinations an admin switched on and configured (lib/video-destinations.ts). */
+  destinations?: { id: DestinationId; label: string }[];
+};
 
 /** For the editor: whether "Generate video" is on, and why not. Never exposes the key. */
 export async function videoGenerationStatus(): Promise<VideoGenerationStatus> {
   const config = await resolveVideoConfig();
   if (!config) return { enabled: false, reason: "Video generation is not configured (Gemini key in Admin → Integrations, video model in Admin → Advanced settings).", aspectRatios: VIDEO_ASPECT_RATIOS };
+  // Storage is needed whatever the destination: the clip is previewed from the private tmp prefix first.
   if (!(await storageReady())) return { enabled: false, reason: "Configure media storage (R2) first.", aspectRatios: VIDEO_ASPECT_RATIOS };
-  return { enabled: true, aspectRatios: VIDEO_ASPECT_RATIOS, model: config.model };
+  const destinations = offeredDestinations(await effective(), true);
+  if (destinations.length === 0) return { enabled: false, reason: "No video destination is switched on (Admin → Advanced settings → Video destinations).", aspectRatios: VIDEO_ASPECT_RATIOS };
+  return { enabled: true, aspectRatios: VIDEO_ASPECT_RATIOS, model: config.model, destinations };
 }
 
 // --- Provider ------------------------------------------------------------------------------------
@@ -379,13 +390,26 @@ export async function videoGenerationPreview(actor: Actor, id: string, range?: s
   return { body: obj.Body.transformToWebStream(), contentType: "video/mp4", contentRange: (obj as { ContentRange?: string }).ContentRange, contentLength: (obj as { ContentLength?: number }).ContentLength };
 }
 
-export type AcceptedVideo = { id: string; src: string; aspectRatio: string };
+/** `embed` false: `src` is a /media/… file for ::video. `embed` true: `src` is an external player for ::embed. */
+export type AcceptedVideo = { id: string; src: string; aspectRatio: string; destination: DestinationId; embed: boolean };
 
-/** The author accepted the clip: copy it into the media library. The caller inserts it; the post changes on save. */
-export async function acceptVideoGeneration(actor: Actor, id: string, input: { description: unknown; context?: unknown; name?: unknown }): Promise<AcceptedVideo> {
+type AcceptInput = { description: unknown; context?: unknown; name?: unknown; destination?: unknown; loop?: unknown };
+type AcceptOpts = { env?: Record<string, string | undefined>; fetchImpl?: typeof fetch };
+
+/**
+ * The author accepted the clip. Destination r2 (the default): it is copied into the media library. Any other
+ * destination: it is sent to that streaming service and its player address comes back. Either way the caller only
+ * inserts it in the editor; the post changes on save.
+ */
+export async function acceptVideoGeneration(actor: Actor, id: string, input: AcceptInput, opts: AcceptOpts = {}): Promise<AcceptedVideo> {
   const row = await ownVideo(actor, id);
   const description = typeof input.description === "string" ? input.description.trim() : "";
   if (!description || description.length > 300) throw new PostError("Describe what the video shows (up to 300 characters).", 400);
+  const env = opts.env ?? (await effective());
+  const offered = offeredDestinations(env, await storageReady());
+  const destination = input.destination === undefined || input.destination === null || input.destination === "" ? offered[0]?.id : DESTINATIONS.find((d) => d === input.destination);
+  if (!destination || !offered.some((d) => d.id === destination)) throw new PostError("That video destination is not switched on. Choose another one.", 400);
+  if (destination !== "r2") return publishExternally(actor, row, destination, { description, loop: input.loop === true }, env, opts.fetchImpl);
   const db = await getDb();
   // Claim the row so a double click cannot create two media items.
   const [claimed] = await db
@@ -418,14 +442,56 @@ export async function acceptVideoGeneration(actor: Actor, id: string, input: { d
       description: `AI-generated video (${row.model}).`,
       uploadedBy: actor.id,
     });
-    await db.update(schema.imageGeneration).set({ status: "accepted", mediaId, tempKey: null }).where(eq(schema.imageGeneration.id, id));
+    await db.update(schema.imageGeneration).set({ status: "accepted", mediaId, tempKey: null, destination: "r2" }).where(eq(schema.imageGeneration.id, id));
     await deleteObject(claimed.tempKey).catch(() => undefined);
-    await audit(actor, "media.generate.accept", mediaId, { generationId: id, model: row.model, kind: "video" });
-    return { id: mediaId, src: mediaSrc({ id: mediaId, filename }), aspectRatio: row.aspectRatio };
+    await audit(actor, "media.generate.accept", mediaId, { generationId: id, model: row.model, kind: "video", destination: "r2" });
+    return { id: mediaId, src: mediaSrc({ id: mediaId, filename }), aspectRatio: row.aspectRatio, destination: "r2", embed: false };
   } catch (e) {
     await db.update(schema.imageGeneration).set({ status: "succeeded" }).where(eq(schema.imageGeneration.id, id));
     log.error("accepting generated video failed", { generationId: id, err: e });
     throw new PostError("The video could not be saved to the media library. Try again.", 502);
+  }
+}
+
+type VideoRow = Awaited<ReturnType<typeof ownVideo>>;
+
+/** Send an accepted clip to Cloudflare Stream, Mux or Bunny Stream; nothing is added to the media library. */
+async function publishExternally(
+  actor: Actor,
+  row: VideoRow,
+  destination: Exclude<DestinationId, "r2">,
+  input: { description: string; loop: boolean },
+  env: Record<string, string | undefined>,
+  fetchImpl?: typeof fetch,
+): Promise<AcceptedVideo> {
+  const db = await getDb();
+  const id = row.id;
+  // Claim the row so a double click cannot upload the clip twice.
+  const [claimed] = await db
+    .update(schema.imageGeneration)
+    .set({ status: "accepting" })
+    .where(and(eq(schema.imageGeneration.id, id), eq(schema.imageGeneration.status, "succeeded")))
+    .returning();
+  if (!claimed?.tempKey) throw new PostError(row.status === "accepted" ? "This video was already inserted." : "This generated video has expired. Generate a new one.", 410);
+  const tempKey = claimed.tempKey;
+  try {
+    const stored = await getObject(tempKey);
+    const bytes = stored?.Body ? Buffer.from(await stored.Body.transformToByteArray()) : null;
+    if (!bytes || bytes.length > MAX_VIDEO_BYTES) throw new DestinationError("The generated video is no longer stored. Generate a new one.");
+    const published = await publishVideo(destination, { bytes, title: input.description, signedUrl: () => presignGet(tempKey, "generated-video.mp4", 3_600) }, env, fetchImpl);
+    // Mux downloads the clip itself over the next minutes, so its private copy stays (the tmp lifecycle rule removes it
+    // within a day); the other services already have the bytes.
+    const keepTemp = destination === "mux";
+    await db.update(schema.imageGeneration).set({ status: "accepted", destination, externalId: published.externalId, tempKey: keepTemp ? tempKey : null }).where(eq(schema.imageGeneration.id, id));
+    if (!keepTemp) await deleteObject(tempKey).catch(() => undefined);
+    await audit(actor, "media.generate.accept", id, { generationId: id, model: row.model, kind: "video", destination, externalId: published.externalId });
+    log.info("generated video published", { generationId: id, destination, externalId: published.externalId });
+    return { id: published.externalId, src: withPlayback(published.embedSrc, input.loop), aspectRatio: row.aspectRatio, destination, embed: true };
+  } catch (e) {
+    await db.update(schema.imageGeneration).set({ status: "succeeded" }).where(eq(schema.imageGeneration.id, id));
+    const err = e instanceof DestinationError ? e : new DestinationError("The video could not be sent to the destination. Try again.", (e as Error).message);
+    log.warn("publishing generated video failed", { generationId: id, destination, detail: err.detail ?? err.message });
+    throw new PostError(err.message, 502);
   }
 }
 

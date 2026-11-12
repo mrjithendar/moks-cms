@@ -118,12 +118,18 @@ export async function discardGeneratedImage(id: string): Promise<void> {
   await discardGeneration(actor, id).catch(() => undefined);
 }
 
-/** The author chose "Insert video" for a generated clip: it joins the media library and its /media/… link comes back. */
-export async function acceptGeneratedVideo(id: string, description: string, context: string): Promise<{ ok: true; src: string; aspectRatio: string } | { ok: false; error: string }> {
+/** The author chose "Insert video": the clip goes to the chosen destination (media library, or a streaming service) and its address comes back. */
+export async function acceptGeneratedVideo(
+  id: string,
+  description: string,
+  context: string,
+  destination: string,
+  loop: boolean,
+): Promise<{ ok: true; src: string; aspectRatio: string; embed: boolean } | { ok: false; error: string }> {
   const actor = await staffActor();
   try {
-    const video = await acceptVideoGeneration(actor, id, { description, context, name: context.split("/").pop() });
-    return { ok: true, src: video.src, aspectRatio: video.aspectRatio };
+    const video = await acceptVideoGeneration(actor, id, { description, context, name: context.split("/").pop(), destination, loop });
+    return { ok: true, src: video.src, aspectRatio: video.aspectRatio, embed: video.embed };
   } catch (error) {
     return failure(error);
   }

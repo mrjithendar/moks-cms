@@ -14,6 +14,10 @@ branch for review; nothing merged).
 - **Video generation**: `lib/video-generation.ts`, routes under `/api/admin/videos/`, `GenerateVideoDialog.tsx`,
   `::video{loop="true"}` (GIF-style). `image_generation` gained `kind`, `operation`, `duration_seconds`; image limits
   now count images only. Settings group "Video generation" in Advanced settings; `.env.example` updated.
+- **Video destinations** (owner request, same day): `lib/video-destinations.ts` sends an inserted clip to this site's
+  media library (R2), Cloudflare Stream, Mux or Bunny Stream. Each is switched on or off in Advanced settings → Video
+  destinations; the dialog lists only enabled, fully configured ones. External players are whitelisted in `embedUrl()`;
+  `::embed` gained `ratio`. `image_generation` gained `destination`, `external_id` (same migration 0027).
 - **CI**: `ci-jithendar-com.yml`, `ci-seo-agent.yml`, `ci-practice-executor.yml`, `deploy-minikube.yml`,
   `grafana-dashboards.yml`, `ci-repo.yml` no longer have a `push` trigger. Images are built only when a pull request is
   merged into `master`, tagged `pr-<number>` and `latest`. `ci-content.yml` is unchanged (owner instruction);
@@ -34,6 +38,9 @@ branch for review; nothing merged).
   branch, and a `pull_request` run may not satisfy that rule. Decide whether to move it to the merged-pull-request trigger.
 - The cluster still runs `:latest` (manifests, CronJobs and sandbox pods name it); `pr-<number>` is the same image kept
   for rollbacks.
+- Cloudflare Stream, Mux and Bunny Stream **require manual configuration** and one real upload each to confirm the API
+  shapes and the players' loop options. Videos sent there are not listed or deletable in Admin → Media, and uploaded
+  (not generated) videos still go to R2 only.
 - Generated images and videos from the editor carry no embedded AI-provenance metadata (the news desk's covers do).
 - A pull request that changes only `minikube/seo-agent-*.yaml` or `minikube/practice-executor-*.yaml` still rebuilds
   that image on merge (the site workflow skips such merges through its `scope` job).

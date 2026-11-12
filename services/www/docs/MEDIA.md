@@ -125,6 +125,22 @@ as read on 2026-11-12, and the tests use canned responses. Generate one clip aft
 - Lifecycle as for images: private preview (`GET /api/admin/videos/generations/{id}`, Range supported) → **Insert
   video** copies it to `media/videos/…`, creates the media row (description required) and inserts `::video`;
   **Discard**/close deletes it; unaccepted clips expire after 1 hour.
+- **Destinations** (`src/lib/video-destinations.ts`; Admin → Advanced settings → Video destinations). An admin switches
+  each one on or off; the dialog's "Save the video to" list shows only those that are on and fully filled in (with one,
+  there is nothing to choose; with none, Generate video is disabled). **Requires manual configuration**, and none of
+  the three services has been exercised with real credentials: the tests use canned responses.
+
+  | Destination | Needs | What happens on Insert | In the article |
+  |---|---|---|---|
+  | This site (R2), on unless `VIDEO_DEST_R2_DISABLED` | media storage | copied to `media/videos/…`, media row created | `::video` (native player) |
+  | Cloudflare Stream | `CF_STREAM_ENABLED`, account id, API token (Stream: Edit), customer code | multipart upload to `…/accounts/{id}/stream` | `::embed` of `customer-{code}.cloudflarestream.com/{uid}/iframe` |
+  | Mux | `MUX_ENABLED`, token id + secret | asset created from a one-hour signed link to the private copy (Mux downloads it) | `::embed` of `player.mux.com/{playbackId}` |
+  | Bunny Stream | `BUNNY_STREAM_ENABLED`, library id, library API key | video created, then bytes `PUT` | `::embed` of `iframe.mediadelivery.net/embed/{library}/{guid}` |
+
+  External videos are **not** in Admin → Media: they live in that service's account (the id is kept in
+  `image_generation.external_id` and the audit log) and are deleted there. The services encode after upload, so the
+  player can show "processing" for a minute. A silent loop adds `autoplay`, `loop` and `muted` to the player address
+  (each player's own options; check them once per service). Readers' browsers then load a third-party player.
 - `::video{src="/media/…" loop="true"}` plays muted, by itself and repeating (GIF-style). The controls stay so a reader
   can pause it. A real `.gif` file is not produced: an MP4 loop is a fraction of the size.
 
