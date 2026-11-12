@@ -59,3 +59,68 @@ export const AVAILABILITY_LABEL: Record<HireMe["availability"], string> = {
   limited: "Limited availability",
   unavailable: "Not taking new work right now",
 };
+
+// --- Paid calls (Razorpay) ------------------------------------------------------------------------------------------
+
+export type PaidCall = HireMe["paidCall"];
+/** Visitors in India pay in INR; everyone else pays in USD. */
+export const PAY_CURRENCIES = ["INR", "USD"] as const;
+export type PayCurrency = (typeof PAY_CURRENCIES)[number];
+
+/** From Cloudflare's CF-IPCountry header (two letters; "XX"/"T1" or missing when unknown → USD). */
+export function payCurrencyFor(country: string | null | undefined): PayCurrency {
+  return country?.trim().toUpperCase() === "IN" ? "INR" : "USD";
+}
+
+/** Price per minute in the smallest unit (paise or cents); integer, so totals never drift. */
+export function minorPerMinute(pc: PaidCall, currency: PayCurrency): number {
+  return Math.round((currency === "INR" ? pc.ratePerMinuteInr : pc.ratePerMinuteUsd) * 100);
+}
+
+/** The lengths a visitor can choose: min, min+step, … up to max (at most 100 options). */
+export function callDurations(pc: PaidCall): number[] {
+  const out: number[] = [];
+  for (let m = pc.minMinutes; m <= pc.maxMinutes && out.length < 100; m += pc.stepMinutes) out.push(m);
+  return out;
+}
+
+/** Total in the smallest unit for `minutes`, or null when that length is not on offer. */
+export function callAmountMinor(pc: PaidCall, currency: PayCurrency, minutes: number): number | null {
+  if (!Number.isInteger(minutes) || !callDurations(pc).includes(minutes)) return null;
+  const per = minorPerMinute(pc, currency);
+  return per > 0 ? per * minutes : null;
+}
+
+/** "₹1,500" / "$25" / "$2.50" from an amount in the smallest unit. */
+export function moneyLabel(minor: number, currency: PayCurrency): string {
+  const whole = minor % 100 === 0;
+  return new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", { style: "currency", currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }).format(minor / 100);
+}
+
+/** Whether the paid-call card is shown (the Razorpay keys are checked separately, on the server). */
+export function paidCallOpen(h: HireMe): boolean {
+  const pc = h.paidCall;
+  return h.enabled && h.availability !== "unavailable" && pc.enabled && pc.ratePerMinuteInr > 0 && pc.ratePerMinuteUsd > 0 && callDurations(pc).length > 0;
+}
+
+/** Where the payer books after paying: the paid call's link, else the general one. */
+export function paidCallBookingUrl(h: HireMe): string {
+  return h.paidCall.bookingUrl || h.bookingUrl || "";
+}
+
+/**
+ * The booking link with the paid length and the payer's details filled in. Cal.com reads `duration` (event types with
+ * several lengths), `name`, `email` and `metadata[...]` from the query; other booking sites ignore them.
+ */
+export function bookingLinkAfterPayment(url: string, p: { minutes: number; name: string; email: string; paymentId: string }): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("duration", String(p.minutes));
+    u.searchParams.set("name", p.name);
+    u.searchParams.set("email", p.email);
+    u.searchParams.set("metadata[razorpayPaymentId]", p.paymentId);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}

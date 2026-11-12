@@ -133,6 +133,37 @@ export function TextField({ path, label, hint, max, placeholder, type = "text", 
   );
 }
 
+/** An exact amount (e.g. a price) typed in, not a slider; `decimals` limits the digits after the point. */
+export function AmountField({ path, label, hint, min = 0, max, decimals = 2, prefix = "" }: { path: string; label: string; hint?: ReactNode; min?: number; max: number; decimals?: number; prefix?: string }) {
+  const f = useField<number>(path);
+  const id = useId();
+  const [text, setText] = useState(String(f.value ?? 0));
+  return (
+    <FieldShell id={id} label={label} hint={hint} error={f.error} field={f}>
+      <div className="flex items-center gap-2">
+        {prefix && <span className="text-sm text-fg-muted" aria-hidden="true">{prefix}</span>}
+        <input
+          id={id}
+          type="number"
+          inputMode="decimal"
+          min={min}
+          max={max}
+          step={1 / 10 ** decimals}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            const n = Number(e.target.value);
+            if (e.target.value !== "" && Number.isFinite(n)) f.set(n);
+          }}
+          onBlur={() => setText(String(f.value ?? 0))}
+          className={`${inputClass} tabular-nums`}
+          {...described(id, f.error, hint)}
+        />
+      </div>
+    </FieldShell>
+  );
+}
+
 export function Toggle({ path, label, hint }: { path: string; label: string; hint?: ReactNode }) {
   const f = useField<boolean>(path);
   const id = useId();

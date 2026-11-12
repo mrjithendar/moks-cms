@@ -6,10 +6,11 @@ import { JsonLd } from "@/components/JsonLd";
 import { ArrowRight, CheckBadge, GitHubIcon, LinkedInIcon } from "@/components/icons";
 import { BookingLink } from "@/components/hire/BookingLink";
 import { EnquiryForm } from "@/components/hire/EnquiryForm";
+import { PaidCall } from "@/components/hire/PaidCall";
 import { absoluteUrl, site } from "@/config/site";
 import { CERTIFICATIONS, EXPERIENCE, HIGHLIGHTS, PROCESS, PROFILE, SELECTED_WORK, SKILLS } from "@/config/hire-me-profile";
 import { calEmbedTarget } from "@/lib/calcom";
-import { AVAILABILITY_LABEL, activeOffers, bookingUrlFor, priceLabel } from "@/lib/hire-me";
+import { AVAILABILITY_LABEL, activeOffers, bookingUrlFor, paidCallOpen, priceLabel } from "@/lib/hire-me";
 import { shareImages } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
 import { turnstileKeys } from "@/lib/turnstile";
@@ -50,6 +51,8 @@ export default async function HireMePage() {
   // Cal.com links open in Cal.com's pop-up scheduler (when switched on); other links open in a new tab.
   const embedFor = (url: string) => (h.embedBooking && url ? calEmbedTarget(url, h.calOrigin) : null);
   const { siteKey } = await turnstileKeys();
+  // Paid calls: rendered only while switched on; the component asks the server for the visitor's price on load.
+  const paid = paidCallOpen(h);
   const ld = {
     "@context": "https://schema.org" as const,
     "@type": "ProfilePage",
@@ -83,6 +86,7 @@ export default async function HireMePage() {
             {booking && h.availability !== "unavailable" && (
               <BookingLink href={booking} kind="intro" embed={embedFor(booking)} className={primary}>Book an intro call <ArrowRight className="h-4 w-4" /></BookingLink>
             )}
+            {paid && <a href="#paid-call" className={secondary}>Book a paid call</a>}
             <a href="#enquiry" className={booking ? secondary : primary}>Send an enquiry</a>
           </div>
           <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-fg-muted">
@@ -92,6 +96,8 @@ export default async function HireMePage() {
           </ul>
         </Container>
       </section>
+
+      {paid && <PaidCall title={h.paidCall.title} summary={h.paidCall.summary} siteKey={siteKey} merchant={site.name} />}
 
       <section aria-labelledby="offers" className="py-section">
         <Container>

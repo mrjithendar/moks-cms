@@ -66,6 +66,33 @@ same row; a reschedule stores the new booking and marks the old one "rescheduled
 records the reason. "Remove from list" deletes the copy here (e.g. on a privacy request), not the booking in Cal.com.
 Cal.com stays the source of truth: reschedule and cancel there.
 
+## Paid calls (Razorpay)
+
+Visitors choose a call length, pay **minutes × your per-minute rate**, then book a time.
+
+- **Settings:** Admin → Appearance → Hire me → *Paid calls (Razorpay)*: on/off, title, summary, **price per minute in
+  INR** (India) and **in USD** (everyone else), shortest/longest call and step (e.g. 15–120 min in 15s), and the booking
+  link shown after payment (empty = the intro call link). Saving with paid calls on requires both rates and a link.
+- **Keys:** Admin → Advanced settings → *Razorpay payments*: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (sealed),
+  `RAZORPAY_WEBHOOK_SECRET` (sealed). Same env names work as deployment variables.
+- **Currency:** decided on the server from Cloudflare's `CF-IPCountry` header: `IN` → INR, anything else or missing →
+  USD. Cloudflare overwrites the header on proxied requests, so a visitor cannot pick the cheaper rate. (Requests that
+  reach the origin without Cloudflare would default to USD.)
+- **Flow** (`src/lib/razorpay.ts`, `src/components/hire/PaidCall.tsx`, `src/app/_actions/payments.ts`): the cached page
+  asks the server for the visitor's price on load → *Pay* runs Turnstile (skipped when signed in) and a rate limit
+  (10/hour per IP, 5/hour per email), then the **server computes the amount** and creates a Razorpay Order
+  (`POST /v1/orders`), stored in `hire_payment` → Razorpay Checkout (`checkout.razorpay.com/v1/checkout.js`, loaded on
+  click only) → the server verifies Checkout's signature (HMAC-SHA256 of `order_id|payment_id` with the key secret),
+  marks the order paid and returns the booking link with `duration`, `name`, `email` and
+  `metadata[razorpayPaymentId]` filled in (read by Cal.com; give the Cal.com event type several lengths matching yours).
+- **Webhook:** `POST /api/razorpay/webhook`, verified against `X-Razorpay-Signature` (HMAC of the raw body). Events
+  `payment.captured` / `order.paid` mark the order paid if amount and currency match; `payment.failed` records the
+  reason (never over a paid order). Covers visitors who close the tab before the Checkout callback.
+- **Records:** Admin → Payments (paid / failed / started / all, with links to the Razorpay dashboard). Admins get one
+  email per paid order. "Remove from list" deletes the record here only, not the payment, and never refunds.
+  Migration `0026_hire_payment.sql`, rollback in `src/db/rollback/`.
+- Payment details (card, UPI) never reach this site. Refunds and settlements: Razorpay dashboard.
+
 ## Deliberately not on the page
 
 Phone number, personal email and a downloadable CV (public to every scraper; enquiries go through the form), and the
@@ -79,3 +106,10 @@ Terraform Associate certification (dated June 2026 on the résumé; re-add it in
 3. Add `/hire-me` to the header (button or menu).
 4. Live privacy policy: the page is stored in the database, so add the "Hire me enquiries" bullet from
    `content/pages/privacy-policy.mdx` in Admin → Pages → Privacy policy.
+5. **Paid calls — requires manual configuration:** in Razorpay create API keys (start with `rzp_test_`), add the
+   webhook `https://jithendar.com/api/razorpay/webhook` (events payment.captured, payment.failed, order.paid) with a
+   secret, and paste all three in Advanced settings → Razorpay payments. **Enable International payments** on the
+   Razorpay account or USD payments will fail. Set both rates in Appearance → Hire me → Paid calls, switch it on and
+   publish. Test with Razorpay's test cards, then swap in `rzp_live_` keys (and a live-mode webhook).
+6. Mention Razorpay as a payment processor in the live privacy policy (Admin → Pages → Privacy policy) and add
+   payment/refund terms to the Terms page before taking live payments.

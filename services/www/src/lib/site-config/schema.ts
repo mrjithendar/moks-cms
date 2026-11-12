@@ -381,6 +381,26 @@ const hireOffer = z.object({
   /** This offer's Cal.com (or other https) booking page; empty = the general booking link, then the enquiry form. */
   bookingUrl: httpsOrEmpty,
 });
+/** A price per minute in major units (₹ or $) with at most two decimals; 0 = not offered in that currency. */
+const perMinute = z
+  .number()
+  .min(0)
+  .max(100_000)
+  .refine((v) => Math.abs(Math.round(v * 100) - v * 100) < 1e-6, "At most two decimals.");
+const paidCall = z.object({
+  /** Shows the "Book a paid call" card. Also needs the Razorpay keys in Advanced settings. */
+  enabled: z.boolean(),
+  title: text(60, 2),
+  summary: text(280),
+  /** Visitors in India pay in INR, everyone else in USD (Cloudflare's CF-IPCountry header, decided on the server). */
+  ratePerMinuteInr: perMinute,
+  ratePerMinuteUsd: perMinute,
+  minMinutes: z.number().int().min(5).max(480),
+  maxMinutes: z.number().int().min(5).max(480),
+  stepMinutes: z.number().int().min(5).max(120),
+  /** Where the payer books a time after paying (Cal.com or other https). Empty = the general booking link. */
+  bookingUrl: httpsOrEmpty,
+});
 const hireMe = z.object({
   /** Off: /hire-me is a 404 and every call to action is hidden. */
   enabled: z.boolean(),
@@ -396,6 +416,8 @@ const hireMe = z.object({
   /** Self-hosted Cal.com only: its address, e.g. https://cal.example.com. Empty = cal.com. */
   calOrigin: httpsOrEmpty,
   responseTime: text(80),
+  /** Paid calls (Razorpay): visitors pick a length in minutes and pay before booking. See lib/hire-me.ts and lib/razorpay.ts. */
+  paidCall,
   offers: z.object(Object.fromEntries(HIRE_OFFERS.map((k) => [k, hireOffer])) as Record<HireOfferKey, typeof hireOffer>),
   /** A short "work with me" box at the end of articles, above the author card. */
   articleCta: z.object({ enabled: z.boolean(), text: text(200) }),
@@ -466,6 +488,13 @@ export const siteConfigSchema = base.superRefine((c, ctx) => {
   if (c.advanced.customCss.enabled) {
     for (const problem of checkCustomCss(c.advanced.customCss.css)) issue(["advanced", "customCss", "css"], problem);
   }
+
+  const pc = c.hireMe.paidCall;
+  if (pc.minMinutes > pc.maxMinutes) issue(["hireMe", "paidCall", "maxMinutes"], "The longest call must be at least as long as the shortest.");
+  if (pc.enabled && (pc.ratePerMinuteInr <= 0 || pc.ratePerMinuteUsd <= 0)) {
+    issue(["hireMe", "paidCall", pc.ratePerMinuteInr <= 0 ? "ratePerMinuteInr" : "ratePerMinuteUsd"], "Paid calls need a price per minute in both INR and USD.");
+  }
+  if (pc.enabled && !pc.bookingUrl && !c.hireMe.bookingUrl) issue(["hireMe", "paidCall", "bookingUrl"], "Add a booking link (here or the intro call link) so payers can choose a time.");
 
   const sectionIds = new Set<string>();
   for (const [i, s] of c.homepage.sections.entries()) {
@@ -693,6 +722,17 @@ export function defaultConfig(): SiteConfig {
       embedBooking: true,
       calOrigin: "",
       responseTime: "I reply within two working days.",
+      paidCall: {
+        enabled: false,
+        title: "Book a paid call",
+        summary: "A one-to-one video call on your AI platform, Kubernetes, AWS or career question. Choose how long, pay securely with Razorpay, then pick a time.",
+        ratePerMinuteInr: 0,
+        ratePerMinuteUsd: 0,
+        minMinutes: 15,
+        maxMinutes: 120,
+        stepMinutes: 15,
+        bookingUrl: "",
+      },
       offers: {
         consulting: {
           enabled: true,

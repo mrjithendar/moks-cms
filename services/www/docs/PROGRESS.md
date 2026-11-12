@@ -1,5 +1,32 @@
 # Progress log — jithendar.com
 
+## Paid calls with Razorpay on /hire-me (2026-11-12, owner request)
+
+"Make payment and book call; price based on minutes, per-minute rate from Admin → Hire me"; "from India INR, all
+other countries USD". Details in `docs/HIRE_ME.md` → *Paid calls (Razorpay)*. Left uncommitted (A3.12).
+
+- **Config** `hireMe.paidCall` (off by default; existing stored configs get it from the defaults): rates per minute in
+  INR and USD, min/max/step minutes, title, summary, booking link. Validation: both rates and a booking link when on.
+- **Server** `src/lib/razorpay.ts`: order creation (amount computed on the server; currency from `CF-IPCountry`),
+  Checkout signature check, webhook handler, admin list. Actions `src/app/_actions/payments.ts`; route
+  `src/app/api/razorpay/webhook/route.ts`; keys in Advanced settings (`runtime-settings.ts`, group `razorpay`).
+- **DB** `hire_payment` — migration `0026_hire_payment.sql` + rollback (applied automatically on start).
+- **UI** `src/components/hire/PaidCall.tsx` (section + hero link on /hire-me, only when on); Admin → Payments
+  (`src/app/admin/payments/page.tsx`, nav entry); Paid calls panel and `AmountField` (exact decimal input) in Appearance.
+- No new dependencies (Razorpay REST API via `fetch`, Checkout script loaded on click).
+
+| Command | Result |
+|---|---|
+| `npx vitest run tests/razorpay.test.ts` (new, 10 tests) + hire-me + calcom | pass (48/48) |
+| `npm test` | pass: 81 files, 964 tests, 1 skipped |
+| `npm run typecheck` | pass |
+| `eslint` on changed files | pass (no output) |
+| `npm run build` | pass (`/api/razorpay/webhook`, `/admin/payments` built) |
+| Real Razorpay payment (test or live) | **Not run** — no keys; requires manual configuration |
+
+**Manual steps (owner):** Razorpay keys + webhook in Advanced settings; enable International payments for USD; set
+rates and switch on in Appearance → Hire me; test with `rzp_test_` keys first; update privacy policy and terms.
+
 ## Site review fixes (2026-11-12, owner request "review jithendar.com and find gaps", then "fix everything")
 
 Review of the live site, this repo and the cluster; changes left uncommitted (A3.12). Branch `fix/site-review`.

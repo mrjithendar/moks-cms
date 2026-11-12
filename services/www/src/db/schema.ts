@@ -369,6 +369,35 @@ export const calBooking = pgTable(
   (t) => [uniqueIndex("cal_booking_uid_key").on(t.uid), index("cal_booking_start_idx").on(t.startTime)],
 );
 
+/**
+ * Paid calls from /hire-me (Razorpay). One row per Razorpay order: created when the visitor starts checkout, marked
+ * paid by the verified Checkout response or the webhook (whichever arrives first), failed by the webhook. Amounts are
+ * in the smallest unit (paise / cents) and fixed on the server when the order is created. Migration 0026.
+ */
+export const hirePayment = pgTable(
+  "hire_payment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: text("order_id").notNull(),
+    paymentId: text("payment_id"),
+    /** created | paid | failed | refunded */
+    status: text("status").notNull().default("created"),
+    minutes: integer("minutes").notNull(),
+    amount: integer("amount").notNull(),
+    /** INR | USD */
+    currency: text("currency").notNull(),
+    country: text("country"),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    topic: text("topic"),
+    failureReason: text("failure_reason"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    paidAt: ts("paid_at"),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("hire_payment_order_key").on(t.orderId), index("hire_payment_status_idx").on(t.status, t.createdAt)],
+);
+
 export const contactMessage = pgTable(
   "contact_message",
   {

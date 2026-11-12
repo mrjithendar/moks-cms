@@ -84,6 +84,17 @@ export const GROUPS: Group[] = [
     fields: [{ env: "CAL_WEBHOOK_SECRET", label: "Webhook secret", type: "secret", pattern: /^$|^[\x21-\x7e]{16,200}$/, hint: "At least 16 characters; any printable characters without spaces." }],
   },
   {
+    id: "razorpay",
+    title: "Razorpay payments (paid calls)",
+    description:
+      "Paid calls on /hire-me (Admin → Appearance → Hire me → Paid calls). Razorpay Dashboard → Account & Settings → API keys: Key ID and Key secret (use rzp_test_ keys first). Then Webhooks → Add: URL https://jithendar.com/api/razorpay/webhook, events payment.captured, payment.failed and order.paid, and a secret; paste the same secret here. Payments in USD need International payments enabled on the Razorpay account.",
+    fields: [
+      { env: "RAZORPAY_KEY_ID", label: "Key ID", type: "text", pattern: /^$|^rzp_(test|live)_[A-Za-z0-9]{10,30}$/, placeholder: "rzp_live_…", hint: "Public: sent to the visitor's browser to open Checkout." },
+      { env: "RAZORPAY_KEY_SECRET", label: "Key secret", type: "secret", pattern: /^$|^[A-Za-z0-9]{10,100}$/ },
+      { env: "RAZORPAY_WEBHOOK_SECRET", label: "Webhook secret", type: "secret", pattern: /^$|^[\x21-\x7e]{12,200}$/, hint: "At least 12 printable characters, no spaces." },
+    ],
+  },
+  {
     id: "image-limits",
     title: "Image generation limits",
     description: "Caps on Gemini usage (each image costs money). The key and model are in Integrations.",

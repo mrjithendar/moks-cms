@@ -5,7 +5,7 @@ import { CheckIcon, AlertIcon } from "@/components/icons";
 import { Alert, Button } from "@/components/ui/form";
 import { checkCustomCss } from "@/lib/site-config/css";
 import { BODY_FONTS, CODE_FONTS, DATE_FORMATS, defaultConfig, HEADER_PRESETS, HIRE_CURRENCIES, HIRE_OFFERS, HIRE_UNITS, THEME_PRESETS, TIMEZONES, type SiteConfig } from "@/lib/site-config/schema";
-import { BannerField, Choice, ColorField, getIn, Grid, ImageField, LinkField, NumberField, Panel, TextField, Toggle, useEditor, useField } from "./fields";
+import { AmountField, BannerField, Choice, ColorField, getIn, Grid, ImageField, LinkField, NumberField, Panel, TextField, Toggle, useEditor, useField } from "./fields";
 import type { EditorContext as Ctx } from "./AppearanceEditor";
 
 const opts = <T extends string | number>(o: Record<string, string> | [T, string][]) =>
@@ -518,6 +518,25 @@ export function HireMePanel() {
           hint="Cal.com's scheduler loads only when a visitor clicks Book; other links (and blocked scripts) open in a new tab." />
         <TextField path="hireMe.calOrigin" label="Self-hosted Cal.com address (optional)" placeholder="https://cal.example.com" type="url"
           hint="Only if you run Cal.com yourself. Leave empty for cal.com. Bookings reach Admin → Bookings through a webhook: see Advanced settings → Cal.com bookings." />
+      </Panel>
+      <Panel
+        title="Paid calls (Razorpay)"
+        description={<>Visitors choose a call length, pay minutes × your rate, then book a time. Visitors in India pay in INR; everyone else pays in USD. Needs the keys in <Link href="/admin/advanced" className="underline">Advanced settings → Razorpay payments</Link>; payments appear in <Link href="/admin/payments" className="underline">Payments</Link>.</>}
+      >
+        <Toggle path="hireMe.paidCall.enabled" label="Offer paid calls" hint="Shown only while the page is on, you are taking work, both rates are set and the Razorpay keys are saved." />
+        <TextField path="hireMe.paidCall.title" label="Title" max={60} />
+        <TextField path="hireMe.paidCall.summary" label="Summary" max={280} multiline rows={3} />
+        <Grid>
+          <AmountField path="hireMe.paidCall.ratePerMinuteInr" label="Price per minute in India (INR)" prefix="₹" max={100_000} hint="e.g. 50 → a 30-minute call costs ₹1,500." />
+          <AmountField path="hireMe.paidCall.ratePerMinuteUsd" label="Price per minute elsewhere (USD)" prefix="$" max={100_000} hint="e.g. 1.5 → a 30-minute call costs $45." />
+        </Grid>
+        <Grid>
+          <NumberField path="hireMe.paidCall.minMinutes" label="Shortest call" min={5} max={480} step={5} unit=" min" />
+          <NumberField path="hireMe.paidCall.maxMinutes" label="Longest call" min={5} max={480} step={5} unit=" min" />
+        </Grid>
+        <NumberField path="hireMe.paidCall.stepMinutes" label="Lengths offered in steps of" min={5} max={120} step={5} unit=" min" />
+        <TextField path="hireMe.paidCall.bookingUrl" label="Booking link after payment (optional)" placeholder="https://cal.com/your-name/paid-call" type="url"
+          hint="Empty: the intro call link. For Cal.com, give the event type several lengths (matching the ones above): the paid length, name and email are filled in." />
       </Panel>
       {HIRE_OFFERS.map((k) => (
         <Panel key={k} title={OFFER_LABELS[k]}>
