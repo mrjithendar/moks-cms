@@ -96,6 +96,7 @@ async function validate(input: ParsedInput, authorId: string, selfId?: string, i
     socialTitle: input.socialTitle?.trim() || undefined,
     socialDescription: input.socialDescription?.trim() || undefined,
     socialImage: input.socialImage ?? undefined,
+    previewPercent: input.previewPercent ?? undefined,
   });
   const issues = result.success ? [] : result.error.issues.map((i) => `${i.path.join(".") || "post"}: ${i.message}`);
   if (!(await getCategoryMap()).has(input.category)) issues.push(`category: "${input.category}" does not exist`);
