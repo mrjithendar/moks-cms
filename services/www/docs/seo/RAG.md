@@ -1,8 +1,44 @@
 # Ask the Blog and retrieval (SEO v3, updated for v4)
 
 A public assistant that answers **only from this site's articles**, with a citation for every statement, plus the
-pgvector index the agents also use for related articles and internal links. It's **off by default**
-(`ASK_BLOG_ENABLED=false`).
+pgvector index the agents also use for related articles and internal links. It's **off until an admin turns it on**
+(Admin → Automation & AI → Ask the Blog; see "Admin settings" below).
+
+## Admin settings (D-89)
+
+Two switches, both needed:
+
+| Switch | Where | Default | Takes effect |
+|---|---|---|---|
+| Deployment switch `ASK_BLOG_ENABLED` | manifests: the web Deployment (`minikube/30-jithendar-com.yaml`) and `seo-agent-config` | `true` in the manifests (`false` in code when unset) | on restart |
+| Admin switch "Ask the Blog is on" | Admin → Automation & AI → Ask the Blog | **off** | web app at once; seo-agent within ~30 s |
+
+The admin card saves one document (`setting` key `ask_blog`, `src/lib/seo-agent/ask-settings.ts`), validated on the
+server and audit-logged (`seo.ask_blog.update`) with before/after. The seo-agent reads the same row
+(`app/ask_runtime.py`, 30-second cache) so `/ask` and the MCP tool follow it without a restart. No row, an invalid row or
+a database error before the first read all mean **off**.
+
+| Setting | Default | Applied by |
+|---|---|---|
+| Who can use it: **signed-in readers only** or everyone | signed-in readers only | web (`/api/ask` checks the session on the server: 401 `code: "signin"` without one); agent (MCP `ask_blog` answers `disabled` unless "everyone") |
+| Show on: home page, article pages | both | web (`AskBlog` server component) |
+| Widget text: button, intro, placeholder, note, up to 4 example questions | the previous fixed text, no examples | web |
+| Questions per reader per minute / per day, longest question | 6 / 60 / 500 | web limiter; in signed-in-only mode counted per account **and** per IP |
+| Daily budget (USD) | 1 | agent budget guard: `min(saved, ASK_BLOG_DAILY_BUDGET_USD)` |
+| Reuse an answer for (seconds) | 900 | agent cache (0 = no reuse) |
+| Answer length: short / standard / detailed | standard | agent prompt (3 / 6 / 10 sentences; 400 / 700 / 1100 max tokens) |
+| Message when no article answers | "There is no article on this yet." | agent fallback |
+
+Notes:
+- **Pages are cached**, so the HTML cannot know who is signed in. In signed-in-only mode the launcher calls
+  `GET /api/ask` when the reader opens it and shows "Sign in to ask a question" (returning to the same page) to
+  signed-out readers. The server decides again on every question.
+- Saving revalidates the public pages, so the widget appears, disappears or changes text without waiting for the cache.
+- **Not editable in the admin:** top-k and `ASK_BLOG_MIN_SCORE` (set by the evaluation, "Defaults"), and the models.
+- "standard" is the prompt the evaluation set ran with (`ask-blog-v3`, unchanged). Other lengths are logged as
+  `ask-blog-v3-short` / `ask-blog-v3-detailed` in `seo_ask_log.prompt_version` and `seo_llm_usage`, and the answer
+  cache key includes the length and the fallback message. Citation rules and guards are the same for all three.
+- Privacy is unchanged in signed-in-only mode: the question log stores neither the account nor the IP address.
 
 ## Answer path (v4: a plain async pipeline)
 
@@ -55,12 +91,13 @@ flowchart LR
 
 | Control | Where | Default |
 |---|---|---|
-| Kill switch | web (`/api/ask` returns 404, no widget) and agent | `ASK_BLOG_ENABLED=false` |
+| Kill switch | web (`/api/ask` returns 404, no widget) and agent | the admin switch (no restart), or `ASK_BLOG_ENABLED=false` |
+| Audience | `/api/ask` (session checked on the server); MCP `ask_blog` off unless "everyone" | signed-in readers only |
 | Same-origin JSON only | `/api/ask` | always |
-| Per-IP limit | the existing Postgres limiter (`hit`), keyed on Envoy's `x-envoy-external-address`, otherwise the right-most `X-Forwarded-For` hop (the left-most is client-controlled) | 6/min, 60/day |
+| Per-IP limit (and per account in signed-in-only mode) | the existing Postgres limiter (`hit`), keyed on Envoy's `x-envoy-external-address`, otherwise the right-most `X-Forwarded-For` hop (the left-most is client-controlled) | 6/min, 60/day (admin setting) |
 | Global limit | same limiter | 120/min |
-| Daily cost cap, separate from the admin budget | agent budget guard (`purpose` `ask…`); never counts against `SEO_LLM_MONTHLY_BUDGET_USD` | `ASK_BLOG_DAILY_BUDGET_USD=1` |
-| Answer cache | in-process, keyed on the normalised question + index version (any reindex changes the key) | 15 min |
+| Daily cost cap, separate from the admin budget | agent budget guard (`purpose` `ask…`); never counts against `SEO_LLM_MONTHLY_BUDGET_USD` | admin setting, never above `ASK_BLOG_DAILY_BUDGET_USD=1` |
+| Answer cache | in-process, keyed on the normalised question + index version (any reindex changes the key) + answer length and fallback message | 15 min (admin setting) |
 
 Kong, the ingress and Istio routing are unchanged.
 
@@ -82,8 +119,9 @@ first).
 
 Questions are stored **without the IP address** (`seo_ask_log`). The web app may send a salted HMAC of the IP: the key
 is derived from `BETTER_AUTH_SECRET` and the date, so it rotates daily and can't be recomputed without the secret. The
-log is pruned after `ASK_BLOG_RETENTION_DAYS` (30). The widget says: "Answers come only from articles on this site.
-Questions are stored without your IP address to improve the blog."
+log is pruned after `ASK_BLOG_RETENTION_DAYS` (30). The widget says (default; the admin can edit the note, and must
+keep it true): "Answers come only from articles on this site. Questions are stored without your IP address to improve
+the blog."
 
 ## Feedback into SEO
 

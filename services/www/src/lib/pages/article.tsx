@@ -246,7 +246,7 @@ export async function ArticleView({
 
             {a.share.enabled && a.share.networks.length > 0 && <ShareLinks url={canonicalFor(article)} title={fm.title} networks={a.share.networks} />}
 
-            {!article.preview && <AskBlog />}
+            {!article.preview && <AskBlog placement="articles" />}
 
             {!article.preview && <ArticleEngagement collection={collection} slug={article.slug} />}
             {!article.preview && ads?.slots.articleEnd && <AdSlot client={ads.client} slot={ads.slots.articleEnd} test={ads.test} />}

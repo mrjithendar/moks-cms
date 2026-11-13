@@ -68,8 +68,9 @@ def build_public(c: Any, guard: Guard, security: TransportSecuritySettings) -> F
     @guarded(guard, "ask_blog")
     async def ask_blog(question: Annotated[str, Field(min_length=3, max_length=500, description="A question about topics this blog covers.")]) -> dict[str, Any]:
         """Answer a question using only jithendar.com articles, with citations (/blog/slug#section). Says so when no article
-        covers it. Shares the site assistant's daily budget, so it may decline when that is used up."""
-        r = await c.ask.ask(question, None)
+        covers it. Shares the site assistant's daily budget, so it may decline when that is used up. Returns outcome
+        "disabled" while the site assistant is switched off or limited to signed-in readers."""
+        r = await c.ask.ask(question, None, source="mcp")
         cites = [{"title": x.get("title"), "url": f"{site}{x.get('url')}" if str(x.get("url", "")).startswith("/") else x.get("url")} for x in r.get("citations") or []]
         related = [{"title": x.get("title"), "url": f"{site}{x.get('url')}"} for x in r.get("related") or []]
         return {"outcome": r.get("outcome"), "answer": content.untrusted(str(r.get("answer") or "")), "citations": cites, "related": related}

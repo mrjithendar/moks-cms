@@ -30,7 +30,7 @@ export default async function HomePage() {
       <JsonLd data={[websiteLd(), organizationLd()]} />
       <HomeSections config={config} />
       <Container>
-        <AskBlog />
+        <AskBlog placement="home" />
       </Container>
     </>
   );

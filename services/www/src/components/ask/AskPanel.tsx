@@ -30,7 +30,15 @@ function AnswerText({ text }: { text: string }) {
   return <p className="whitespace-pre-wrap text-[0.9375rem] leading-7 text-fg">{text}</p>;
 }
 
-export function AskPanel({ onClose }: { onClose: () => void }) {
+export type PanelProps = {
+  onClose: () => void;
+  /** The server refused the question because the reader is not signed in (signed-in-only mode, or the session ended). */
+  onNeedSignIn: () => void;
+  copy: { placeholder: string; disclaimer: string; examples: string[] };
+  maxQuestion: number;
+};
+
+export function AskPanel({ onClose, onNeedSignIn, copy, maxQuestion }: PanelProps) {
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
   const [q, setQ] = useState("");
@@ -46,9 +54,9 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  async function ask(e: React.FormEvent) {
+  async function ask(e: React.FormEvent, text = q) {
     e.preventDefault();
-    const question = q.trim();
+    const question = text.trim();
     if (!question || busy) return;
     setBusy(true);
     setStreamed("");
@@ -56,6 +64,10 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const res = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+      if (res.status === 401) {
+        onNeedSignIn();
+        return;
+      }
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         setError(j.error ?? "The assistant is unavailable right now.");
@@ -63,7 +75,12 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
       }
       await readSse(res, (name, data) => {
         if (name === "delta") setStreamed((s) => s + (data as { text: string }).text);
-        if (name === "final") setFinal(data as Final);
+        if (name === "final") {
+          const f = data as Final;
+          // Switched off between the page being cached and this question (admin toggle or the agent's kill switch).
+          if (f.outcome === "disabled") setError("Ask the Blog is switched off right now. Please use search instead.");
+          else setFinal(f);
+        }
       });
     } catch {
       setError("The assistant is unavailable right now. Please use search instead.");
@@ -90,16 +107,34 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
           id={`${id}-q`}
           ref={input}
           value={q}
-          onChange={(e) => setQ(e.target.value.slice(0, 500))}
+          onChange={(e) => setQ(e.target.value.slice(0, maxQuestion))}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void ask(e))}
           rows={2}
-          maxLength={500}
+          maxLength={maxQuestion}
           required
           className="w-full resize-y rounded-lg border border-line bg-canvas px-3 py-2 text-[0.9375rem] text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          placeholder="e.g. How does cert-manager renew certificates?"
+          placeholder={copy.placeholder}
         />
+        {copy.examples.length > 0 && !answer && !busy && (
+          <ul aria-label="Example questions" className="flex flex-wrap gap-2">
+            {copy.examples.map((x) => (
+              <li key={x}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    setQ(x);
+                    void ask(e, x);
+                  }}
+                  className="rounded-full border border-line px-3 py-1.5 text-left text-sm text-fg-muted hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {x}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-fg-subtle">{q.length}/500</span>
+          <span className="text-xs text-fg-subtle">{q.length}/{maxQuestion}</span>
           <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60" disabled={busy || !q.trim()}>
             {busy ? "Answering…" : "Ask"}
           </button>
@@ -124,7 +159,7 @@ export function AskPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
-      <p className="mt-4 text-xs text-fg-subtle">Answers come only from articles on this site. Questions are stored without your IP address to improve the blog.</p>
+      <p className="mt-4 text-xs text-fg-subtle">{copy.disclaimer}</p>
     </div>
   );
 }

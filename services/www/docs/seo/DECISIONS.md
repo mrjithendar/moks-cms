@@ -640,3 +640,28 @@ for existing", "implement Reddit and Search Console". Built as Admin → Promoti
   be switched off or rolled back without touching the SEO settings schema.
 - **Not built:** traffic per promotion in the admin (the GA4 sync has no `sessionSource` report), Hacker News as a
   signal, alerts and a dashboard panel for the two flows.
+
+## D-89 Ask the Blog: an admin switch, an audience setting and editable options (owner request 2026-11-13)
+
+"Enable Ask the Blog; the admin can enable or disable it from settings; add more customisations; a setting for only
+logged-in users or all users." See [RAG.md](RAG.md) "Admin settings".
+
+- **Two switches, both needed.** `ASK_BLOG_ENABLED` stays as the deployment's switch and is now `true` in the manifests;
+  the admin's switch decides whether the assistant is actually on, without a restart. It ships **off**, so merging and
+  deploying this exposes nothing (A3.5): the owner turns it on after the reindex and, ideally, the real-model eval run
+  that RAG.md still lists as open.
+- **Signed-in readers only is the default audience.** It bounds abuse and spend while the hard-set and generation
+  evals are pending. The session is checked on the server for every question; the widget's own check is only for the
+  prompt. The public MCP `ask_blog` tool has no site sign-in, so it answers `disabled` in that mode rather than being a
+  way around it.
+- **Own settings row** (`setting` key `ask_blog`), as for promotion (D-88): no migration, and the SEO settings schema
+  is untouched. The seo-agent reads the same row with a 30-second cache instead of taking options from the web app per
+  request, because the MCP tool does not pass through the web app. The agent fails closed (no row, invalid row or an
+  unreadable database before the first read = off) and keeps the last known value through a later database error.
+- **The environment keeps the last word on money.** The saved daily budget is capped by `ASK_BLOG_DAILY_BUDGET_USD`.
+- **Retrieval and models are not editable.** Top-k and the 0.66 floor came from the evaluation set (D-72); a model
+  picker would change cost and invalidate the eval. Answer length is editable, with "standard" kept byte-identical to
+  the evaluated prompt and the other lengths logged under their own prompt version.
+- **The web switch moved from `jithendar-com-public` to the Deployment manifest** so it is in Git. A key left in that
+  ConfigMap no longer has any effect; the hard kill switch is `seo-agent-config` (MANUAL_SETUP.md §18).
+- **Commit and pull request by the agent**, at the owner's explicit request for this change (an exception to A3.12).

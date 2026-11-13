@@ -165,15 +165,31 @@ Rotate by running the script again and restarting both Deployments.
 **Rollback:** set `SEO_ORCHESTRATOR=legacy` and restart. Drafts that runs created stay reviewable, but their
 approval needs the agent; reject them, or regenerate them under legacy.
 
-## 18. Ask the Blog (optional; off by default)
-Turn it on in **both** places: the widget and `/api/ask` live in the web app; answering lives in the agent.
+## 18. Ask the Blog (off until an admin turns it on)
+Since D-89 the manifests set the deployment switch `ASK_BLOG_ENABLED=true` for both workloads (the web Deployment in
+`minikube/30-jithendar-com.yaml`, and `seo-agent-config`), so after `./deploy.sh` nothing needs patching. The assistant
+is still **off** until an admin switches it on:
+
+1. Run a reindex first so there's something to retrieve: Admin → SEO → (API) `POST /api/admin/seo/agent/reindex {"full": true}`,
+   or wait for the Sunday CronJob.
+2. Recommended before going public: run the **RAG eval (manual)** workflow with the real model (RAG.md "Evaluation"),
+   including the hard set, and the opt-in generation eval.
+3. Admin → Automation & AI → **Ask the Blog**: tick "Ask the Blog is on", choose **Signed-in readers only** (the
+   default) or **Everyone**, set the limits and daily budget, save. The site applies it at once; the agent within
+   about 30 seconds.
+
+**Turn it off:** untick the same switch (no restart). **Hard kill switch:** `ASK_BLOG_ENABLED=false`:
 ```bash
-kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true"}}'
-kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ASK_BLOG_ENABLED":"true","ASK_BLOG_DAILY_BUDGET_USD":"1"}}'
-kubectl -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ASK_BLOG_ENABLED":"false"}}'
+kubectl -n jithendar rollout restart deploy/seo-agent
 ```
-Run a reindex first so there's something to retrieve: Admin → SEO → (API) `POST /api/admin/seo/agent/reindex {"full": true}`,
-or wait for the Sunday CronJob. Turn it off the same way with `"false"`.
+The agent then answers `disabled` to every question (the widget says it is switched off). For the web app the value is
+in the Deployment manifest: set it to `"false"` there and run `./deploy.sh`. An `ASK_BLOG_ENABLED` key left in
+`jithendar-com-public` from the earlier instructions no longer has any effect (the Deployment's own `env` wins); it
+can be removed.
+
+`ASK_BLOG_DAILY_BUDGET_USD` in `seo-agent-config` is the ceiling: the budget saved in the admin can be lower, never
+higher.
 
 ## 19. Embeddings model choice
 The default is `EMBEDDINGS_PROVIDER=onnx` (bge-small-en-v1.5, baked into the image). To use an Ollama already in the

@@ -630,3 +630,35 @@ Reddit API. Check the first drafts and ideas critically before relying on them.
 
 **Manual steps (owner).** MANUAL_SETUP.md §37: deploy order, the Reddit "script" app, `scripts/set-reddit-config.sh`,
 "Test connection", applying the seo-agent group for the two CronJobs.
+
+## Ask the Blog admin settings (2026-11-13, owner request; RAG.md "Admin settings", D-89)
+
+**What changed.** Ask the Blog can be switched on and off by an admin without a restart, limited to signed-in readers
+or opened to everyone, and customised (placement, widget text, example questions, per-reader limits, daily budget,
+answer reuse, answer length, fallback message). The deployment switch `ASK_BLOG_ENABLED` is now `true` in the
+manifests; the admin switch ships **off** and the audience defaults to signed-in readers only, so merging and
+deploying exposes nothing until the owner turns it on.
+
+**Files.** www: `src/lib/seo-agent/ask-settings.ts` (new: schema, defaults, the two switches, status numbers),
+`src/app/api/admin/seo/ask-blog/route.ts` (new), `src/components/seo/AskBlogSettingsCard.tsx` (new),
+`src/app/admin/(growth)/automation/page.tsx`, `src/app/admin/(growth)/keywords/page.tsx`, `src/app/api/ask/route.ts`
+(GET status; audience gate; limits from settings; per-account limit), `src/components/ask/{AskBlog,AskLauncher,AskPanel}.tsx`,
+`src/app/page.tsx`, `src/lib/pages/article.tsx`, `src/lib/seo-agent/config.ts`, `tests/ask-blog-settings.test.ts` (new),
+`tests/seo-v4-agent.test.ts`. seo-agent: `app/ask_runtime.py` (new), `app/ask.py`, `app/services/ask_pipeline.py`,
+`app/main.py`, `app/mcp/public.py`, `tests/test_ask_and_chunks.py`. Repo: `minikube/30-jithendar-com.yaml`,
+`minikube/seo-agent-40-seo-agent.yaml`. Docs: RAG.md, MANUAL_SETUP.md §18, MCP.md, DECISIONS.md D-89.
+
+**No migration.** The settings are one row in the existing `setting` table (key `ask_blog`).
+
+**Commands run → result.** The authoring sandbox refuses package installs, so the project toolchains were not run
+locally; they run in CI on the pull request. Run locally: `ruff check app tests/test_ask_and_chunks.py` (pass),
+`mypy` on the three changed agent modules with imports skipped (pass), `python -m py_compile` (pass), and a
+syntax-only `tsc` parse of the changed TypeScript files (no syntax errors; types not checked without `node_modules`).
+The CI results are recorded on the pull request.
+
+**Not done.** The admin card and the widget have not been opened in a browser; no real question has been answered
+(needs the deployed site and agent). The real-model run of the hard evaluation set and the generation eval are still
+open (RAG.md), and are recommended before choosing "Everyone".
+
+**Manual steps (owner).** MANUAL_SETUP.md §18: `./deploy.sh` (applies the two manifest changes), reindex, then
+Admin → Automation & AI → Ask the Blog → switch on and choose the audience.

@@ -338,14 +338,23 @@ describe("Ask the Blog", () => {
     return POST(new Request("https://jithendar.com/api/ask", { method: "POST", headers: { "content-type": "application/json", origin: "https://jithendar.com", host: "jithendar.com", "x-forwarded-for": "203.0.113.9, 10.0.0.1", ...headers }, body: JSON.stringify(body) }));
   };
 
-  it("is off by default (404) and refuses cross-site requests", async () => {
+  /** The admin's switch (Admin → Automation & AI → Ask the Blog), open to everyone: the environment switch alone is not enough. */
+  const switchOn = async () => {
+    const { DEFAULT_ASK_SETTINGS, saveAskSettings } = await import("@/lib/seo-agent/ask-settings");
+    await saveAskSettings({ ...DEFAULT_ASK_SETTINGS, enabled: true, audience: "everyone" }, "admin");
+  };
+
+  it("is off by default (404), needs both switches, and refuses cross-site requests", async () => {
     expect((await ask({ question: "How does cert-manager renew?" })).status).toBe(404);
     process.env.ASK_BLOG_ENABLED = "true";
+    expect((await ask({ question: "How does cert-manager renew?" })).status).toBe(404); // the admin has not switched it on
+    await switchOn();
     expect((await ask({ question: "x" }, { origin: "https://evil.example" })).status).toBe(403);
   });
 
   it("proxies the agent's stream with a hashed IP, and rate-limits per client", async () => {
     process.env.ASK_BLOG_ENABLED = "true";
+    await switchOn();
     process.env.BETTER_AUTH_SECRET = "s".repeat(40);
     const seen: Record<string, unknown>[] = [];
     vi.stubGlobal("fetch", (async (_u: string, init?: RequestInit) => {
