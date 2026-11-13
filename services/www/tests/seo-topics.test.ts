@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Db } from "@/db";
+import { schema, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { freshDb } from "./db-helpers";
 import { seedArticle } from "./seo-v2-fixtures";
@@ -183,6 +183,7 @@ describe("discovery run and the editorial calendar (database)", () => {
 
   beforeEach(async () => {
     db = await freshDb();
+    await db.insert(schema.user).values({ id: "admin", name: "Admin", email: "admin@example.com", role: "admin" });
     await seedArticle(db, { slug: "ingress-tls", title: "Kubernetes ingress TLS with cert-manager" });
     await gsc("kong gateway kubernetes minikube setup", 400, 22);
     await gsc("kong gateway minikube kubernetes install", 100, 30);
