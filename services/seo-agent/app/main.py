@@ -45,6 +45,7 @@ from .index import MemoryRetriever, PgVectorIndex
 from .llm import AnthropicLlm, BudgetGuard, MemorySpendStore, PgSpendStore
 from .news.store import MemoryNewsStore, PgNewsStore
 from .runs import FlowRunner, MemoryFlowPersistence, MemoryLocks, MemoryRunStore, PgAdvisoryLocks, PgFlowPersistence, PgRunStore, RunError, view
+from .runtime import runtime_env_for
 from .schemas import AskRequest
 from .seo_ml.store import MemoryMlStore, PgMlStore
 from .services import review
@@ -139,8 +140,10 @@ async def build_container(settings: Settings) -> Container:
     await pool.open(wait=True, timeout=30)
     sync_pool = ConnectionPool(settings.database_url, min_size=1, max_size=2, open=True, kwargs=kw)  # CrewAI persistence
     guard = BudgetGuard(PgSpendStore(pool), settings.monthly_budget_usd, settings.ask_daily_budget_usd)
-    llm = AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s)
     web = HttpWebApp(settings.callback_url, settings.callback_token)
+    # The Anthropic key saved in Admin → Advanced settings wins over the deployment's (app/runtime.py).
+    runtime = runtime_env_for(web)
+    llm = AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s, key_provider=lambda: runtime.value("ANTHROPIC_API_KEY"))
     index = PgVectorIndex(pool, make_embeddings(settings))
     reasons: list[str] = []
     try:

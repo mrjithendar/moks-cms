@@ -269,4 +269,38 @@ describe("advanced settings", () => {
     await saveRuntimeGroup(admin, "turnstile", { TURNSTILE_SITE_KEY: "0x4AAAAAAAsitekey" }, ["TURNSTILE_SECRET_KEY"]);
     expect(await effectiveEnv()).toMatchObject({ GA4_MEASUREMENT_ID: "G-DEPLOYED1", TURNSTILE_SECRET_KEY: "deployment-secret-0000" });
   });
+
+  it("API keys and crew options: applied to this process, served to the SEO agent, and handed back when cleared", async () => {
+    const { agentRuntimeEnv, applyEnvOverlay, runtimeSummary, saveRuntimeGroup } = await import("@/lib/runtime-settings");
+    await applyEnvOverlay();
+    const before = { key: process.env.ANTHROPIC_API_KEY, reddit: process.env.REDDIT_CLIENT_ID, docs: process.env.SEO_AGENT_DOCS_ALLOWLIST };
+
+    await expect(saveRuntimeGroup(author, "api-keys", { ANTHROPIC_API_KEY: "sk-ant-admin-key-1111111111111" })).rejects.toMatchObject({ status: 403 });
+    await expect(saveRuntimeGroup(admin, "api-keys", { ANTHROPIC_API_KEY: "not-a-key" })).rejects.toMatchObject({ issues: [expect.stringMatching(/Anthropic/)] });
+    await expect(saveRuntimeGroup(admin, "editorial-crew", { SEO_CREW_MODELS: '{"editorial.writer":"gpt-4"}' })).rejects.toMatchObject({ issues: [expect.stringMatching(/Model per agent/)] });
+
+    await saveRuntimeGroup(admin, "api-keys", { ANTHROPIC_API_KEY: "sk-ant-admin-key-1111111111111", REDDIT_CLIENT_ID: "reddit-client-id" });
+    await saveRuntimeGroup(admin, "editorial-crew", { SEO_CREW_MODELS: '{"editorial.writer":"claude-opus-5-5"}', SEO_CREW_MAX_ITERS: '{"editorial.researcher":12}', SEO_AGENT_DOCS_ALLOWLIST: "kubernetes.io, helm.sh" });
+    // Code that reads process.env directly (Claude drafting, Reddit, the docs allowlist) sees the saved values.
+    expect(process.env.ANTHROPIC_API_KEY).toBe("sk-ant-admin-key-1111111111111");
+    expect(process.env.REDDIT_CLIENT_ID).toBe("reddit-client-id");
+    expect(process.env.SEO_AGENT_DOCS_ALLOWLIST).toBe("kubernetes.io, helm.sh");
+    // The agent gets only its own fields, and only the ones saved here.
+    expect((await agentRuntimeEnv()).env).toEqual({
+      ANTHROPIC_API_KEY: "sk-ant-admin-key-1111111111111",
+      SEO_CREW_MODELS: '{"editorial.writer":"claude-opus-5-5"}',
+      SEO_CREW_MAX_ITERS: '{"editorial.researcher":12}',
+      SEO_AGENT_DOCS_ALLOWLIST: "kubernetes.io, helm.sh",
+    });
+    const [row] = await db.select().from(schema.setting).where(eq(schema.setting.key, "runtime"));
+    expect(JSON.stringify(row!.value)).not.toContain("admin-key");
+    expect((await runtimeSummary()).ANTHROPIC_API_KEY).toMatchObject({ value: "", hasSecret: true });
+
+    await saveRuntimeGroup(admin, "api-keys", {}, ["ANTHROPIC_API_KEY"]);
+    await saveRuntimeGroup(admin, "editorial-crew", {});
+    expect(process.env.ANTHROPIC_API_KEY).toBe(before.key);
+    expect(process.env.REDDIT_CLIENT_ID).toBe(before.reddit);
+    expect(process.env.SEO_AGENT_DOCS_ALLOWLIST).toBe(before.docs);
+    expect((await agentRuntimeEnv()).env).toEqual({});
+  });
 });

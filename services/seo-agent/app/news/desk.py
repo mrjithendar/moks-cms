@@ -23,6 +23,7 @@ import numpy as np
 
 from .. import metrics
 from ..llm import BudgetExceeded, CallSpec, InvalidOutput, Llm
+from ..runtime import runtime_env_for
 from . import classifier as clf
 from .budget import NewsBudget, NewsLlm, period_starts
 from .cluster import Clusterer, ClusterState, Member
@@ -647,7 +648,8 @@ def provider_for(d: DeskDeps, name: str) -> Any:
     if name == "gemini":
         return GeminiProvider(d.web, prices.get("gemini", 0.04))
     if name == "openai":
-        return OpenAIProvider(os.environ.get("OPENAI_API_KEY", ""), os.environ.get("NEWS_OPENAI_IMAGE_MODEL", "gpt-image-1"), prices.get("openai", 0.04))
+        # The key saved in Admin → Advanced settings wins (generate_images awaited the lookup just before this call).
+        return OpenAIProvider(runtime_env_for(d.web).last("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY", ""), os.environ.get("NEWS_OPENAI_IMAGE_MODEL", "gpt-image-1"), prices.get("openai", 0.04))
     return TemplateProvider()
 
 
@@ -680,6 +682,7 @@ async def make_cover(d: DeskDeps, rec: RunRecorder, budget: NewsBudget, article_
     if name != "template":
         try:
             await budget.check("image", d.news.image_prices.get(name, 0.04) * n)
+            await runtime_env_for(d.web).get()
             gens = await provider_for(d, name).generate(b, prompt, neg, n)
             for g in gens:
                 await d.store.add_run_cost(rec.run_id, image_usd=g.cost_usd)

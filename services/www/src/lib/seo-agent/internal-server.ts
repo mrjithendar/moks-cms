@@ -68,6 +68,8 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["POST", /^\/fetch-docs$/, (_m, b) => cb.fetchDocs(b)],
   ["POST", /^\/weekly\/candidates$/, (_m, b) => cb.weeklyCandidates(b)],
   ["GET", /^\/calendar\/([^/]+)\/brief$/, (m) => cb.calendarBrief(m[1]!)],
+  // API keys and crew options saved in Admin → Advanced settings (lib/runtime-settings.ts agentRuntimeEnv).
+  ["GET", /^\/runtime-env$/, async () => (await import("../runtime-settings")).agentRuntimeEnv()],
 ];
 
 const PREFIX = "/internal/seo-agent";

@@ -18,7 +18,7 @@ import math
 import os
 import time
 from collections import deque
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -436,13 +436,33 @@ class AnthropicLlm:
       Usage is priced on the model that answered (`msg.model`), not the one requested.
     """
 
-    def __init__(self, api_key: str, guard: BudgetGuard, timeout_s: float = 120, client: Any = None):
+    def __init__(self, api_key: str, guard: BudgetGuard, timeout_s: float = 120, client: Any = None, key_provider: Callable[[], Awaitable[str | None]] | None = None):
         self.guard = guard
+        self.timeout_s = timeout_s
+        # key_provider: the admin-saved key (app/runtime.py), looked up before every call; None or "" keeps the
+        # deployment's key. An injected client (tests) is never replaced.
+        self._key_provider = None if client is not None else key_provider
+        self._deployment_key = api_key or ""
+        self._key = self._deployment_key
         if client is None:
             import anthropic
 
             client = anthropic.AsyncAnthropic(api_key=api_key or None, timeout=timeout_s, max_retries=2)
         self.client = client
+
+    async def _refresh_key(self) -> None:
+        """Rebuild the client when the admin-saved key changed (or was cleared). A failed lookup changes nothing."""
+        if self._key_provider is None:
+            return
+        try:
+            key = (await self._key_provider()) or self._deployment_key
+        except Exception:
+            return
+        if key and key != self._key:
+            import anthropic
+
+            self.client = anthropic.AsyncAnthropic(api_key=key, timeout=self.timeout_s, max_retries=2)
+            self._key = key
 
     def _kw(self, spec: CallSpec) -> dict[str, Any]:
         content: Any = spec.user
@@ -494,6 +514,7 @@ class AnthropicLlm:
             raise Truncated(f"output cut off at max_tokens={spec.max_tokens}", usage)
 
     async def structured(self, spec: CallSpec, schema: type[T]) -> tuple[T, Usage]:
+        await self._refresh_key()
         async with self.guard.reserve(spec.model, spec.input_chars, spec.max_tokens, spec.purpose) as r:
             started, started_ns = time.monotonic(), time.time_ns()
             try:
@@ -521,6 +542,7 @@ class AnthropicLlm:
             return parsed, usage
 
     async def text(self, spec: CallSpec) -> tuple[str, Usage]:
+        await self._refresh_key()
         async with self.guard.reserve(spec.model, spec.input_chars, spec.max_tokens, spec.purpose) as r:
             started, started_ns = time.monotonic(), time.time_ns()
             msg = await self._api(spec).create(**self._kw(spec))
@@ -533,6 +555,7 @@ class AnthropicLlm:
         """Yields text deltas. Booked exactly once in every ending: the final message's usage when the stream
         completes; when the consumer stops early (client disconnect → GeneratorExit / cancellation) or the transport
         fails mid-stream, an upper-bound estimate from the snapshot and the characters streamed so far."""
+        await self._refresh_key()
         async with self.guard.reserve(spec.model, spec.input_chars, spec.max_tokens, spec.purpose) as r:
             started, started_ns = time.monotonic(), time.time_ns()
             streamed_chars = 0

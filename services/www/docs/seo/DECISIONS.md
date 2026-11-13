@@ -640,3 +640,31 @@ for existing", "implement Reddit and Search Console". Built as Admin → Promoti
   be switched off or rolled back without touching the SEO settings schema.
 - **Not built:** traffic per promotion in the admin (the GA4 sync has no `sessionSource` report), Hacker News as a
   signal, alerts and a dashboard panel for the two flows.
+
+## D-89 API keys can be saved in the admin (owner request 2026-11-13; replaces D-23 and the "Secret only" rule for the keys below)
+The owner wants every API key manageable from the admin page. Admin → Advanced settings gets two groups:
+
+- **API keys:** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `PAGESPEED_API_KEY`, `GOOGLE_SEO_SERVICE_ACCOUNT_JSON`,
+  `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`. Stored like every other Advanced secret: sealed with
+  `SETTINGS_ENCRYPTION_KEY` (AES-256-GCM), write-only (never sent back to the browser), names only in the audit log.
+  A saved key wins over the deployment's; clearing it hands the deployment's value back.
+- **Editorial crew:** `SEO_CREW_MODELS`, `SEO_CREW_MAX_ITERS`, `CREW_MAX_TOKENS_PER_RUN`, `SEO_AGENT_DOCS_ALLOWLIST`.
+
+How the values reach the code:
+
+- **Web app:** `applyEnvOverlay()` writes the `overlay` fields into `process.env` at start-up, after a save and when
+  another replica saves (cache bus), remembering the deployment's value to restore it. The many synchronous readers
+  (`claudeConfig`, `readServiceAccount`, `redditConfig`, the docs allowlist) need no change.
+- **seo-agent:** `GET /internal/seo-agent/runtime-env` (callback bearer token, cluster-internal port) returns the
+  `agent` fields saved in the admin, nothing else. The agent caches them for 60 s (`app/runtime.py`): the Anthropic
+  client is rebuilt when the key changes, and crew options apply to the next crew run. If the lookup fails the last
+  known values (or the deployment's) are used; a model call never waits on it.
+
+Still only in Kubernetes, because the service needs them before it can read the database or to talk to the other
+service at all: `DATABASE_URL`, `REDIS_URL`, `BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `SEO_AGENT_TOKEN`,
+`SEO_AGENT_CALLBACK_TOKEN`. Keys that were already in the admin stay where they are (Gemini, social sign-in, mail,
+IndexNow under Integrations; Turnstile, Razorpay, Cal.com, video hosts under Advanced settings).
+
+Trade-off accepted: a database dump now contains these keys in sealed form, and the Anthropic key crosses the cluster
+network to the agent (inside the Istio mesh). Rotating `SETTINGS_ENCRYPTION_KEY` makes saved keys unreadable; the
+deployment's values apply until they are saved again.

@@ -79,12 +79,15 @@ class OptimizationCrew:
         Both reach the editor. `feedback_untrusted`: the feedback came through the admin MCP API → data block."""
         from crewai import Task
 
+        from ..runtime import effective_settings
+
+        settings = await effective_settings(self.settings, self.web)  # admin-saved crew options, if any
         prompt = context.get("prompt") or {}
-        ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, article_id=article_id, style=str(prompt.get("styleGuide") or ""))
+        ctx = ToolContext(self.web, self.retriever, settings.docs_allowlist, article_id=article_id, style=str(prompt.get("styleGuide") or ""))
         recs = [r for r in context.get("recommendations", []) if not recommendation_ids or r.get("id") in recommendation_ids]
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not (feedback or validator_feedback) else "regenerate", prompt_version=PROMPT_VERSION, crew="optimization", models=context.get("models") or {})
+            agents = build_agents(AGENTS, settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not (feedback or validator_feedback) else "regenerate", prompt_version=PROMPT_VERSION, crew="optimization", models=context.get("models") or {})
             evidence = data_block("evidence", {"recommendations": recs, "metrics_28d": context.get("metrics") or {}, "ga4_engagement_28d": context.get("ga4") or {}, "related_site_articles": related or []})
             # v2's own prompt (article blocks with ids). The web app already wraps article text in data blocks; it is
             # wrapped again here so a closing tag inside the article can never end the data section (defence in depth).
@@ -95,9 +98,9 @@ class OptimizationCrew:
             edit = Task(description=f"Write the minimal change set for the problem statement. Follow the rules and the style guide (style_guide tool). Every change names its block id and quotes `before` exactly.\n\n{rules}\n\n{article}{fb}\n\n{CHANGESET_RULES}", expected_output="The JSON object described above.", agent=agents["editor"], context=[analyse])
             review = Task(description=f"Check every command, version or technical claim the editor changed against official documentation (fetch_allowlisted_docs). Remove or fix any change you can prove wrong; list anything you cannot verify in needs_fact_check. Return the final JSON object.\n\n{CHANGESET_RULES}", expected_output="The final JSON object.", agent=agents["reviewer"], context=[analyse, edit], output_pydantic=OptimizationResult)
             tasks = [analyse, edit, review]
-            return make_crew(agents, tasks, self.settings), tasks
+            return make_crew(agents, tasks, settings), tasks
 
-        o = await run_crew("optimization", build, self.settings, ctx)
+        o = await run_crew("optimization", build, settings, ctx)
         result: OptimizationResult | None = None
         status, reason = o.status, o.reason
         if status == "completed":

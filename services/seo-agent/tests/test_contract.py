@@ -49,6 +49,7 @@ async def test_every_client_call_hits_a_server_route() -> None:
     await web.weekly_candidates(5)
     await web.plan_links(UUID, [])
     await web.calendar_brief(UUID)
+    await web.runtime_env()
     # v4
     await web.run_job("gsc_sync", "2026-11-10", "schedule")
     await web.draft_summary(UUID)
