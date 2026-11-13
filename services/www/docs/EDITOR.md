@@ -103,6 +103,15 @@ npm run push-post -- content/blog/my-post.mdx
   non-2xx on the site; upload it in Admin → Media and use its `/media/…` URL, or deploy once. `/media/…` URLs need no
   build. Media uploads have no API yet, and the media library rejects SVG.
 - `--site=https://…` or `JITHENDAR_SITE_URL` targets another site (default `https://jithendar.com`).
+- `--create-only` creates new drafts and never changes an existing post (reported as `exists`, exit 0).
+
+**CI does this for you.** When a push to `master` adds an article that is not published and `ci-content.yml` skips the
+restart, the workflow runs `push-post --create-only` for each new file, so the draft appears in Admin → Posts within
+about a minute of the push, with no restart. It needs the repository secret `JITHENDAR_API_KEY` (Admin → API keys,
+scopes `posts:read` + `posts:write`; **Requires manual configuration**). A file it cannot send (no key, or an
+`/images/` file that is not live yet, because new images only ship with a restart) is listed in the run summary and
+is imported as a draft at the next restart, as before. Edits to files that are already posts are never sent from CI:
+edit those in the editor, or run `push-post` yourself.
 
 Code and design changes still need the image; only articles skip it. Tests: `tests/push-post.test.ts`.
 

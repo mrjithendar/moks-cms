@@ -2,9 +2,11 @@
  * Send content/{blog,news,projects}/*.mdx to the live site through /api/v1/posts, so a new article needs no
  * image build or deploy. New files become drafts; a file whose post is still a draft or in review updates it.
  * Published, scheduled and archived posts are only changed with --update-live (their status never changes).
- * Nothing is ever published: review and publish in Admin → Posts.
+ * --create-only never changes an existing post (CI uses it for newly added files: a post with that slug, created
+ * in the editor or already imported, keeps its editor changes). Nothing is ever published: review and publish in
+ * Admin → Posts.
  *
- *   JITHENDAR_API_KEY=jk_… npm run push-post -- content/blog/my-post.mdx [more.mdx] [--dry-run] [--update-live]
+ *   JITHENDAR_API_KEY=jk_… npm run push-post -- content/blog/my-post.mdx [more.mdx] [--dry-run] [--update-live] [--create-only]
  *
  * The key needs the posts:read and posts:write scopes (Admin → API keys). JITHENDAR_SITE_URL or --site picks
  * another site (default https://jithendar.com).
@@ -19,8 +21,8 @@ import { collectionSchema } from "../src/lib/content/schema";
 
 type Fetch = typeof fetch;
 type RemotePost = { id: string; collection: string; slug: string; status: string };
-export type PushOptions = { site: string; apiKey?: string; dryRun?: boolean; updateLive?: boolean; publicDir?: string; fetch?: Fetch; log?: (line: string) => void };
-export type PushResult = { file: string; action: "created" | "updated" | "would create" | "would update" | "skipped"; id?: string; reason?: string };
+export type PushOptions = { site: string; apiKey?: string; dryRun?: boolean; updateLive?: boolean; createOnly?: boolean; publicDir?: string; fetch?: Fetch; log?: (line: string) => void };
+export type PushResult = { file: string; action: "created" | "updated" | "would create" | "would update" | "exists" | "skipped"; id?: string; reason?: string };
 
 const EDITABLE = new Set(["draft", "review"]);
 
@@ -94,7 +96,9 @@ export async function pushPosts(files: string[], opts: PushOptions): Promise<Pus
     const url = `/${payload.collection}/${payload.slug}`;
     const current = await lookup(payload.collection, payload.slug);
     let result: PushResult;
-    if (current && !EDITABLE.has(current.status) && !opts.updateLive) {
+    if (current && opts.createOnly) {
+      result = { file, action: "exists", id: current.id, reason: `${url} is already a post (${current.status}); not changed` };
+    } else if (current && !EDITABLE.has(current.status) && !opts.updateLive) {
       result = { file, action: "skipped", id: current.id, reason: `${url} is ${current.status}; rerun with --update-live to change it` };
     } else if (opts.dryRun) {
       result = { file, action: current ? "would update" : "would create", id: current?.id };
@@ -113,14 +117,14 @@ export async function pushPosts(files: string[], opts: PushOptions): Promise<Pus
 
 async function main(argv: string[]) {
   const flags = new Set(argv.filter((a) => a.startsWith("--") && !a.startsWith("--site=")));
-  const unknown = [...flags].filter((a) => a !== "--dry-run" && a !== "--update-live");
+  const unknown = [...flags].filter((a) => a !== "--dry-run" && a !== "--update-live" && a !== "--create-only");
   const files = argv.filter((a) => !a.startsWith("--"));
   if (unknown.length || files.length === 0) {
-    console.error("Usage: npm run push-post -- <content/…/post.mdx>… [--dry-run] [--update-live] [--site=https://…]");
+    console.error("Usage: npm run push-post -- <content/…/post.mdx>… [--dry-run] [--update-live] [--create-only] [--site=https://…]");
     process.exit(2);
   }
   const site = argv.find((a) => a.startsWith("--site="))?.slice(7) ?? process.env.JITHENDAR_SITE_URL ?? "https://jithendar.com";
-  const results = await pushPosts(files, { site, apiKey: process.env.JITHENDAR_API_KEY, dryRun: flags.has("--dry-run"), updateLive: flags.has("--update-live") });
+  const results = await pushPosts(files, { site, apiKey: process.env.JITHENDAR_API_KEY, dryRun: flags.has("--dry-run"), updateLive: flags.has("--update-live"), createOnly: flags.has("--create-only") });
   if (results.some((r) => r.action === "skipped")) process.exitCode = 1;
 }
 

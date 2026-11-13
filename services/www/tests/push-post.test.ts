@@ -84,6 +84,19 @@ describe("push-post", () => {
     expect((await db.select().from(schema.post))[0]).toMatchObject({ status: "published", body: "Edited after publishing.\n" });
   });
 
+  it("--create-only creates a new draft but never changes an existing post", async () => {
+    const file = write("blog", "create-only-post");
+    expect((await pushPosts([file], opts({ createOnly: true })))[0]).toMatchObject({ action: "created" });
+    const [before] = await db.select().from(schema.post);
+    write("blog", "create-only-post", "", "Edited body that must not reach the existing draft.");
+    const [again] = await pushPosts([file], opts({ createOnly: true }));
+    expect(again).toMatchObject({ action: "exists", id: before!.id });
+    const rows = await db.select().from(schema.post);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.body).toBe(before!.body);
+    expect(rows[0]!.version).toBe(before!.version);
+  });
+
   it("dry run sends nothing", async () => {
     const file = write("news", "dry-news", "sources:\n  - { title: Source, url: https://example.com/a, publisher: Example }\n", "Body text.", "news");
     expect((await pushPosts([file], opts({ dryRun: true })))[0]).toMatchObject({ action: "would create" });

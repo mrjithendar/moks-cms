@@ -9,7 +9,9 @@ name: wwww-content
 #           into the pods (minikube/30-jithendar-com.yaml).
 #           The restart is skipped when a push only adds or edits articles that are not published (status draft or
 #           review in blog/, news/ or projects/, before and after the push) and only adds new images: such a push
-#           changes nothing a reader can see. The image is still pushed, so the next restart carries it. Publishing
+#           changes nothing a reader can see. The image is still pushed, so the next restart carries it. New articles
+#           in such a push are sent to /api/v1/posts (scripts/push-post.ts, secret JITHENDAR_API_KEY), so they appear
+#           in Admin → Posts as drafts without a restart, unless one uses an /images/ file that is not live yet. Publishing
 #           (status: published), editing or deleting a published article, any other content, a changed image, or a
 #           manual run restarts as before.
 #
@@ -134,6 +136,51 @@ jobs:
           fi
           echo "Restart: $restart ($reason)"
           { echo "restart=$restart"; echo "reason=$reason"; } >> "$GITHUB_OUTPUT"
+      # Without a restart the running site never reads the new files, so new unpublished articles are sent to the
+      # posts API instead (scripts/push-post.ts): each becomes a draft in Admin → Posts right away. Only articles ADDED
+      # by this push, one file per call so one refusal does not hold back the others. Edits to files that are already
+      # posts are not sent: that would overwrite changes made in the editor. Never fails the job: a refused file
+      # (no API key, or an /images/ file that is not live yet because new images ship only with a restart) is imported
+      # as a draft at the next restart of jithendar-com, as before.
+      - name: Send new draft articles to Admin → Posts
+        id: drafts
+        if: steps.visible.outputs.restart == 'false'
+        env:
+          JITHENDAR_API_KEY: ${{ secrets.JITHENDAR_API_KEY }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -uo pipefail
+          mapfile -t added < <(git -C "$GITHUB_WORKSPACE" diff --name-only --no-renames --diff-filter=A "$BEFORE" "$GITHUB_SHA" -- \
+            'services/www/content/blog/*.mdx' 'services/www/content/news/*.mdx' 'services/www/content/projects/*.mdx' \
+            | sed 's#^services/www/##')
+          sent=0 waiting=0
+          {
+            echo '### New draft articles'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ ${#added[@]} -eq 0 ]]; then
+            echo "No new articles in this push." | tee -a "$GITHUB_STEP_SUMMARY"
+          elif [[ -z "$JITHENDAR_API_KEY" ]]; then
+            echo "::warning::Secret JITHENDAR_API_KEY is not set (Admin → API keys, scopes posts:read + posts:write): ${#added[@]} new article(s) wait for the next restart."
+            # shellcheck disable=SC2016 # literal Markdown backticks
+            printf -- '- `%s`: waits for the next restart (no JITHENDAR_API_KEY)\n' "${added[@]}" >> "$GITHUB_STEP_SUMMARY"
+            waiting=${#added[@]}
+          else
+            for f in "${added[@]}"; do
+              if out="$(npm run --silent push-post -- "$f" --create-only 2>&1)"; then
+                echo "$out"
+                echo "- \`$f\`: $(tail -1 <<<"$out" | sed 's/  */ /g')" >> "$GITHUB_STEP_SUMMARY"
+                sent=$((sent + 1))
+              else
+                echo "$out"
+                echo "::warning file=services/www/$f::Not sent to Admin → Posts; it is imported as a draft at the next restart. $(tail -1 <<<"$out")"
+                echo "- \`$f\`: waits for the next restart ($(tail -1 <<<"$out"))" >> "$GITHUB_STEP_SUMMARY"
+                waiting=$((waiting + 1))
+              fi
+            done
+          fi
+          { echo "sent=$sent"; echo "waiting=$waiting"; } >> "$GITHUB_OUTPUT"
+          exit 0
       # The init container pulls jithendar-content:latest (imagePullPolicy Always) whenever a pod starts.
       - name: Restart jithendar-com
         if: steps.visible.outputs.restart == 'true'
