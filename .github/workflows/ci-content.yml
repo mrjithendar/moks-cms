@@ -11,7 +11,8 @@ name: wwww-content
 #           review in blog/, news/ or projects/, before and after the push) and only adds new images: such a push
 #           changes nothing a reader can see. The image is still pushed, so the next restart carries it. New articles
 #           in such a push are sent to /api/v1/posts (scripts/push-post.ts, secret JITHENDAR_API_KEY), so they appear
-#           in Admin → Posts as drafts without a restart, unless one uses an /images/ file that is not live yet. Publishing
+#           in Admin → Posts as drafts without a restart; if one can't be sent (an /images/ file that is not live yet, or no
+#           key), the push restarts after all, so the draft and its images arrive at once. Publishing
 #           (status: published), editing or deleting a published article, any other content, a changed image, or a
 #           manual run restarts as before.
 #
@@ -139,9 +140,9 @@ jobs:
       # Without a restart the running site never reads the new files, so new unpublished articles are sent to the
       # posts API instead (scripts/push-post.ts): each becomes a draft in Admin → Posts right away. Only articles ADDED
       # by this push, one file per call so one refusal does not hold back the others. Edits to files that are already
-      # posts are not sent: that would overwrite changes made in the editor. Never fails the job: a refused file
-      # (no API key, or an /images/ file that is not live yet because new images ship only with a restart) is imported
-      # as a draft at the next restart of jithendar-com, as before.
+      # posts are not sent: that would overwrite changes made in the editor. Never fails the job. A refused file (no API
+      # key, or an /images/ file that is not live yet because new images ship only with a restart) sets waiting > 0, and
+      # the restart step below then runs anyway: the restart imports it as a draft and makes its images live.
       - name: Send new draft articles to Admin → Posts
         id: drafts
         if: steps.visible.outputs.restart == 'false'
@@ -183,7 +184,8 @@ jobs:
           exit 0
       # The init container pulls jithendar-content:latest (imagePullPolicy Always) whenever a pod starts.
       - name: Restart jithendar-com
-        if: steps.visible.outputs.restart == 'true'
+        # Readers would see a change, or a new article could not be sent to the API (it needs the restart to arrive).
+        if: steps.visible.outputs.restart == 'true' || steps.drafts.outputs.waiting > 0
         env:
           MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
           MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
@@ -203,8 +205,8 @@ jobs:
           fi
       - name: Record image
         env:
-          RESTART: ${{ steps.visible.outputs.restart }}
-          REASON: ${{ steps.visible.outputs.reason }}
+          RESTART: ${{ steps.visible.outputs.restart == 'true' || steps.drafts.outputs.waiting > 0 }}
+          REASON: ${{ steps.visible.outputs.restart == 'true' && steps.visible.outputs.reason || 'new draft articles could not be sent to the posts API (images not live yet, or no API key)' }}
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {

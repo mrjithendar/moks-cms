@@ -37,7 +37,8 @@ spec:
       - name: content
         image: registry.jithendar.com/jithendar/jithendar-content:latest
         imagePullPolicy: Always
-        command: ["sh", "-c", "cp -a /content/. /mnt/content/ && cp -a /images/. /mnt/images/"]
+        # cp -R: -a would try to set owner/mode/times on the emptyDir mount point itself and log "can't preserve" (Dockerfile.content)
+        command: ["sh", "-c", "cp -R /content/. /mnt/content/ && cp -R /images/. /mnt/images/"]
         resources:
           limits:
             cpu: 200m

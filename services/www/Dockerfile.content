@@ -11,4 +11,7 @@ FROM busybox:1.38.0
 COPY --chown=1000:1000 content /content
 COPY --chown=1000:1000 public/images /images
 USER 1000:1000
-CMD ["sh", "-c", "cp -a /content/. /mnt/content/ && cp -a /images/. /mnt/images/"]
+# cp -R, not cp -a: -a also tries to copy owner, mode and times onto the target directory itself (the mount point),
+# which user 1000 may not change ("can't preserve … Operation not permitted"). The files are 1000:1000 either way and
+# the site never reads their times (only sizes).
+CMD ["sh", "-c", "cp -R /content/. /mnt/content/ && cp -R /images/. /mnt/images/"]

@@ -32,7 +32,7 @@ minute, not a full build. A push that changes both code and content runs both wo
 **Drafts don't deploy.** A content push that only adds or edits articles with `status: draft` or `review` (plus new
 images) still pushes the content image but does not restart the site: readers would see nothing new. New articles in such
 a push are sent to Admin → Posts as drafts through the posts API (`push-post --create-only`, secret `JITHENDAR_API_KEY`),
-unless they use an `/images/` file that is not live yet; those wait for the next restart. Setting an article to
+unless they use an `/images/` file that is not live yet: then CI restarts the site so the draft and its images arrive. Setting an article to
 `status: published`, or editing or deleting a published one, restarts it as above. Changes under `services/www/docs/` and
 `services/www/*.md` (notes, article diagram sources) are not in the site image and never trigger a site build or deploy.
 
