@@ -330,6 +330,16 @@ separate commits.
   tenant/RBAC checks). This service never starts or connects to one: crewai memory and knowledge are off, and
   NetworkPolicy allows no inbound traffic except from the site, the reindex job and Prometheus. **Accepted risk**,
   ignored by those exact IDs in CI. Revisit when crewai allows a fixed chromadb.
+- **Hardened 2026-11-13** (Dependabot #4–#7: GHSA-f4j7-r4q5-qw2c / CVE-2026-45829, GHSA-2wm9-hf6c-p5cr / CVE-2026-45830,
+  GHSA-xph7-9rjv-w5fr / CVE-2026-45831, GHSA-36p7-vc44-83pf / CVE-2026-45833; every chromadb ≤ 1.5.9, still no fixed
+  release, and crewai 1.15.30 still pins `chromadb~=1.5.9`). Rechecked: crewai imports `chromadb.config`, `chromadb.api`
+  types and the embedding-function modules at load (`crewai.memory` → `crewai.rag`), so chromadb can't be overridden
+  away. Importing every `app.*` module loads none of the vulnerable parts. The Dockerfile now deletes them from the image:
+  `chromadb_rust_bindings` (the `chroma run` server, 50 MB), `chromadb/server`, `cli`, `app.py`,
+  `auth/basic_authn`, `auth/simple_rbac_authz` and `bin/chroma`. The build fails unless `crewai` still imports and
+  `chromadb.server` no longer does. `tests/test_chromadb_surface.py` fails if a service module ever imports one of them.
+  The full test suite passed with them removed (only the macOS-local LightGBM/libomp failures, unrelated). The
+  installed version is still 1.5.9, so scanners keep reporting it; the alerts are "vulnerable code not used".
 
 ---
 
