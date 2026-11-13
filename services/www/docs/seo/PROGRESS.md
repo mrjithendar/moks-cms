@@ -654,7 +654,10 @@ deploying exposes nothing until the owner turns it on.
 locally; they run in CI on the pull request. Run locally: `ruff check app tests/test_ask_and_chunks.py` (pass),
 `mypy` on the three changed agent modules with imports skipped (pass), `python -m py_compile` (pass), and a
 syntax-only `tsc` parse of the changed TypeScript files (no syntax errors; types not checked without `node_modules`).
-The CI results are recorded on the pull request.
+CI on pull request #52, first run (commit `2a63547`): seo-agent (ruff, mypy, pytest, image build) and the repository
+checks passed; www lint and typecheck passed; www `npm test` failed one new test (1021 passed, 1 failed), because the
+test varied the client-controlled left-most `X-Forwarded-For` hop instead of the right-most one the limiter trusts.
+The test was corrected (no production code change). Later runs are recorded on the pull request.
 
 **Not done.** The admin card and the widget have not been opened in a browser; no real question has been answered
 (needs the deployed site and agent). The real-model run of the hard evaluation set and the generation eval are still

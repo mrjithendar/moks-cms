@@ -42,9 +42,10 @@ afterEach(() => {
 });
 
 const save = (patch: Partial<typeof DEFAULT_ASK_SETTINGS>) => saveAskSettings({ ...DEFAULT_ASK_SETTINGS, ...patch }, "admin");
+/** `ip` is the right-most X-Forwarded-For hop: the one the gateway appended, which the limiter trusts. */
 const ask = async (question: string, ip = "203.0.113.9") => {
   const { POST } = await import("@/app/api/ask/route");
-  return POST(new Request("https://jithendar.com/api/ask", { method: "POST", headers: { "content-type": "application/json", origin: "https://jithendar.com", host: "jithendar.com", "x-forwarded-for": `${ip}, 10.0.0.1` }, body: JSON.stringify({ question }) }));
+  return POST(new Request("https://jithendar.com/api/ask", { method: "POST", headers: { "content-type": "application/json", origin: "https://jithendar.com", host: "jithendar.com", "x-forwarded-for": `10.9.9.9, ${ip}` }, body: JSON.stringify({ question }) }));
 };
 const status = async () => {
   const { GET } = await import("@/app/api/ask/route");
