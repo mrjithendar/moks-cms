@@ -170,6 +170,11 @@ export const GROUPS: Group[] = [
 const HOST_LIST = /^$|^[a-z0-9.-]{3,100}(\s*,\s*[a-z0-9.-]{3,100}){0,99}$/;
 const AGENT_MAP = /^$|^\{\s*("[a-z_]+\.[a-z_]+"\s*:\s*("claude-[a-z0-9-]{3,40}"|\d{1,2})\s*,?\s*){1,20}\}$/;
 
+const ON_OFF = [
+  { value: "true", label: "On" },
+  { value: "false", label: "Off" },
+];
+
 GROUPS.push(
   {
     id: "api-keys",
@@ -200,9 +205,13 @@ GROUPS.push(
     title: "Editorial crew (AI drafting)",
     description: "How the SEO agent's crews run. Empty fields use the deployment's values (minikube/seo-agent-40-seo-agent.yaml). Applied to the next crew run.",
     fields: [
+      { env: "SEO_LLM_MONTHLY_BUDGET_USD", label: "Monthly AI budget (USD)", type: "number", min: 1, max: 10000, overlay: true, agent: true, placeholder: "15", hint: "Shared by the site and the SEO agent. Drafting pauses when the month's spend reaches it. Also on Topic discovery → Automatic planning, next to the spend so far." },
+      { env: "SEO_RESEARCH_WEB_SEARCH", label: "Web search for the researcher", type: "select", agent: true, options: ON_OFF, hint: "The researcher may search the public web (Anthropic's web search tool, billed per search). It must also be enabled for your organization in the Claude Console." },
+      { env: "SEO_RESEARCH_WEB_SEARCH_MAX", label: "Web searches per article", type: "number", min: 1, max: 15, agent: true, placeholder: "5" },
+      { env: "SEO_EDITORIAL_CRITIQUE", label: "Critique and rewrite", type: "select", agent: true, options: ON_OFF, hint: "An editor agent lists what to change and the writer revises once before the technical review. One extra full-length draft per article." },
       { env: "SEO_CREW_MODELS", label: "Model per agent", type: "text", pattern: AGENT_MAP, agent: true, placeholder: '{"editorial.writer":"claude-opus-5-5"}', hint: 'JSON: "<crew>.<agent>" → Claude model id. Agents not listed use the draft model.' },
       { env: "SEO_CREW_MAX_ITERS", label: "Turns per agent", type: "text", pattern: AGENT_MAP, agent: true, placeholder: '{"editorial.researcher":10}', hint: 'JSON: "<crew>.<agent>" → 1 to 20. Agents not listed use 4.' },
-      { env: "CREW_MAX_TOKENS_PER_RUN", label: "Token cap per crew run", type: "number", min: 20000, max: 1000000, agent: true, placeholder: "300000" },
+      { env: "CREW_MAX_TOKENS_PER_RUN", label: "Token cap per crew run", type: "number", min: 20000, max: 1000000, agent: true, placeholder: "400000" },
       { env: "SEO_AGENT_DOCS_ALLOWLIST", label: "Research allowlist", type: "textarea", pattern: HOST_LIST, overlay: true, agent: true, hint: "Comma-separated documentation hosts the researcher may read (a host covers its subdomains). Empty: the built-in list of official documentation sites." },
     ],
   },

@@ -61,7 +61,8 @@ def test_only_allowlisted_tools_can_be_built(web: FakeWebApp, retriever) -> None
 
 
 def test_allowlist_is_exactly_read_only() -> None:
-    assert ALLOWED_TOOLS == {"read_article", "vector_search", "gsc_queries_for_topic", "gsc_queries_for_page", "style_guide", "fetch_allowlisted_docs"}
+    # web_search reads the public web through Anthropic's server-side tool (no egress, no write); see app/tools/__init__.py.
+    assert ALLOWED_TOOLS == {"read_article", "vector_search", "gsc_queries_for_topic", "gsc_queries_for_page", "style_guide", "fetch_allowlisted_docs", "web_search"}
 
 
 def test_data_block_neutralises_closing_tags_and_redacts() -> None:

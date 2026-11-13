@@ -668,3 +668,13 @@ IndexNow under Integrations; Turnstile, Razorpay, Cal.com, video hosts under Adv
 Trade-off accepted: a database dump now contains these keys in sealed form, and the Anthropic key crosses the cluster
 network to the agent (inside the Istio mesh). Rotating `SETTINGS_ENCRYPTION_KEY` makes saved keys unreadable; the
 deployment's values apply until they are saved again.
+
+## D-90 Web search for the researcher goes through Anthropic's server-side tool (owner request 2026-11-14)
+The seo-agent has no internet egress except the Anthropic API, and the documentation allowlist was the only way the
+researcher could read anything outside the site. Web search is added without opening egress: the `web_search` tool
+makes one model request with Anthropic's `web_search_20250305` tool, and the search runs on Anthropic's side.
+Alternatives considered: a search API called from the web app (a new vendor, key and egress host), or opening egress
+from the agent (rejected: the agent stays closed). Consequences: search results are untrusted data like every tool
+result; pages found by search but not opened by the crew are flagged for the reviewer rather than treated as checked;
+every search is billed by Anthropic on top of tokens and counts against the run's token cap and the monthly budget;
+the tool must be enabled for the organization in the Claude Console.

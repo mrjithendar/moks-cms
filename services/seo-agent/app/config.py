@@ -107,6 +107,11 @@ class Settings:
     ask_daily_budget_usd: float = 1.0
     ask_enabled: bool = False
     crew_max_tokens_per_run: int = 150_000  # ≈ a normal 4-agent run is ~80k (docs/seo/COSTS.md)
+    # Editorial Crew options (docs/seo/CREWS.md). Off in code so a bare install behaves as before; the production
+    # manifest and Admin → Advanced settings switch them on.
+    research_web_search: bool = False  # the researcher may search the web (Anthropic's server-side web search tool)
+    research_web_search_max: int = 5  # searches per crew run (1–15); each is billed by Anthropic on top of tokens
+    editorial_critique: bool = False  # a developmental editor critiques the draft and the writer revises it once
     crew_timeout_s: int = 600
     crew_max_iter: int = 4
     crew_max_rpm: int = 20
@@ -197,6 +202,9 @@ def load_settings() -> Settings:
         ask_enabled=_bool("ASK_BLOG_ENABLED", False),
         crew_max_tokens_per_run=_int("CREW_MAX_TOKENS_PER_RUN", Settings.crew_max_tokens_per_run),
         crew_timeout_s=_int("CREW_TIMEOUT_SECONDS", Settings.crew_timeout_s),
+        research_web_search=_bool("SEO_RESEARCH_WEB_SEARCH", False),
+        research_web_search_max=max(1, min(15, _int("SEO_RESEARCH_WEB_SEARCH_MAX", Settings.research_web_search_max))),
+        editorial_critique=_bool("SEO_EDITORIAL_CRITIQUE", False),
         crew_max_iter=_int("CREW_MAX_ITER", Settings.crew_max_iter),
         crew_max_rpm=max(1, _int("CREW_MAX_RPM", Settings.crew_max_rpm)),
         crew_models=_models(env.get("SEO_CREW_MODELS", "")),

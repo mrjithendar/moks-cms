@@ -45,7 +45,7 @@ from .index import MemoryRetriever, PgVectorIndex
 from .llm import AnthropicLlm, BudgetGuard, MemorySpendStore, PgSpendStore
 from .news.store import MemoryNewsStore, PgNewsStore
 from .runs import FlowRunner, MemoryFlowPersistence, MemoryLocks, MemoryRunStore, PgAdvisoryLocks, PgFlowPersistence, PgRunStore, RunError, view
-from .runtime import runtime_env_for
+from .runtime import monthly_budget, runtime_env_for
 from .schemas import AskRequest
 from .seo_ml.store import MemoryMlStore, PgMlStore
 from .services import review
@@ -143,6 +143,11 @@ async def build_container(settings: Settings) -> Container:
     web = HttpWebApp(settings.callback_url, settings.callback_token)
     # The Anthropic key saved in Admin → Advanced settings wins over the deployment's (app/runtime.py).
     runtime = runtime_env_for(web)
+
+    async def _admin_budget() -> float | None:
+        return monthly_budget(await runtime.get())
+
+    guard.monthly_provider = _admin_budget  # the monthly budget saved in the admin wins over the deployment's
     llm = AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s, key_provider=lambda: runtime.value("ANTHROPIC_API_KEY"))
     index = PgVectorIndex(pool, make_embeddings(settings))
     reasons: list[str] = []
@@ -241,8 +246,8 @@ async def _gauges(c: Container) -> None:
     while True:
         try:
             st = await c.guard.status()
-            if c.settings.monthly_budget_usd > 0:
-                metrics.BUDGET_RATIO.set(st["month_spend_usd"] / c.settings.monthly_budget_usd)
+            if st["monthly_budget_usd"] > 0:  # the effective budget (admin-saved or the deployment's)
+                metrics.BUDGET_RATIO.set(st["month_spend_usd"] / st["monthly_budget_usd"])
             if c.settings.ask_daily_budget_usd > 0:
                 metrics.ASK_BUDGET_RATIO.set(st["ask_day_spend_usd"] / c.settings.ask_daily_budget_usd)
             if c.pool is not None:

@@ -8,7 +8,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
-const { DEFAULT_AUTOMATION_SETTINGS, EDITORIAL_TZ, draftReadyEmail, dueForDraft, notifyDraftReady, runAutoDraft, saveAutomationSettings } = await import("@/lib/seo-intel/topics/automation");
+const { DEFAULT_AUTOMATION_SETTINGS, EDITORIAL_TZ, articlesPerMonth, budgetOutlook, draftCost, draftReadyEmail, dueForDraft, notifyDraftReady, runAutoDraft, saveAutomationSettings } = await import("@/lib/seo-intel/topics/automation");
 const { addDays, dateIn } = await import("@/lib/seo-intel/sqlutil");
 const { JOB_TYPES } = await import("@/lib/seo-intel/jobs");
 
@@ -140,5 +140,52 @@ describe("automatic drafting and the ready email", () => {
     await save({ notify: { enabled: false, recipients: [] } });
     expect(await notifyDraftReady(db, { calendarId: auto, draftId, handedOff: false }, deps)).toEqual({ sent: 0, reason: "notifications_off" });
     expect(sent).toEqual([]);
+  });
+
+  it("cadence → articles a month", () => {
+    const all = [0, 1, 2, 3, 4, 5, 6];
+    expect(articlesPerMonth({ cadence: { count: 4, period: "month" }, days: all })).toBe(4);
+    expect(articlesPerMonth({ cadence: { count: 2, period: "week" }, days: [1, 4] })).toBe(8.7);
+    expect(articlesPerMonth({ cadence: { count: 1, period: "day" }, days: all })).toBe(30.4);
+    expect(articlesPerMonth({ cadence: { count: 1, period: "day" }, days: [1, 2, 3, 4, 5] })).toBe(21.7); // weekdays only
+  });
+
+  it("measured cost per drafted article and whether the cadence fits the budget", async () => {
+    const cadence = { cadence: { count: 2, period: "week" as const }, days: [1, 4] };
+    expect(await draftCost(db, now)).toEqual({ runs: 0, averageUsd: null, sinceDays: 90 });
+    expect(budgetOutlook(cadence, { runs: 0, averageUsd: null, sinceDays: 90 }, 15)).toEqual({ articles: 8.7, perArticleUsd: null, projectedUsd: null, fits: null });
+
+    const run = (flow: string, status: string, cost: number, daysAgo = 1) =>
+      db.execute(sql`insert into seo_flow_runs (run_id, flow_name, target_id, status, cost_usd, triggered_by, started_at) values (gen_random_uuid(), ${flow}, 'x', ${status}, ${cost}, 'cron', ${new Date(now.getTime() - daysAgo * 86_400_000).toISOString()}::timestamptz)`);
+    await run("new_article_flow", "succeeded", 0.8);
+    await run("new_article_flow", "succeeded", 1.2);
+    await run("new_article_flow", "failed", 9); // not a finished article
+    await run("new_article_flow", "succeeded", 0); // nothing recorded
+    await run("optimize_article_flow", "succeeded", 5); // another flow
+    await run("new_article_flow", "succeeded", 7, 120); // older than 90 days
+    const cost = await draftCost(db, now);
+    expect(cost).toEqual({ runs: 2, averageUsd: 1, sinceDays: 90 });
+    expect(budgetOutlook(cadence, cost, 15)).toEqual({ articles: 8.7, perArticleUsd: 1, projectedUsd: 8.7, fits: true });
+    expect(budgetOutlook({ cadence: { count: 1, period: "day" }, days: [0, 1, 2, 3, 4, 5, 6] }, cost, 15)).toMatchObject({ projectedUsd: 30.4, fits: false });
+  });
+
+  it("the monthly budget and the crew switches saved in the admin reach the site and the SEO agent", async () => {
+    const { agentRuntimeEnv, applyEnvOverlay, saveRuntimeGroup } = await import("@/lib/runtime-settings");
+    const { claudeConfig, DEFAULT_SEO_SETTINGS } = await import("@/lib/seo-intel/settings");
+    const owner = { id: "owner", role: "admin" as const, label: "owner@example.com" };
+    await applyEnvOverlay();
+    const before = process.env.SEO_LLM_MONTHLY_BUDGET_USD;
+
+    for (const bad of ["0", "12.5", "20000"]) await expect(saveRuntimeGroup(owner, "editorial-crew", { SEO_LLM_MONTHLY_BUDGET_USD: bad })).rejects.toMatchObject({ issues: [expect.stringMatching(/Monthly AI budget/)] });
+    await expect(saveRuntimeGroup(owner, "editorial-crew", { SEO_RESEARCH_WEB_SEARCH: "maybe" })).rejects.toMatchObject({ issues: [expect.stringMatching(/Web search/)] });
+
+    await saveRuntimeGroup(owner, "editorial-crew", { SEO_LLM_MONTHLY_BUDGET_USD: "40", SEO_RESEARCH_WEB_SEARCH: "true", SEO_RESEARCH_WEB_SEARCH_MAX: "8", SEO_EDITORIAL_CRITIQUE: "false" });
+    expect(process.env.SEO_LLM_MONTHLY_BUDGET_USD).toBe("40");
+    expect(claudeConfig(DEFAULT_SEO_SETTINGS)).toMatchObject({ monthlyBudgetUsd: 40, budgetSource: "env" });
+    expect((await agentRuntimeEnv()).env).toMatchObject({ SEO_LLM_MONTHLY_BUDGET_USD: "40", SEO_RESEARCH_WEB_SEARCH: "true", SEO_RESEARCH_WEB_SEARCH_MAX: "8", SEO_EDITORIAL_CRITIQUE: "false" });
+
+    await saveRuntimeGroup(owner, "editorial-crew", {});
+    expect(process.env.SEO_LLM_MONTHLY_BUDGET_USD).toBe(before);
+    expect((await agentRuntimeEnv()).env).not.toHaveProperty("SEO_LLM_MONTHLY_BUDGET_USD");
   });
 });

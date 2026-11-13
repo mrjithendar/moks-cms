@@ -72,10 +72,27 @@ def apply_overrides(settings: Settings, env: dict[str, str]) -> Settings:
     cap = env.get("CREW_MAX_TOKENS_PER_RUN", "").strip()
     if cap.isdigit() and 20_000 <= int(cap) <= 1_000_000:
         changes["crew_max_tokens_per_run"] = int(cap)
+    for name, field_name in (("SEO_RESEARCH_WEB_SEARCH", "research_web_search"), ("SEO_EDITORIAL_CRITIQUE", "editorial_critique")):
+        v = env.get(name, "").strip().lower()
+        if v in ("true", "false"):
+            changes[field_name] = v == "true"
+    uses = env.get("SEO_RESEARCH_WEB_SEARCH_MAX", "").strip()
+    if uses.isdigit() and 1 <= int(uses) <= 15:
+        changes["research_web_search_max"] = int(uses)
     docs = tuple(h.strip().lower() for h in env.get("SEO_AGENT_DOCS_ALLOWLIST", "").replace("\n", ",").split(",") if h.strip())
     if docs:
         changes["docs_allowlist"] = docs
     return dataclasses.replace(settings, **changes) if changes else settings
+
+
+def monthly_budget(env: dict[str, str]) -> float | None:
+    """The admin-saved monthly LLM budget in USD, or None when none (or a malformed one) is saved."""
+    raw = env.get("SEO_LLM_MONTHLY_BUDGET_USD", "").strip()
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return v if 0 < v <= 10_000 else None
 
 
 async def effective_settings(settings: Settings, web: Any) -> Settings:

@@ -105,6 +105,10 @@ Only in the mode **Schedule and draft**. Once a day (CronJob `seo-flow-calendar-
 The email contains **no approve link**: mail scanners open links, and a link that publishes would let them publish.
 Reviewing, approving and publishing happen in the admin, by a person. Nothing is published automatically.
 
+The **Monthly AI budget** card above the planning settings shows the budget, the month's spend, what is left, and
+whether a month of the chosen cadence fits at the measured average cost of a drafted article. The budget can be
+changed there.
+
 Cost: one Editorial Crew run per draft (COSTS.md). With N drafts a day the monthly budget is the limit that stops
 drafting; the planner keeps planning, and drafts resume when the budget allows.
 
