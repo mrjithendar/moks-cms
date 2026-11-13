@@ -26,6 +26,9 @@ export type PostFormValue = {
   socialDescription: string | null;
   socialImage: FeaturedImage | null;
   noindex: boolean;
+  membersOnly: boolean;
+  /** null = the site default. */
+  previewPercent: number | null;
 };
 
 type RowLike = Record<string, unknown>;
@@ -63,5 +66,7 @@ export function rowToForm(row: RowLike): PostFormValue {
     socialDescription: str(row.socialDescription ?? row.social_description),
     socialImage: (row.socialImage ?? row.social_image ?? null) as FeaturedImage | null,
     noindex: (row.noindex as boolean) ?? false,
+    membersOnly: (row.membersOnly ?? row.members_only) === true,
+    previewPercent: typeof (row.previewPercent ?? row.preview_percent) === "number" ? ((row.previewPercent ?? row.preview_percent) as number) : null,
   };
 }

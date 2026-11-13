@@ -1,6 +1,6 @@
 name: repository checks
 
-# Cheap checks that concern the whole repository, on every pull request and push:
+# Cheap checks that concern the whole repository, on every pull request (and manual runs; there is no `push` trigger):
 # - no cloud-sync conflict copies are tracked ("README 2.md", "ScrollSpy (1).tsx"): scripts/check-conflict-copies.sh
 # - the kube-context guard every cluster script sources (scripts/lib/kube-context.sh), tested with a stub kubectl
 # - shellcheck of the guard, its test and the deploy/config scripts
@@ -8,8 +8,6 @@ name: repository checks
 on:
   workflow_dispatch:
   pull_request:
-  push:
-    branches: [master]
 
 permissions:
   contents: read

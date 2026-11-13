@@ -86,6 +86,8 @@ export function articleLd(article: Article, author: Author, section: string = ar
     ...(image ? { image } : {}),
     ...(isArticle ? { articleSection: section } : {}),
     ...(fm.tags.length > 0 ? { keywords: fm.tags.join(", ") } : {}),
+    // Members-only: the markup search engines ask for on content behind a sign-in (the gated part is .members-only).
+    ...(fm.membersOnly ? { isAccessibleForFree: false, hasPart: { "@type": "WebPageElement", isAccessibleForFree: false, cssSelector: ".members-only" } } : {}),
   };
 }
 

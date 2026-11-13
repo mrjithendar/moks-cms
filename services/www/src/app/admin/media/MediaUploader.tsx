@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { finishUpload, requestUpload, uploadMedia } from "@/app/admin/_actions/shared";
+import { finishUpload, requestUpload, sendUploadedVideo, uploadMedia } from "@/app/admin/_actions/shared";
 import { Alert, Button, Input, Select } from "@/components/ui/form";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/avif,image/gif,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/wav,audio/x-wav,application/pdf";
@@ -26,14 +26,32 @@ function altFromName(name: string): string {
   return base ? base[0]!.toUpperCase() + base.slice(1) : "";
 }
 
-type Queued = { key: string; file: File; alt: string; visibility: "public" | "private"; state: "ready" | "uploading" | "done" | "error"; progress: number; error?: string };
+type Queued = {
+  key: string;
+  file: File;
+  alt: string;
+  visibility: "public" | "private";
+  state: "ready" | "uploading" | "done" | "error";
+  progress: number;
+  error?: string;
+  /** Videos only: "r2" keeps it on this site; anything else also sends it to that streaming service. */
+  destination: string;
+  /** The streaming service's player address, once the video has been sent there. */
+  player?: string;
+  /** The upload itself worked, but something after it did not (shown without offering to upload again). */
+  warning?: string;
+};
+export type UploadDestination = { id: string; label: string };
 
 /**
  * Drop or choose up to 20 files; each gets alt text (pre-filled from its name, editable, required for images)
  * and visibility, then uploads straight from the browser to R2 with a short-lived presigned URL (large videos
  * never pass through the site's pods). The server verifies size, checksum and real type of every file.
+ *
+ * `destinations`: for videos, where else the file should go (the streaming services an admin switched on; empty when
+ * there are none). A video always lands in the media library first; the chosen service then gets it from there.
  */
-export function MediaUploader() {
+export function MediaUploader({ destinations = [] }: { destinations?: UploadDestination[] }) {
   const router = useRouter();
   const [queue, setQueue] = useState<Queued[]>([]);
   const [over, setOver] = useState(false);
@@ -51,7 +69,7 @@ export function MediaUploader() {
     if (files.length > MAX_FILES) setNotice(`Only the first ${MAX_FILES} files were added.`);
     setQueue((q) => [
       ...q.filter((x) => x.state !== "done"),
-      ...list.map((file) => ({ key: `${file.name}-${file.size}-${crypto.randomUUID()}`, file, alt: file.type.startsWith("image/") ? altFromName(file.name) : "", visibility: "public" as const, state: "ready" as const, progress: 0 })),
+      ...list.map((file) => ({ key: `${file.name}-${file.size}-${crypto.randomUUID()}`, file, alt: file.type.startsWith("image/") ? altFromName(file.name) : "", visibility: "public" as const, state: "ready" as const, progress: 0, destination: "r2" })),
     ]);
   }
 
@@ -74,6 +92,12 @@ export function MediaUploader() {
       });
       const done = await finishUpload(intent.id);
       if (!done.ok) throw new Error(done.error);
+      if (item.file.type.startsWith("video/") && item.destination !== "r2") {
+        // The file is safely in the media library; sending it on is a second step that can fail on its own.
+        const sent = await sendUploadedVideo(intent.id, item.destination).catch(() => null);
+        if (sent?.ok) return update(item.key, { state: "done", progress: 100, player: sent.src });
+        return update(item.key, { state: "done", progress: 100, warning: `Uploaded to the media library, but not sent to the streaming service: ${sent ? sent.error : "the request failed."}` });
+      }
       update(item.key, { state: "done", progress: 100 });
     } catch (err) {
       // Images can still be uploaded through the site (it writes to R2 server-side, so CORS does not apply).
@@ -168,7 +192,7 @@ export function MediaUploader() {
                   </div>
                   <div>
                     <label className="sr-only" htmlFor={`vis-${x.key}`}>Visibility</label>
-                    <Select id={`vis-${x.key}`} value={x.visibility} disabled={!editable || busy} onChange={(e) => update(x.key, { visibility: e.target.value as Queued["visibility"] })}>
+                    <Select id={`vis-${x.key}`} value={x.visibility} disabled={!editable || busy} onChange={(e) => update(x.key, { visibility: e.target.value as Queued["visibility"], ...(e.target.value === "private" ? { destination: "r2" } : {}) })}>
                       <option value="public">Public</option>
                       <option value="private">Private</option>
                     </Select>
@@ -183,6 +207,24 @@ export function MediaUploader() {
                       <div className="h-full bg-accent transition-[width]" style={{ width: `${x.progress}%` }} />
                     </div>
                   )}
+                  {destinations.length > 0 && x.file.type.startsWith("video/") && editable && (
+                    <div className="sm:col-span-4 sm:max-w-sm">
+                      <label className="mb-1 block text-xs font-medium text-fg-muted" htmlFor={`dest-${x.key}`}>Save the video to</label>
+                      <Select id={`dest-${x.key}`} value={x.destination} disabled={busy || x.visibility === "private"} onChange={(e) => update(x.key, { destination: e.target.value })}>
+                        {destinations.map((d) => (
+                          <option key={d.id} value={d.id}>{d.label}</option>
+                        ))}
+                      </Select>
+                      {x.visibility === "private" && <p className="mt-1 text-xs text-fg-subtle">Private files stay on this site.</p>}
+                    </div>
+                  )}
+                  {x.player && (
+                    <div className="sm:col-span-4">
+                      <label className="mb-1 block text-xs font-medium text-fg-muted" htmlFor={`player-${x.key}`}>Player address: paste it into the editor&apos;s “Video embed” block. The service may need a minute to finish encoding.</label>
+                      <Input id={`player-${x.key}`} value={x.player} readOnly onFocus={(e) => e.currentTarget.select()} />
+                    </div>
+                  )}
+                  {x.warning && <p className="text-sm text-amber-700 sm:col-span-4 dark:text-amber-300">{x.warning}</p>}
                   {x.error && <p className="text-sm text-red-600 sm:col-span-4">{x.error}</p>}
                 </li>
               );

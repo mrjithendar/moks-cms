@@ -106,6 +106,46 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "video-generation",
+    title: "Video generation",
+    description:
+      "Short AI clips for articles (editor → Generate → Video), made with a Veo model through the Gemini API using the Gemini key from Integrations. Off until a model is set. Each clip costs far more than an image, so the limits are low.",
+    fields: [
+      { env: "GEMINI_VIDEO_MODEL", label: "Video model", type: "text", pattern: /^$|^[a-z0-9][a-z0-9.\-]{2,99}$/, placeholder: "veo-…", hint: "The model code from ai.google.dev (Veo). Empty turns video generation off." },
+      { env: "GEMINI_VIDEO_RESOLUTION", label: "Resolution (optional)", type: "text", pattern: /^$|^[0-9a-zA-Z]{2,8}$/, placeholder: "720p", hint: "Sent only when set; not every model accepts every value." },
+      { env: "GEMINI_VIDEO_SECONDS", label: "Clip length in seconds (optional)", type: "number", min: 1, max: 60, placeholder: "model default" },
+      { env: "GEMINI_VIDEO_USER_HOURLY_LIMIT", label: "Videos per author per hour", type: "number", min: 0, max: 100, placeholder: "3" },
+      { env: "GEMINI_VIDEO_DAILY_LIMIT", label: "Videos per day (whole site)", type: "number", min: 0, max: 1000, placeholder: "10" },
+      { env: "GEMINI_VIDEO_TIMEOUT_MS", label: "Give up after (milliseconds)", type: "number", min: 60000, max: 1800000, placeholder: "600000" },
+    ],
+  },
+  {
+    id: "members",
+    title: "Members-only articles",
+    description:
+      "A post marked “Members only” in the editor shows signed-out readers the first part of the article and a prompt to sign in or create an account. This is how much they see by default; a single post can set its own percentage in the editor.",
+    fields: [{ env: "MEMBERS_PREVIEW_PERCENT", label: "Public preview (% of the article)", type: "number", min: 5, max: 95, placeholder: "30", hint: "The cut is made between paragraphs, so the real share is the nearest whole block at or above this." }],
+  },
+  {
+    id: "video-destinations",
+    title: "Video destinations",
+    description:
+      "Where a generated video can go when an author inserts it. The editor offers only destinations that are switched on here and fully filled in. This site's own media library (R2) plays the file directly; Cloudflare Stream, Mux and Bunny Stream encode it for adaptive streaming and the article embeds their player (the video then lives in that service's account, not in Admin → Media).",
+    fields: [
+      { env: "VIDEO_DEST_R2_DISABLED", label: "Turn OFF this site's own media library (R2) as a destination", type: "boolean", hint: "It is on unless this is ticked." },
+      { env: "CF_STREAM_ENABLED", label: "Cloudflare Stream", type: "boolean" },
+      { env: "CF_STREAM_ACCOUNT_ID", label: "Cloudflare account ID", type: "text", pattern: /^$|^[a-f0-9]{32}$/ },
+      { env: "CF_STREAM_API_TOKEN", label: "Cloudflare API token", type: "secret", pattern: /^$|^[A-Za-z0-9_\-]{20,200}$/, hint: "A token with the Stream: Edit permission only." },
+      { env: "CF_STREAM_CUSTOMER_CODE", label: "Stream customer code", type: "text", pattern: /^$|^[a-z0-9]{6,40}$/, placeholder: "the code in customer-<code>.cloudflarestream.com", hint: "Shown in any Stream embed code in the Cloudflare dashboard." },
+      { env: "MUX_ENABLED", label: "Mux", type: "boolean" },
+      { env: "MUX_TOKEN_ID", label: "Mux token ID", type: "text", pattern: /^$|^[A-Za-z0-9\-]{10,100}$/ },
+      { env: "MUX_TOKEN_SECRET", label: "Mux token secret", type: "secret", pattern: /^$|^[A-Za-z0-9+\/=_\-]{20,200}$/, hint: "An access token with Mux Video read and write." },
+      { env: "BUNNY_STREAM_ENABLED", label: "Bunny Stream", type: "boolean" },
+      { env: "BUNNY_STREAM_LIBRARY_ID", label: "Bunny video library ID", type: "text", pattern: /^$|^\d{1,10}$/ },
+      { env: "BUNNY_STREAM_API_KEY", label: "Bunny library API key", type: "secret", pattern: /^$|^[A-Za-z0-9\-]{20,100}$/, hint: "The Stream library's own key (Stream → library → API), not the account key." },
+    ],
+  },
+  {
     id: "avatars",
     title: "Profile pictures",
     description: "Limits for pictures readers upload on their account page (always re-encoded to 512 px WebP).",

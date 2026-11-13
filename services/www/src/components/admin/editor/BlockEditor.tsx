@@ -13,6 +13,7 @@ import { editorExtensions, fidelity, isSafeUrl, ProtectedBlock } from "@/lib/edi
 import { embedUrl } from "@/lib/mdx/shortcodes";
 import { Dialog } from "../Dialog";
 import { GenerateImageDialog, type GenerateOptions } from "../GenerateImageDialog";
+import { GenerateVideoDialog, type InsertedVideo } from "../GenerateVideoDialog";
 import { MediaPicker } from "../MediaPicker";
 
 /* ---------------------------------------------------------------------------------------------
@@ -121,7 +122,7 @@ const ProtectedBlockView = ProtectedBlock.extend({
  * ------------------------------------------------------------------------------------------- */
 
 type BlockDef = { id: string; label: string; keywords: string; run: (e: Editor, ui: InserterUi) => void };
-type InserterUi = { pickImage: () => void; ask: (q: AskRequest) => void };
+type InserterUi = { pickImage: () => void; generateImage: () => void; generateVideo: () => void; ask: (q: AskRequest) => void };
 type AskRequest = { title: string; fields: { name: string; label: string; hint?: string; placeholder?: string; options?: string[] }[]; submit: (v: Record<string, string>) => string | null };
 
 const insertShortcode = (e: Editor, source: string) => e.chain().focus().insertContent({ type: "protectedBlock", attrs: { source } }).run();
@@ -138,6 +139,8 @@ export const BLOCKS: BlockDef[] = [
   { id: "hr", label: "Divider", keywords: "separator line rule", run: (e) => e.chain().focus().setHorizontalRule().run() },
   { id: "table", label: "Table", keywords: "grid", run: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   { id: "image", label: "Image", keywords: "picture photo figure caption", run: (_e, ui) => ui.pickImage() },
+  { id: "generate-image", label: "Generate image (AI)", keywords: "generate ai gemini illustration picture diagram create", run: (_e, ui) => ui.generateImage() },
+  { id: "generate-video", label: "Generate video or GIF-style loop (AI)", keywords: "generate ai veo video gif animation clip loop create", run: (_e, ui) => ui.generateVideo() },
   {
     id: "gallery",
     label: "Gallery",
@@ -173,14 +176,14 @@ export const BLOCKS: BlockDef[] = [
   },
   {
     id: "embed",
-    label: "Video embed (YouTube / Vimeo)",
-    keywords: "youtube vimeo video",
+    label: "Video embed (YouTube, Vimeo, Cloudflare Stream, Mux, Bunny)",
+    keywords: "youtube vimeo video cloudflare stream mux bunny player",
     run: (e, ui) =>
       ui.ask({
         title: "Embed a video",
-        fields: [{ name: "src", label: "YouTube or Vimeo URL", placeholder: "https://www.youtube.com/watch?v=…" }, { name: "title", label: "Title (for screen readers)" }],
+        fields: [{ name: "src", label: "Video or player URL", hint: "YouTube or Vimeo link, or a Cloudflare Stream, Mux or Bunny Stream player address.", placeholder: "https://www.youtube.com/watch?v=…" }, { name: "title", label: "Title (for screen readers)" }],
         submit: (v) => {
-          if (!embedUrl(v.src)) return "Only YouTube and Vimeo links are allowed.";
+          if (!embedUrl(v.src)) return "Only YouTube and Vimeo links and Cloudflare Stream, Mux or Bunny Stream player addresses are allowed.";
           insertShortcode(e, `::embed{src="${attr(v.src!)}" title="${attr(v.title || "Video")}"}`);
           return null;
         },
@@ -235,10 +238,21 @@ function Tool({ label, active, onClick, children, disabled }: { label: string; a
   );
 }
 
+/** The two "Generate" buttons; each is shown disabled with the reason as its tooltip when it is not configured. */
+type GenerateTools = { image: { enabled: boolean; reason?: string }; video?: { enabled: boolean; reason?: string }; onImage: () => void; onVideo: () => void };
+function GenerateTools({ image, video, onImage, onVideo }: GenerateTools) {
+  return (
+    <>
+      <Tool label={image.enabled ? "Generate an image with AI for the selected text or this section" : (image.reason ?? "Image generation is not configured.")} onClick={onImage} disabled={!image.enabled}>✨🖼</Tool>
+      {video && <Tool label={video.enabled ? "Generate a short video or GIF-style loop with AI for the selected text or this section" : (video.reason ?? "Video generation is not configured.")} onClick={onVideo} disabled={!video.enabled}>✨🎬</Tool>}
+    </>
+  );
+}
+
 const LANGUAGES = ["", "bash", "shell", "ts", "tsx", "js", "jsx", "json", "yaml", "python", "go", "java", "rust", "sql", "dockerfile", "hcl", "toml", "html", "css", "diff", "text"];
 const Sep = () => <span className="mx-1 h-5 w-px shrink-0 bg-slate-200 dark:bg-white/10" aria-hidden="true" />;
 
-function Toolbar({ editor, onInsert, onLink, onImage, onImageAlt }: { editor: Editor; onInsert: () => void; onLink: () => void; onImage: () => void; onImageAlt: () => void }) {
+function Toolbar({ editor, onInsert, onLink, onImage, onImageAlt, generate }: { editor: Editor; onInsert: () => void; onLink: () => void; onImage: () => void; onImageAlt: () => void; generate?: GenerateTools }) {
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -283,6 +297,7 @@ function Toolbar({ editor, onInsert, onLink, onImage, onImageAlt }: { editor: Ed
       <Tool label="Inline code (Ctrl/⌘ E)" active={s.code} onClick={() => c().toggleCode().run()}>{"</>"}</Tool>
       <Tool label="Link (Ctrl/⌘ K)" active={s.link} onClick={onLink}>🔗</Tool>
       <Tool label="Image: choose, upload or generate (you can also paste or drop one)" onClick={onImage}>🖼</Tool>
+      {generate && <GenerateTools {...generate} />}
       <Sep />
       <Tool label="Bulleted list" active={s.bullet} onClick={() => c().toggleBulletList().run()}>•</Tool>
       <Tool label="Numbered list" active={s.ordered} onClick={() => c().toggleOrderedList().run()}>1.</Tool>
@@ -354,13 +369,14 @@ export function BlockEditor({
   onChange: (markdown: string) => void;
   mediaContext: string;
   placeholder?: string;
-  /** "Generate image" in the image picker (Gemini); the result goes through the alt text / caption step. */
+  /** "Generate image" (toolbar, slash command and image picker; Gemini) and, when configured, "Generate video" (Veo). */
   generate?: GenerateOptions & { title: string; summary: string };
 }) {
   const check = useMemo(() => fidelity(value), []); // eslint-disable-line react-hooks/exhaustive-deps -- checked once, on open
   const [mode, setMode] = useState<Mode>(check.lossless ? "visual" : "source");
   const [picker, setPicker] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  /** Open "Generate" dialog. `hint` is set for in-article generation (the selection or section); the picker's own button has none. */
+  const [generating, setGenerating] = useState<{ kind: "image" | "video"; hint?: string } | null>(null);
   /** `file` is set for a pasted or dropped image: it is uploaded (with the alt text) when the author clicks Insert. */
   const [imageDialog, setImageDialog] = useState<{ src: string; alt: string; width: number; height: number; file?: File } | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
@@ -406,7 +422,14 @@ export function BlockEditor({
     return null;
   }
 
-  const ui: InserterUi = { pickImage: () => setPicker(true), ask: (q) => setAsk({ ...q, values: {} }) };
+  /** Generate an image or a video for what the author is writing about, or say why that is not available. */
+  function openGenerate(kind: "image" | "video") {
+    const status = kind === "image" ? generate : generate?.video;
+    if (!status?.enabled) return setPasteError(status?.reason ?? `${kind === "image" ? "Image" : "Video"} generation is not configured.`);
+    setPasteError(null);
+    setGenerating({ kind, hint: generationHint() });
+  }
+  const ui: InserterUi = { pickImage: () => setPicker(true), generateImage: () => openGenerate("image"), generateVideo: () => openGenerate("video"), ask: (q) => setAsk({ ...q, values: {} }) };
   const uiRef = useRef(ui);
   useEffect(() => {
     uiRef.current = ui;
@@ -514,6 +537,34 @@ export function BlockEditor({
     if (alt !== null) editor.chain().focus().updateAttributes("image", { alt: alt.trim() }).run();
   }
 
+  /** What a generated image or video should illustrate: the selected text, else the current block under its heading. */
+  function generationHint(): string {
+    if (!editor || mode !== "visual") return "";
+    const { doc, selection } = editor.state;
+    const clean = (t: string) => t.replace(/\s+/g, " ").trim();
+    if (!selection.empty) return clean(doc.textBetween(selection.from, selection.to, " ")).slice(0, 600);
+    let heading = "";
+    doc.nodesBetween(0, selection.from, (node) => {
+      if (node.type.name === "heading") heading = node.textContent;
+      return false; // top-level blocks only
+    });
+    const block = clean(selection.$from.parent.textContent);
+    // "/generate" typed as a slash command is not what the section is about.
+    return clean([heading, block.startsWith("/") ? "" : block].filter(Boolean).join(". ")).slice(0, 600);
+  }
+
+  function insertVideo(v: InsertedVideo) {
+    // An external player (Cloudflare Stream, Mux, Bunny Stream) is an embed; a file in the media library is a video.
+    const source = v.embed
+      ? `::embed{src="${v.src}" title="${attr(v.title || "Video")}" ratio="${v.ratio}"${v.caption ? ` caption="${attr(v.caption)}"` : ""}}`
+      : `::video{src="${v.src}" ratio="${v.ratio}"${v.caption ? ` caption="${attr(v.caption)}"` : ""}${v.loop ? ' loop="true"' : ""}}`;
+    if (mode === "source" || !editor) {
+      const next = `${latest.current.trimEnd()}\n\n${source}\n`;
+      latest.current = next;
+      onChange(next);
+    } else insertShortcode(editor, source);
+  }
+
   function insertImage(img: { src: string; alt: string; caption: string; align: string; size: string }) {
     if (!editor) return;
     const md = `![${img.alt.replace(/[\][\n]/g, "")}](${img.src})`;
@@ -556,10 +607,12 @@ export function BlockEditor({
             ))}
           </div>
           <div className="min-w-0 flex-1">
-            {mode === "visual" && editor && <Toolbar editor={editor} onInsert={() => setInserter(true)} onLink={setLink} onImage={() => setPicker(true)} onImageAlt={setImageAlt} />}
+            {mode === "visual" && editor && <Toolbar editor={editor} onInsert={() => setInserter(true)} onLink={setLink} onImage={() => setPicker(true)} onImageAlt={setImageAlt}
+              generate={generate && { image: generate, video: generate.video, onImage: () => openGenerate("image"), onVideo: () => openGenerate("video") }} />}
             {mode === "source" && (
               <div className="flex gap-1">
                 <Tool label="Insert image" onClick={() => setPicker(true)}>🖼</Tool>
+                {generate && <GenerateTools image={generate} video={generate.video} onImage={() => openGenerate("image")} onVideo={() => openGenerate("video")} />}
               </div>
             )}
           </div>
@@ -611,12 +664,16 @@ export function BlockEditor({
 
       {/* Image: pick from the library (upload, paste or drop there), then alt text, caption and layout */}
       <MediaPicker open={picker} onClose={() => setPicker(false)} context={mediaContext} title="Insert an image"
-        generate={generate && { enabled: generate.enabled, reason: generate.reason, onClick: () => { setPicker(false); setGenerating(true); } }}
+        generate={generate && { enabled: generate.enabled, reason: generate.reason, onClick: () => { setPicker(false); setGenerating({ kind: "image" }); } }}
         onSelect={(item) => { setPicker(false); setImageDialog({ src: item.src, alt: item.alt, width: item.width, height: item.height }); }} />
       {generate && (
-        <GenerateImageDialog open={generating} onClose={() => setGenerating(false)} title={generate.title} summary={generate.summary} context={mediaContext}
-          options={generate} replacing={false} acceptLabel="Insert image"
-          onAccept={(img) => { setGenerating(false); setImageDialog({ src: img.src, alt: img.alt, width: img.width, height: img.height }); }} />
+        <GenerateImageDialog open={generating?.kind === "image"} onClose={() => setGenerating(null)} title={generate.title} summary={generate.summary} context={mediaContext}
+          options={generate} replacing={false} acceptLabel="Insert image" hint={generating?.hint}
+          onAccept={(img) => { setGenerating(null); setImageDialog({ src: img.src, alt: img.alt, width: img.width, height: img.height }); }} />
+      )}
+      {generate?.video && (
+        <GenerateVideoDialog open={generating?.kind === "video"} onClose={() => setGenerating(null)} title={generate.title} hint={generating?.hint ?? ""} context={mediaContext}
+          options={generate.video} onInsert={(v) => { setGenerating(null); insertVideo(v); }} />
       )}
       {imageDialog && <ImageDialog image={imageDialog} uploading={Boolean(imageDialog.file)} onClose={closeImageDialog} onInsert={confirmImage} />}
 

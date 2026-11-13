@@ -10,6 +10,7 @@ import { log } from "./log";
 import { inspectImage, mediaSrc, recordImage, sanitizeFilename } from "./media";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
+import { videoGenerationStatus, type VideoGenerationStatus } from "./video-generation";
 import { copyObject, deleteObject, getObject, headObject, mediaObjectKey, putObject, storageReady, tempObjectKey } from "./storage";
 
 /**
@@ -45,21 +46,24 @@ export type GenerationStatus = {
   qualities?: { id: Quality; model: string }[];
   sizes?: ImageSize[];
   defaultSize?: ImageSize;
+  /** "Generate video" (lib/video-generation.ts): separately configured, so it can be off while images are on. */
+  video?: VideoGenerationStatus;
 };
 
 /** For the editor: whether to show the button (configured + storage ready) and its choices. Never exposes keys. */
 export async function imageGenerationStatus(): Promise<GenerationStatus> {
   const config = await resolveGeminiImageConfig();
-  if (!config) return { enabled: false, reason: "Image generation is not configured (Admin → Integrations).", aspectRatios: ASPECT_RATIOS };
-  if (!(await storageReady())) return { enabled: false, reason: "Configure media storage (R2) first.", aspectRatios: ASPECT_RATIOS };
-  return { enabled: true, aspectRatios: ASPECT_RATIOS, qualities: availableQualities(config), sizes: allowedImageSizes(config), defaultSize: config.imageSize };
+  const video = await videoGenerationStatus();
+  if (!config) return { enabled: false, reason: "Image generation is not configured (Admin → Integrations).", aspectRatios: ASPECT_RATIOS, video };
+  if (!(await storageReady())) return { enabled: false, reason: "Configure media storage (R2) first.", aspectRatios: ASPECT_RATIOS, video };
+  return { enabled: true, aspectRatios: ASPECT_RATIOS, qualities: availableQualities(config), sizes: allowedImageSizes(config), defaultSize: config.imageSize, video };
 }
 
 const staff = (a: Actor) => a.role === "admin" || a.role === "author";
 
 async function count(where: ReturnType<typeof sql>): Promise<number> {
   const db = await getDb();
-  const [r] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from image_generation where ${where}`));
+  const [r] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from image_generation where kind = 'image' and ${where}`));
   return Number(r?.n ?? 0);
 }
 
@@ -178,7 +182,7 @@ async function ownGeneration(actor: Actor, id: string) {
   if (!staff(actor)) throw new PostError("Not allowed.", 403);
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new PostError("Generated image not found.", 404);
   const db = await getDb();
-  const [row] = await db.select().from(schema.imageGeneration).where(eq(schema.imageGeneration.id, id));
+  const [row] = await db.select().from(schema.imageGeneration).where(and(eq(schema.imageGeneration.id, id), eq(schema.imageGeneration.kind, "image")));
   if (!row || (row.userId !== actor.id && actor.role !== "admin")) throw new PostError("Generated image not found.", 404);
   return row;
 }
@@ -267,7 +271,12 @@ export async function expireGenerations(now = Date.now()): Promise<number> {
   await db
     .update(schema.imageGeneration)
     .set({ status: "failed", errorCode: "abandoned", completedAt: new Date(now) })
-    .where(and(inArray(schema.imageGeneration.status, ["running", "accepting"]), lt(schema.imageGeneration.createdAt, new Date(now - 15 * 60_000))));
+    .where(and(eq(schema.imageGeneration.kind, "image"), inArray(schema.imageGeneration.status, ["running", "accepting"]), lt(schema.imageGeneration.createdAt, new Date(now - 15 * 60_000))));
+  // Videos take minutes by design (up to GEMINI_VIDEO_TIMEOUT_MS, at most 30 minutes): only close what nobody polled.
+  await db
+    .update(schema.imageGeneration)
+    .set({ status: "failed", errorCode: "abandoned", completedAt: new Date(now) })
+    .where(and(eq(schema.imageGeneration.kind, "video"), inArray(schema.imageGeneration.status, ["running", "finalizing", "accepting"]), lt(schema.imageGeneration.createdAt, new Date(now - 45 * 60_000))));
   return old.length;
 }
 

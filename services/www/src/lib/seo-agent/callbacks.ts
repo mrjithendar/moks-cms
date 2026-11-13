@@ -20,6 +20,7 @@ import { STYLE_GUIDE } from "../seo-intel/style-guide";
 import { submitAfterPublish } from "../seo-intel/submission";
 import { siteOrigin } from "../seo-intel/urls";
 import { docsAllowlist } from "./config";
+import { previewPercentFor, sitePreviewPercent, splitForMembers } from "../members";
 
 /**
  * The web app side of the seo-agent's callback API (docs/seo/AGENTS.md "Callback API"). Served only on the
@@ -283,7 +284,11 @@ export async function readArticle(ref: string) {
 
 export async function publishedArticles() {
   const db = await getDb();
-  const articles = rowsOf<{ id: string; title: string; path: string; body: string }>(await db.execute(sql`select id, title, '/' || collection || '/' || slug as path, body from post where status = 'published' and deleted_at is null and noindex = false order by published_at desc nulls last`));
+  const rows = rowsOf<{ id: string; title: string; path: string; body: string; members_only: boolean; preview_percent: number | null }>(await db.execute(sql`select id, title, '/' || collection || '/' || slug as path, body, members_only, preview_percent from post where status = 'published' and deleted_at is null and noindex = false order by published_at desc nulls last`));
+  // The public "Ask" answers and MCP tools quote from this index, so a members-only article contributes only the part
+  // every reader can see.
+  const site = sitePreviewPercent(await (await import("../runtime-settings")).effectiveEnv());
+  const articles = rows.map(({ members_only, preview_percent, ...a }) => (members_only ? { ...a, body: splitForMembers(a.body, previewPercentFor(preview_percent, site)).preview } : a));
   return { articles };
 }
 

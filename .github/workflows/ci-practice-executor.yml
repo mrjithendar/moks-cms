@@ -18,34 +18,32 @@ name: practice-executor
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - 'services/executor/**'
       - 'services/www/content/python-practice/**'
       - 'minikube/practice-executor-*.yaml'
       - 'scripts/manifests.sh'
       - '.github/workflows/ci-practice-executor.yml'
-  push:
-    paths:
-      - 'services/executor/**'
-      - 'services/www/content/python-practice/**'
-      - '.github/workflows/ci-practice-executor.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: practice-executor-${{ github.ref }}
+  group: practice-executor-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   check:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (github.event.action != 'closed' || github.event.pull_request.merged == true))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A merged pull request is built from its merge commit on the default branch.
+          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
@@ -65,17 +63,24 @@ jobs:
 
   release:
     needs: check
-    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     permissions:
       contents: read
+    concurrency:
+      group: practice-executor-release
+      cancel-in-progress: false
     env:
       REGISTRY: registry.jithendar.com/jithendar
+      PR_TAG: pr-${{ github.event.pull_request.number }}
+      RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A merged pull request is built from its merge commit on the default branch.
+          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
       # Harbor robot robot$jithendar+jithendar-com (push and pull in project jithendar only), set as these
       # repository secrets by the tools repository's deploy/minikube/harbor/registry.py ci-robots.
       - name: Log in to Harbor
@@ -86,7 +91,8 @@ jobs:
       - name: Build and push
         id: push
         working-directory: services/executor
-        # One tag, latest: the cluster runs it with imagePullPolicy Always. A re-run builds and pushes again.
+        # Two tags for one image: pr-<number> is this release's own tag; latest is what the cluster runs
+        # (imagePullPolicy Always). A re-run builds and pushes again.
         run: |
           set -euo pipefail
           docker build --platform linux/arm64 --provenance=false -t "$REGISTRY/practice-executor:latest" .
@@ -94,12 +100,15 @@ jobs:
           # Smoke test the sandbox image: run one job through the real runner, offline.
           payload=$(python3 -c 'import base64,json; print(base64.b64encode(json.dumps({"nonce":"n","code":"def f(a):\n    return a*2\n","entrypoint":"f","tests":[{"id":"t0","args":[21]}],"limits":{"per_test_seconds":2,"total_seconds":5,"memory_mb":128,"output_bytes":1024}}).encode()).decode())')
           docker run --rm --network none --read-only --tmpfs /tmp -e JOB_PAYLOAD="$payload" "$REGISTRY/practice-sandbox:latest" | grep -q '"output": 42'
-          docker push --quiet "$REGISTRY/practice-sandbox:latest"
-          docker push --quiet "$REGISTRY/practice-executor:latest"
+          for image in practice-sandbox practice-executor; do
+            docker tag "$REGISTRY/$image:latest" "$REGISTRY/$image:$PR_TAG"
+            docker push --quiet "$REGISTRY/$image:$PR_TAG"
+            docker push --quiet "$REGISTRY/$image:latest"
+          done
           {
             echo "- $REGISTRY/practice-executor:latest ($(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/practice-executor:latest"))"
             echo "- $REGISTRY/practice-sandbox:latest ($(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/practice-sandbox:latest"))"
-            echo "- commit $GITHUB_SHA"
+            echo "- also tagged $PR_TAG; commit $RELEASE_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Signs in as ServiceAccount jithendar/github-ci-deployer (minikube/80-ci-deployer.yaml), the same one that restarts the
@@ -119,6 +128,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A merged pull request is built from its merge commit on the default branch.
+          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
           sparse-checkout: .github/jithendar-ci-deployer.yaml
           sparse-checkout-cone-mode: false
       - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0

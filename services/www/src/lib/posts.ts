@@ -44,6 +44,8 @@ export const postInput = z.object({
   socialDescription: z.string().nullish(),
   socialImage: z.object({ src: z.string(), alt: z.string(), width: z.number(), height: z.number(), focalX: z.number().min(0).max(100).optional(), focalY: z.number().min(0).max(100).optional() }).nullish(),
   noindex: z.boolean().default(false),
+  membersOnly: z.boolean().default(false),
+  previewPercent: z.number().int().min(5, "The members preview must be 5–95 %.").max(95, "The members preview must be 5–95 %.").nullish(),
 });
 
 export type PostInput = z.input<typeof postInput>;
@@ -94,6 +96,7 @@ async function validate(input: ParsedInput, authorId: string, selfId?: string, i
     socialTitle: input.socialTitle?.trim() || undefined,
     socialDescription: input.socialDescription?.trim() || undefined,
     socialImage: input.socialImage ?? undefined,
+    previewPercent: input.previewPercent ?? undefined,
   });
   const issues = result.success ? [] : result.error.issues.map((i) => `${i.path.join(".") || "post"}: ${i.message}`);
   if (!(await getCategoryMap()).has(input.category)) issues.push(`category: "${input.category}" does not exist`);
@@ -166,6 +169,8 @@ function toRow(input: ParsedInput, data: Awaited<ReturnType<typeof validate>>["d
     socialDescription: data.socialDescription ?? null,
     socialImage: data.socialImage ?? null,
     noindex: data.noindex,
+    membersOnly: data.membersOnly,
+    previewPercent: data.previewPercent ?? null,
     savedAt: new Date(),
   };
 }
@@ -192,7 +197,7 @@ function visiblePath(row: PostRow, now = Date.now()): string | null {
 }
 
 /** Fields readers or search engines can see. A save that changes none of them is not worth a search-engine ping. */
-const VISIBLE_FIELDS = ["collection", "slug", "title", "description", "body", "category", "tags", "contentType", "status", "publishedAt", "updatedAt", "canonicalUrl", "featuredImage", "sources", "corrections", "sponsored", "sponsor", "related", "seoTitle", "seoDescription", "socialTitle", "socialDescription", "socialImage", "noindex", "deletedAt"] as const;
+const VISIBLE_FIELDS = ["collection", "slug", "title", "description", "body", "category", "tags", "contentType", "status", "publishedAt", "updatedAt", "canonicalUrl", "featuredImage", "sources", "corrections", "sponsored", "sponsor", "related", "seoTitle", "seoDescription", "socialTitle", "socialDescription", "socialImage", "noindex", "membersOnly", "previewPercent", "deletedAt"] as const;
 export function visibleChange(before: PostRow, after: PostRow): boolean {
   return VISIBLE_FIELDS.some((f) => JSON.stringify(before[f] ?? null) !== JSON.stringify(after[f] ?? null));
 }

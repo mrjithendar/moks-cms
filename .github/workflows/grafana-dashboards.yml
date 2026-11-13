@@ -1,6 +1,6 @@
 name: grafana dashboards
 
-# check → pull requests and pushes touching grafana/: the dashboards are valid JSON, listed in
+# check → pull requests touching grafana/ (and manual runs; there is no `push` trigger): the dashboards are valid JSON, listed in
 #         services/grafana/kustomization.yaml, use only provisioned data sources and defined variables
 #         (scripts/check-dashboards.py), and the folder renders as the ConfigMap grafana-dashboards-jithendar.
 #
@@ -10,11 +10,6 @@ name: grafana dashboards
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - 'services/grafana/**'
-      - 'scripts/check-dashboards.py'
-      - '.github/workflows/grafana-dashboards.yml'
-  push:
     paths:
       - 'services/grafana/**'
       - 'scripts/check-dashboards.py'

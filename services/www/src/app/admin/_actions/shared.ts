@@ -7,6 +7,8 @@ import { getDb, schema } from "@/db";
 import type { FeaturedImage } from "@/db/schema";
 import { staffActor } from "@/lib/admin";
 import { acceptGeneration, discardGeneration } from "@/lib/image-generation";
+import { acceptVideoGeneration, discardVideoGeneration } from "@/lib/video-generation";
+import { publishMediaVideo } from "@/lib/video-publish";
 import { publicRoot, readLocalImage } from "@/lib/images";
 import { completeUpload, createUploadIntent, mediaSrc, storeUpload, type UploadIntent, type UploadResult } from "@/lib/media";
 import { createPreview, type PreviewKind } from "@/lib/preview";
@@ -115,4 +117,37 @@ export async function acceptGeneratedImage(id: string, alt: string, context: str
 export async function discardGeneratedImage(id: string): Promise<void> {
   const actor = await staffActor();
   await discardGeneration(actor, id).catch(() => undefined);
+}
+
+/** The author chose "Insert video": the clip goes to the chosen destination (media library, or a streaming service) and its address comes back. */
+export async function acceptGeneratedVideo(
+  id: string,
+  description: string,
+  context: string,
+  destination: string,
+  loop: boolean,
+): Promise<{ ok: true; src: string; aspectRatio: string; embed: boolean } | { ok: false; error: string }> {
+  const actor = await staffActor();
+  try {
+    const video = await acceptVideoGeneration(actor, id, { description, context, name: context.split("/").pop(), destination, loop });
+    return { ok: true, src: video.src, aspectRatio: video.aspectRatio, embed: video.embed };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Discard an unaccepted clip, or stop waiting for one still being generated. */
+export async function discardGeneratedVideo(id: string): Promise<void> {
+  const actor = await staffActor();
+  await discardVideoGeneration(actor, id).catch(() => undefined);
+}
+
+/** An uploaded video is also sent to the streaming service the author chose; its player address comes back. */
+export async function sendUploadedVideo(id: string, destination: string): Promise<{ ok: true; src: string } | { ok: false; error: string }> {
+  const actor = await staffActor();
+  try {
+    return { ok: true, src: (await publishMediaVideo(actor, id, destination)).src };
+  } catch (error) {
+    return failure(error);
+  }
 }

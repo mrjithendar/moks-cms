@@ -158,6 +158,10 @@ export const post = pgTable(
     socialImage: jsonb("social_image").$type<FeaturedImage | null>(),
     /** Published but kept out of search results (noindex, not in sitemaps). */
     noindex: boolean("noindex").notNull().default(false),
+    /** Members only: signed-out readers see the first part and a sign-in prompt (lib/members.ts). */
+    membersOnly: boolean("members_only").notNull().default(false),
+    /** How much of a members-only post is public, in percent; null = the site default. */
+    previewPercent: integer("preview_percent"),
     /** Discussion under the post: open, locked (shown, no new comments or edits) or closed (not shown). */
     discussion: text("discussion").notNull().default("open"),
     /** Optimistic concurrency: incremented by every committed save. */
@@ -481,12 +485,27 @@ export const imageGeneration = pgTable(
     height: integer("height"),
     checksumSha256: text("checksum_sha256"),
     latencyMs: integer("latency_ms"),
+    /** "image" (lib/image-generation.ts) or "video" (lib/video-generation.ts; imageSize then holds the resolution). */
+    kind: text("kind").notNull().default("image"),
+    /** Video only: the provider's long-running operation, polled until it is done. */
+    operation: text("operation"),
+    durationSeconds: integer("duration_seconds"),
+    /** Video only, once accepted: r2 | cloudflare-stream | mux | bunny-stream, and the video's id at an external service. */
+    destination: text("destination"),
+    externalId: text("external_id"),
     mediaId: uuid("media_id").references(() => media.id, { onDelete: "set null" }),
     createdAt: ts("created_at").notNull().defaultNow(),
     completedAt: ts("completed_at"),
   },
   (t) => [index("image_generation_user_created_idx").on(t.userId, t.createdAt), index("image_generation_status_idx").on(t.status, t.createdAt)],
 );
+
+/** content/ post files already turned into posts (lib/bundled-posts.ts): never created twice. */
+export const bundledImport = pgTable("bundled_import", {
+  collection: text("collection").notNull(),
+  slug: text("slug").notNull(),
+  importedAt: ts("imported_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.collection, t.slug], name: "bundled_import_pk" })]);
 
 export const apiKey = pgTable(
   "api_key",

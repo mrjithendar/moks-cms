@@ -87,8 +87,8 @@ creates `jithendar-com-env`; Terraform in the miniKube repository writes the dat
 
 ## Deploy
 
-The site always runs `registry.jithendar.com/jithendar/jithendar-com:latest` (Harbor) with `imagePullPolicy: Always`. CI pushes `:latest` and restarts
-the Deployment on every push to `master`, so new code needs nothing here.
+The site always runs `registry.jithendar.com/jithendar/jithendar-com:latest` (Harbor) with `imagePullPolicy: Always`. CI pushes `:pr-<number>` and `:latest` and restarts
+the Deployment when a pull request is merged into `master`, so new code needs nothing here.
 
 ```sh
 KUBE_CONTEXT=mk4 ./deploy.sh
@@ -115,5 +115,5 @@ scripts/manifests.sh site | kubectl apply -f -
 (`kubectl apply -k minikube` is the same as the `site` group.) Never `kubectl apply -f minikube/`: it would apply
 every group at once and try to apply `kustomization.yaml` itself.
 
-A push to `master` that changes `minikube/` also runs `.github/workflows/deploy-minikube.yml`, which applies the
+A pull request merged into `master` that changes `minikube/` also runs `.github/workflows/deploy-minikube.yml`, which applies the
 application objects of all three groups as `github-ci-applier` (`services/www/docs/DEPLOYMENT.md`).

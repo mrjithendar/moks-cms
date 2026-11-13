@@ -65,6 +65,8 @@ export async function loadContentFromDb(): Promise<ContentStore> {
       socialDescription: row.socialDescription ?? undefined,
       socialImage: row.socialImage ?? undefined,
       noindex: row.noindex,
+      membersOnly: row.membersOnly,
+      previewPercent: row.previewPercent ?? undefined,
     });
     if (!parsed.success || !authors.has(parsed.data.author)) {
       log.error("invalid post skipped", { postId: row.id, issues: parsed.success ? ["unknown author"] : parsed.error.issues.map((i) => i.message) });

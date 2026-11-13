@@ -69,6 +69,10 @@ export const articleFrontmatter = z
     socialImage: featuredImage.optional(),
     /** Published but excluded from search engines (noindex + left out of sitemaps). */
     noindex: z.boolean().default(false),
+    /** Members only: signed-out readers get the first part and a sign-in prompt (lib/members.ts). */
+    membersOnly: z.boolean().default(false),
+    /** Percent of a members-only article that is public; the site default when absent. */
+    previewPercent: z.number().int().min(5).max(95).optional(),
   })
   .superRefine((fm, ctx) => {
     if ((fm.status === "published" || fm.status === "scheduled") && !fm.publishedAt) {
