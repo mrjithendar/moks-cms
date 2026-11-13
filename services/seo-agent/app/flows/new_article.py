@@ -21,7 +21,7 @@ from ..runs import INSTANCE_ONLY
 from ..state import NewArticleState
 from .base import SeoFlow
 
-PROMPT_VERSION = "seo-crew-v3"
+PROMPT_VERSION = "seo-crew-v4"
 MAX_ATTEMPTS = 2
 
 
@@ -88,9 +88,14 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
             s = self.state
             doc = s.document or {}
             r = s.validation_report
-            await self.retry(lambda: self.deps.web.save_draft(s.draft_id, {"kind": "new_article", "document": doc, "changes": r.get("changes") or [], "flags": r.get("flags") or [], "summary": f"New article: {doc.get('title', '')}", "model": self.deps.settings.draft_model, "promptVersion": PROMPT_VERSION, "threadId": s.draft_id, "runId": s.id}))
+            await self.retry(lambda: self.deps.web.save_draft(s.draft_id, {"kind": "new_article", "document": doc, "changes": r.get("changes") or [], "flags": r.get("flags") or [], "summary": f"New article: {doc.get('title', '')}", "model": self._body_model(), "promptVersion": PROMPT_VERSION, "threadId": s.draft_id, "runId": s.id}))
             s.feedback = s.validator_feedback = None
             s.outcome = "draft_ready"
+
+    def _body_model(self) -> str:
+        """The model recorded on the draft: the one that wrote the body (per-run override, SEO_CREW_MODELS, default)."""
+        st = self.deps.settings
+        return str(((self.state.brief or {}).get("models") or {}).get("writer") or st.crew_models.get("editorial.writer") or st.draft_model)
 
     @listen("to_fail")
     async def failed(self) -> None:

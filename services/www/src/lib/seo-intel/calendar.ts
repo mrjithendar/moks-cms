@@ -54,6 +54,8 @@ export const briefPatch = z
     diagrams: list(20, 300),
     readingTimeMinutes: z.union([z.number().int().min(1).max(120), z.null()]),
     notes: text(4000),
+    /** The author's own first-hand material for the writer (what was built, real commands, results, opinions). */
+    authorNotes: text(6000),
   })
   .partial()
   .strict();

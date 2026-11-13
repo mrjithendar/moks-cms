@@ -25,14 +25,23 @@ data:
   ASK_BLOG_ENABLED: "false"
   SEO_AGENT_FANOUT_CONCURRENCY: "2"
   SEO_AGENT_WEEKLY_MAX_ARTICLES: "10"
-  CREW_MAX_TOKENS_PER_RUN: "150000"
-  CREW_TIMEOUT_SECONDS: "600"
+  # Ceilings per crew run. Raised for the editorial crew's deeper research (was 150000 / 600): a normal optimisation
+  # run stays far below them.
+  CREW_MAX_TOKENS_PER_RUN: "300000"
+  CREW_TIMEOUT_SECONDS: "1200"
   CREW_MAX_ITER: "4"
+  # Per-agent turns ("<crew>.<agent>"); the rest use CREW_MAX_ITER. The researcher needs several documentation pages.
+  SEO_CREW_MAX_ITERS: '{"editorial.researcher":10,"editorial.writer":6,"editorial.reviewer":8}'
   CREW_MAX_RPM: "20"
+  # Anthropic client timeout per request: a full article body on Opus takes longer than the 120 s default. Keep below
+  # the crew adapter's 300 s wait.
+  SEO_LLM_TIMEOUT_SECONDS: "240"
   # Per-agent models ("<crew>.<agent>"): the analyst only summarises query numbers, so it runs on Haiku; the editor and
-  # the technical reviewer stay on SEO_DRAFT_MODEL (docs/seo/COSTS.md).
-  SEO_CREW_MODELS: '{"optimization.analyst":"claude-haiku-5-5"}'
-  SEO_FLOW_TIMEOUT_SECONDS: "1800"
+  # the technical reviewer stay on SEO_DRAFT_MODEL. New articles: the writer and the technical reviewer (the two agents
+  # that produce the published body) run on Opus; researcher and SEO editor stay on SEO_DRAFT_MODEL (docs/seo/COSTS.md).
+  SEO_CREW_MODELS: '{"optimization.analyst":"claude-haiku-5-5","editorial.writer":"claude-opus-5-5","editorial.reviewer":"claude-opus-5-5"}'
+  # Covers one editorial crew run plus its validation retry (2 × CREW_TIMEOUT_SECONDS).
+  SEO_FLOW_TIMEOUT_SECONDS: "2700"
   EMBEDDINGS_PROVIDER: onnx
   # v5 retrieval (docs/seo/RAG.md "Defaults"): decided by the eval set. Rollback for hybrid: RAG_MODE=vector.
   RAG_MODE: vector

@@ -400,7 +400,26 @@ export async function calendarBrief(calendarId: string) {
   const [item] = rowsOf<Record<string, unknown>>(await db.execute(sql`select id, title, kind, category, brief, post_id, status from seo_editorial_calendar where id = ${calendarId}`));
   if (!item) throw new CallbackError("Calendar item not found.", 404, "not_found");
   const brief = (typeof item.brief === "string" ? JSON.parse(item.brief) : item.brief ?? {}) as Record<string, unknown>;
-  return { id: calendarId, postId: item.post_id ?? null, title: String(item.title), kind: String(item.kind), category: item.category ?? null, styleGuide: STYLE_GUIDE, ...brief };
+  // Stored brief keys never replace the server-side ones (style guide, examples).
+  return { ...brief, id: calendarId, postId: item.post_id ?? null, title: String(item.title), kind: String(item.kind), category: item.category ?? null, styleGuide: STYLE_GUIDE, examples: await exampleArticles(db, (item.category as string | null) ?? null) };
+}
+
+/** Each example article is cut to this many characters (two examples ≈ 7k tokens for the writer). */
+const EXAMPLE_CHARS = 12_000;
+
+/**
+ * Up to two published blog articles the writer reads for voice, depth and structure: the newest in the item's
+ * category first, then the newest overall. Members-only and noindex articles are left out. Only the form is used; the
+ * crew is told not to take facts from them.
+ */
+async function exampleArticles(db: Db, category: string | null) {
+  const rows = rowsOf<{ title: string; path: string; body: string }>(
+    await db.execute(sql`
+      select title, '/' || collection || '/' || slug as path, body from post
+      where status = 'published' and deleted_at is null and collection = 'blog' and members_only = false and noindex = false and length(body) >= 3000
+      order by (category = ${category ?? ""}) desc, published_at desc nulls last limit 2`),
+  );
+  return rows.map((r) => ({ title: r.title, path: r.path, body: r.body.slice(0, EXAMPLE_CHARS) }));
 }
 
 /** Exported for tests and the route table. */

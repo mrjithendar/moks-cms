@@ -6,6 +6,10 @@ internal links). The editor never re-emits the body, so a long article cannot be
 body rewrite can slip in after the technical review. Code blocks are extracted from the reviewed body. Runs inside
 `new_article_flow`'s `draft` step. Limits and the Claude adapter are in crews/common.py. A cited source the crew never
 retrieved during the run is flagged for the reviewer.
+
+v4 prompt (seo-crew-v4): the writer also gets the author's first-hand notes (brief.authorNotes, the only facts allowed
+without a research source), up to two published articles as examples of voice and depth (brief.examples, form only),
+and an explicit depth target; the brief block now carries diagrams, reading time and the item's notes.
 """
 
 from __future__ import annotations
@@ -24,15 +28,38 @@ from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArtic
 from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
 
-PROMPT_VERSION = "seo-crew-v3"
+PROMPT_VERSION = "seo-crew-v4"
 
 AGENTS = [
-    AgentDef("researcher", "Researcher", "Collect the facts, related site articles and official documentation the article needs, with sources.", "You research for a one-person technical publication. You only report what the sources say and you list every source URL you used.", ["vector_search", "read_article", "fetch_allowlisted_docs"]),
-    AgentDef("writer", "Technical writer", "Write the article draft in MDX following the style guide, with working, minimal code examples.", "You write practical engineering tutorials in the site's voice. You never invent commands, flags, versions or URLs.", ["read_article"]),
+    AgentDef("researcher", "Researcher", "Collect the facts, related site articles and official documentation the article needs, with sources, in enough detail that the writer never has to guess.", "You research for a one-person technical publication. You only report what the sources say, you copy commands, flags, versions and defaults exactly, and you list every source URL you used.", ["vector_search", "read_article", "fetch_allowlisted_docs"]),
+    AgentDef("writer", "Technical writer", "Write a complete, specific article in MDX that an experienced engineer would learn from, following the style guide, with working, minimal code examples.", "You write practical engineering tutorials in the site's voice: first person where the author did the work, the reason before the steps, real commands and their output, trade-offs and failure modes. You never invent commands, flags, versions, numbers or URLs, and you never pad.", ["read_article"]),
     AgentDef("reviewer", "Technical reviewer", "Check every command, flag and version against the sources; mark anything without a source as needs_fact_check.", "You are a careful reviewer. Unsourced technical claims are flagged, not guessed.", ["fetch_allowlisted_docs"]),
     AgentDef("seo_editor", "SEO editor", "Produce the final title, meta description, heading plan and up to three internal links, as the required JSON. You never rewrite the body.", "You edit for search intent without clickbait: titles ≤ 60 characters, meta 120–155 characters, internal links only to existing site paths.", ["gsc_queries_for_topic", "vector_search"]),
 ]
 ROLES = {a.key: {"role": a.role, "tools": a.tools} for a in AGENTS}
+
+BRIEF_KEYS = ("title", "gap", "audience", "intent", "outline", "supportingQueries", "codeExamples", "diagrams", "readingTimeMinutes", "internalLinks", "category", "notes")
+AUTHOR_NOTES_CHARS = 6000
+EXAMPLE_CHARS = 12_000  # per example article; the web app sends at most two
+
+RESEARCH_TASK = (
+    "Research the article in this brief so the writer can write it without guessing.\n"
+    "1. vector_search and read_article: what this site has already published on the topic (to link to and not repeat).\n"
+    "2. fetch_allowlisted_docs: the official documentation for every tool, command and feature in the outline. Open the specific pages (install, configuration reference, CLI reference, release notes), not only the landing page; a refused or failed fetch is a reason to try the next most specific official page.\n"
+    "Report, per outline section: the facts with their source URL, exact commands, flags, defaults and current version numbers as written in the source, known limits and common failure modes. Say plainly which outline sections you found no source for. End with the list of every source URL you retrieved."
+)
+WRITE_TASK = (
+    "Write the full article as MDX following the style guide.\n"
+    "Facts: use only the research notes and the author's first-hand notes. The author's notes are their own experience (what they built, ran, measured or decided): write those parts in the first person and keep their commands, versions and numbers exactly. Where neither has what a section needs, say less rather than invent.\n"
+    "Depth: cover every heading in the brief's outline. Each section explains why before how, shows the command or configuration with the output or result to expect, and names the trade-off, limit or failure mode an engineer would hit. Prefer one worked example carried through the article over several disconnected snippets. Use a table for a comparison, a list for steps, and a mermaid diagram where the brief asks for one. Aim for the brief's reading time (about 220 words a minute); without one, write 1,500 to 2,500 words of prose.\n"
+    "Opening and ending: open with the concrete problem or result in two or three sentences, with no generic introduction; end with what to check or do next, not a recap.\n"
+    "Code: every block declares its language and is complete enough to copy and run; no placeholders that hide the hard part.\n"
+    "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences."
+)
+REVIEW_TASK = (
+    "Check every command, flag and version in the draft against the research sources (fetch_allowlisted_docs when needed). Statements that come from the author's first-hand notes are the author's own experience: keep them and do not flag them unless they contradict a source. "
+    "Correct what is wrong; do not shorten, summarise or restyle the article, and keep every section and code block."
+)
 
 FACT_CHECK_MARKER = "NEEDS_FACT_CHECK:"
 _MARKER_RE = re.compile(r"^\s*(?:\**\s*needs[_ ]fact[_ ]check\s*\**\s*:|#{1,6}\s*needs[_ ]fact[_ ]check\b[^\n]*$)", re.I | re.M)
@@ -96,6 +123,20 @@ def split_review(raw: str) -> tuple[str, list[FactCheckFlag]]:
     return body, flags[:30]
 
 
+def author_notes_block(brief: dict[str, Any]) -> str:
+    """The author's first-hand notes as a data block ("" when there are none)."""
+    text = str(brief.get("authorNotes") or "").strip()
+    return f"\n\n{data_block('author_first_hand_notes', text[:AUTHOR_NOTES_CHARS])}" if text else ""
+
+
+def examples_block(brief: dict[str, Any]) -> str:
+    """Up to two published articles (title, path, body) as examples of form ("" when the web app sent none)."""
+    rows = [e for e in (brief.get("examples") or []) if isinstance(e, dict) and str(e.get("body") or "").strip()][:2]
+    if not rows:
+        return ""
+    return "\n\n" + data_block("example_articles", [{"title": str(e.get("title") or "")[:200], "path": str(e.get("path") or "")[:300], "body": str(e["body"])[:EXAMPLE_CHARS]} for e in rows])
+
+
 def code_blocks_of(body: str) -> list[CodeBlock]:
     return [CodeBlock(lang=lang or "text", code=code.rstrip("\n")) for lang, code in _CODE_RE.findall(body or "")][:30]
 
@@ -135,13 +176,15 @@ class EditorialCrew:
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
             agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
-            b = data_block("brief", {k: brief.get(k) for k in ("title", "gap", "audience", "intent", "outline", "supportingQueries", "codeExamples", "internalLinks", "category")})
+            b = data_block("brief", {k: brief.get(k) for k in BRIEF_KEYS})
             style = data_block("style_guide", brief.get("styleGuide", ""))
+            notes = author_notes_block(brief)
+            examples = examples_block(brief)
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
-            research = Task(description=f"Research the article in this brief. Use vector_search and read_article for related site articles and fetch_allowlisted_docs for official documentation. List every source URL.\n\n{b}", expected_output="Research notes with facts, related site article paths and a list of source URLs.", agent=agents["researcher"])
-            write = Task(description=f"Write the full article as MDX following the style guide. Use only facts from the research notes. Code examples must be minimal and complete.\n\n{b}\n\n{style}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
+            research = Task(description=f"{RESEARCH_TASK}\n\n{b}{notes}", expected_output="Research notes per outline section with facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
+            write = Task(description=f"{WRITE_TASK}\n\n{b}{notes}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
             review = Task(
-                description=f"Check every command, flag and version in the draft against the research sources (fetch_allowlisted_docs when needed). Return the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify, as `- claim | reason` (or `- none`).",
+                description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify, as `- claim | reason` (or `- none`).",
                 expected_output=f"The complete corrected MDX body, then {FACT_CHECK_MARKER} and the list.",
                 agent=agents["reviewer"],
                 context=[research, write],

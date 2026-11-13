@@ -35,7 +35,47 @@ export function callbackPort(env: Record<string, string | undefined> = process.e
 export const askEnabled = (env: Record<string, string | undefined> = process.env) => env.ASK_BLOG_ENABLED?.trim().toLowerCase() === "true";
 
 /** Documentation domains the editorial crew may read (through the SSRF-safe fetcher). Same default as seo-agent. */
-export const DEFAULT_DOCS_ALLOWLIST = ["kubernetes.io", "docs.aws.amazon.com", "developer.hashicorp.com", "docs.python.org", "docs.crewai.com", "modelcontextprotocol.io"];
+export const DEFAULT_DOCS_ALLOWLIST = [
+  "kubernetes.io",
+  "docs.aws.amazon.com",
+  "developer.hashicorp.com",
+  "docs.python.org",
+  "docs.crewai.com",
+  "modelcontextprotocol.io",
+  "minikube.sigs.k8s.io",
+  "helm.sh",
+  "docs.docker.com",
+  "istio.io",
+  "developer.konghq.com",
+  "docs.konghq.com",
+  "argo-cd.readthedocs.io",
+  "karpenter.sh",
+  "keda.sh",
+  "velero.io",
+  "docs.cilium.io",
+  "linkerd.io",
+  "prometheus.io",
+  "grafana.com",
+  "opentelemetry.io",
+  "docs.github.com",
+  "docs.gitlab.com",
+  "docs.ansible.com",
+  "developers.cloudflare.com",
+  "cloud.google.com",
+  "learn.microsoft.com",
+  "www.postgresql.org",
+  "redis.io",
+  "nextjs.org",
+  "react.dev",
+  "nodejs.org",
+  "developer.mozilla.org",
+  "go.dev",
+  "fastapi.tiangolo.com",
+  "docs.pydantic.dev",
+  "docs.claude.com",
+  "platform.claude.com",
+  "docs.langchain.com",
+];
 
 /** Public read-only MCP server switch (mirrors seo-agent's PUBLIC_MCP_ENABLED; the site shows how to connect only then). */
 export const publicMcpEnabled = (env: Record<string, string | undefined> = process.env) => env.PUBLIC_MCP_ENABLED?.trim().toLowerCase() === "true";

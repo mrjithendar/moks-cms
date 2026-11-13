@@ -243,3 +243,45 @@ def test_per_agent_model_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -
     assert s.crew_models == {"optimization.analyst": "claude-haiku-5-5", "optimization.reviewer": "claude-haiku-5-5"}
     agents = build_agents(OPT_AGENTS, s, llm, asyncio.get_event_loop_policy().new_event_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="draft", prompt_version="t", crew="optimization")
     assert {k: a.llm.model for k, a in agents.items()} == {"analyst": "claude-haiku-5-5", "editor": s.draft_model, "reviewer": "claude-haiku-5-5"}
+
+
+def test_per_agent_max_iter_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -> None:
+    from app.config import load_settings
+    from app.crews.editorial import AGENTS as ED_AGENTS
+    from app.tools import ToolContext
+
+    monkeypatch.setenv("SEO_CREW_MAX_ITERS", '{"editorial.researcher": 10, "editorial.writer": 0, "editorial.reviewer": 99, "bad key": 5, "editorial.seo_editor": true}')
+    s = load_settings()
+    assert s.crew_max_iters == {"editorial.researcher": 10}  # out of range, malformed keys and non-integers are ignored
+    agents = build_agents(ED_AGENTS, s, llm, asyncio.get_event_loop_policy().new_event_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="crew", prompt_version="t", crew="editorial")
+    assert {k: a.max_iter for k, a in agents.items()} == {"researcher": 10, "writer": s.crew_max_iter, "reviewer": s.crew_max_iter, "seo_editor": s.crew_max_iter}
+
+
+async def test_writer_gets_author_notes_and_examples_and_the_reviewer_the_notes(llm: FakeLlm, web: FakeWebApp) -> None:
+    brief = {**BRIEF, "authorNotes": "I ran cmctl renew on mk4 and the ingress picked the new certificate up in 40 seconds.", "diagrams": ["renewal sequence"], "readingTimeMinutes": 8, "examples": [{"title": "Ingress TLS", "path": "/blog/ingress-tls", "body": "EXAMPLE-BODY " * 2000}, {"title": "empty", "path": "/blog/empty", "body": ""}]}
+    llm.queue("crew", *scripted(final_json([])))
+    r = await crew_with(llm, web).run(brief)
+    assert r.status == "completed"
+    research, write, review, seo = (c.user for c in llm.calls)
+    assert '<data name="author_first_hand_notes">' in write and "cmctl renew on mk4" in write and "renewal sequence" in write
+    assert '<data name="example_articles">' in write and "/blog/ingress-tls" in write and "/blog/empty" not in write
+    assert 0 < write.count("EXAMPLE-BODY") < 2000  # each example is cut to EXAMPLE_CHARS
+    assert "cmctl renew on mk4" in research and "cmctl renew on mk4" in review
+    assert "example_articles" not in research and "example_articles" not in seo  # form examples are for the writer only
+
+
+async def test_brief_without_notes_or_examples_adds_no_empty_blocks(llm: FakeLlm, web: FakeWebApp) -> None:
+    llm.queue("crew", *scripted(final_json([])))
+    await crew_with(llm, web).run(BRIEF)
+    assert all("author_first_hand_notes" not in c.user and "example_articles" not in c.user for c in llm.calls)
+
+
+def test_docs_allowlist_default_matches_the_web_app() -> None:
+    import re
+    from pathlib import Path
+
+    from app.config import DEFAULT_DOCS_ALLOWLIST
+
+    ts = (Path(__file__).resolve().parents[2] / "www/src/lib/seo-agent/config.ts").read_text()
+    block = ts[ts.index("export const DEFAULT_DOCS_ALLOWLIST") :]
+    assert tuple(re.findall(r'"([a-z0-9.-]+)"', block[: block.index("];")])) == DEFAULT_DOCS_ALLOWLIST

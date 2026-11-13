@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export type CalendarBrief = { gap?: string; audience?: string; intent?: string; supportingQueries?: string[]; outline?: string[]; codeExamples?: string[]; diagrams?: string[]; readingTimeMinutes?: number | null; notes?: string };
+export type CalendarBrief = { gap?: string; audience?: string; intent?: string; supportingQueries?: string[]; outline?: string[]; codeExamples?: string[]; diagrams?: string[]; readingTimeMinutes?: number | null; notes?: string; authorNotes?: string };
 type Owner = { id: string; name: string };
 
 const field = "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-fg-subtle hover:border-line focus:border-line-strong focus:bg-surface focus:text-fg focus:outline-none";
@@ -69,6 +69,7 @@ export function CalendarItemFields({ id, title, cluster, category, ownerId, owne
           <dt className={label}>Code</dt><dd><Lines name="Code examples" value={brief.codeExamples ?? []} placeholder="One per line" onSave={b("codeExamples")} /></dd>
           <dt className={label}>Diagrams</dt><dd><Lines name="Diagrams" value={brief.diagrams ?? []} placeholder="One per line" onSave={b("diagrams")} /></dd>
           <dt className={label}>Reading time</dt><dd><Line name="Reading time (minutes)" value={brief.readingTimeMinutes ? String(brief.readingTimeMinutes) : ""} placeholder="minutes" onSave={(v) => b("readingTimeMinutes")(v ? Math.max(1, Math.min(120, Math.round(Number(v)) || 1)) : null)} /></dd>
+          <dt className={label}>First-hand notes</dt><dd><Lines name="First-hand notes" value={brief.authorNotes ? brief.authorNotes.split("\n") : []} placeholder="What you built, ran or measured: real commands, versions, results, mistakes, opinions. The writer treats these as your own experience." onSave={(v) => b("authorNotes")(v.join("\n"))} /></dd>
           <dt className={label}>Notes</dt><dd><Lines name="Notes" value={brief.notes ? brief.notes.split("\n") : []} placeholder="Notes" onSave={(v) => b("notes")(v.join("\n"))} /></dd>
         </dl>
       </details>
