@@ -586,3 +586,47 @@ plain Python steps inside flows and writes Postgres tables that the TypeScript r
   gzipped. The two are nearly equal because the runner's containerd store already holds compressed layers. Recorded as
   the baseline (`services/seo-agent/image-size-baseline.json`); the web image's baseline is filled from its first
   release run.
+
+## Promotion (2026-11-12, owner request; PROMOTION.md, D-88)
+
+**What changed.** Admin → Promotion: channel opportunities with reasons and tagged links for published articles, posts
+drafted by Claude for the owner to edit and post by hand, and content ideas from Search Console demand and Reddit
+threads that can be sent to the editorial calendar. Two CrewAI flows (`promotion_flow`, `content_ideas_flow`), a
+tool-less Promotion Crew, a read-only Reddit client, migration 0027, six admin API routes, four callback routes, two
+CronJobs.
+
+**Files.** www: `src/db/migrations/0027_seo_promotion.sql` (+ rollback), `src/lib/seo-intel/promotion/{settings,channels,reddit,store}.ts`,
+`src/lib/seo-agent/callbacks-promotion.ts`, `internal-server.ts` (4 routes), `client.ts` (2 flow names),
+`src/app/api/admin/seo/promotion/**`, `src/app/admin/(growth)/promotion/page.tsx`, `src/components/seo/{PromoDraftEditor,PromotionSettingsForm}.tsx`,
+`src/app/admin/layout.tsx` and `src/components/seo/sections.ts` (navigation), `.env.example`, `tests/seo-promotion.test.ts`.
+seo-agent: `app/crews/promotion.py`, `app/flows/promotion.py`, `app/state.py`, `app/webapp.py`, `app/flows/__init__.py`,
+`app/flows/base.py`, `app/main.py`, `app/metrics.py`, `tests/test_promotion.py`, `tests/conftest.py`,
+`tests/test_contract.py`. Repo: `minikube/seo-agent-62-promotion-triggers.yaml`, `scripts/set-reddit-config.sh`.
+Docs: PROMOTION.md (new), FLOWS.md, CREWS.md, MANUAL_SETUP.md §37, DECISIONS.md D-88, README.md.
+
+**Commands run → result.** The authoring sandbox refuses package installs, so the project toolchains ran in CI on
+the pull request (#51, commit `3fc96b1`), not locally.
+
+| Check | Where | Result |
+|---|---|---|
+| www `npm run lint`, `npm run typecheck` | CI `jithendar.com` | Pass |
+| www `npm test` | CI | Pass: 82 files, 987 tests passed, 1 skipped (incl. `tests/seo-promotion.test.ts`, 16 tests) |
+| www `npm run build`, render production manifests | CI | Pass |
+| seo-agent `ruff check app tests`, `mypy app` | CI `seo-agent` | Pass |
+| seo-agent `pytest` (incl. Postgres + pgvector) | CI | Pass: 398 passed, 2 skipped (incl. `tests/test_promotion.py` and the callback contract test) |
+| seo-agent image build and smoke test, render manifests | CI | Pass |
+| shellcheck on `scripts/set-*.sh` and the other repository checks | CI `repository checks` | Pass |
+| `kubectl` against the cluster; the two CronJobs applied | — | **Not run.** Agents do not touch the cluster; a person applies them |
+| `scripts/set-reddit-config.sh` executed | — | **Not run.** Needs the owner's Reddit credentials |
+| Reddit API | — | **Not called.** No credentials exist yet; the client is tested against fake HTTP responses only |
+| Promotion page opened in a browser; a real `promotion_flow` / `content_ideas_flow` run with Claude | — | **Not done.** Needs the deployed site and agent |
+
+The first CI run failed one existing test (`seo-intel-sync.test.ts`, migration 0011 rollback): `seo_content_ideas`
+references `seo_editorial_calendar`, so the 0011 rollback needs 0027 rolled back first. The test now does that, as it
+already did for 0015. Everything else passed on the first run.
+
+**Open issues.** Not yet exercised end to end: the page in a browser, a real model run (draft quality), and the live
+Reddit API. Check the first drafts and ideas critically before relying on them.
+
+**Manual steps (owner).** MANUAL_SETUP.md §37: deploy order, the Reddit "script" app, `scripts/set-reddit-config.sh`,
+"Test connection", applying the seo-agent group for the two CronJobs.

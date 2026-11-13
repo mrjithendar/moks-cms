@@ -62,8 +62,10 @@ flowchart LR
 | `reindex_flow` | CronJob Sun 03:17; after each publish (inside publish_flow) | chunk_and_embed (incremental by content hash) | done |
 | `seo_ml_flow` (v5) | CronJob `seo-flow-ml` Sun 04:47; ML models → Run now | decay → query_clusters → intent → priority → related → rag_eval → finish (each step independent; the run fails if any failed) | done ([ML.md](ML.md)) |
 | `report_flow` | CronJob Mon 08:00 (weekly) and the 2nd 08:00 (monthly); "Generate"; MCP | aggregate → narrate (**Report Crew**) → router check: store · mismatch → render_pdf (R2) → notify | done |
+| `promotion_flow` | CronJob `seo-flow-promotion` daily 07:40 UTC; Promotion → "Find opportunities" / "Re-score and draft posts" | collect (web: Reddit read, channel scores) → draft (**Promotion Crew** copywriter) → save | **drafts awaiting a person** ([PROMOTION.md](PROMOTION.md)) |
+| `content_ideas_flow` | CronJob `seo-flow-content-ideas` Tue 05:20 UTC; Promotion → "Suggest content ideas" | collect_signals (web: Search Console demand, Reddit threads) → ideate (**Promotion Crew** strategist) → save (evidence verified by the web app) | **ideas awaiting a person** |
 
-Schedules are configuration in `minikube/seo-agent-60-flow-triggers.yaml`: change a `schedule:` (or
+Schedules are configuration in `minikube/seo-agent-60-flow-triggers.yaml` (the two promotion flows: `seo-agent-62-promotion-triggers.yaml`): change a `schedule:` (or
 `kubectl patch cronjob seo-flow-… -p '{"spec":{"schedule":"…"}}'`) without a code change. "Run now" buttons in the admin
 and the MCP `kickoff_flow` tool call the same `POST /flows/{name}/kickoff` endpoint as the CronJobs.
 
@@ -193,6 +195,8 @@ refused, bounded sizes, UUID patterns).
 | `ReindexState` | article_ids, full, result |
 | `AskGapsState` | result |
 | `ReportState` | period, report_id, numbers, narrative, check, crew, pdf, notified |
+| `PromotionState` | article_id, limit, reddit, articles, drafts, results, result |
+| `ContentIdeasState` | reddit, signals, ideas, crew, result |
 
 `seo_flow_runs` (web migration 0016): run_id, flow_name, target_id, draft_id, status (queued · running · succeeded ·
 failed · cancelled · paused_budget), current_step, state_json, inputs, outputs, error, tokens, cost_usd, started_at,

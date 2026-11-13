@@ -8,7 +8,7 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 |---|---|---|
 | `site` | `00-…` to `85-…`, listed in `kustomization.yaml` | `./deploy.sh` (all of it); CI applies the application objects |
 | `practice-executor` | `practice-executor-*.yaml` | a person, once, after gVisor is verified; then CI (application objects) |
-| `seo-agent` | `seo-agent-*.yaml` (SEO v4 agent service: internal API + MCP edge, flow-trigger CronJobs). Kong entities for `/mcp/*` are in `kong/seo-agent-mcp.deck.yaml` (decK, not kubectl) | a person (`scripts/manifests.sh seo-agent \| kubectl apply -f -`), after `scripts/create-seo-agent-secrets.sh` and pgvector (`services/www/docs/seo/MANUAL_SETUP.md` §13–15 and "v4"); CI only renders it |
+| `seo-agent` | `seo-agent-*.yaml` (SEO v4 agent service: internal API + MCP edge, flow-trigger CronJobs, including `seo-agent-62-promotion-triggers.yaml` for the two promotion flows). Kong entities for `/mcp/*` are in `kong/seo-agent-mcp.deck.yaml` (decK, not kubectl) | a person (`scripts/manifests.sh seo-agent \| kubectl apply -f -`), after `scripts/create-seo-agent-secrets.sh` and pgvector (`services/www/docs/seo/MANUAL_SETUP.md` §13–15 and "v4"); CI only renders it |
 
 ## Site (`kustomization.yaml`)
 

@@ -370,3 +370,36 @@ shows `pagePairs: unsupported` if the property can't provide it.
 - Retrieval: `RAG_MODE=vector` (already the default), `RAG_MAX_PER_ARTICLE=0` for v4's undiversified list,
   `ASK_BLOG_MIN_SCORE=0.15` for v4's floor, then `rollout restart deploy/seo-agent`.
 - Code: redeploy the previous image (CI pushes `:latest` only; rebuild from the previous commit) or revert the merge.
+
+## 37. Promotion: Reddit API app and the promotion CronJobs
+
+Promotion ([PROMOTION.md](PROMOTION.md)) works without any of this from the articles and Search Console data. These
+steps add Reddit threads as a signal and the two schedules. Only a person can do them.
+
+1. **Deploy order.** Merge, let CI build both images, then restart the site first (migration `0027_seo_promotion.sql`
+   runs on start and adds three tables; the callback routes `/promotion/*` come with it) and the seo-agent second
+   (`promotion_flow`, `content_ideas_flow`). Rollback of the tables: `src/db/rollback/0027_seo_promotion.down.sql`.
+2. **Reddit app (requires manual configuration).** At <https://www.reddit.com/prefs/apps> choose "create another app",
+   type **script**, any name (for example `jithendar-promotion`), redirect URI `https://jithendar.com` (unused, but the
+   form requires one). Reddit may first ask you to accept its API terms; read the current terms and limits. The client
+   id is the string under the app's name; the secret is labelled "secret".
+3. **Store the credentials** (merged into the Secret `jithendar-com-env`; nothing is printed):
+
+   ```bash
+   KUBE_CONTEXT=mk4 scripts/set-reddit-config.sh
+   kubectl -n jithendar rollout restart deployment/jithendar-com
+   ```
+
+4. **Test.** Admin → Promotion → Settings → "Test connection" makes one real read-only request. Then review the
+   subreddits and channels on the same page.
+5. **Schedules.** Apply the seo-agent group; it now includes `seo-agent-62-promotion-triggers.yaml` (CronJobs
+   `seo-flow-promotion`, daily 07:40 UTC, and `seo-flow-content-ideas`, Tuesdays 05:20 UTC):
+
+   ```bash
+   scripts/manifests.sh seo-agent | kubectl diff -f -
+   scripts/manifests.sh seo-agent | kubectl apply -f -
+   ```
+
+   Until then, the buttons "Find opportunities" and "Suggest content ideas" start the same flows by hand.
+6. **To stop it.** Promotion → Settings → switch it off (the flows then end as `disabled`), or suspend the CronJobs:
+   `kubectl -n jithendar patch cronjob seo-flow-promotion -p '{"spec":{"suspend":true}}'`.

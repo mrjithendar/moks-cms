@@ -59,14 +59,15 @@ describe("migration 0011", () => {
     const allTables = async () => rowsOf<{ t: string }>(await clean.execute(sql`select table_name as t from information_schema.tables where table_schema = 'public' order by 1`)).map((r) => r.t);
     expect(await seoTables()).toContain("seo_gsc_daily_totals");
     expect((await seoTables()).length).toBe(18);
-    // Rollbacks run newest first: 0015 references seo_editorial_calendar (v3 new-article drafts, ask gaps).
+    // Rollbacks run newest first: 0027 (content ideas) and 0015 (v3 new-article drafts, ask gaps) reference seo_editorial_calendar.
     const script = (f: string) => fs.readFileSync(path.resolve(migrationsDir(), `../rollback/${f}`), "utf8").split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean);
+    for (const stmt of script("0027_seo_promotion.down.sql")) await clean.execute(sql.raw(stmt));
     for (const stmt of script("0015_seo_agent.down.sql")) await clean.execute(sql.raw(stmt));
     const before = (await allTables()).filter((t) => !own.has(t));
     for (const stmt of script("0011_seo_intelligence.down.sql")) await clean.execute(sql.raw(stmt));
     expect(await seoTables()).toEqual([]);
     expect(await allTables()).toEqual(before);
-    expect(await migrateDb(clean)).toEqual(["0011_seo_intelligence.sql", "0015_seo_agent.sql"]);
+    expect(await migrateDb(clean)).toEqual(["0011_seo_intelligence.sql", "0015_seo_agent.sql", "0027_seo_promotion.sql"]);
     expect((await seoTables()).length).toBe(18);
     await pg.close();
   });

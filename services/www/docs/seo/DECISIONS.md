@@ -607,3 +607,26 @@ the browser (`localStorage`, key `admin-nav-open-v1`). A collapsed category show
 reviews, unread messages) as a pill, otherwise its item count. Expand all / Collapse all. Authors see only the
 categories they have pages in. `components/admin/AdminNav.tsx`, `app/admin/layout.tsx`, `tests/admin-nav.test.tsx`.
 
+
+## D-88 Promotion: drafts and ideas for a person, never automatic posting (owner request 2026-11-12)
+
+"Enable promotion opportunities for content in the SEO dashboard", "suggest content creation for promoting, not only
+for existing", "implement Reddit and Search Console". Built as Admin → Promotion ([PROMOTION.md](PROMOTION.md)).
+
+- **No posting code.** Every channel is posted by hand. Reddit, Hacker News and Facebook groups penalise automated
+  self-promotion, and AGENTS.md A3.10 keeps AI output behind a person. "Mark as posted" records the owner's own act.
+  Posting through the DEV, Hashnode and LinkedIn APIs was left out of this version rather than half-built.
+- **Scores are rules, not a model.** `channels.ts` is deterministic and shows its reasons. There is no outcome data yet
+  to train on, and a number the owner can trace beats one they cannot. It is labelled as an ordering, not a forecast.
+- **CrewAI only** (owner rule: no other job engine): two flows and a tool-less Promotion Crew in `services/seo-agent`.
+  The Reddit read is in the web app because the agent has no internet egress except the Anthropic API (as for news).
+- **Evidence is verified, not trusted.** The strategist must cite signals; the web app re-checks each against its own
+  tables and stores an idea only with verified evidence. An unverifiable claim never reaches the page (A3.6).
+- **Reddit: read-only and minimal.** Application-only OAuth, one listing request per subreddit per run, no usernames,
+  bodies or comments stored, credentials only in the environment (A3.8, "Requires manual configuration").
+- **Ideas feed the existing calendar.** No second drafting path: an accepted idea becomes an approved calendar item
+  and `new_article_flow` writes it as before.
+- **Own settings row** (`setting` key `promotion`) instead of a new section in the `seo` document, so the feature can
+  be switched off or rolled back without touching the SEO settings schema.
+- **Not built:** traffic per promotion in the admin (the GA4 sync has no `sessionSource` report), Hacker News as a
+  signal, alerts and a dashboard panel for the two flows.
