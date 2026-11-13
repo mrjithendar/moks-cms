@@ -86,5 +86,6 @@ def test_topic_discovery_is_a_cron_job_flow_and_not_startable_over_mcp() -> None
     from app.flows import CRON_FLOWS, MCP_KICKOFF_ALLOWLIST, SPECS
     from app.metrics import FLOWS
 
-    assert "topic_discovery_flow" in SPECS and "topic_discovery_flow" in CRON_FLOWS and "topic_discovery_flow" in FLOWS
-    assert "topic_discovery_flow" not in MCP_KICKOFF_ALLOWLIST
+    for flow in ("topic_discovery_flow", "calendar_plan_flow"):
+        assert flow in SPECS and flow in CRON_FLOWS and flow in FLOWS
+        assert flow not in MCP_KICKOFF_ALLOWLIST

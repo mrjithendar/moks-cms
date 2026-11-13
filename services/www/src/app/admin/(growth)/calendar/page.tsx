@@ -15,13 +15,17 @@ export const metadata = { title: "Editorial calendar" };
 type Item = Awaited<ReturnType<typeof listCalendar>>["all"][number];
 
 function ItemCard({ item, owners, compact = false }: { item: Item; owners: { id: string; name: string }[]; compact?: boolean }) {
-  const brief = item.brief as CalendarBrief & { internalLinks?: { title: string; path: string }[] };
+  const brief = item.brief as CalendarBrief & { internalLinks?: { title: string; path: string }[]; source?: string };
+  const auto = brief.source === "auto_planner";
   return (
     <Card className={compact ? "!p-3" : ""}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <StatusPill status={item.status === "published" ? "published" : item.status === "dropped" ? "rejected" : item.status === "suggested" ? "pending" : "approved"} />
         <span className="text-fg-subtle">{item.status.replace("_", " ")} · {item.kind === "measured" ? "Measured (Search Console)" : "Editorial idea"} · {item.priorityBand}</span>
+        {auto && <span className="rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-800 dark:bg-violet-500/15 dark:text-violet-300">Auto-planned</span>}
       </div>
+      {/* Why the planner put it here (docs/seo/TOPICS.md "Automatic planning"); the same text is the item's Notes. */}
+      {auto && brief.notes ? <p className="mt-1 whitespace-pre-line text-xs text-fg-muted">{brief.notes}</p> : null}
       <CalendarItemFields id={item.id} title={item.title} cluster={item.cluster} category={item.category} ownerId={item.ownerId} owners={owners} brief={brief} compact={compact} />
       {brief.internalLinks?.length ? <p className="mt-1 text-xs text-fg-subtle">Link to: {brief.internalLinks.map((l) => l.title).join("; ")}</p> : null}
       {item.postId && <p className="mt-1 text-sm">Draft: <Link className="underline" href={`/admin/posts/${item.postId}`}>{item.postTitle ?? item.postId}</Link> ({item.postStatus}){item.status === "published" && <> · clicks since publish (GSC): {fmtInt(item.clicksSincePublish)}</>}</p>}

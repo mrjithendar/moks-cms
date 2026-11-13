@@ -32,6 +32,7 @@ FLOWS = {
     "promotion_flow",
     "content_ideas_flow",
     "topic_discovery_flow",
+    "calendar_plan_flow",
 }
 CREWS = {"optimization", "editorial", "report", "news", "promotion"}
 PURPOSES = {"draft", "regenerate", "crew", "report", "ask_grade", "ask_answer", "classify", "ml_label", "news.crew", "news.classify", "news.vision", "news.style", "news.playground", "other"}

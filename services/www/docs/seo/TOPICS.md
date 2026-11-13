@@ -61,6 +61,33 @@ A source that fails is reported on the run (`partial`) and the others carry on.
 queries as supporting queries and the trend links as evidence. From there it is an ordinary calendar item: the
 Editorial Crew drafts it, and a person reviews and approves. "Dismiss" hides a candidate for good.
 
+## Automatic planning
+
+Topic discovery → **Automatic planning**. Off by default. Once a day (CronJob `seo-flow-calendar-plan`, 06:30 UTC →
+`calendar_plan_flow` → the web app's `calendar_plan` job) and on "Plan now":
+
+| Mode | What the planner does |
+|---|---|
+| Off | nothing |
+| Suggest only | adds the best candidates as **suggested** calendar items without a date; it adds no more while earlier suggestions are still waiting |
+| Schedule | adds them as **approved** items with a date and time |
+| Schedule and draft | the same; the draft is written ahead of the date (auto-draft, a later change) |
+
+- **Cadence:** N articles per day, per week (Monday to Sunday) or per month, on the chosen publishing days, at the
+  chosen time (Asia/Kolkata), for the next "plan ahead" days. Limits: 5 a day, 14 a week, 31 a month.
+- **Quota includes your own items.** Every dated calendar item in a period counts, so the planner tops the calendar
+  up and never adds to a period that is already full.
+- **Spread.** Within a week or month, planned articles keep a distance of `floor(7 / N)` or `floor(30 / N)` days from
+  each other and from existing items.
+- **Only candidates above "Minimum score to plan"**, best first. A candidate is planned once; dropping the calendar
+  item does not bring it back.
+- **Why, in the notes.** Each item's notes (shown on the calendar under an "Auto-planned" badge) say when it was
+  planned, why the topic (score, its parts and the evidence sentences) and why the date (cadence, how full the period
+  was, the distance rule).
+- **Nothing is published.** A scheduled item is a plan. Drafts still go through review and a person's approval.
+
+Settings: `setting` row `automation`.
+
 ## Settings and data
 
 - Settings: `setting` row `topics` (sources, DataForSEO switch, subjects, weights, thresholds).

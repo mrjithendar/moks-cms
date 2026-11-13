@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card } from "@/components/admin/ui";
-import { Button, Field, Input, Textarea } from "@/components/ui/form";
+import { Button, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { getDb } from "@/db";
 import { adminActor } from "@/lib/admin";
 import { audit } from "@/lib/audit";
@@ -9,6 +9,7 @@ import { flash } from "@/lib/flash";
 import { PostError } from "@/lib/posts";
 import { AgentError, kickoff } from "@/lib/seo-agent/client";
 import { orchestrator } from "@/lib/seo-agent/config";
+import { AutomationSettingsError, EDITORIAL_TZ, getAutomationSettings, MODE_LABELS, MODES, PERIODS, saveAutomationSettings, type AutomationSettings } from "@/lib/seo-intel/topics/automation";
 import { dismissTopic, listTopics, topicToCalendar, type StoredTopic } from "@/lib/seo-intel/topics/discover";
 import { getTopicsSettings, saveTopicsSettings, SOURCE_IDS, SOURCE_LABELS, TopicsSettingsError, type TopicsSettings } from "@/lib/seo-intel/topics/settings";
 
@@ -46,6 +47,47 @@ async function saveSettings(form: FormData) {
     }
     await audit(actor, "topics.settings", undefined, { enabled: next.enabled, sources: next.sources, dataForSeo: next.dataForSeo.enabled });
     return "Topic discovery settings saved.";
+  });
+}
+
+async function saveAutomation(form: FormData) {
+  "use server";
+  const actor = await adminActor();
+  await flash(`${BACK}#automation`, async () => {
+    const cur = await getAutomationSettings();
+    const next = {
+      mode: String(form.get("mode") ?? cur.mode),
+      cadence: { count: num(form, "cadence.count", cur.cadence.count), period: String(form.get("cadence.period") ?? cur.cadence.period) },
+      days: form.getAll("days").map((d) => Number(d)).filter((d) => Number.isInteger(d)),
+      time: String(form.get("time") ?? cur.time).trim(),
+      horizonDays: num(form, "horizonDays", cur.horizonDays),
+      minScore: num(form, "autoMinScore", cur.minScore),
+    };
+    try {
+      const { after } = await saveAutomationSettings(next, actor.id);
+      await audit(actor, "topics.automation", undefined, { mode: after.mode, cadence: after.cadence });
+    } catch (e) {
+      if (e instanceof AutomationSettingsError) throw new PostError(e.message, 400, e.issues);
+      throw e;
+    }
+    return "Automatic planning settings saved.";
+  });
+}
+
+async function planNow() {
+  "use server";
+  const actor = await adminActor();
+  await flash(`${BACK}#automation`, async () => {
+    if ((await getAutomationSettings()).mode === "off") throw new PostError("Automatic planning is off. Choose a mode and save first.", 409);
+    if (orchestrator() !== "crewai") throw new PostError("Planning runs as a CrewAI flow: set SEO_ORCHESTRATOR=crewai.", 409);
+    try {
+      const r = await kickoff("calendar_plan_flow", {}, { actor: actor.label });
+      await audit(actor, "topics.plan", undefined, { runId: r.run_id });
+    } catch (e) {
+      if (e instanceof AgentError) throw new PostError(e.message, 503);
+      throw e;
+    }
+    return "Planning started. Open the editorial calendar in a minute to see what was added.";
   });
 }
 
@@ -145,9 +187,57 @@ function Check({ name, label, checked, hint }: { name: string; label: string; ch
   );
 }
 
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function AutomationSection({ auto }: { auto: AutomationSettings }) {
+  return (
+    <section id="automation" aria-labelledby="automation-title" className="mb-10 scroll-mt-24">
+      <h2 id="automation-title" className="mb-3 text-lg font-semibold text-fg">Automatic planning</h2>
+      <Card>
+        <p className="mb-5 text-sm text-fg-muted">
+          Once a day the planner puts the best candidates on the <Link href="/admin/calendar" className="link">editorial calendar</Link> until the cadence below is met, counting items you added yourself. Each item&apos;s notes say why the
+          topic was chosen and why that date. Nothing is published without your approval.
+        </p>
+        <form action={saveAutomation} className="grid gap-6">
+          <Field label="Mode" htmlFor="mode">
+            <Select id="mode" name="mode" defaultValue={auto.mode}>
+              {MODES.map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
+            </Select>
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Field label="Articles" htmlFor="cadence-count"><Input id="cadence-count" name="cadence.count" type="number" min={1} max={31} defaultValue={auto.cadence.count} /></Field>
+            <Field label="Per" htmlFor="cadence-period">
+              <Select id="cadence-period" name="cadence.period" defaultValue={auto.cadence.period}>
+                {PERIODS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </Select>
+            </Field>
+            <Field label={`Time (${EDITORIAL_TZ})`} htmlFor="time"><Input id="time" name="time" type="time" defaultValue={auto.time} /></Field>
+            <Field label="Plan ahead (days)" htmlFor="horizonDays"><Input id="horizonDays" name="horizonDays" type="number" min={1} max={60} defaultValue={auto.horizonDays} /></Field>
+          </div>
+          <fieldset>
+            <legend className="mb-2 text-sm font-semibold text-fg">Publishing days</legend>
+            <div className="flex flex-wrap gap-4 text-sm">
+              {DAY_NAMES.map((d, i) => (
+                <label key={d} className="flex items-center gap-1.5"><input type="checkbox" name="days" value={i} defaultChecked={auto.days.includes(i)} /> {d}</label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Field label="Minimum score to plan" htmlFor="autoMinScore"><Input id="autoMinScore" name="autoMinScore" type="number" min={0} max={100} defaultValue={auto.minScore} /></Field>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit">Save automatic planning</Button>
+            <Button type="submit" formAction={planNow} variant="secondary">Plan now</Button>
+          </div>
+        </form>
+      </Card>
+    </section>
+  );
+}
+
 export default async function TopicsPage({ searchParams }: { searchParams: FlashParams }) {
   const db = await getDb();
-  const [s, topics, sp] = await Promise.all([getTopicsSettings(), listTopics(db, "new", 60), searchParams]);
+  const [s, auto, topics, sp] = await Promise.all([getTopicsSettings(), getAutomationSettings(), listTopics(db, "new", 60), searchParams]);
   const xReady = Boolean(process.env.X_BEARER_TOKEN?.trim());
   const dfsReady = Boolean(process.env.DATAFORSEO_LOGIN?.trim() && process.env.DATAFORSEO_PASSWORD?.trim());
   return (
@@ -172,6 +262,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Flash
           <div className="grid gap-4 lg:grid-cols-2">{topics.map((t) => <TopicCard key={t.id} t={t} />)}</div>
         )}
       </section>
+      <AutomationSection auto={auto} />
       <section id="settings" aria-labelledby="settings-title" className="scroll-mt-24">
         <h2 id="settings-title" className="mb-3 text-lg font-semibold text-fg">Settings</h2>
         <Card>
