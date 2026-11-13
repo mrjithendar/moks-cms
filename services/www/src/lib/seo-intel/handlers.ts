@@ -53,6 +53,12 @@ registerSeoHandler("drafts_digest", async (ctx) => {
   return { status: r.sent ? "succeeded" : "skipped", rows: r.drafts, detail: r };
 });
 
+// Topic discovery (docs/seo/TOPICS.md): started by the seo-agent's topic_discovery_flow (CronJob or "Run discovery now").
+registerSeoHandler("topic_discovery", async (ctx) => {
+  const r = await (await import("./topics/discover")).runTopicDiscovery(ctx.db, { now: ctx.now, fetchImpl: ctx.deps.fetchImpl, env: ctx.deps.env });
+  return { status: r.status, rows: r.candidates, detail: r };
+});
+
 registerSeoHandler("keywords_refresh", async (ctx) => {
   const r = await refreshKeywords({ now: ctx.now });
   const alerts = await trackedAlerts(ctx.now);

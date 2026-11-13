@@ -1,0 +1,46 @@
+# Content automation triggers (services/www/docs/seo/TOPICS.md): one CronJob per scheduled CrewAI flow, same shape as
+# seo-agent-60-flow-triggers.yaml (each only POSTs /flows/{flow}/kickoff with the service token). Applied by a person
+# with the rest of the seo-agent group; CI never applies CronJobs. Switch a flow off in its admin settings, or suspend
+# its CronJob (kubectl patch cronjob <name> -n jithendar -p '{"spec":{"suspend":true}}').
+---
+# Daily topic discovery (05:40 UTC): trend items + Search Console demand → scored topic candidates. No model call.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seo-flow-topic-discovery
+  namespace: jithendar
+  labels: { app: seo-agent-trigger, app.kubernetes.io/part-of: jithendar-com }
+spec:
+  schedule: "40 5 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: { app: seo-agent-trigger, app.kubernetes.io/part-of: jithendar-com }
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          imagePullSecrets: [{ name: harbor-pull }]
+          securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+          containers:
+            - name: trigger
+              image: registry.jithendar.com/jithendar/seo-agent:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.trigger", "topic_discovery_flow"]
+              env:
+                - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
+                - name: SEO_AGENT_TOKEN
+                  valueFrom: { secretKeyRef: { name: seo-agent-env, key: SEO_AGENT_TOKEN } }
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }

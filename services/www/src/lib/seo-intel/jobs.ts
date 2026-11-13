@@ -22,7 +22,7 @@ import { syncGa4PagePairs, syncGa4Window, syncGscWindow } from "./sync";
  *   window, status, rows, API requests, retries, error and correlation id, and records Prometheus metrics.
  * - Backfills are manual only and resumable: each job handles a time-boxed slice and enqueues the rest.
  */
-export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest", "keywords_refresh", "auto_links", "link_check"] as const;
+export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest", "keywords_refresh", "auto_links", "link_check", "topic_discovery"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 export type Trigger = "schedule" | "manual" | "backfill";
 export const JOB_KIND = "seo";
