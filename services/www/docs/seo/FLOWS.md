@@ -65,6 +65,8 @@ flowchart LR
 | `promotion_flow` | CronJob `seo-flow-promotion` daily 07:40 UTC; Promotion → "Find opportunities" / "Re-score and draft posts" | collect (web: Reddit read, channel scores) → draft (**Promotion Crew** copywriter) → save | **drafts awaiting a person** ([PROMOTION.md](PROMOTION.md)) |
 | `content_ideas_flow` | CronJob `seo-flow-content-ideas` Tue 05:20 UTC; Promotion → "Suggest content ideas" | collect_signals (web: Search Console demand, Reddit threads) → ideate (**Promotion Crew** strategist) → save (evidence verified by the web app) | **ideas awaiting a person** |
 | `topic_discovery_flow` | CronJob `seo-flow-topic-discovery` daily 05:40 UTC; Topic discovery → "Run discovery now" | run_job (web: `topic_discovery`: trend sources + Search Console demand → scored candidates) → record_stats | candidates in Admin → Topic discovery; no model call ([TOPICS.md](TOPICS.md)) |
+| `calendar_plan_flow` | CronJob `seo-flow-calendar-plan` daily 06:30 UTC; Topic discovery → "Plan now" | run_job (web: `calendar_plan`) → record_stats | calendar items with the reason in their notes; off by default ([TOPICS.md](TOPICS.md)) |
+| `calendar_autodraft_flow` | CronJob `seo-flow-calendar-autodraft` daily 07:00 UTC | run_job (web: `calendar_autodraft`, which starts `new_article_flow` per due item) → record_stats | drafts waiting for a person, plus an email; only in "Schedule and draft" |
 
 Schedules are configuration in `minikube/seo-agent-60-flow-triggers.yaml` (the two promotion flows: `seo-agent-62-promotion-triggers.yaml`): change a `schedule:` (or
 `kubectl patch cronjob seo-flow-… -p '{"spec":{"schedule":"…"}}'`) without a code change. "Run now" buttons in the admin

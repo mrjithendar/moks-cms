@@ -58,3 +58,5 @@ TechAuditFlow = _job_flow("tech_audit_flow", "technical_scan")
 TopicDiscoveryFlow = _job_flow("topic_discovery_flow", "topic_discovery")
 # Automatic editorial planning: the web app puts the best candidates on the calendar on the configured cadence.
 CalendarPlanFlow = _job_flow("calendar_plan_flow", "calendar_plan")
+# Automatic drafting: the web app starts new_article_flow for planned items whose date is near (a separate run each).
+CalendarAutodraftFlow = _job_flow("calendar_autodraft_flow", "calendar_autodraft")

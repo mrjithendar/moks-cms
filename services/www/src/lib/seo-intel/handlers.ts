@@ -65,6 +65,12 @@ registerSeoHandler("calendar_plan", async (ctx) => {
   return { status: r.status, rows: r.planned.length, detail: r };
 });
 
+// Automatic drafting of planned items (docs/seo/TOPICS.md): started by the seo-agent's calendar_autodraft_flow.
+registerSeoHandler("calendar_autodraft", async (ctx) => {
+  const r = await (await import("./topics/automation")).runAutoDraft(ctx.db, ctx.now, { env: ctx.deps.env });
+  return { status: r.status, rows: r.started.length, detail: r, ...(r.failed.length ? { error: `${r.failed.length} draft(s) could not be started: ${r.failed[0]!.error}` } : {}) };
+});
+
 registerSeoHandler("keywords_refresh", async (ctx) => {
   const r = await refreshKeywords({ now: ctx.now });
   const alerts = await trackedAlerts(ctx.now);

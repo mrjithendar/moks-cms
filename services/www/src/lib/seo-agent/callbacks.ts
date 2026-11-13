@@ -216,7 +216,13 @@ export async function saveDraft(draftId: string, body: unknown) {
   // Calendar articles go straight into their CMS draft post (no separate review step); see seo-intel/handoff.ts.
   if (b.kind === "new_article" && d.calendar_id) {
     const { handOffToCms } = await import("../seo-intel/handoff");
-    await handOffToCms(draftId, db).catch((err) => log.warn("calendar draft handoff failed", { err, operation: "seo_handoff" }));
+    const handed = await handOffToCms(draftId, db).catch((err) => {
+      log.warn("calendar draft handoff failed", { err, operation: "seo_handoff" });
+      return { handedOff: false };
+    });
+    // Automatically planned items: tell the admin by email that the draft is ready (never fails the save).
+    const { notifyDraftReady } = await import("../seo-intel/topics/automation");
+    await notifyDraftReady(db, { calendarId: String(d.calendar_id), draftId, handedOff: handed.handedOff });
   }
   return { ok: true, changes: changes.length };
 }
