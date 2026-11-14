@@ -69,7 +69,8 @@ stored Markdown ─parse─▶ editor document ─serialize─▶ stored Markdow
 - **Revisions**: every commit (create, save, publish, schedule, update, unpublish, restore, scheduled publish) stores a
   snapshot with author and time. Preview any revision; *Load into editor* then Save creates a new revision — history is
   never rewritten. Existing content got a `baseline` revision in migration 0005.
-- **Scheduling** is server-side (`lib/scheduler.ts`, every 30 s in each pod): conditional updates publish each post
+- **Scheduling** is server-side (`lib/scheduler.ts`, every 30 s in the worker pod, or in a web replica standing in for
+  it; `docs/DEPLOYMENT.md`, Processes): conditional updates publish each post
   exactly once, across replicas and restarts; overdue posts publish as soon as the site is back. Status: Admin → System
   status ("Scheduled publishing & IndexNow"). Times are entered and shown in Asia/Kolkata and stored in UTC.
 - After every committed change: content caches are invalidated on all replicas, sitemaps/feeds reflect it on the next

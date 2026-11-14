@@ -16,6 +16,7 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 |---|---|
 | `00-namespace.yaml` | Namespace `jithendar` |
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, Service `jithendar-com-internal` (SEO agent callbacks, port 9465, never routed publicly), PodDisruptionBudget, NetworkPolicy `jithendar-com`, NetworkPolicy `jithendar-com-cache-bus` (egress to the Valkey pods, pod port 6380 only) |
+| `35-jithendar-com-worker.yaml` | Deployment `jithendar-com-worker` (1 replica, `APP_ROLE=worker`): the site's image running scheduled publishing, the job queue and backups instead of the web replicas. No Service; the web replicas take the work over if it stops reporting. `scripts/tests/test_manifests.py` keeps its pod in step with `30-…` |
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `services/www/docs/OBSERVABILITY.md` |
 | `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only set the image of, and restart, the site, the executor and the SEO agent (`scripts/setup-ci-deployer.sh`) |

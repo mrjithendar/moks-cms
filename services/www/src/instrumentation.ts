@@ -48,20 +48,40 @@ export async function register() {
   const applied = await withSpan("startup.migrate", {}, async () => migrateDb(await getDb()));
   log.info("database ready", { migrationsApplied: applied, ms: Date.now() - started });
 
-  // Python practice catalog (content/python-practice/catalog.generated.json): new and changed problems.
-  const { ensurePracticeSeeded } = await import("./lib/practice/seed");
-  await ensurePracticeSeeded().catch((err) => log.warn("practice catalog seed failed", { err }));
+  // What this process is for: everything (the default), requests only, or the background work only (lib/app-role.ts).
+  const { appRole, duties } = await import("./lib/app-role");
+  const role = appRole();
+  const does = duties(role);
+  log.info("process role", { event: "app_role", role });
 
-  // Post files added to content/ since the last start become drafts (never published; lib/bundled-posts.ts).
-  const { syncBundledPosts } = await import("./lib/bundled-posts");
-  await syncBundledPosts().catch((err) => log.warn("bundled post import failed", { err }));
+  if (does.contentImports) {
+    // Python practice catalog (content/python-practice/catalog.generated.json): new and changed problems.
+    const { ensurePracticeSeeded } = await import("./lib/practice/seed");
+    await ensurePracticeSeeded().catch((err) => log.warn("practice catalog seed failed", { err }));
 
-  const { startBackupScheduler } = await import("./lib/backups");
-  startBackupScheduler();
+    // Post files added to content/ since the last start become drafts (never published; lib/bundled-posts.ts).
+    const { syncBundledPosts } = await import("./lib/bundled-posts");
+    await syncBundledPosts().catch((err) => log.warn("bundled post import failed", { err }));
+  }
 
-  // Scheduled publishing and the job queue (IndexNow submissions with retries).
-  const { startWorker } = await import("./lib/scheduler");
-  startWorker();
+  // Backups, scheduled publishing and the job queue (IndexNow submissions with retries).
+  const startBackgroundWork = async () => {
+    const { startBackupScheduler } = await import("./lib/backups");
+    startBackupScheduler();
+    const { startWorker } = await import("./lib/scheduler");
+    startWorker();
+  };
+  if (does.backgroundWork) {
+    await startBackgroundWork();
+    const { startHeartbeat } = await import("./lib/worker-heartbeat");
+    startHeartbeat();
+  }
+  if (does.standby) {
+    // A web replica leaves that work to the worker pod, and takes it over if the worker goes silent.
+    const { startStandby } = await import("./lib/worker-heartbeat");
+    startStandby(startBackgroundWork);
+  }
+  if (!does.serving) return;
 
   // SEO v4: cluster-internal callback API for the seo-agent's CrewAI Flows (only with SEO_ORCHESTRATOR=crewai).
   const { startCallbackServer } = await import("./lib/seo-agent/internal-server");
