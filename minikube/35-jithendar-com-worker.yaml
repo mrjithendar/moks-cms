@@ -1,0 +1,205 @@
+# Background worker: the site's image with APP_ROLE=worker. It runs what used to run inside every web replica:
+# scheduled publishing, the job queue (IndexNow, SEO runs, drafts, verification, submissions), practice
+# housekeeping and backups. The web replicas (30-jithendar-com.yaml, APP_ROLE=web) only serve requests, so a long
+# job no longer competes with page rendering for their memory and CPU, and each schedule runs in one place.
+#
+# One replica, replaced rather than rolled (Recreate): two workers would be safe (jobs are claimed, scheduled
+# posts are published by conditional update) but would need twice the memory for nothing. If this pod is down, the
+# web replicas notice that its heartbeat has stopped and start the same work themselves after three minutes
+# (src/lib/worker-heartbeat.ts), so the worker is not a single point of failure.
+#
+# No Service selects these pods. They answer /api/health for the probes and /metrics for Prometheus
+# (Service jithendar-com-metrics selects app.kubernetes.io/name, which web and worker pods share).
+#
+# Kept in step with the web Deployment by scripts/tests/test_manifests.py: same init container, volumes, security
+# settings, probes, image and environment, except APP_ROLE. A release moves both (scripts/ci-rollout.py finds
+# every Deployment that runs the image). A content release (ci-content.yml) restarts only the web Deployment; the
+# worker gets new content at its next restart, and does not run the content imports for that reason.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: jithendar-com-worker
+    app.kubernetes.io/part-of: jithendar-com
+  name: jithendar-com-worker
+  namespace: jithendar
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: jithendar-com-worker
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: jithendar-com-worker
+        app.kubernetes.io/name: jithendar-com
+        app.kubernetes.io/part-of: jithendar-com
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - name: content
+        image: registry.jithendar.com/jithendar/jithendar-content:latest
+        imagePullPolicy: Always
+        command:
+        - sh
+        - -c
+        - cp -R /content/. /mnt/content/ && cp -R /images/. /mnt/images/
+        resources:
+          limits:
+            cpu: 200m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 16Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /mnt/content
+          name: content
+        - mountPath: /mnt/images
+          name: images
+      containers:
+      - name: worker
+        image: registry.jithendar.com/jithendar/jithendar-com:latest
+        imagePullPolicy: Always
+        env:
+        - name: APP_ENV
+          value: production
+        - name: SITE_URL
+          value: https://jithendar.com
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector.observability:4318
+        - name: OTEL_SERVICE_NAME
+          value: jithendar-com
+        - name: ASK_BLOG_ENABLED
+          value: 'true'
+        - name: LOG_LEVEL
+          value: info
+        - name: APP_ROLE
+          value: worker
+        - name: SEO_AGENT_URL
+          value: http://seo-agent.jithendar:8080
+        - name: SEO_AGENT_CALLBACK_PORT
+          value: '9465'
+        - name: GEMINI_IMAGE_SIZE
+          value: 1K
+        - name: GEMINI_IMAGE_TIMEOUT_MS
+          value: '90000'
+        - name: GEMINI_IMAGE_USER_HOURLY_LIMIT
+          value: '10'
+        - name: GEMINI_IMAGE_USER_CONCURRENCY
+          value: '1'
+        - name: GEMINI_IMAGE_DAILY_LIMIT
+          value: '50'
+        - name: CACHE_BUS_REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-site-cachebus-credentials
+              key: uri
+              optional: true
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-db-credentials
+              key: uri
+        envFrom:
+        - secretRef:
+            name: jithendar-com-env
+        - configMapRef:
+            name: jithendar-com-public
+            optional: true
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        - containerPort: 9464
+          name: metrics
+          protocol: TCP
+        startupProbe:
+          failureThreshold: 30
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          periodSeconds: 2
+          successThreshold: 1
+          timeoutSeconds: 1
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 3
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          periodSeconds: 20
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: '1'
+            memory: 1536Mi
+          requests:
+            cpu: 100m
+            memory: 384Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /app/.next/cache
+          name: next-cache
+        - mountPath: /app/content
+          name: content
+          readOnly: true
+        - mountPath: /app/public/images
+          name: images
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: harbor-pull
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir:
+          sizeLimit: 64Mi
+        name: tmp
+      - emptyDir:
+          sizeLimit: 256Mi
+        name: next-cache
+      - emptyDir:
+          sizeLimit: 64Mi
+        name: content
+      - emptyDir:
+          sizeLimit: 256Mi
+        name: images

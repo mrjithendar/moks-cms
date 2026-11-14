@@ -26,6 +26,8 @@ spec:
     metadata:
       labels:
         app: jithendar-com
+        # Shared with the worker pods (35-jithendar-com-worker.yaml); Service jithendar-com-metrics selects it.
+        app.kubernetes.io/name: jithendar-com
         app.kubernetes.io/part-of: jithendar-com
     spec:
       automountServiceAccountToken: false
@@ -74,6 +76,11 @@ spec:
           value: "true"
         - name: LOG_LEVEL
           value: info
+        # These replicas serve requests. Scheduled publishing, the job queue and backups run in the worker pod
+        # (35-jithendar-com-worker.yaml, APP_ROLE=worker); a web replica takes them over if the worker has not
+        # reported for three minutes (src/lib/app-role.ts, src/lib/worker-heartbeat.ts).
+        - name: APP_ROLE
+          value: web
         # SEO v3 (docs/seo/AGENTS.md): where the seo-agent service is, and the cluster-internal port its callbacks use.
         # The callback listener starts only when SEO_ORCHESTRATOR=crewai (or its v3 alias langgraph) (set in jithendar-com-env/-public, off by
         # default: legacy v2 path) and SEO_AGENT_CALLBACK_TOKEN is set.
@@ -389,9 +396,14 @@ spec:
     ports:
     - port: 9465
       protocol: TCP
+  # The worker pods too: they need the same egress, and nothing routes requests to them (no Service selects them).
   podSelector:
-    matchLabels:
-      app: jithendar-com
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - jithendar-com
+      - jithendar-com-worker
   policyTypes:
   - Ingress
   - Egress
@@ -407,8 +419,12 @@ metadata:
   namespace: jithendar
 spec:
   podSelector:
-    matchLabels:
-      app: jithendar-com
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - jithendar-com
+      - jithendar-com-worker
   policyTypes:
   - Egress
   egress:

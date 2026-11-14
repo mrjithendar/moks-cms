@@ -158,7 +158,8 @@ spec:
   policyTypes: ["Ingress", "Egress"]
   ingress:
     - from:
-        - podSelector: { matchLabels: { app: jithendar-com } }
+        # The web replicas (admin run API, /api/ask) and the worker (scheduled SEO jobs).
+        - podSelector: { matchExpressions: [{ key: app, operator: In, values: [jithendar-com, jithendar-com-worker] }] }
         - podSelector: { matchLabels: { app: seo-agent-trigger } }
       ports: [{ port: 8080, protocol: TCP }]
     # Kong (namespace kong, tools repo docs/kong) reaches the MCP port and nothing else. Until the Kong cutover this

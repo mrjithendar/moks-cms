@@ -16,7 +16,8 @@ spec:
   podSelector: { matchLabels: { app: practice-executor-api } }
   policyTypes: ["Ingress", "Egress"]
   ingress:
-    - from: [{ podSelector: { matchLabels: { app: jithendar-com } } }]
+    # The web replicas (runs and submissions) and the worker (collects finished runs nobody polled for).
+    - from: [{ podSelector: { matchExpressions: [{ key: app, operator: In, values: [jithendar-com, jithendar-com-worker] }] } }]
       ports: [{ port: 8080, protocol: TCP }]
   egress:
     # Shared Valkey (namespace redis): valkey-master:6379 is the master proxy on pod port 6380.
