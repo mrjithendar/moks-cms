@@ -1,6 +1,9 @@
 name: jithendar.com
 
 # check   → pull requests (opened, updated) and manual runs: lint, typecheck, test, build, render manifests
+# release → also on a manual run (workflow_dispatch) started on the default branch: same build, test, smoke test
+#           and push as below, tagged :manual-<run number> and :latest; the rollout restart is on by default and
+#           can be switched off with the `restart` input
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #           in the image (job `scope`): npm ci once; lint, tests and the production build (in turn); package the
 #           build into an arm64 image, smoke-test the image, push it to Harbor as
@@ -23,6 +26,11 @@ name: jithendar.com
 
 on:
   workflow_dispatch:
+    inputs:
+      restart:
+        description: Restart deploy/jithendar-com after pushing :latest
+        type: boolean
+        default: true
   pull_request:
     types: [opened, synchronize, reopened, closed]
     paths:
@@ -112,7 +120,11 @@ jobs:
 
   release:
     needs: scope
-    if: needs.scope.outputs.image == 'true'
+    # scope is skipped on manual runs, so !cancelled() keeps this job from being skipped with it. Manual runs
+    # release only from the default branch: :latest is what the cluster runs.
+    if: >-
+      !cancelled() && (needs.scope.outputs.image == 'true' ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch))
     # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
@@ -124,14 +136,16 @@ jobs:
       cancel-in-progress: false
     env:
       REGISTRY_IMAGE: registry.jithendar.com/jithendar/jithendar-com
-      PR_TAG: pr-${{ github.event.pull_request.number }}
-      RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      # Pull requests: pr-<number>. Manual runs: manual-<run number>.
+      PR_TAG: ${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_number) || format('pr-{0}', github.event.pull_request.number) }}
+      RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The merge commit on the default branch, not the pull request's test merge.
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          # The merge commit on the default branch, not the pull request's test merge (manual runs: the
+          # dispatched commit).
+          ref: ${{ env.RELEASE_SHA }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: services/www/.nvmrc
@@ -199,6 +213,7 @@ jobs:
       # deployment/jithendar-com: the template .github/jithendar-ci-deployer.yaml filled in with the values that
       # scripts/setup-ci-deployer.sh stored.
       - name: Restart jithendar-com
+        if: github.event_name != 'workflow_dispatch' || inputs.restart
         env:
           MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
           MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
@@ -217,13 +232,20 @@ jobs:
             exit 1
           fi
       - name: Record image
+        env:
+          RESTARTED: ${{ github.event_name != 'workflow_dispatch' || inputs.restart }}
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {
             echo '### jithendar.com image'
             echo
-            echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` (pull request #${PR_TAG#pr-}, commit \`$RELEASE_SHA\`)"
+            if [[ "$PR_TAG" == pr-* ]]; then source="pull request #${PR_TAG#pr-}"; else source="manual run #${PR_TAG#manual-}"; fi
+            echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` ($source, commit \`$RELEASE_SHA\`)"
             echo "- Digest: \`$digest\`"
             echo
-            echo "Deployed: deploy/jithendar-com restarted on \`:latest\`"
+            if [[ "$RESTARTED" == true ]]; then
+              echo "Deployed: deploy/jithendar-com restarted on \`:latest\`"
+            else
+              echo "Not deployed: restart skipped; the cluster picks up \`:latest\` on its next restart"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
