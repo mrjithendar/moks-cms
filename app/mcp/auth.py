@@ -7,8 +7,9 @@ Settings → MCP access. Tokens are stored only as SHA-256 hashes in the shared 
 server verifies a bearer token with one indexed lookup and needs no signing keys; revocation takes effect on the
 next request.
 
-`DbTokenVerifier.verify_token` returns the MCP SDK's AccessToken with `resource` set, and the SDK's bearer middleware
-(with `validate_token_resource=True`) refuses tokens for any other audience. Missing/invalid → 401 with
+`DbTokenVerifier.verify_token` only returns a token that was issued for this resource; one issued for another
+audience is treated like an unknown token. The SDK's bearer middleware (with `validate_token_resource=True`) checks the
+audience again, so the rule does not rest on a single option. Missing/invalid → 401 with
 `WWW-Authenticate: Bearer resource_metadata=…`; insufficient scope → 403 `insufficient_scope`.
 """
 
@@ -51,21 +52,22 @@ class DbTokenVerifier:
                 (token_hash(token),),
             )
             r = await cur.fetchone()
-            if r is None:
+            # A token issued for another resource (RFC 8707) is not a token here, and does not count as a use of the grant.
+            if r is None or r["resource"] != self.resource:
                 metrics.MCP_AUTH_FAILURES.labels(server="admin").inc()
                 return None
             gid = str(r["grant_id"])
-            if time.monotonic() - self._touched.get(gid, 0) > 60:  # last-used, at most once a minute per grant
+            last = self._touched.get(gid)
+            if last is None or time.monotonic() - last > 60:  # last-used, at most once a minute per grant
                 self._touched[gid] = time.monotonic()
                 await c.execute("update seo_mcp_grants set last_used_at = now() where id = %s", (r["grant_id"],))
-        if r["resource"] != self.resource:
-            metrics.MCP_AUTH_FAILURES.labels(server="admin").inc()
         return AccessToken(token=token, client_id=str(r["client_id"]), scopes=list(r["scopes"] or []), expires_at=int(r["exp"]), resource=r["resource"], subject=str(r["user_id"]), claims={"grant_id": gid})
 
 
 @dataclass
 class MemoryTokenVerifier:
-    """Tests: token → (client_id, scopes, resource, expires_at)."""
+    """Tests: token → (client_id, scopes, resource, expires_at). It hands back tokens for any resource, which leaves
+    the audience check to the SDK middleware so the tests exercise that layer as well."""
 
     tokens: dict[str, tuple[str, list[str], str, int]] = field(default_factory=dict)
 
