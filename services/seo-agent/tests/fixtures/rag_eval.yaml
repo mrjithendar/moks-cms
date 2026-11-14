@@ -1,6 +1,6 @@
 # Retrieval evaluation set for Ask the Blog / search_articles / vector_search (docs/seo/RAG.md "Evaluation").
 #
-# Each question was written from the published articles in services/www/content/blog (2026-11-10, 37 articles).
+# Each question was written from the published articles in sites/jithendar.com/content/blog (then services/www/content/blog; 2026-11-10, 37 articles).
 #   slugs:   the article(s) that answer it (any one counts as a hit)
 #   anchors: acceptable section anchors (github-slugger ids, as on the site); a hit in one of these is a
 #            "section-anchor hit". Empty for no-answer questions.
