@@ -1,5 +1,29 @@
 # Progress log — jithendar.com
 
+## Read-only demo accounts with email invitations (2026-11-14, owner request)
+
+Owner request: demo users who see what an admin sees but cannot edit anything, as many as needed, invited by email.
+Details: [AUTH.md → Demo accounts](AUTH.md#demo-accounts-read-only-for-product-demonstrations).
+
+- New stored role `demo`. The proxy stamps the request method; `getSessionUser()` makes a demo account an admin on
+  GET/HEAD and a non-staff `demo` on every write, so all existing role checks refuse its writes (`lib/demo.ts`).
+- Admin → Users: **Invite demo users** form (email, optional name), Demo option in the role picker, **Resend invite**.
+  Invitation email with a 72-hour set-password link; `/reset-password?invite=demo` wording.
+- Admin shell shows a read-only banner and a "demo" badge. Backup download refused (route + hidden links); comments
+  refused; friendly read-only messages from the editor, `seoRoute` APIs and server actions.
+- Fix found on the way: role changes and bans now end sessions through Better Auth, so they also reach sessions held
+  in Redis (previously only the Postgres session rows were deleted).
+- Files: `src/lib/demo.ts` (new), `src/lib/session.ts`, `src/lib/auth.ts`, `src/lib/users.ts`, `src/lib/admin.ts`,
+  `src/lib/comments.ts`, `src/lib/comment-types.ts`, `src/lib/seo-intel/http.ts`, `src/proxy.ts`,
+  `src/app/admin/layout.tsx`, `src/app/admin/users/page.tsx`, `src/app/admin/backups/page.tsx`,
+  `src/app/api/admin/backup/route.ts`, `src/app/reset-password/{page,ResetPasswordForm}.tsx`,
+  `src/components/AccountMenu.tsx`, `tests/demo-users.test.ts` (new), `docs/AUTH.md`.
+- Commands: `tsc --noEmit` pass; eslint on changed files pass; `npm test` 96 files / 1168 tests pass (1 skipped);
+  `npm run build` could not run in this worktree (`node_modules` is a symlink outside the Turbopack root).
+- Open: a demo account sees real personal data (users, messages, bookings, comments). Masking it is not built.
+
+**Manual configuration required:** email must be set up (Admin → Storage & email) before invites can be sent.
+
 ## Admin MCP tools and agent skills for AI visibility, rankings and backlinks (2026-11-14, owner request)
 
 Fourth part of "add what is worth taking from open-seo": its MCP tools and agent skills, on this site's admin MCP.

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isGone } from "@/config/gone";
 import { isIndexableHost } from "@/config/site";
 import { clientIp } from "@/lib/client-ip";
+import { REQUEST_METHOD_HEADER } from "@/lib/demo";
 import { indexNowKey, INDEXNOW_KEY_PATTERN } from "@/lib/indexnow-key";
 import { MAINTENANCE_EXEMPT, maintenancePage, maintenanceState } from "@/lib/site-config/maintenance";
 import { recordRequest } from "@/lib/metrics";
@@ -83,6 +84,8 @@ function route(request: NextRequest, requestId: string): NextResponse {
   // Forward the request id to the app (route handlers, server actions, onRequestError read x-request-id).
   const headers = new Headers(request.headers);
   headers.set("x-request-id", requestId);
+  // The method as the app should trust it (overwrites any client value): demo accounts may only read (lib/demo.ts).
+  headers.set(REQUEST_METHOD_HEADER, request.method);
   const response = NextResponse.next({ request: { headers } });
   if (!indexable) response.headers.set("X-Robots-Tag", NOINDEX);
   // Draft previews (admin-only, see lib/site-config): never cached by anyone, never indexed.

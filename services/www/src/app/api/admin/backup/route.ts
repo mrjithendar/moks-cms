@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 /** Download a fresh backup (a zip, encrypted if that is switched on), or `?file=` one already stored in R2 (admins only). */
 export const GET = handleErrors("backup download", async (request?: Request) => {
   const user = await getSessionUser();
-  if (!user || user.role !== "admin") return new Response("Forbidden", { status: 403 });
+  // A backup is the whole database: never for a demo account, even though it otherwise sees what an admin sees.
+  if (!user || user.role !== "admin" || user.demo) return new Response("Forbidden", { status: 403 });
   try {
     const stored = request ? new URL(request.url).searchParams.get("file") : null;
     const { filename, data } = stored ? { filename: stored, data: await readStoredBackup(stored) } : await buildBackup();

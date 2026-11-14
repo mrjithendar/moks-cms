@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AdminNav, type NavItem } from "@/components/admin/AdminNav";
 import { SessionGuard } from "@/components/SessionGuard";
+import { Alert } from "@/components/ui/form";
 import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { moderationCounts } from "@/lib/comments";
@@ -116,14 +117,23 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         <div className="flex flex-col gap-3 px-4 py-3 sm:px-6 lg:min-h-full lg:gap-6 lg:px-4 lg:py-6">
           <Link href="/admin" className="hidden items-center gap-2 px-3 lg:flex">
             <span className="text-sm font-semibold text-fg">Admin</span>
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium capitalize text-fg-muted">{user.role}</span>
+            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium capitalize text-fg-muted">{user.demo ? "demo" : user.role}</span>
           </Link>
           <AdminNav items={items} account={<div className="text-sm">{account}</div>} />
           <div className="mt-auto hidden border-t border-line px-3 pt-4 text-sm lg:block">{account}</div>
         </div>
       </aside>
       <div className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
-        <div className="mx-auto max-w-6xl">{children}</div>
+        <div className="mx-auto max-w-6xl">
+          {user.demo && (
+            <div data-demo-banner className="mb-6">
+              <Alert tone="info">
+                <strong>Read-only demo.</strong> You see the admin exactly as the site owner does, but nothing you change is saved and nothing is sent.
+              </Alert>
+            </div>
+          )}
+          {children}
+        </div>
       </div>
       <SessionGuard userId={user.id} />
     </div>

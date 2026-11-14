@@ -9,7 +9,7 @@ import { signOutAndLeave } from "@/lib/sign-out";
 import { LayoutIcon, SettingsIcon, SignOutIcon, UserIcon } from "./icons";
 import { UserAvatar } from "./UserAvatar";
 
-const STAFF = new Set(["admin", "author"]);
+const STAFF = new Set(["admin", "author", "demo"]);
 
 /**
  * The account control at the far right of the header. It reads the session in the browser
