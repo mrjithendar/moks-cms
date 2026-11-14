@@ -12,9 +12,9 @@
 # this ServiceAccount (or any other in the namespace) any permission in namespace jithendar, including reading its
 # Secrets. Review changes to minikube/*rbac*, 70-, 80- and 85- files as changes to cluster access.
 #
-# It still cannot delete anything, create pods directly, read or write Secrets (as committed here), or touch any
-# other namespace or anything else cluster-wide. Separate from github-ci-deployer (80-ci-deployer.yaml), which only
-# restarts Deployments.
+# It still cannot delete anything, create pods directly (it may port-forward to them, for the smoke test), read or
+# write Secrets (as committed here), or touch any other namespace or anything else cluster-wide. Separate from
+# github-ci-deployer (80-ci-deployer.yaml), which only restarts Deployments.
 #
 # CI cannot apply the ClusterRole and ClusterRoleBinding in this file (cluster-wide RBAC stays with a person):
 # scripts/setup-ci-applier.sh applies the whole file and stores the token as the repository secret MK4_CI_APPLY_TOKEN.
@@ -71,6 +71,12 @@ rules:
 - apiGroups: [""]
   resources: ["pods", "events"]
   verbs: ["get", "list", "watch"]
+# Smoke test: Cloudflare answers 403 to GitHub-hosted runners, so the workflow reaches the site through
+# `kubectl port-forward deployment/jithendar-com`. This allows a port-forward to any pod in the namespace (RBAC cannot
+# narrow it to generated pod names); it gives network access only, not the pods' Secrets or a shell.
+- apiGroups: [""]
+  resources: ["pods/portforward"]
+  verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

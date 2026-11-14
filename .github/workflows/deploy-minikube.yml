@@ -193,6 +193,23 @@ jobs:
             echo '- Not applied by CI: Secrets, ClusterRoles and ClusterRoleBindings, ClusterIssuers, RuntimeClass, admission policies, CronJobs; and for practice-executor and seo-agent also RBAC, ServiceAccounts and quotas.'
           } >> "$GITHUB_STEP_SUMMARY"
       # The site is checked even when another workload failed to roll out, so that failure cannot hide a broken site.
+      # Cloudflare answers 403 to GitHub-hosted runners, so the app is tested through a port-forward to the site
+      # Deployment (pods/portforward in 85-ci-applier.yaml); the edge redirects are not tested from here.
       - name: Smoke test
         if: ${{ !cancelled() && steps.apply.outcome != 'skipped' }}
-        run: scripts/smoke.sh https://jithendar.com
+        env:
+          MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
+          MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
+          MK4_CI_APPLY_TOKEN: ${{ secrets.MK4_CI_APPLY_TOKEN }}
+        run: |
+          set -euo pipefail
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-applier.yaml > "$KUBECONFIG")
+          kubectl port-forward deployment/jithendar-com 18080:3000 > "$RUNNER_TEMP/port-forward.log" 2>&1 &
+          pf=$!
+          trap 'kill "$pf" 2>/dev/null || true; rm -f "$KUBECONFIG"' EXIT
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null --max-time 2 http://127.0.0.1:18080/ && break
+            sleep 1
+          done
+          SMOKE_VIA=http://127.0.0.1:18080 scripts/smoke.sh https://jithendar.com || { cat "$RUNNER_TEMP/port-forward.log"; exit 1; }

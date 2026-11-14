@@ -29,7 +29,10 @@ metadata:
   namespace: jithendar
   labels: { app: practice-executor-api, app.kubernetes.io/part-of: python-practice }
 spec:
-  replicas: 2
+  # 0 until mk4 has the sandbox layer again (gVisor, practice-executor-05/-10/-15/-20 and verify-practice-sandbox.sh,
+  # all applied by a person; CI never applies them). Without its ServiceAccount the pods cannot be created and the
+  # deploy workflow fails waiting for them. Set back to 2 once scripts/verify-practice-sandbox.sh passes.
+  replicas: 0
   selector: { matchLabels: { app: practice-executor-api } }
   template:
     metadata:
@@ -66,7 +69,10 @@ metadata:
   namespace: jithendar
   labels: { app: practice-dispatcher, app.kubernetes.io/part-of: python-practice }
 spec:
-  replicas: 1
+  # 0 until mk4 has the sandbox layer again (gVisor, practice-executor-05/-10/-15/-20 and verify-practice-sandbox.sh,
+  # all applied by a person; CI never applies them). Without its ServiceAccount the pods cannot be created and the
+  # deploy workflow fails waiting for them. Set back to 1 once scripts/verify-practice-sandbox.sh passes.
+  replicas: 0
   selector: { matchLabels: { app: practice-dispatcher } }
   template:
     metadata:
