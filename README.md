@@ -5,12 +5,11 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 
 | Path | Contents |
 |---|---|
-| [`sites/`](sites/README.md) | One folder per website the CMS serves (`sites/jithendar.com/`): identity (`site.json`), redirects and other config, articles, images and the articles' figure sources. [Adding a site](sites/README.md#adding-a-site) |
+| [`sites/`](sites/README.md) | One folder per website the CMS serves (`sites/jithendar.com/`): identity (`site.json`), redirects and other config, articles, images, the articles' figure sources and the site's Grafana dashboards (`grafana/`, one ConfigMap and one Argo CD app per site). [Adding a site](sites/README.md#adding-a-site) |
 | [`services/www/`](services/www/README.md) | The Next.js app (moks-cms): source, tests, Dockerfiles and [docs](services/www/docs/) |
 | [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), the Python practice executor (`practice-executor-*.yaml`) and the SEO agent (`seo-agent-*.yaml`); `scripts/manifests.sh <group>` prints one group |
 | [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
 | `services/seo-agent/` | SEO v4 agent service (Python: CrewAI Flows and Crews as the only job engine, MCP servers, pgvector, Ask the Blog, report PDFs); see [FLOWS.md](services/www/docs/seo/FLOWS.md) and [MCP.md](services/www/docs/seo/MCP.md) |
-| [`services/grafana/`](services/grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app (its path must be `services/grafana`) |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; when one is merged, builds the images (`moks-cms`, `moks-cms-content`, `seo-agent`, `practice-executor`), pushes them to Harbor (`registry.jithendar.com/jithendar`), rolls them out and applies `minikube/` |

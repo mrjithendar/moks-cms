@@ -2,7 +2,7 @@
   "id": null,
   "uid": "jithendar-com-seo-agent",
   "title": "Jithendar.com · SEO agents (CrewAI flows, MCP)",
-  "description": "SEO v4 (services/seo-agent): CrewAI flow runs and steps, the three crews, LLM cost, embeddings, Ask the Blog and the MCP servers. Source: jithendar.com repository, services/grafana/.",
+  "description": "SEO v4 (services/seo-agent): CrewAI flow runs and steps, the three crews, LLM cost, embeddings, Ask the Blog and the MCP servers. Source: jithendar.com repository, sites/jithendar.com/grafana/.",
   "tags": [
     "jithendar-com",
     "prometheus",
