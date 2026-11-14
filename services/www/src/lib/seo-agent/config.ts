@@ -31,7 +31,10 @@ export function callbackPort(env: Record<string, string | undefined> = process.e
   return Number.isInteger(n) && n > 0 && n < 65536 ? n : 0;
 }
 
-/** Ask the Blog kill switch: ASK_BLOG_ENABLED=true turns the public widget and /api/ask on. Default off. */
+/**
+ * Ask the Blog deployment switch: ASK_BLOG_ENABLED=true allows the public widget and /api/ask. Default off. Whether
+ * they are actually on is then the admin's setting (lib/seo-agent/ask-settings.ts, askState()): both must be on.
+ */
 export const askEnabled = (env: Record<string, string | undefined> = process.env) => env.ASK_BLOG_ENABLED?.trim().toLowerCase() === "true";
 
 /** Documentation domains the editorial crew may read (through the SSRF-safe fetcher). Same default as seo-agent. */

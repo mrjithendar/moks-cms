@@ -55,7 +55,7 @@ flowchart LR
 | tool | `search_articles(query, topic?, limit ≤ 50, cursor?)` | title, canonical URL with section anchor, snippet (untrusted content), published/updated dates; `next_cursor` |
 | tool | `get_article(slug, section?, cursor?)` | the article or one section as Markdown (untrusted content) with its canonical URL; 12,000 characters per call, `next_cursor` for the rest |
 | tool | `list_topics()` | topics with published article counts and hub URLs |
-| tool | `ask_blog(question)` | the Ask-the-Blog answer path with citations; counts against the Ask-the-Blog daily budget |
+| tool | `ask_blog(question)` | the Ask-the-Blog answer path with citations; counts against the Ask-the-Blog daily budget. Returns `outcome: "disabled"` while the assistant is switched off or set to signed-in readers only (the tool has no site sign-in; RAG.md "Admin settings") |
 | resource | `article://{slug}` | the article as Markdown with an untrusted-content notice |
 | prompt | `explain_with_sources(topic)` | asks the client model to search, read and cite jithendar.com URLs |
 

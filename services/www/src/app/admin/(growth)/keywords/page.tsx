@@ -6,6 +6,7 @@ import { rowsOf } from "@/db/rows";
 import { AdminHeader, Card } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { Badge } from "@/components/seo/badges";
+import { askState } from "@/lib/seo-agent/ask-settings";
 import { askGapClusters } from "@/lib/seo-agent/gaps";
 import { KeywordTable } from "@/components/seo/KeywordTable";
 import { FilterChips, SavedViews } from "@/components/seo/table-kit";
@@ -46,6 +47,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
   const cannibal = p.view === "cannibalization" ? await cannibalization(p) : [];
   const gaps = p.view === "gaps" ? await contentGaps(p) : [];
   const asked = p.view === "gaps" ? await askGapClusters().catch(() => []) : [];
+  const askOn = p.view === "gaps" ? ((await askState().catch(() => null))?.on ?? false) : false;
   const spark = table ? await sparklines(table.rows.map((r) => r.query), p.days === 90 ? 90 : 28) : new Map<string, number[]>();
   const base = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]);
   const link = (patch: Record<string, string | undefined>) => {
@@ -169,7 +171,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
                 </Card></li>
               ))}
             </ul>
-          ) : <Empty>No unanswered reader questions{" "}(Ask the Blog is {process.env.ASK_BLOG_ENABLED === "true" ? "on" : "off"}).</Empty>}
+          ) : <Empty>No unanswered reader questions{" "}(Ask the Blog is {askOn ? "on" : "off"}).</Empty>}
         </Section>
       )}
     </>

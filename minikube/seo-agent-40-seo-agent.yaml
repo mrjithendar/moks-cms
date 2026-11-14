@@ -21,8 +21,10 @@ data:
   # Shared with the web app (same seo_llm_usage table): keep equal to the site's SEO_LLM_MONTHLY_BUDGET_USD.
   SEO_LLM_MONTHLY_BUDGET_USD: "15"
   ASK_BLOG_DAILY_BUDGET_USD: "1"
-  # Kill switch for the public assistant; the web app's ASK_BLOG_ENABLED gates the widget and /api/ask too.
-  ASK_BLOG_ENABLED: "false"
+  # Deployment switch for the public assistant ("false" = off whatever the admin saved). Whether it is on, and for whom,
+  # is Admin → Automation & AI → Ask the Blog (off until an admin turns it on; docs/seo/RAG.md "Admin settings").
+  # ASK_BLOG_DAILY_BUDGET_USD above is the ceiling for the budget set there.
+  ASK_BLOG_ENABLED: "true"
   SEO_AGENT_FANOUT_CONCURRENCY: "2"
   SEO_AGENT_WEEKLY_MAX_ARTICLES: "10"
   # Ceilings per crew run. Raised for the editorial crew's deeper research (was 150000 / 600): a normal optimisation
