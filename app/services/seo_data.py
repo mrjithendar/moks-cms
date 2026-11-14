@@ -6,9 +6,10 @@ Nothing here computes metrics; it validates arguments (enums, slugs, bounded lim
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from .content import ContentError, check_slug, clamp_limit, decode_cursor, encode_cursor
+from .content import ContentError, check_slug, clamp_limit, decode_cursor, encode_cursor, untrusted
 
 PERIODS = ("7d", "28d", "90d", "16m")
 KEYWORD_VIEWS = ("striking", "low_ctr", "rising", "lost", "cannibalization", "gaps")
@@ -73,3 +74,43 @@ async def llm_usage(web: Any, guard: Any, period: str | None) -> dict[str, Any]:
         raise ContentError("period must be day, week or month")
     r = await web.data("llm-usage", {"period": p})
     return {**r, "budget": await guard.status()}
+
+
+# --- AI visibility, rankings, backlinks ----------------------------------------------------------------------------
+
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+async def ai_visibility(web: Any) -> dict[str, Any]:
+    """Cited share per assistant, competing domains and the prompt grid. Prompt text comes from the admin or from
+    Search Console queries (outside wording), so each prompt is returned as untrusted_content."""
+    r = await web.data("ai-visibility", {})
+    prompts = [{**p, "prompt": untrusted(str(p.get("prompt", ""))[:300])} for p in (r.get("prompts") or [])[:200]]
+    return {**{k: r.get(k) for k in ("source", "host", "spentUsdThisMonth", "byProvider", "competitors")}, "prompts": prompts}
+
+
+async def ai_prompt_answers(web: Any, prompt_id: str) -> dict[str, Any]:
+    """Stored answers for one prompt. Answers and source titles are third-party text: untrusted_content."""
+    pid = (prompt_id or "").strip().lower()
+    if not _UUID.match(pid):
+        raise ContentError("invalid prompt_id")
+    r = await web.data("ai-prompt", {"id": pid})
+    p = r.get("prompt") or {}
+    answers = [
+        {
+            **{k: a.get(k) for k in ("provider", "model", "run_on", "cited", "mentioned", "cited_rank", "cost_usd", "error")},
+            "answer": untrusted(str(a.get("answer") or "")[:4000]) if a.get("answer") else None,
+            "sources": [{"url": x.get("url"), "domain": x.get("domain"), "title": untrusted(str(x.get("title") or "")[:300]) if x.get("title") else None} for x in (a.get("sources") or [])[:20]],
+        }
+        for a in (r.get("answers") or [])[:20]
+    ]
+    return {"prompt": {**{k: p.get(k) for k in ("id", "source", "active", "added_at")}, "text": untrusted(str(p.get("prompt", ""))[:300])}, "answers": answers}
+
+
+async def backlinks(web: Any) -> dict[str, Any]:
+    return await web.data("backlinks", {})
+
+
+async def tracked_keywords(web: Any) -> dict[str, Any]:
+    r = await web.data("tracked-keywords", {})
+    return {"source": r.get("source"), "rows": (r.get("rows") or [])[:200]}
