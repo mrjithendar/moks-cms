@@ -9,7 +9,7 @@ one page.
 | Signal | From the site | Collected by | Where to look |
 |---|---|---|---|
 | Traces | Next.js spans via `@vercel/otel` (`src/instrumentation.ts`), OTLP/HTTP to `otel-collector.observability:4318` | collector → Jaeger (privacy filter drops URLs, queries, SQL, exception text, health checks) | Dashboard **Jithendar.com · Observability** (Grafana's Jaeger data source, by trace id); Jaeger's own UI is not public: `kubectl -n observability port-forward svc/jaeger 16686`, then http://localhost:16686, service `jithendar-com` |
-| Logs | JSON lines on stdout (`src/lib/log.ts`, access log in `src/proxy.ts`) | Alloy reads namespace `jithendar` (Role `alloy-logs`, `minikube/70-observability.yaml`) → Loki | Dashboards **Jithendar.com · Logs** and **· Observability** |
+| Logs | JSON lines on stdout (`src/lib/log.ts`, access log in `src/proxy.ts`) | Alloy reads namespace `jithendar` (Role `alloy-logs`, `kubernetes/70-observability.yaml`) → Loki | Dashboards **Jithendar.com · Logs** and **· Observability** |
 | Metrics | `src/lib/metrics.ts` on port **9464** `/metrics` (cluster-internal) | Prometheus job `jithendar-com` (headless Service `jithendar-com-metrics`) | Dashboards **Jithendar.com · Overview** and **· Observability**; alerts `JithendarCom*` |
 
 ## Metrics
@@ -160,7 +160,7 @@ identical labels, so one `rate()` over both failed with "vector cannot contain m
 
 ## Rolling it out
 
-1. Deploy the site: merge the pull request (CI builds the image; the `deploy to minikube` workflow applies `minikube/`, including the `strip-trace-headers` middleware on the
+1. Deploy the site: merge the pull request (CI builds the image; the `deploy to kubernetes` workflow applies `kubernetes/`, including the `strip-trace-headers` middleware on the
    `jithendar-com` Ingress).
 2. Push this repository (dashboards in `sites/jithendar.com/grafana/`) and the `tools` repo, then sync `loki`, `prometheus` and
    `grafana` in Argo CD (Alloy patterns, scrape jobs, alerts, the Jaeger data source and the dashboards; the
@@ -183,7 +183,7 @@ Found on mk4 and fixed in code (the site fixes need a deploy; the `tools` ones a
 - **Visitors could steer tracing.** Next.js continues any incoming `traceparent`: a request with
   `traceparent: 00-<id>-…-01` got that trace id (and it became the visitor's error reference); `…-00` would have
   turned off the trace, the request metric and the completion line. The ingress now strips
-  `traceparent`/`tracestate`/`baggage` (`minikube/60-istio-routing.yaml`, VirtualService route `site`), and the sampler ignores
+  `traceparent`/`tracestate`/`baggage` (`kubernetes/60-istio-routing.yaml`, VirtualService route `site`), and the sampler ignores
   remote sampling flags.
 - **Outgoing span names held full URLs:** `http GET https://<account>.r2.cloudflarestorage.com/<bucket>/<key>?…`,
   and a ~95 kB `fetch GET data:…base64` name from the OG image renderer. Names are now `<kind> <METHOD> <host>`

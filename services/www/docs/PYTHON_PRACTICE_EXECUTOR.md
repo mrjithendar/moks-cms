@@ -10,7 +10,7 @@ Anyone with a free account can submit arbitrary Python. Assume every submission 
 | Attacker goal | Example | Control |
 |---|---|---|
 | Escape to the node | kernel exploit, container breakout | gVisor (`runsc`): submissions talk to gVisor's user-space kernel, not the host kernel. One fresh sandbox (pod) per job. Non-root, no capabilities, seccomp, read-only root, no privilege escalation |
-| Reach internal services | Postgres, Redis, the Kubernetes API, the site, Argo CD | `runsc` with `network = "none"`: the sandbox has only loopback. No DNS (`dnsPolicy: None` → 127.0.0.1). NetworkPolicies (`minikube/practice-executor-50-networkpolicies.yaml`) are a second layer: mk4's kindnet enforces them, so the site's egress rule must allow `app=practice-executor-api` |
+| Reach internal services | Postgres, Redis, the Kubernetes API, the site, Argo CD | `runsc` with `network = "none"`: the sandbox has only loopback. No DNS (`dnsPolicy: None` → 127.0.0.1). NetworkPolicies (`kubernetes/practice-executor-50-networkpolicies.yaml`) are a second layer: mk4's kindnet enforces them, so the site's egress rule must allow `app=practice-executor-api` |
 | Steal credentials | service-account token, cloud metadata, env secrets | `automountServiceAccountToken: false`; no network (so no metadata endpoint); the only env var is the job payload; the sandbox service account has no permissions anyway |
 | Read hidden tests / expected outputs | read files, inspect memory | The sandbox receives **inputs only**. Expected outputs never leave the web app; grading happens there (`lib/practice/evaluator.ts`). Hidden-test details (inputs, outputs, stdout) are never shown to users |
 | Forge a passing result | print a fake result line, tamper with the runner | User code runs in a forked child with stdout/stderr redirected to pipes; it cannot write to the pod log. Even a forged result only contains outputs, which are compared server-side against values the code never saw |
@@ -20,7 +20,7 @@ Anyone with a free account can submit arbitrary Python. Assume every submission 
 
 A second policy, `practice-sandbox-pods-extra`, describes more of the pod (image from the project's registry, one
 container, all capabilities dropped, `RuntimeDefault` seccomp, never restarted, no host ports, size-limited scratch
-space). It only warns and audits for now; `minikube/practice-executor-15-admission.yaml` says how to check it and
+space). It only warns and audits for now; `kubernetes/practice-executor-15-admission.yaml` says how to check it and
 switch it to `Deny`. The dispatcher's NetworkPolicy lets it reach the Kubernetes API on private addresses only.
 
 **Why not plain Docker or Python-level sandboxing?** Containers share the host kernel; a kernel bug is a
@@ -47,7 +47,7 @@ browser ─► jithendar-com (Next.js)                       executor           
 ```
 
 - Executor code: `services/executor/` (`app/main.py` API, `app/dispatcher.py`, `app/backends.py`, `sandbox/runner.py`).
-- Manifests: `minikube/practice-executor-*.yaml` — separate from `minikube/kustomization.yaml`; CI applies only its application objects (`deploy-minikube.yml`).
+- Manifests: `kubernetes/practice-executor-*.yaml` — separate from `kubernetes/kustomization.yaml`; CI applies only its application objects (`deploy-kubernetes.yml`).
 - Result protocol: the runner prints one line `<<<RESULT:{nonce}>>>{json}`; per test: status
   (ok/error/timeout/memory/crash/skipped), normalised output (sets, big ints, tuples encoded losslessly),
   repr, stdout/stderr (capped), exception type/message/traceback (user frames only), duration, peak memory.
@@ -64,7 +64,7 @@ browser ─► jithendar-com (Next.js)                       executor           
    the tools repository's `registry.py ci-robots`; merge to `master` so `.github/workflows/ci-practice-executor.yml`
    builds and pushes them.
 3. **Apply the manifests:** `scripts/manifests.sh practice-executor | kubectl apply -f -` (namespace `jithendar`),
-   `kubectl apply -f minikube/80-ci-deployer.yaml` (lets the site's CI account roll out the executor),
+   `kubectl apply -f kubernetes/80-ci-deployer.yaml` (lets the site's CI account roll out the executor),
    then `scripts/create-practice-executor-secrets.sh mk4`: it creates `practice-executor-env` and writes
    `PRACTICE_EXECUTOR_URL`/`PRACTICE_EXECUTOR_TOKEN` into `jithendar-com-env` directly (nothing to copy by hand).
    `harbor-pull` must exist in `jithendar` (tools `registry.py pull-secrets`); sandbox pods pull with it too.
@@ -76,8 +76,8 @@ browser ─► jithendar-com (Next.js)                       executor           
    Deployments to `practice-executor:pr-<number>`; sandbox pods use `practice-sandbox:latest` with
    `imagePullPolicy: Always`. The release job pushes `:pr-<number>` and moves `:latest` for both images. From then on every push that touches
    `services/executor/` or the practice catalog deploys. It never applies manifests, so changes to
-   `minikube/practice-executor-*.yaml` are still applied by hand.
-6. **Connect the site:** run the `deploy to minikube` workflow (applies the site's egress rule to the executor and restarts the site), then
+   `kubernetes/practice-executor-*.yaml` are still applied by hand.
+6. **Connect the site:** run the `deploy to kubernetes` workflow (applies the site's egress rule to the executor and restarts the site), then
    switch on *Admin → Python practice → Settings → Allow running and submitting code*.
 7. Optional: validate a problem from the admin editor (“Validate”) to see an end-to-end run.
 

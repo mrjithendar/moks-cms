@@ -1,7 +1,7 @@
 # SEO platform v4 agent service (services/seo-agent, docs/seo/FLOWS.md, CREWS.md, MCP.md): every AI workflow and
 # scheduled SEO job as a CrewAI Flow, the Optimization/Editorial/Report crews, pgvector retrieval, Ask the Blog, and
 # the MCP servers. Two ports: 8080 the internal API (web pods, trigger CronJobs, Prometheus only) and 8090 the MCP
-# edge (/mcp/public, /mcp/admin; Kong only, via Service seo-agent-mcp and minikube/kong/seo-agent-mcp.deck.yaml).
+# edge (/mcp/public, /mcp/admin; Kong only, via Service seo-agent-mcp and kubernetes/kong/seo-agent-mcp.deck.yaml).
 # Applied by a person (scripts/manifests.sh seo-agent | kubectl apply -f -) after the one-time steps in
 # docs/seo/MANUAL_SETUP.md "v3" and "v4": Secret seo-agent-env (scripts/create-seo-agent-secrets.sh), pgvector enabled.
 # Secret seo-agent-env (never committed): ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN. The admin MCP

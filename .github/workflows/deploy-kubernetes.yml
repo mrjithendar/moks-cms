@@ -1,12 +1,12 @@
-name: deploy to minikube
+name: deploy to kubernetes
 
-# Applies minikube/ to the mk4 minikube cluster. Since 2026-11-14 this workflow is the only deploy path: it does
+# Applies kubernetes/ to the mk4 minikube cluster. Since 2026-11-14 this workflow is the only deploy path: it does
 # everything ./deploy.sh did (the script is gone) and a little more. The image workflows build images and point the
 # Deployments at each release's own tag, pr-<number> (ci-jithendar-com.yml, ci-practice-executor.yml,
 # ci-seo-agent.yml). This workflow never changes which image a workload runs: the manifests name :latest for a first
 # apply only, and a workload that exists keeps the image it has (scripts/keep-live-images.py).
 #
-# plan   → pull requests touching the manifests (and manual runs): render the three groups of minikube/
+# plan   → pull requests touching the manifests (and manual runs): render the three groups of kubernetes/
 #          (scripts/manifests.sh), keep the objects CI applies (scripts/ci-app-manifests.py), list the rest.
 #          No cluster access.
 # deploy → when such a pull request is merged into the default branch, or a manual run on it (never a plain
@@ -15,7 +15,7 @@ name: deploy to minikube
 #          smoke-test the site.
 #
 # What CI applies, all in namespace jithendar:
-#   site               everything in minikube/kustomization.yaml except Secrets and cluster-wide RBAC: the
+#   site               everything in kubernetes/kustomization.yaml except Secrets and cluster-wide RBAC: the
 #                      Namespace jithendar itself, workloads, routing, ServiceAccounts, Roles and RoleBindings
 #                      (including CI's own), quotas, PeerAuthentication and AuthorizationPolicy.
 #                      Owner decision 2026-11-14 (services/www/docs/DEPLOYMENT.md): a merged pull request can
@@ -25,11 +25,11 @@ name: deploy to minikube
 # Never applied by CI: Secrets, ClusterRoles and ClusterRoleBindings, ClusterIssuers, the RuntimeClass, admission
 # policies, CronJobs. Nothing is ever deleted (no --prune).
 #
-# Manual run (Actions → deploy to minikube → Run workflow, on the default branch) is the old `./deploy.sh`: apply
+# Manual run (Actions → deploy to kubernetes → Run workflow, on the default branch) is the old `./deploy.sh`: apply
 # everything, restart the site on the image it runs (input restart_site, on by default), wait, smoke-test. To put
 # another image on the site, run the jithendar.com workflow, or `kubectl set image` to an earlier pr-<number>.
 #
-# Cluster access: ServiceAccount jithendar/github-ci-applier (minikube/85-ci-applier.yaml), kubeconfig template
+# Cluster access: ServiceAccount jithendar/github-ci-applier (kubernetes/85-ci-applier.yaml), kubeconfig template
 # .github/jithendar-ci-applier.yaml, values MK4_API_SERVER, MK4_CA_DATA (variables, shared with the deployer) and
 # MK4_CI_APPLY_TOKEN (secret), set by scripts/setup-ci-applier.sh, which also sets MINIKUBE_DEPLOY. Run that script
 # again whenever the ClusterRole in 85-ci-applier.yaml changes (CI cannot apply it).
@@ -44,18 +44,18 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     paths:
-      - 'minikube/**'
+      - 'kubernetes/**'
       - 'scripts/manifests.sh'
       - 'scripts/ci-app-manifests.py'
       - '.github/jithendar-ci-applier.yaml'
-      - '.github/workflows/deploy-minikube.yml'
+      - '.github/workflows/deploy-kubernetes.yml'
 
 permissions:
   contents: read
 
 # One deployment at a time, never cancelled half way.
 concurrency:
-  group: deploy-minikube-${{ github.event.pull_request.number || github.ref }}
+  group: deploy-kubernetes-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
-      group: deploy-minikube-apply
+      group: deploy-kubernetes-apply
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -152,7 +152,7 @@ jobs:
           # Every object must pass the API server's validation and admission before anything changes.
           for g in "${groups[@]}"; do
             if ! kubectl apply --dry-run=server -f "$RUNNER_TEMP/$g.yaml" > /dev/null; then
-              echo "::error::Server dry run of group $g failed. If the message says \"forbidden\", the cluster still has an older github-ci-applier Role: run scripts/setup-ci-applier.sh once (it applies minikube/85-ci-applier.yaml), then re-run this workflow."
+              echo "::error::Server dry run of group $g failed. If the message says \"forbidden\", the cluster still has an older github-ci-applier Role: run scripts/setup-ci-applier.sh once (it applies kubernetes/85-ci-applier.yaml), then re-run this workflow."
               exit 1
             fi
           done

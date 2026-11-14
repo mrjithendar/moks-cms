@@ -430,7 +430,7 @@ The brief mounts both servers in the seo-agent app. They run in the same process
 NetworkPolicy can admit the gateway to MCP only: a public request can never reach `/flows/*` or `/review/*` on 8080, even
 if a route were misconfigured. Kong on mk4 runs in DB mode with entities in the tools repository (branch
 `feat/kong-db-migration`); there are no Kong CRDs here. The additive entities are delivered as
-`minikube/kong/seo-agent-mcp.deck.yaml` (tagged, for `deck --select-tag`), outside the kubectl glob, unapplied. Master
+`kubernetes/kong/seo-agent-mcp.deck.yaml` (tagged, for `deck --select-tag`), outside the kubectl glob, unapplied. Master
 currently routes through the Istio gateway and the namespace is STRICT mTLS, which the Kong branch predates; the exact
 mesh steps for either gateway are in MANUAL_SETUP §27. No existing route, plugin or certificate was changed.
 

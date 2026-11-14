@@ -119,7 +119,7 @@ one new `kubernetes_secret_v1.redis_app["site-cachebus"]` in namespace `jithenda
 redis://site-cachebus:<password>@valkey-master.redis.svc.cluster.local:6379
 ```
 
-The site reads only `uri`, through an explicit `env` entry (`minikube/30-jithendar-com.yaml`), never `envFrom`, so no
+The site reads only `uri`, through an explicit `env` entry (`kubernetes/30-jithendar-com.yaml`), never `envFrom`, so no
 other variable of the pod sees it. It is not in `jithendar-com-env`.
 
 ## 2. Checks after the apply
@@ -185,7 +185,7 @@ did before.
 ## 4. Deploy order
 
 1. miniKube repo: the Terraform above, `terraform apply`. The Secret `jithendar/redis-site-cachebus-credentials` appears.
-2. This repo: run the `deploy to minikube` workflow (env entry and NetworkPolicy `jithendar-com-cache-bus`; it restarts the site).
+2. This repo: run the `deploy to kubernetes` workflow (env entry and NetworkPolicy `jithendar-com-cache-bus`; it restarts the site).
 3. Section 2's checks, then Admin → System status.
 
 The other order works too: the env entry is `optional: true`, so pods start without the Secret and run TTL-only. A
@@ -250,7 +250,7 @@ client list export, which adds one series per connection (about 30 today):
 
 Either is enough, and both leave the site on TTL-only caches, exactly as before this change:
 
-- Remove the env entry `CACHE_BUS_REDIS_URL` from `minikube/30-jithendar-com.yaml` and deploy, or
+- Remove the env entry `CACHE_BUS_REDIS_URL` from `kubernetes/30-jithendar-com.yaml` and deploy, or
 - delete the Secret (`kubectl -n jithendar delete secret redis-site-cachebus-credentials`, or remove the tenant from
   `redis_tenants` and apply) and `kubectl -n jithendar rollout restart deployment/jithendar-com`.
 

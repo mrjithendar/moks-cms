@@ -7,12 +7,12 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 |---|---|
 | [`sites/`](sites/README.md) | One folder per website the CMS serves (`sites/jithendar.com/`): identity (`site.json`), redirects and other config, articles, images, the articles' figure sources and the site's Grafana dashboards (`grafana/`, one ConfigMap and one Argo CD app per site). [Adding a site](sites/README.md#adding-a-site) |
 | [`services/www/`](services/www/README.md) | The Next.js app (moks-cms): source, tests, Dockerfiles and [docs](services/www/docs/) |
-| [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), the Python practice executor (`practice-executor-*.yaml`) and the SEO agent (`seo-agent-*.yaml`); `scripts/manifests.sh <group>` prints one group |
+| [`kubernetes/`](kubernetes/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), the Python practice executor (`practice-executor-*.yaml`) and the SEO agent (`seo-agent-*.yaml`); `scripts/manifests.sh <group>` prints one group |
 | [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
 | `services/seo-agent/` | SEO v4 agent service (Python: CrewAI Flows and Crews as the only job engine, MCP servers, pgvector, Ask the Blog, report PDFs); see [FLOWS.md](services/www/docs/seo/FLOWS.md) and [MCP.md](services/www/docs/seo/MCP.md) |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
-| `.github/workflows/` | CI: checks pull requests; when one is merged, builds the images (`moks-cms`, `moks-cms-content`, `seo-agent`, `practice-executor`), pushes them to Harbor (`registry.jithendar.com/jithendar`), rolls them out and applies `minikube/` |
+| `.github/workflows/` | CI: checks pull requests; when one is merged, builds the images (`moks-cms`, `moks-cms-content`, `seo-agent`, `practice-executor`), pushes them to Harbor (`registry.jithendar.com/jithendar`), rolls them out and applies `kubernetes/` |
 
 ## Release
 
@@ -34,8 +34,8 @@ unless they use an `/images/` file that is not live yet: then CI restarts the si
 `status: published`, or editing or deleting a published one, restarts it as above. Changes under `sites/*/docs/`,
 `services/www/docs/` and `services/www/*.md` (notes, article diagram sources) are not in the site image and never trigger a site build or deploy.
 
-Changes to `minikube/` are applied by the `deploy to minikube` workflow when their pull request is merged; run it by
-hand (Actions → deploy to minikube → Run workflow) to re-apply everything and restart the site. There is no
+Changes to `kubernetes/` are applied by the `deploy to kubernetes` workflow when their pull request is merged; run it by
+hand (Actions → deploy to kubernetes → Run workflow) to re-apply everything and restart the site. There is no
 `deploy.sh` any more (removed 2026-11-14). First-time setup,
 Secrets, routing and rollback: [services/www/docs/DEPLOYMENT.md](services/www/docs/DEPLOYMENT.md).
 

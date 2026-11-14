@@ -61,10 +61,10 @@ Content and images ship in the site's content image (`ci-content.yml`), without 
 Until here nothing is deployed. To put the site on the cluster, a person does the following once:
 
 5. **Cluster**: a Deployment, Service, route, TLS certificate, Secret and database for the site, like the
-   `jithendar-com` objects in `minikube/`, running an app image built for the site (see the last paragraph) and the
+   `jithendar-com` objects in `kubernetes/`, running an app image built for the site (see the last paragraph) and the
    site's content image in its init container.
 6. **CI access**: add the Deployment to the `github-ci-deployer` Role (`resourceNames` in
-   `minikube/80-ci-deployer.yaml`), and let the Harbor robot push to the content image's repository.
+   `kubernetes/80-ci-deployer.yaml`), and let the Harbor robot push to the content image's repository.
 7. **API key**: create an API key in the new site's Admin → API keys (scopes posts:read + posts:write) and store it as a
    repository secret.
 8. **Dashboards**: add the site's dashboards to `grafana/` (copy jithendar.com's and change the `jithendar-com` job,

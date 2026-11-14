@@ -21,7 +21,7 @@ The cluster therefore runs each release under its own tag. Which release is live
 `scripts/ci-rollout.py <repository> pr-<earlier number>`, or the `kubectl set image` it prints.
 
 Needs kubectl and a kubeconfig whose context names the namespace (or NAMESPACE). It reads and patches Deployments
-and reads pods, which is all the CI deployer's Role allows (minikube/80-ci-deployer.yaml). Standard library only.
+and reads pods, which is all the CI deployer's Role allows (kubernetes/80-ci-deployer.yaml). Standard library only.
 """
 from __future__ import annotations
 
@@ -91,13 +91,13 @@ def main(argv: list[str]) -> int:
         return 1
     to_set, current = plan(json.loads(listed.stdout).get("items", []), repo, tag, tuple(previous))
     if not to_set and not current:
-        print(f"::error::No Deployment runs {repo}. Apply minikube/ first; the release only moves workloads that exist.", file=sys.stderr)
+        print(f"::error::No Deployment runs {repo}. Apply kubernetes/ first; the release only moves workloads that exist.", file=sys.stderr)
         return 2
 
     failed: list[str] = []
     for name, containers in to_set.items():
         if kubectl("set", "image", f"deployment/{name}", *[f"{c}={target}" for c in containers]).returncode != 0:
-            print(f"::error::Could not set the image of deployment/{name} (does the CI deployer's Role name it? minikube/80-ci-deployer.yaml)", file=sys.stderr)
+            print(f"::error::Could not set the image of deployment/{name} (does the CI deployer's Role name it? kubernetes/80-ci-deployer.yaml)", file=sys.stderr)
             failed.append(name)
     for name in current:
         # Already on this tag: the tag was pushed again, so start new pods to pull it.

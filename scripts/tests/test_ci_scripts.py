@@ -202,7 +202,7 @@ class KeepLiveImages(unittest.TestCase):
 
     def test_the_real_manifests_pass_through(self) -> None:
         # Nothing live: the output is the input, for every Deployment and StatefulSet the repository ships.
-        docs = [d for f in sorted((SCRIPTS.parent / "minikube").glob("*.yaml")) if f.name != "kustomization.yaml" for d in yaml.safe_load_all(f.read_text()) if d]
+        docs = [d for f in sorted((SCRIPTS.parent / "kubernetes").glob("*.yaml")) if f.name != "kustomization.yaml" for d in yaml.safe_load_all(f.read_text()) if d]
         workloads = [d for d in docs if d.get("kind") in ("Deployment", "StatefulSet")]
         self.assertGreaterEqual(len(workloads), 4)
         out, notes = self.run_script([], workloads)

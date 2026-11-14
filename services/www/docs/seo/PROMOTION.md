@@ -141,7 +141,7 @@ free, read-only access at a few requests per day.
 
 Both are ordinary CrewAI flows in `services/seo-agent` (run records in `seo_flow_runs`, shown in Data sync; one active
 run per flow and target; the monthly Claude budget applies, purpose `crew`). They are not on the admin MCP allowlist.
-The buttons need `SEO_ORCHESTRATOR=crewai`. Manifest: `minikube/seo-agent-62-promotion-triggers.yaml`, applied by a
+The buttons need `SEO_ORCHESTRATOR=crewai`. Manifest: `kubernetes/seo-agent-62-promotion-triggers.yaml`, applied by a
 person with the seo-agent group.
 
 ## Data (migration `0027_seo_promotion.sql`, additive)

@@ -4,11 +4,11 @@
   scripts/manifests.sh site | python3 scripts/ci-app-manifests.py --all --rollouts rollouts.txt > site.yaml
   scripts/manifests.sh seo-agent | python3 scripts/ci-app-manifests.py --rollouts rollouts.txt > apps.yaml
 
-Two selections (.github/workflows/deploy-minikube.yml):
+Two selections (.github/workflows/deploy-kubernetes.yml):
 
   default  the practice-executor and seo-agent groups: only workloads and their routing in namespace jithendar.
            Anything that grants identity or permissions, runs on a schedule or is cluster-wide stays with a person.
-  --all    the site group (minikube/kustomization.yaml), which ./deploy.sh applied by hand until 2026-11-14: also
+  --all    the site group (kubernetes/kustomization.yaml), which ./deploy.sh applied by hand until 2026-11-14: also
            the Namespace jithendar itself, ServiceAccounts, Roles and RoleBindings (including CI's own), quotas and
            the mesh policies. Owner decision 2026-11-14 (services/www/docs/DEPLOYMENT.md): a merged pull request
            can therefore change what CI itself may do in namespace jithendar.
@@ -25,7 +25,7 @@ import yaml
 
 NAMESPACE = "jithendar"
 
-# (API group, kind) CI applies. Keep in step with the Role in minikube/85-ci-applier.yaml.
+# (API group, kind) CI applies. Keep in step with the Role in kubernetes/85-ci-applier.yaml.
 APPLY = {
     ("apps", "Deployment"),
     ("apps", "StatefulSet"),
@@ -38,7 +38,7 @@ APPLY = {
     ("networking.istio.io", "VirtualService"),
 }
 
-# Added by --all (the site group). Keep in step with the Role and ClusterRole in minikube/85-ci-applier.yaml.
+# Added by --all (the site group). Keep in step with the Role and ClusterRole in kubernetes/85-ci-applier.yaml.
 APPLY_ALL = {
     ("", "Namespace"),  # only the namespace named NAMESPACE (its labels, e.g. istio-injection)
     ("", "ServiceAccount"),

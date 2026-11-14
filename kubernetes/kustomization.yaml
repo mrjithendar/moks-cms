@@ -1,5 +1,5 @@
-# jithendar.com site on mk4, applied by .github/workflows/deploy-minikube.yml when a pull request is merged
-# (by hand: kubectl apply -k minikube). Only the 00-…85- files are
+# jithendar.com site on mk4, applied by .github/workflows/deploy-kubernetes.yml when a pull request is merged
+# (by hand: kubectl apply -k kubernetes). Only the 00-…85- files are
 # listed; practice-executor-*.yaml is a separate group (README.md, scripts/manifests.sh).
 # Secrets (jithendar-com-env, harbor-pull) are created separately and never committed. PostgreSQL is the shared
 # CloudNativePG cluster in namespace postgres-db (miniKube repo), whose Secret postgres-db-credentials Terraform writes
@@ -21,5 +21,5 @@ resources:
 - 85-ci-applier.yaml
 
 # The manifests name moks-cms:latest (imagePullPolicy Always, set in 30-jithendar-com.yaml) for a first apply only:
-# each release runs its own moks-cms:pr-<number> (scripts/ci-rollout.py), and deploy-minikube.yml keeps that tag when
+# each release runs its own moks-cms:pr-<number> (scripts/ci-rollout.py), and deploy-kubernetes.yml keeps that tag when
 # it applies (scripts/keep-live-images.py). No digest pinning.

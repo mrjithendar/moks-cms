@@ -13,11 +13,11 @@ name: jithendar.com
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds and deploys
 # nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com web=…/moks-cms:pr-<n>`;
-# it stays until the next release (deploy-minikube.yml keeps the image a workload is running).
+# it stays until the next release (deploy-kubernetes.yml keeps the image a workload is running).
 #
 # CI's only cluster access here is that rollout (kubeconfig template .github/jithendar-ci-deployer.yaml, filled
 # from variables MK4_API_SERVER, MK4_CA_DATA and secret MK4_CI_TOKEN set by scripts/setup-ci-deployer.sh); it
-# never applies manifests. deploy-minikube.yml applies minikube/ for manifest changes (see minikube/README.md). The site
+# never applies manifests. deploy-kubernetes.yml applies kubernetes/ for manifest changes (see kubernetes/README.md). The site
 # runs the tag of its last release, which `kubectl -n jithendar get deploy -o wide` shows. The manifests name :latest
 # only for a first apply; :latest is still pushed with every release and names the newest image.
 #
@@ -42,7 +42,7 @@ on:
       # A site's identity and config are compiled into the app; its content and images are not (sites/<domain>/).
       - 'sites/*/site.json'
       - 'sites/*/config/**'
-      - 'minikube/**'
+      - 'kubernetes/**'
       - '.github/workflows/ci-jithendar-com.yml'
       - 'scripts/image-size.sh'
 
@@ -89,7 +89,7 @@ jobs:
         env:
           APP_ENV: production
       - name: Render production manifests
-        run: kubectl kustomize ../../minikube > /dev/null
+        run: kubectl kustomize ../../kubernetes > /dev/null
 
   # Did the merged pull request change anything that is in the image? Notes, article diagram sources, READMEs and
   # manifests are not (.dockerignore: docs, *.md), so merging only those must not rebuild or restart the site.
@@ -181,7 +181,7 @@ jobs:
           sudo dmesg --ctime 2>/dev/null | grep -iE "oom|killed process|out of memory" | tail -20 || true
           journalctl --no-pager -u systemd-oomd --since "-30 min" 2>/dev/null | tail -20 || true
       - name: Render production manifests
-        run: kubectl kustomize ../../minikube > /dev/null
+        run: kubectl kustomize ../../kubernetes > /dev/null
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
@@ -222,7 +222,7 @@ jobs:
       # Every Deployment that runs this image is pointed at the tag just pushed and waited for; one that is already
       # on it (this job was run again) is restarted so that it pulls the image again (scripts/ci-rollout.py).
       # Signs in as ServiceAccount jithendar/github-ci-deployer, which may only read and patch the Deployments named
-      # in minikube/80-ci-deployer.yaml: the template .github/jithendar-ci-deployer.yaml filled in with the values
+      # in kubernetes/80-ci-deployer.yaml: the template .github/jithendar-ci-deployer.yaml filled in with the values
       # that scripts/setup-ci-deployer.sh stored.
       - name: Roll out jithendar-com
         if: github.event_name != 'workflow_dispatch' || inputs.restart

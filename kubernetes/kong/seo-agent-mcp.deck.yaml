@@ -4,8 +4,8 @@
 # NOT APPLIED BY ANYTHING. Kong on mk4 runs in DB mode with its entities seeded from the tools repository
 # (kong-config/seed/kong.yaml, docs/kong; branch feat/kong-db-migration here). After review, a person merges these
 # entities there and syncs them:
-#   deck gateway diff  minikube/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp
-#   deck gateway sync  minikube/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp
+#   deck gateway diff  kubernetes/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp
+#   deck gateway sync  kubernetes/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp
 # (--select-tag limits decK to these entities, so nothing else in Kong is changed or deleted.)
 # This file is outside the `seo-agent-*.yaml` glob on purpose: scripts/manifests.sh never pipes it to kubectl.
 #

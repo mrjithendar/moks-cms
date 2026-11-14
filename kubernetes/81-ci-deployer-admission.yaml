@@ -9,7 +9,7 @@
 # binding below to ["Deny"] and apply this file again.
 #
 # CI does not apply admission policies (scripts/ci-app-manifests.py). A cluster admin applies this file:
-#   kubectl apply -f minikube/81-ci-deployer-admission.yaml
+#   kubectl apply -f kubernetes/81-ci-deployer-admission.yaml
 # and removes it again with `kubectl delete -f` if it ever gets in the way.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy

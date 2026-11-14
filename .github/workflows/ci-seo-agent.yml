@@ -17,7 +17,7 @@ on:
     paths:
       - 'services/seo-agent/**'
       - 'services/www/src/lib/seo-agent/internal-server.ts'
-      - 'minikube/seo-agent-*.yaml'
+      - 'kubernetes/seo-agent-*.yaml'
       - '.github/workflows/ci-seo-agent.yml'
       - 'scripts/image-size.sh'
 

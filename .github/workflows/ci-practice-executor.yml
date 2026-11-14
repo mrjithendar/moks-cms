@@ -23,7 +23,7 @@ on:
     paths:
       - 'services/executor/**'
       - 'sites/*/content/python-practice/**'
-      - 'minikube/practice-executor-*.yaml'
+      - 'kubernetes/practice-executor-*.yaml'
       - 'scripts/manifests.sh'
       - '.github/workflows/ci-practice-executor.yml'
 
@@ -112,7 +112,7 @@ jobs:
             echo "- also tagged $PR_TAG; commit $RELEASE_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Signs in as ServiceAccount jithendar/github-ci-deployer (minikube/80-ci-deployer.yaml), the same one that rolls out
+  # Signs in as ServiceAccount jithendar/github-ci-deployer (kubernetes/80-ci-deployer.yaml), the same one that rolls out
   # the site: it may only patch the two executor Deployments here, cannot read Secrets or create pods, so it cannot
   # weaken the sandbox.
   # Roll back: revert the commit on the default branch (CI rebuilds and redeploys), or switch execution off in

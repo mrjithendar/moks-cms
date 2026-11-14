@@ -320,7 +320,7 @@ spec:
       podSelector:
         matchLabels:
           cnpg.io/cluster: postgres-cluster
-  # SEO v3 agent service (minikube/seo-agent-*.yaml): admin run API and the /api/ask proxy.
+  # SEO v3 agent service (kubernetes/seo-agent-*.yaml): admin run API and the /api/ask proxy.
   - ports:
     - port: 8080
       protocol: TCP
@@ -328,7 +328,7 @@ spec:
     - podSelector:
         matchLabels:
           app: seo-agent
-  # Python practice executor API (minikube/practice-executor-*.yaml; PRACTICE_EXECUTOR_URL=http://practice-executor.jithendar).
+  # Python practice executor API (kubernetes/practice-executor-*.yaml; PRACTICE_EXECUTOR_URL=http://practice-executor.jithendar).
   - ports:
     - port: 8080
       protocol: TCP
