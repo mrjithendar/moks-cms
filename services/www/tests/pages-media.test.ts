@@ -56,7 +56,7 @@ describe("bundled posts added after setup", () => {
   it("become drafts automatically, once, and are not recreated after a permanent delete", async () => {
     vi.stubEnv("CONTENT_DIR", `${process.cwd()}/content`); // the real content/ folder, not the fixtures
     const { syncBundledPosts } = await import("@/lib/bundled-posts");
-    const { deletePost } = await import("@/lib/posts");
+    const { deletePostPermanently, trashPost } = await import("@/lib/posts");
     const first = await syncBundledPosts();
     const hit = first.find((b) => b.collection === "blog" && b.slug === "roboshop-ai-microservices");
     expect(hit).toBeDefined();
@@ -67,7 +67,8 @@ describe("bundled posts added after setup", () => {
 
     // A second start imports nothing, and a permanently deleted post stays deleted.
     expect(await syncBundledPosts()).toEqual([]);
-    await deletePost(admin, hit!.id);
+    await trashPost(admin, hit!.id);
+    await deletePostPermanently(admin, hit!.id);
     expect(await syncBundledPosts()).toEqual([]);
     expect((await db.select().from(schema.post)).some((r) => r.slug === "roboshop-ai-microservices")).toBe(false);
   });

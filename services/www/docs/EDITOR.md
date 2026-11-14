@@ -87,7 +87,7 @@ come back on the next start; nothing is published automatically. Without a deplo
 instead:
 
 ```sh
-export JITHENDAR_API_KEY=jk_…        # Admin → API keys, scopes posts:read + posts:write
+export JITHENDAR_API_KEY=jk_…        # Admin → API keys, scopes posts:read + posts:draft (+ posts:write for --update-live)
 npm run push-post -- content/blog/my-post.mdx [more.mdx] --dry-run   # check, send nothing
 npm run push-post -- content/blog/my-post.mdx
 ```
@@ -108,7 +108,9 @@ npm run push-post -- content/blog/my-post.mdx
 **CI does this for you.** When a push to `master` adds an article that is not published and `ci-content.yml` skips the
 restart, the workflow runs `push-post --create-only` for each new file, so the draft appears in Admin → Posts within
 about a minute of the push, with no restart. It needs the repository secret `JITHENDAR_API_KEY` (Admin → API keys,
-scopes `posts:read` + `posts:write`; **Requires manual configuration**). A file it cannot send (no key, or an
+scopes `posts:read` + `posts:draft`; **Requires manual configuration**). A `posts:draft` key can create and edit drafts
+but can never publish, schedule, archive or delete a post, so a leaked CI secret cannot change what readers see; a key
+with `posts:write` still works but can publish. A file it cannot send (no key, or an
 `/images/` file that is not live yet, because new images only ship with a restart) is listed in the run summary, and
 the workflow then does a rolling restart, which imports it as a draft and makes its images live. Edits to files that are already posts are never sent from CI:
 edit those in the editor, or run `push-post` yourself.

@@ -24,7 +24,12 @@ export function CreateKeyForm() {
         <fieldset className="space-y-1 text-sm">
           <legend className="mb-1 font-medium text-fg">Scopes</legend>
           <label className="flex items-center gap-2"><input type="checkbox" name="scopes" value="posts:read" defaultChecked /> posts:read</label>
-          <label className="flex items-center gap-2"><input type="checkbox" name="scopes" value="posts:write" /> posts:write</label>
+          <label className="flex items-center gap-2" title="Create drafts and edit posts that are still drafts. Cannot publish or delete. Use this for CI and drafting tools.">
+            <input type="checkbox" name="scopes" value="posts:draft" /> posts:draft <span className="text-fg-subtle">(drafts only)</span>
+          </label>
+          <label className="flex items-center gap-2" title="Everything you can do in the editor, publishing included, and moving posts to the trash.">
+            <input type="checkbox" name="scopes" value="posts:write" /> posts:write <span className="text-fg-subtle">(can publish)</span>
+          </label>
         </fieldset>
         <Field label="Expires" htmlFor="expiresInDays">
           <Select id="expiresInDays" name="expiresInDays" defaultValue="90">

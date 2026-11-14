@@ -8,7 +8,14 @@ import type { Actor } from "./posts";
 import { PostError } from "./posts";
 import { getRedis } from "./redis";
 
-export const SCOPES = ["posts:read", "posts:write"] as const;
+/**
+ * - posts:read   list and read the owner's posts (drafts included).
+ * - posts:draft  create posts as drafts and edit posts that are still a draft or in review. It can never publish,
+ *                schedule, archive or delete: that is what automation (CI's `push-post`, drafting tools) should hold.
+ * - posts:write  everything the owner can do in the editor, publishing included, and moving a post to the trash.
+ * No scope deletes a post permanently: that needs a signed-in admin or author (Admin → Posts → Trash).
+ */
+export const SCOPES = ["posts:read", "posts:draft", "posts:write"] as const;
 export type Scope = (typeof SCOPES)[number];
 const RATE_PER_MINUTE = 120;
 
@@ -87,7 +94,7 @@ export type ApiAuth = { actor: Actor; scopes: Scope[] };
 /** Resolve `Authorization: Bearer jk_…` to the key owner's identity and the key's scopes. */
 export async function authenticateApiKey(header: string | null): Promise<ApiAuth> {
   const key = header?.match(/^Bearer\s+(jk_[A-Za-z0-9_-]{20,})$/)?.[1];
-  if (!key) throw new PostError("Missing or malformed API key. Use: Authorization: Bearer jk_…", 403);
+  if (!key) throw new PostError("Missing or malformed API key. Use: Authorization: Bearer jk_…", 401);
   const db = await getDb();
   const [row] = await db
     .select({ key: schema.apiKey, role: schema.user.role, banned: schema.user.banned })
@@ -95,9 +102,9 @@ export async function authenticateApiKey(header: string | null): Promise<ApiAuth
     .innerJoin(schema.user, eq(schema.user.id, schema.apiKey.userId))
     .where(eq(schema.apiKey.hash, hash(key)));
   if (!row || row.key.revokedAt || (row.key.expiresAt && row.key.expiresAt.getTime() < Date.now()) || row.banned) {
-    throw new PostError("Invalid, expired or revoked API key.", 403);
+    throw new PostError("Invalid, expired or revoked API key.", 401);
   }
-  if (!(await withinRateLimit(row.key.id))) throw new PostError("Rate limit exceeded (120 requests per minute per key).", 400);
+  if (!(await withinRateLimit(row.key.id))) throw new PostError("Rate limit exceeded (120 requests per minute per key).", 429);
   await db.update(schema.apiKey).set({ lastUsedAt: new Date() }).where(eq(schema.apiKey.id, row.key.id));
   return {
     actor: { id: row.key.userId, role: row.role as Role, label: `api:${row.key.prefix}` },

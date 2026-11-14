@@ -8,8 +8,9 @@
  *
  *   JITHENDAR_API_KEY=jk_… npm run push-post -- content/blog/my-post.mdx [more.mdx] [--dry-run] [--update-live] [--create-only]
  *
- * The key needs the posts:read and posts:write scopes (Admin → API keys). JITHENDAR_SITE_URL or --site picks
- * another site (default https://jithendar.com).
+ * The key needs the posts:read and posts:draft scopes (Admin → API keys); --update-live needs posts:write instead of
+ * posts:draft. A posts:draft key cannot publish or delete anything, so it is the one to give CI.
+ * JITHENDAR_SITE_URL or --site picks another site (default https://jithendar.com).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -62,7 +63,7 @@ export async function pushPosts(files: string[], opts: PushOptions): Promise<Pus
   const log = opts.log ?? console.log;
   const site = opts.site.replace(/\/+$/, "");
   const publicDir = opts.publicDir ?? path.join(process.cwd(), "public");
-  if (!opts.apiKey && !opts.dryRun) throw new Error("Set JITHENDAR_API_KEY (Admin → API keys, scopes posts:read + posts:write), or use --dry-run.");
+  if (!opts.apiKey && !opts.dryRun) throw new Error("Set JITHENDAR_API_KEY (Admin → API keys, scopes posts:read + posts:draft), or use --dry-run.");
 
   // Everything is checked before anything is sent, so a bad file in a batch changes nothing.
   const payloads = files.map((file) => ({ file, payload: draftPayload(file) }));

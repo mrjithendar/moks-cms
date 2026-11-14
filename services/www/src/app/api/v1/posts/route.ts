@@ -1,6 +1,6 @@
 import { collections, type Collection } from "@/config/taxonomy";
 import { createPost, listPosts } from "@/lib/posts";
-import { api, json, serialize } from "../_lib";
+import { api, assertDraftStatus, canPublish, json, serialize } from "../_lib";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,19 @@ export function GET(request: Request) {
   });
 }
 
-/** POST /api/v1/posts (scope posts:write): same validation as the editor. */
+/**
+ * POST /api/v1/posts: same validation as the editor. Scope posts:draft creates a draft (or a post in review) and
+ * nothing else; posts:write may also create a post that is published or scheduled straight away.
+ */
 export function POST(request: Request) {
-  return api(request, "posts:write", async ({ actor }) => serialize(await createPost(actor, await json(request))), 201);
+  return api(
+    request,
+    ["posts:draft", "posts:write"],
+    async (auth) => {
+      const body = await json(request);
+      if (!canPublish(auth)) assertDraftStatus(body);
+      return serialize(await createPost(auth.actor, body));
+    },
+    201,
+  );
 }
