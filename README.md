@@ -1,11 +1,12 @@
 # moks-cms
 
-The source of [jithendar.com](https://jithendar.com) (this repository was called `jithendar.com` until 2026-11-14): a personal website and tech blog covering DevOps, cloud infrastructure, Kubernetes and AI engineering.
+A CMS for MDX publications, and the source of [jithendar.com](https://jithendar.com), the site it serves (this repository was called `jithendar.com` until 2026-11-14): a personal website and tech blog covering DevOps, cloud infrastructure, Kubernetes and AI engineering.
 Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 
 | Path | Contents |
 |---|---|
-| [`services/www/`](services/www/README.md) | The Next.js site: source, content, tests, Dockerfiles and [docs](services/www/docs/) |
+| [`sites/`](sites/README.md) | One folder per website the CMS serves (`sites/jithendar.com/`): identity (`site.json`), redirects and other config, articles, images and the articles' figure sources. [Adding a site](sites/README.md#adding-a-site) |
+| [`services/www/`](services/www/README.md) | The Next.js app (moks-cms): source, tests, Dockerfiles and [docs](services/www/docs/) |
 | [`minikube/`](minikube/README.md) | Every manifest the site runs on the mk4 minikube cluster, in one flat folder: the site (`kustomization.yaml`), the Python practice executor (`practice-executor-*.yaml`) and the SEO agent (`seo-agent-*.yaml`); `scripts/manifests.sh <group>` prints one group |
 | [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
 | `services/seo-agent/` | SEO v4 agent service (Python: CrewAI Flows and Crews as the only job engine, MCP servers, pgvector, Ask the Blog, report PDFs); see [FLOWS.md](services/www/docs/seo/FLOWS.md) and [MCP.md](services/www/docs/seo/MCP.md) |
@@ -22,8 +23,8 @@ the whole release. A commit pushed straight to `master` builds and deploys nothi
 only `ci-content.yml`, for articles and images, still runs on push).
 
 **Content-only changes** (`sites/*/content/**`, `sites/*/public/images/**`) do not rebuild the site. `ci-content.yml`
-validates the MDX (schema and internal links), packages both folders into the small
-`registry.jithendar.com/jithendar/moks-cms-content:latest` image (`services/www/Dockerfile.content`), pushes it and restarts
+validates the MDX (schema and internal links) of each site that changed, packages both folders into that site's small
+content image (jithendar.com: `registry.jithendar.com/jithendar/moks-cms-content:latest`, from `deploy` in its `site.json`) (`services/www/Dockerfile.content`), pushes it and restarts
 the site. The pods' init container `content` copies it over `/app/content` and `/app/public/images`. This takes about a
 minute, not a full build. A push that changes both code and content runs both workflows.
 
@@ -31,8 +32,8 @@ minute, not a full build. A push that changes both code and content runs both wo
 images) still pushes the content image but does not restart the site: readers would see nothing new. New articles in such
 a push are sent to Admin → Posts as drafts through the posts API (`push-post --create-only`, secret `JITHENDAR_API_KEY`),
 unless they use an `/images/` file that is not live yet: then CI restarts the site so the draft and its images arrive. Setting an article to
-`status: published`, or editing or deleting a published one, restarts it as above. Changes under `services/www/docs/` and
-`services/www/*.md` (notes, article diagram sources) are not in the site image and never trigger a site build or deploy.
+`status: published`, or editing or deleting a published one, restarts it as above. Changes under `sites/*/docs/`,
+`services/www/docs/` and `services/www/*.md` (notes, article diagram sources) are not in the site image and never trigger a site build or deploy.
 
 Changes to `minikube/` are applied by the `deploy to minikube` workflow when their pull request is merged; run it by
 hand (Actions → deploy to minikube → Run workflow) to re-apply everything and restart the site. There is no
