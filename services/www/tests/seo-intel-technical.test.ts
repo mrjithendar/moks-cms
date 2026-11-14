@@ -8,7 +8,7 @@ import { settingsInput } from "./seo-fixtures";
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
-const { isBlockedAddress, safeFetcher, parseRobots, robotsAllows, allowedHosts } = await import("@/lib/seo-intel/crawler");
+const { isBlockedAddress, isBlockedLiteral, publicFetcher, safeFetcher, parseRobots, robotsAllows, allowedHosts } = await import("@/lib/seo-intel/crawler");
 const { crawl, parsePage, parseSitemap, runTechnicalScan, latestScan } = await import("@/lib/seo-intel/technical");
 import type { FetchResult } from "@/lib/seo-intel/crawler";
 
@@ -16,6 +16,9 @@ describe("SSRF protection", () => {
   it.each([
     ["127.0.0.1", true], ["10.1.2.3", true], ["172.20.0.1", true], ["192.168.49.2", true], ["169.254.169.254", true], ["100.64.0.5", true], ["0.0.0.0", true], ["224.0.0.1", true],
     ["::1", true], ["fe80::1", true], ["fd00::1", true], ["::ffff:10.0.0.1", true], ["::ffff:127.0.0.1", true],
+    // The same IPv4-mapped addresses as `URL` spells them, and other ways an IPv6 address carries a private IPv4 one.
+    ["::ffff:a00:1", true], ["::ffff:7f00:1", true], ["0:0:0:0:0:ffff:c0a8:3102", true], ["2002:7f00:1::", true], ["64:ff9b::a00:1", true], ["::", true],
+    ["::ffff:808:808", false], ["2002:808:808::", false], ["2a01:4f8::1", false],
     ["46.224.38.14", false], ["8.8.8.8", false], ["2606:4700::1111", false],
   ])("%s blocked=%s", (ip, blocked) => expect(isBlockedAddress(ip)).toBe(blocked));
 
@@ -40,6 +43,22 @@ describe("SSRF protection", () => {
     expect(r2.status).toBe(0);
     expect(r.error ?? "").toMatch(/non-public address/);
   });
+
+  // Node never calls the socket's `lookup` for a host that is already an IP address, so the DNS guard alone let
+  // http://127.0.0.1/ and http://169.254.169.254/ through the link checker (any public host is allowed there).
+  it.each([
+    ["127.0.0.1", true], ["[::1]", true], ["169.254.169.254", true], ["10.96.0.1", true], ["[::ffff:10.0.0.1]", true], ["[fd00::1]", true],
+    ["8.8.8.8", false], ["[2606:4700::1111]", false], ["jithendar.com", false], ["localhost", false],
+  ])("literal host %s blocked=%s", (host, blocked) => expect(isBlockedLiteral(host)).toBe(blocked));
+
+  it.each(["http://127.0.0.1/", "http://[::1]/", "http://169.254.169.254/latest/meta-data/", "http://2130706433/", "http://0x7f.1/", "https://10.96.0.1/", "http://[::ffff:10.0.0.1]/", "http://[::ffff:7f00:1]/"])(
+    "the link checker's fetcher refuses %s before connecting",
+    async (url) => {
+      const r = await publicFetcher({ timeoutMs: 2000, maxBytes: 10_000, maxRedirects: 3 })(url);
+      expect(r.status).toBe(0);
+      expect(r.error ?? "").toMatch(/non-public address/);
+    },
+  );
 
   it("refuses hosts outside the allowlist, including through redirects", async () => {
     const f = safeFetcher(new URL("https://jithendar.com"), { timeoutMs: 2000, maxBytes: 10_000, maxRedirects: 3 });
