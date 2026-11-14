@@ -38,9 +38,10 @@ on:
     paths:
       - 'services/www/**'
       # Content and images ship in their own image (ci-content.yml); they never rebuild this one.
-      - '!services/www/content/**'
-      - '!services/www/public/images/**'
       - '!services/www/Dockerfile.content*'
+      # A site's identity and config are compiled into the app; its content and images are not (sites/<domain>/).
+      - 'sites/*/site.json'
+      - 'sites/*/config/**'
       - 'minikube/**'
       - '.github/workflows/ci-jithendar-com.yml'
       - 'scripts/image-size.sh'
@@ -79,6 +80,8 @@ jobs:
         with:
           version: v1.35.0
       - run: npm ci --no-audit --no-fund
+      # site/, content/ and public/images/ as copies of sites/jithendar.com (the image and output tracing need real files)
+      - run: npm run site -- --copy
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -114,9 +117,9 @@ jobs:
           image=false
           while IFS= read -r f; do
             case "$f" in
-              services/www/content/*|services/www/public/images/*|services/www/Dockerfile.content*|services/www/docs/*) ;;
+              services/www/Dockerfile.content*|services/www/docs/*) ;;
               services/www/*.md) ;;
-              services/www/*|.github/workflows/ci-jithendar-com.yml|scripts/image-size.sh) image=true ;;
+              services/www/*|sites/*/site.json|sites/*/config/*|.github/workflows/ci-jithendar-com.yml|scripts/image-size.sh) image=true ;;
             esac
           done < "$RUNNER_TEMP/files.txt"
           echo "image=$image" >> "$GITHUB_OUTPUT"
@@ -159,6 +162,8 @@ jobs:
         with:
           version: v1.35.0
       - run: npm ci --no-audit --no-fund
+      # site/, content/ and public/images/ as copies of sites/jithendar.com (the image and output tracing need real files)
+      - run: npm run site -- --copy
       # One step each, in sequence: output streams live and a failure names its step. (Running them in parallel
       # only paid off on the shared self-hosted server; on a fresh VM it just stacks three memory peaks.)
       - run: npm run lint

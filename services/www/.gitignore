@@ -1,4 +1,9 @@
 .next/
+
+# Links to (or, in CI and Docker, copies of) sites/$SITE: scripts/use-site.mjs. Edit files under sites/<domain>/.
+/site
+/content
+/public/images
 out/
 next-env.d.ts
 *.tsbuildinfo

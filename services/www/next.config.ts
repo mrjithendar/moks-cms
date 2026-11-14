@@ -30,7 +30,8 @@ const nextConfig: NextConfig = {
   // src/proxy.ts strips trailing slashes itself, after answering 410 for gone URLs in one hop.
   skipTrailingSlashRedirect: true,
   reactStrictMode: true,
-  // The app lives in services/www/ of the jithendar.com repository; keep tracing and Turbopack scoped to it.
+  // The app lives in services/www/ of the moks-cms repository; keep tracing and Turbopack scoped to it. The site it
+  // serves is copied or linked into site/, content/ and public/images/ from the repository's sites/<domain>/ (scripts/use-site.mjs).
   outputFileTracingRoot: siteRoot,
   turbopack: { root: siteRoot },
   // Content is read from disk at request time (sitemaps, ISR), so ship it with the server.

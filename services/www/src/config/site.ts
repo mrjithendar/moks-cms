@@ -1,18 +1,25 @@
-/** Site identity and environment. Server-only values; never prefix these with NEXT_PUBLIC_. */
+/**
+ * Site identity and environment. Server-only values; never prefix these with NEXT_PUBLIC_.
+ *
+ * The identity comes from sites/<SITE>/site.json, which `npm run site` links to site/ (scripts/use-site.mjs).
+ */
+import siteJson from "../../site/site.json";
 
-export const PRODUCTION_HOST = "jithendar.com";
+export const PRODUCTION_HOST: string = siteJson.host;
 
 export const site = {
-  name: "Jithendar.com",
-  // TODO(owner): confirm "Jithendar.com" as the publication name for Google News and JSON-LD.
-  publicationName: "Jithendar.com",
-  description:
-    "Engineering notes, news and analysis on AI engineering, cloud, Kubernetes, platform engineering, infrastructure as code and security.",
-  language: "en",
-  locale: "en_US",
-  timeZone: "Asia/Kolkata",
-  primaryAuthor: "jithendar-dharmapuri",
+  name: siteJson.name,
+  // TODO(owner): confirm the publication name for Google News and JSON-LD.
+  publicationName: siteJson.publicationName,
+  description: siteJson.description,
+  language: siteJson.language,
+  locale: siteJson.locale,
+  timeZone: siteJson.timeZone,
+  primaryAuthor: siteJson.primaryAuthor,
 } as const;
+
+/** The whole site descriptor (sites/<SITE>/site.json): defaults for Admin → Settings and the AdSense ID too. */
+export const siteFile = siteJson;
 
 export function siteUrl(): string {
   const url = process.env.SITE_URL ?? `https://${PRODUCTION_HOST}`;

@@ -14,6 +14,10 @@ ARG APP_ENV=production
 ENV APP_ENV=$APP_ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# The site comes from the repository's sites/<domain>/, outside this build context: run `npm run site -- --copy`
+# (SITE=<domain> for another site) before `docker build`, so site/, content/ and public/images/ are real copies.
+RUN test -f site/site.json && test -d content && test ! -L content && test -d public/images && test ! -L public/images \
+  || { echo 'Run `npm run site -- --copy` in services/www before docker build' >&2; exit 1; }
 # Next.js build cache persists between builds (incremental compilation).
 RUN --mount=type=cache,target=/app/.next/cache npm run build
 
@@ -22,7 +26,7 @@ WORKDIR /app
 # Reported by /api/health so CI can confirm which build is live.
 ARG GIT_SHA=dev
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 GIT_SHA=$GIT_SHA
-# Standalone output already contains server.js, traced node_modules and content/.
+# Standalone output already contains server.js, traced node_modules and content/ (a copy of sites/<domain>/content).
 COPY --from=build --chown=1000:1000 /app/.next/standalone ./
 COPY --from=build --chown=1000:1000 /app/.next/static ./.next/static
 COPY --from=build --chown=1000:1000 /app/public ./public
