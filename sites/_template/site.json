@@ -1,0 +1,20 @@
+{
+  "host": "example.com",
+  "name": "Example.com",
+  "publicationName": "Example.com",
+  "tagline": "One line about the site",
+  "description": "One or two sentences about what the site publishes, used as the default meta description.",
+  "language": "en",
+  "locale": "en_US",
+  "timeZone": "UTC",
+  "primaryAuthor": "your-name",
+  "editorBio": "Writes and edits Example.com.",
+  "social": {
+    "github": "",
+    "x": "",
+    "linkedin": "",
+    "youtube": "",
+    "mastodon": ""
+  },
+  "adsenseClientId": ""
+}

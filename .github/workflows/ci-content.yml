@@ -1,40 +1,47 @@
 name: wwww-content
 
-# Content-only releases: no lint, no typecheck, no Next.js build.
+# Content-only releases, one per site (sites/<domain>/). No lint, no typecheck, no Next.js build.
 #
-# check   → pull requests touching content: validate content/ (frontmatter schema, internal links)
-# release → default branch: validate, package services/www/content and services/www/public/images into a tiny busybox image,
-#           push registry.jithendar.com/jithendar/moks-cms-content:latest to Harbor, then
-#           `kubectl rollout restart deploy/jithendar-com` so the init container "content" copies the new files
-#           into the pods (minikube/30-jithendar-com.yaml).
+# sites   → which sites this run is about: those with a changed file under sites/<domain>/ (pull request: against
+#           its base; push: since the previous commit), or every site when Dockerfile.content or this workflow
+#           changed, or on a manual run. Folders starting with "_" (sites/_template) are never sites.
+# check   → per site, on pull requests: validate its content (frontmatter schema, internal links)
+# release → per site with a "deploy" block in site.json, on the default branch: validate, package
+#           sites/<domain>/content and sites/<domain>/public/images into a tiny busybox image, push it as
+#           deploy.contentImage:latest to Harbor, then `kubectl rollout restart deploy/<deploy.deployment>` in
+#           deploy.namespace, so the init container "content" copies the new files into the pods
+#           (minikube/30-jithendar-com.yaml for jithendar.com).
 #           The restart is skipped when a push only adds or edits articles that are not published (status draft or
 #           review in blog/, news/ or projects/, before and after the push) and only adds new images: such a push
 #           changes nothing a reader can see. The image is still pushed, so the next restart carries it. New articles
-#           in such a push are sent to /api/v1/posts (scripts/push-post.ts, secret JITHENDAR_API_KEY), so they appear
-#           in Admin → Posts as drafts without a restart; if one can't be sent (an /images/ file that is not live yet, or no
-#           key), the push restarts after all, so the draft and its images arrive at once. Publishing
-#           (status: published), editing or deleting a published article, any other content, a changed image, or a
-#           manual run restarts as before.
+#           in such a push are sent to https://<host>/api/v1/posts (scripts/push-post.ts, with the repository secret
+#           that deploy.apiKeySecret names), so they appear in Admin → Posts as drafts without a restart; if one can't
+#           be sent (an /images/ file that is not live yet, or no key), the push restarts after all, so the draft and
+#           its images arrive at once. Publishing (status: published), editing or deleting a published article, any
+#           other content, a changed image, or a manual run restarts as before.
 #
 # ci-jithendar-com.yml ignores these paths, so writing a post never rebuilds the moks-cms image.
-# Uses the same Harbor robot (HARBOR_USERNAME/HARBOR_PASSWORD, project jithendar) and the same cluster
-# access (github-ci-deployer, which may restart deploy/jithendar-com) as ci-jithendar-com.yml.
+# Uses the same Harbor robot (HARBOR_USERNAME/HARBOR_PASSWORD) and the same cluster access (github-ci-deployer)
+# as ci-jithendar-com.yml. A new site's Deployment must be added to that Role (minikube/80-ci-deployer.yaml) and its
+# image repository must be one the robot may push to.
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'services/www/content/**'
-      - 'services/www/public/images/**'
+      - 'sites/*/content/**'
+      - 'sites/*/public/images/**'
       - 'services/www/Dockerfile.content'
       - 'services/www/Dockerfile.content.dockerignore'
+      - 'sites/*/site.json'
       - '.github/workflows/ci-content.yml'
   push:
     paths:
-      - 'services/www/content/**'
-      - 'services/www/public/images/**'
+      - 'sites/*/content/**'
+      - 'sites/*/public/images/**'
       - 'services/www/Dockerfile.content'
       - 'services/www/Dockerfile.content.dockerignore'
+      - 'sites/*/site.json'
       - '.github/workflows/ci-content.yml'
 
 permissions:
@@ -49,10 +56,60 @@ defaults:
     working-directory: services/www
 
 jobs:
+  sites:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      all: ${{ steps.pick.outputs.all }}
+      deploy: ${{ steps.pick.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Sites whose content changed
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          every() { for d in sites/*/; do d="${d%/}"; n="${d#sites/}"; [[ "$n" == _* || ! -f "$d/site.json" ]] || echo "$n"; done; }
+          from=""
+          if [[ "$EVENT" == pull_request ]]; then from="$BASE"
+          elif [[ "$EVENT" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then from="$BEFORE"; fi
+          if [[ -z "$from" ]]; then
+            picked="$(every)"
+          else
+            files="$(git diff --name-only "$from" "$GITHUB_SHA")"
+            if grep -qE '^(services/www/Dockerfile\.content|\.github/workflows/ci-content\.yml)' <<<"$files"; then
+              picked="$(every)"
+            else
+              picked="$(grep -oE '^sites/[^/]+/' <<<"$files" | cut -d/ -f2 | sort -u | grep -Fx -f <(every) || true)"
+            fi
+          fi
+          all="$(jq -Rnc '[inputs | select(length > 0)]' <<<"$picked")"
+          # Only sites that say where they are deployed are released; the others are still validated.
+          deploy="$(for n in $picked; do jq -c --arg site "$n" 'select(.deploy.contentImage) | {site: $site, apiKeySecret: (.deploy.apiKeySecret // "")}' "sites/$n/site.json"; done | jq -sc .)"
+          echo "Sites: $all; released: $deploy"
+          { echo "all=$all"; echo "deploy=$deploy"; } >> "$GITHUB_OUTPUT"
+
   check:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: sites
+    if: github.event_name == 'pull_request' && needs.sites.outputs.all != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(needs.sites.outputs.all) }}
+    env:
+      SITE: ${{ matrix.site }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,15 +120,21 @@ jobs:
           cache: npm
           cache-dependency-path: services/www/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
       - name: Validate content
         run: npx vitest run tests/content.test.ts tests/links.test.ts
 
   release:
-    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: sites
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.sites.outputs.deploy != '[]'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.sites.outputs.deploy) }}
     env:
-      REGISTRY_IMAGE: registry.jithendar.com/jithendar/moks-cms-content
+      SITE: ${{ matrix.site }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,8 +146,19 @@ jobs:
           cache: npm
           cache-dependency-path: services/www/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
       - name: Validate content
         run: npx vitest run tests/content.test.ts tests/links.test.ts
+      - name: Site settings
+        run: |
+          set -euo pipefail
+          f="../../sites/$SITE/site.json"
+          {
+            echo "REGISTRY_IMAGE=$(jq -er .deploy.contentImage "$f")"
+            echo "NAMESPACE=$(jq -er .deploy.namespace "$f")"
+            echo "DEPLOYMENT=$(jq -er .deploy.deployment "$f")"
+            echo "JITHENDAR_SITE_URL=https://$(jq -er .host "$f")"
+          } | tee -a "$GITHUB_ENV"
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
@@ -92,7 +166,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "$HARBOR_USERNAME" && -n "$HARBOR_PASSWORD" ]] || { echo "::error::Secrets HARBOR_USERNAME and HARBOR_PASSWORD must be set"; exit 1; }
-          printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
+          printf '%s' "$HARBOR_PASSWORD" | docker login "${REGISTRY_IMAGE%%/*}" --username "$HARBOR_USERNAME" --password-stdin
       - name: Package image
         run: |
           docker build --platform linux/arm64 --provenance=false -f Dockerfile.content \
@@ -103,8 +177,8 @@ jobs:
           out="$(mktemp -d)"; mkdir -p "$out/content" "$out/images"; chmod 777 "$out/content" "$out/images"
           docker run --rm -v "$out/content:/mnt/content" -v "$out/images:/mnt/images" "$REGISTRY_IMAGE:latest"
           test -d "$out/content/blog" && test -d "$out/content/authors"
-          [[ "$(find "$out/content" -name '*.mdx' | wc -l)" -eq "$(find content -name '*.mdx' | wc -l)" ]]
-          [[ "$(find "$out/images" -type f | wc -l)" -eq "$(find public/images -type f | wc -l)" ]]
+          [[ "$(find "$out/content" -name '*.mdx' | wc -l)" -eq "$(find "../../sites/$SITE/content" -name '*.mdx' | wc -l)" ]]
+          [[ "$(find "$out/images" -type f | wc -l)" -eq "$(find "../../sites/$SITE/public/images" -type f | wc -l)" ]]
           echo "Copied $(find "$out/content" -name '*.mdx' | wc -l) MDX files and $(find "$out/images" -type f | wc -l) images"
       - name: Push
         run: docker push --quiet "$REGISTRY_IMAGE:latest"
@@ -121,18 +195,19 @@ jobs:
             git show "$1:$2" 2>/dev/null | awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit }
               /^status:[[:space:]]*["'"'"']?published/ { found = 1 } END { exit !found }'
           }
+          C="sites/$SITE/content" I="sites/$SITE/public/images"
           restart=true reason="manual run or unknown range"
           if [[ "$EVENT" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             restart=false reason="only unpublished articles and new images changed"
             while IFS=$'\t' read -r status path; do
               case "$path" in
-                services/www/content/blog/*.mdx|services/www/content/news/*.mdx|services/www/content/projects/*.mdx)
+                "$C"/blog/*.mdx|"$C"/news/*.mdx|"$C"/projects/*.mdx)
                   if published "$BEFORE" "$path" || published "$GITHUB_SHA" "$path"; then restart=true reason="published: $path"; break; fi ;;
-                services/www/public/images/*)
+                "$I"/*)
                   if [[ "$status" != A ]]; then restart=true reason="image changed: $path"; break; fi ;;
                 *) restart=true reason="other change: $path"; break ;;
               esac
-            done < <(git diff --name-status --no-renames "$BEFORE" "$GITHUB_SHA" -- services/www/content services/www/public/images \
+            done < <(git diff --name-status --no-renames "$BEFORE" "$GITHUB_SHA" -- "$C" "$I" \
                        services/www/Dockerfile.content services/www/Dockerfile.content.dockerignore .github/workflows/ci-content.yml)
           fi
           echo "Restart: $restart ($reason)"
@@ -147,13 +222,14 @@ jobs:
         id: drafts
         if: steps.visible.outputs.restart == 'false'
         env:
-          JITHENDAR_API_KEY: ${{ secrets.JITHENDAR_API_KEY }}
+          # The repository secret named by deploy.apiKeySecret in the site's site.json.
+          JITHENDAR_API_KEY: ${{ matrix.apiKeySecret && secrets[matrix.apiKeySecret] || '' }}
           BEFORE: ${{ github.event.before }}
         run: |
           set -uo pipefail
           mapfile -t added < <(git -C "$GITHUB_WORKSPACE" diff --name-only --no-renames --diff-filter=A "$BEFORE" "$GITHUB_SHA" -- \
-            'services/www/content/blog/*.mdx' 'services/www/content/news/*.mdx' 'services/www/content/projects/*.mdx' \
-            | sed 's#^services/www/##')
+            "sites/$SITE/content/blog/*.mdx" "sites/$SITE/content/news/*.mdx" "sites/$SITE/content/projects/*.mdx" \
+            | sed 's#^#../../#')
           sent=0 waiting=0
           {
             echo '### New draft articles'
@@ -162,7 +238,7 @@ jobs:
           if [[ ${#added[@]} -eq 0 ]]; then
             echo "No new articles in this push." | tee -a "$GITHUB_STEP_SUMMARY"
           elif [[ -z "$JITHENDAR_API_KEY" ]]; then
-            echo "::warning::Secret JITHENDAR_API_KEY is not set (Admin → API keys, scopes posts:read + posts:write): ${#added[@]} new article(s) wait for the next restart."
+            echo "::warning::$SITE: the API key secret named in site.json (deploy.apiKeySecret) is not set (Admin → API keys, scopes posts:read + posts:write): ${#added[@]} new article(s) wait for the next restart."
             # shellcheck disable=SC2016 # literal Markdown backticks
             printf -- '- `%s`: waits for the next restart (no JITHENDAR_API_KEY)\n' "${added[@]}" >> "$GITHUB_STEP_SUMMARY"
             waiting=${#added[@]}
@@ -174,7 +250,7 @@ jobs:
                 sent=$((sent + 1))
               else
                 echo "$out"
-                echo "::warning file=services/www/$f::Not sent to Admin → Posts; it is imported as a draft at the next restart. $(tail -1 <<<"$out")"
+                echo "::warning file=${f#../../}::Not sent to Admin → Posts; it is imported as a draft at the next restart. $(tail -1 <<<"$out")"
                 echo "- \`$f\`: waits for the next restart ($(tail -1 <<<"$out"))" >> "$GITHUB_STEP_SUMMARY"
                 waiting=$((waiting + 1))
               fi
@@ -182,8 +258,8 @@ jobs:
           fi
           { echo "sent=$sent"; echo "waiting=$waiting"; } >> "$GITHUB_OUTPUT"
           exit 0
-      # The init container pulls moks-cms-content:latest (imagePullPolicy Always) whenever a pod starts.
-      - name: Restart jithendar-com
+      # The init container pulls <deploy.contentImage>:latest (imagePullPolicy Always) whenever a pod starts.
+      - name: Restart the site
         # Readers would see a change, or a new article could not be sent to the API (it needs the restart to arrive).
         if: steps.visible.outputs.restart == 'true' || steps.drafts.outputs.waiting > 0
         env:
@@ -198,9 +274,9 @@ jobs:
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           trap 'rm -f "$KUBECONFIG"' EXIT
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-          kubectl -n jithendar rollout restart deploy/jithendar-com
-          if ! kubectl -n jithendar rollout status deploy/jithendar-com --timeout=5m; then
-            echo "::error::Rollout of jithendar-com did not finish within 5 minutes"
+          kubectl -n "$NAMESPACE" rollout restart "deploy/$DEPLOYMENT"
+          if ! kubectl -n "$NAMESPACE" rollout status "deploy/$DEPLOYMENT" --timeout=5m; then
+            echo "::error::Rollout of $DEPLOYMENT did not finish within 5 minutes"
             exit 1
           fi
       - name: Record image
@@ -210,14 +286,14 @@ jobs:
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {
-            echo '### jithendar.com content image'
+            echo "### $SITE content image"
             echo
             echo "- Tag: \`$REGISTRY_IMAGE:latest\` (commit \`$GITHUB_SHA\`)"
             echo "- Digest: \`$digest\`"
             echo
             if [[ "$RESTART" == true ]]; then
-              echo "Deployed: deploy/jithendar-com restarted; init container copied the new content ($REASON)"
+              echo "Deployed: deploy/$DEPLOYMENT restarted in $NAMESPACE; init container copied the new content ($REASON)"
             else
-              echo "Not deployed: $REASON. The image is pushed; the next restart of jithendar-com picks it up."
+              echo "Not deployed: $REASON. The image is pushed; the next restart of $DEPLOYMENT picks it up."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

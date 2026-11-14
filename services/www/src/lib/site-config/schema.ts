@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { AA, contrast, HEX, overlayContrast, readableOn } from "./color";
 import { checkCustomCss } from "./css";
+import { siteFile } from "@/config/site";
 
 export const SCHEMA_VERSION = 1;
 
@@ -538,15 +539,15 @@ const principles = [
 export function defaultConfig(): SiteConfig {
   return {
     general: {
-      siteName: "Jithendar.com",
-      publicationName: "Jithendar.com",
-      tagline: "Engineering insight on AI, cloud and Kubernetes",
-      description:
-        "Engineering notes, news and analysis on AI engineering, cloud, Kubernetes, platform engineering, infrastructure as code and security.",
-      timezone: "Asia/Kolkata",
+      siteName: siteFile.name,
+      publicationName: siteFile.publicationName,
+      tagline: siteFile.tagline,
+      description: siteFile.description,
+      // A time zone the settings form offers; sites/<SITE>/site.json may name any other, which falls back to UTC.
+      timezone: (TIMEZONES as readonly string[]).includes(siteFile.timeZone) ? (siteFile.timeZone as (typeof TIMEZONES)[number]) : "UTC",
       dateFormat: "d-mmm-yyyy",
       contact: { email: "", location: "" },
-      social: { github: "https://github.com/mrjithendar", x: "https://x.com/imjithendar", linkedin: "https://www.linkedin.com/in/jithendardharmapuri", youtube: "", mastodon: "" },
+      social: { ...siteFile.social },
       features: { comments: true, registration: true, contactForm: true },
       discussion: { requireApproval: true, editWindowMinutes: 1440 },
       maintenance: { enabled: false, message: "We are making improvements and will be back shortly.", retryAfterMinutes: 30 },
@@ -596,7 +597,7 @@ export function defaultConfig(): SiteConfig {
           items: [
             { id: "i-about", label: "About", href: "/about", newTab: false, children: [] },
             { id: "i-contact", label: "Contact", href: "/contact", newTab: false, children: [] },
-            { id: "i-author", label: "Author", href: "/authors/jithendar-dharmapuri", newTab: false, children: [] },
+            { id: "i-author", label: "Author", href: `/authors/${siteFile.primaryAuthor}`, newTab: false, children: [] },
           ],
         },
       ],
@@ -684,8 +685,8 @@ export function defaultConfig(): SiteConfig {
           spacing: "md",
           background: "none",
           eyebrow: "Editor",
-          author: "jithendar-dharmapuri",
-          text: "Writes and edits Jithendar.com and builds the systems behind it, including RoboShop AI, a public microservices storefront with an AI shopping assistant, deployed on Kubernetes.",
+          author: siteFile.primaryAuthor,
+          text: siteFile.editorBio,
           showLinks: true,
         },
       ],

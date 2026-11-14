@@ -1,4 +1,4 @@
-import { isProductionEnv } from "./site";
+import { isProductionEnv, siteFile } from "./site";
 
 /**
  * Third-party integrations, configured at runtime from environment variables (no rebuild needed).
@@ -28,10 +28,10 @@ export type Integrations = {
 };
 
 /**
- * jithendar.com's AdSense publisher ID (matches the account's ads.txt line). Used when ADSENSE_CLIENT_ID is unset,
+ * The site's AdSense publisher ID (adsenseClientId in sites/<SITE>/site.json; matches the account's ads.txt line). Used when ADSENSE_CLIENT_ID is unset,
  * so Auto ads and AdSense site verification work without extra configuration. ADSENSE_CLIENT_ID=off disables ads.
  */
-export const DEFAULT_ADSENSE_CLIENT_ID = "ca-pub-2479369059565142";
+export const DEFAULT_ADSENSE_CLIENT_ID: string = siteFile.adsenseClientId;
 
 export function integrations(env: Env = process.env, production = isProductionEnv()): Integrations {
   const token = /^[A-Za-z0-9_-]{10,100}$/;

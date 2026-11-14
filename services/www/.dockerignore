@@ -3,6 +3,7 @@ node_modules
 coverage
 tests
 docs
+**/.site-copy
 deploy
 Dockerfile
 .dockerignore

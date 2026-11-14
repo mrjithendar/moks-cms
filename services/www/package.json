@@ -8,13 +8,20 @@
     "node": ">=24"
   },
   "scripts": {
+    "site": "node scripts/use-site.mjs",
+    "predev": "node scripts/use-site.mjs",
     "dev": "next dev",
+    "prepreview": "node scripts/use-site.mjs",
     "preview": "CONTENT_PREVIEW=true next dev",
+    "prebuild": "node scripts/use-site.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "pretypecheck": "node scripts/use-site.mjs",
     "typecheck": "next typegen && tsc --noEmit",
+    "pretest": "node scripts/use-site.mjs",
     "test": "vitest run",
+    "precheck:content": "node scripts/use-site.mjs",
     "check:content": "vitest run tests/editor-workflow.test.ts -t \"content fidelity\"",
     "push-post": "tsx scripts/push-post.ts"
   },
