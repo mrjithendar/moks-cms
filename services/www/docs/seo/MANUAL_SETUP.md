@@ -167,8 +167,15 @@ approval needs the agent; reject them, or regenerate them under legacy.
 
 ## 18. Ask the Blog (off until an admin turns it on)
 Since D-89 the manifests set the deployment switch `ASK_BLOG_ENABLED=true` for both workloads (the web Deployment in
-`minikube/30-jithendar-com.yaml`, and `seo-agent-config`), so after `./deploy.sh` nothing needs patching. The assistant
-is still **off** until an admin switches it on:
+`minikube/30-jithendar-com.yaml`, and `seo-agent-config`), so nothing needs patching. The two manifests are in
+different groups and are applied separately:
+
+- web Deployment (site group): the `deploy to minikube` workflow applies it when the pull request is merged;
+- `seo-agent-config` (seo-agent group): `scripts/manifests.sh seo-agent | kubectl apply -f -`, then
+  `kubectl -n jithendar rollout restart deploy/seo-agent`. No workflow applies this group until the pull request
+  "remove deploy.sh" (#59) is merged; after that the workflow applies it and restarts the agent.
+
+The assistant is still **off** until an admin switches it on:
 
 1. Run a reindex first so there's something to retrieve: Admin → SEO → (API) `POST /api/admin/seo/agent/reindex {"full": true}`,
    or wait for the Sunday CronJob.
@@ -184,7 +191,7 @@ kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{
 kubectl -n jithendar rollout restart deploy/seo-agent
 ```
 The agent then answers `disabled` to every question (the widget says it is switched off). For the web app the value is
-in the Deployment manifest: set it to `"false"` there and run `./deploy.sh`. An `ASK_BLOG_ENABLED` key left in
+in the Deployment manifest: set it to `"false"` there in a pull request and merge it. An `ASK_BLOG_ENABLED` key left in
 `jithendar-com-public` from the earlier instructions no longer has any effect (the Deployment's own `env` wins); it
 can be removed.
 

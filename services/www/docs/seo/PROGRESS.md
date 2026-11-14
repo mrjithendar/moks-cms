@@ -663,5 +663,11 @@ The test was corrected (no production code change). Later runs are recorded on t
 (needs the deployed site and agent). The real-model run of the hard evaluation set and the generation eval are still
 open (RAG.md), and are recommended before choosing "Everyone".
 
-**Manual steps (owner).** MANUAL_SETUP.md §18: `./deploy.sh` (applies the two manifest changes), reindex, then
+**Manual steps (owner).** MANUAL_SETUP.md §18: apply the two manifest changes (the web Deployment is applied by the
+deploy workflow on merge; `seo-agent-config` is a different group, applied with
+`scripts/manifests.sh seo-agent | kubectl apply -f -` and a restart of the agent), reindex, then
 Admin → Automation & AI → Ask the Blog → switch on and choose the audience.
+
+**Correction (2026-11-14).** This entry and §18 first said `./deploy.sh` applies both manifest changes. It never
+applied the seo-agent group, so the agent's `ASK_BLOG_ENABLED` would have stayed `false` and every question would
+have answered "switched off". Both texts now give the right steps.
