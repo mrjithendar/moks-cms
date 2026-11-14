@@ -160,7 +160,7 @@ identical labels, so one `rate()` over both failed with "vector cannot contain m
 
 ## Rolling it out
 
-1. Deploy the site: `./deploy.sh` (new image + `minikube/`, including the `strip-trace-headers` middleware on the
+1. Deploy the site: merge the pull request (CI builds the image; the `deploy to minikube` workflow applies `minikube/`, including the `strip-trace-headers` middleware on the
    `jithendar-com` Ingress).
 2. Push this repository (dashboards in `services/grafana/`) and the `tools` repo, then sync `loki`, `prometheus` and
    `grafana` in Argo CD (Alloy patterns, scrape jobs, alerts, the Jaeger data source and the dashboards; the

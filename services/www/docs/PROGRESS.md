@@ -1,5 +1,58 @@
 # Progress log — jithendar.com
 
+## deploy.sh removed; the deploy workflow applies everything (2026-11-14, owner request)
+
+Owner request: "Remove deploy.sh, whatever it is doing can you do it via workflow." Delivered as a pull request from a
+cloud session (branch `ci/deploy-via-workflow`; nothing merged, nothing applied to the cluster).
+
+**What deploy.sh did, and where it is now**
+
+| deploy.sh step | Now |
+|---|---|
+| Check three Secrets exist | Dropped: CI cannot read Secrets. A missing one shows as a failed rollout |
+| `kubectl apply -k minikube --dry-run=server`, then apply | `deploy-minikube.yml`, on merge and on manual runs. New: the site group is applied in full (`scripts/ci-app-manifests.py --all`), not only its application objects |
+| Restart the site on `:latest`, wait | Manual run: input `restart_site` (default on). On merge the image workflow already restarts it |
+| `scripts/smoke.sh` | Unchanged step; now also runs when another workload failed to roll out |
+
+**Decisions (asked, owner chose)**
+- *Privileged objects (Namespace, ServiceAccounts, RBAC including CI's own, mesh policies):* "apply all on merge",
+  over a manual-run job or keeping a kubectl command. This reverses the rule "a commit cannot widen CI's own access";
+  the consequences are written in DEPLOYMENT.md ("What moved from a person to CI") and in the header of
+  `minikube/85-ci-applier.yaml`.
+- *seo-agent group:* CI now applies its application objects on merge (it was hand-applied only); CronJobs stay manual.
+- Kept out of CI without being asked, to limit the new reach: Secrets (so the applier gets no Secret access), and the
+  ClusterRole/ClusterRoleBinding (cluster-wide RBAC). `scripts/setup-ci-applier.sh` applies those.
+- New: when a group's ConfigMap changed, the workflow restarts that group's Deployments (pods read it at start).
+
+**Files.** Removed `deploy.sh`. Changed `.github/workflows/deploy-minikube.yml`, `scripts/ci-app-manifests.py`
+(`--all`), `minikube/85-ci-applier.yaml` (wider Role, new ClusterRole for the Namespace object),
+`scripts/setup-ci-applier.sh` (new can/cannot checks, three groups), `ci-repo.yml`, `ci-jithendar-com.yml` and
+`dependabot.yml` (comments, shellcheck list), `scripts/tests/kube-context.test.sh`, `setup-practice-runner.sh`, and
+the references in `README.md`, `minikube/`, `AGENTS.md`, DEPLOYMENT.md and five other docs. Published articles and
+their diagram sources that describe `deploy.sh` are unchanged (they describe the repository as it was).
+
+**Commands run → result**
+- `scripts/ci-app-manifests.py` on the three groups (site rendered by concatenating the kustomization's files;
+  no `kubectl` in the sandbox): site `--all` 20 objects applied, 4 left (2 token Secrets, ClusterRole,
+  ClusterRoleBinding); seo-agent 7 applied, 15 CronJobs left; practice-executor unchanged (7 / 11). A Namespace other
+  than `jithendar`, an object in another namespace and an unknown kind each stop the run (exit 2). Pass.
+- The workflow's apply script against a **stub** `kubectl`, five cases (ConfigMap changed on merge, manual run,
+  nothing changed, old Role → "forbidden", one workload not ready). Pass. This checks the script's logic only.
+- `bash -n` on the workflow's three scripts and the changed shell scripts; the workflow file parses as YAML. Pass.
+- **Not run:** anything against the cluster. `kubectl diff`'s header format (used to spot a changed ConfigMap) and the
+  new RBAC rules are untested on mk4. `shellcheck` and the kube-context test run in CI on the pull request.
+
+**Open issues**
+- The deploy job has failed on recent merges because `deployment/practice-executor-api` and
+  `deployment/practice-dispatcher` are past their progress deadline in the cluster (runs of 2026-11-13). The site part
+  applied. Not caused or fixed here; it will keep the job red until those Deployments are healthy.
+
+**Manual steps required (owner), in this order**
+1. Before or right after merging: from this branch, `KUBE_CONTEXT=mk4 scripts/setup-ci-applier.sh`. It applies the
+   wider Role and the ClusterRole (CI cannot grant itself these) and re-tests the token. Until then the deploy job
+   stops at the server dry run with "forbidden" and changes nothing.
+2. If the merge ran before step 1: Actions → deploy to minikube → Run workflow.
+
 ## In-article image and video generation, automatic drafts, pull-request-only CI (2026-11-12, owner request)
 
 Delivered as a pull request from a cloud session (branch `feat/editor-generation-pr-ci`, owner approved pushing a

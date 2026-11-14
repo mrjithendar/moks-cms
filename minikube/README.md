@@ -6,9 +6,9 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 
 | Group | Files | Applied by |
 |---|---|---|
-| `site` | `00-…` to `85-…`, listed in `kustomization.yaml` | `./deploy.sh` (all of it); CI applies the application objects |
+| `site` | `00-…` to `85-…`, listed in `kustomization.yaml` | CI (`deploy-minikube.yml`) on merge: all of it except the two token Secrets and the ClusterRole/ClusterRoleBinding in `85-`, which `scripts/setup-ci-applier.sh` and `setup-ci-deployer.sh` apply |
 | `practice-executor` | `practice-executor-*.yaml` | a person, once, after gVisor is verified; then CI (application objects) |
-| `seo-agent` | `seo-agent-*.yaml` (SEO v4 agent service: internal API + MCP edge, flow-trigger CronJobs, including `seo-agent-62-promotion-triggers.yaml` for the two promotion flows). Kong entities for `/mcp/*` are in `kong/seo-agent-mcp.deck.yaml` (decK, not kubectl) | a person (`scripts/manifests.sh seo-agent \| kubectl apply -f -`), after `scripts/create-seo-agent-secrets.sh` and pgvector (`services/www/docs/seo/MANUAL_SETUP.md` §13–15 and "v4"); CI only renders it |
+| `seo-agent` | `seo-agent-*.yaml` (SEO v4 agent service: internal API + MCP edge, flow-trigger CronJobs, including `seo-agent-62-promotion-triggers.yaml` for the two promotion flows). Kong entities for `/mcp/*` are in `kong/seo-agent-mcp.deck.yaml` (decK, not kubectl) | a person the first time (`scripts/manifests.sh seo-agent \| kubectl apply -f -`), after `scripts/create-seo-agent-secrets.sh` and pgvector (`services/www/docs/seo/MANUAL_SETUP.md` §13–15 and "v4"); then CI applies the application objects on merge (ConfigMap, Deployment, Services, NetworkPolicies) and restarts the agent when its ConfigMap changed. The CronJobs stay with a person |
 
 ## Site (`kustomization.yaml`)
 
@@ -19,7 +19,7 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `services/www/docs/OBSERVABILITY.md` |
 | `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only restart the site, the executor and the SEO agent (`scripts/setup-ci-deployer.sh`) |
-| `85-ci-applier.yaml` | ServiceAccount `github-ci-applier`: `.github/workflows/deploy-minikube.yml` applies the application objects (not RBAC, Secrets or anything cluster-wide; `scripts/setup-ci-applier.sh`) |
+| `85-ci-applier.yaml` | ServiceAccount `github-ci-applier`: `.github/workflows/deploy-minikube.yml` applies the site group, RBAC included, and may patch the Namespace `jithendar` (not Secrets, nothing else cluster-wide; read the file's header; `scripts/setup-ci-applier.sh`) |
 
 The Grafana dashboards are not cluster manifests here: they live in [`../grafana/`](../grafana/README.md) and
 reach Grafana through Argo CD.
@@ -27,7 +27,7 @@ reach Grafana through Argo CD.
 ## Python practice executor (`practice-executor-*.yaml`)
 
 Code runner in namespace `jithendar`, next to the site (`services/www/docs/PYTHON_PRACTICE_EXECUTOR.md`). Not in
-`kustomization.yaml` on purpose, so `./deploy.sh` never applies it. Apply it by hand, only after gVisor is
+`kustomization.yaml` on purpose, so its RBAC, quota, RuntimeClass and admission policies are never applied by CI. Apply it by hand, only after gVisor is
 installed (`scripts/install-gvisor-mk4.sh`), then prove isolation with `scripts/verify-practice-sandbox.sh`:
 
 ```sh
@@ -79,7 +79,7 @@ creates `jithendar-com-env`; Terraform in the miniKube repository writes the dat
   `redis_tenants.site-cachebus`). Optional: the site starts without it and keeps TTL-only caches. Apply order:
   1. miniKube repo: add the tenant (`services/www/docs/redis-site-cachebus.md`), `terraform apply`;
   2. check the Secret appeared: `kubectl -n jithendar get secret redis-site-cachebus-credentials`;
-  3. `KUBE_CONTEXT=mk4 ./deploy.sh` (or, if the site is already on this version,
+  3. run the `deploy to minikube` workflow by hand (or
      `kubectl -n jithendar rollout restart deployment/jithendar-com`: env is read at pod start);
   4. the ACL check in that document, then Admin → System status shows "cache bus: connected".
 - `harbor-pull` (pull secret for `registry.jithendar.com`, used by the site, the practice executor and sandbox pods;
@@ -90,11 +90,17 @@ creates `jithendar-com-env`; Terraform in the miniKube repository writes the dat
 The site always runs `registry.jithendar.com/jithendar/jithendar-com:latest` (Harbor) with `imagePullPolicy: Always`. CI pushes `:pr-<number>` and `:latest` and restarts
 the Deployment when a pull request is merged into `master`, so new code needs nothing here.
 
+Manifest changes are applied by `.github/workflows/deploy-minikube.yml` when their pull request is merged (server
+dry run, diff, apply, wait, smoke test). To re-apply everything and restart the site without a merge, which is what
+`./deploy.sh` did until it was removed on 2026-11-14:
+
 ```sh
-KUBE_CONTEXT=mk4 ./deploy.sh
+gh workflow run deploy-minikube.yml --ref master     # or Actions → deploy to minikube → Run workflow
 ```
 
-**Kube context.** Every script that changes the cluster (`deploy.sh`, `scripts/create-*`, `set-*`, `setup-ci-*`,
+By hand, with the `mk4` kubeconfig, the same objects are `kubectl apply -k minikube`.
+
+**Kube context.** Every script that changes the cluster (`scripts/create-*`, `set-*`, `setup-ci-*`,
 `verify-practice-sandbox.sh`) sources `scripts/lib/kube-context.sh`: it targets `KUBE_CONTEXT` if set, otherwise the
 current kubectl context, refuses a context that doesn't exist, prints the context and its API server, and passes
 `--context` to every kubectl call so the whole run stays on one cluster. Without `KUBE_CONTEXT` it asks for confirmation

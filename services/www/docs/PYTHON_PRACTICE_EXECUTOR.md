@@ -42,7 +42,7 @@ browser ─► jithendar-com (Next.js)                       executor           
 ```
 
 - Executor code: `services/executor/` (`app/main.py` API, `app/dispatcher.py`, `app/backends.py`, `sandbox/runner.py`).
-- Manifests: `minikube/practice-executor-*.yaml` — separate from `minikube/kustomization.yaml`, so `./deploy.sh` never deploys it.
+- Manifests: `minikube/practice-executor-*.yaml` — separate from `minikube/kustomization.yaml`; CI applies only its application objects (`deploy-minikube.yml`).
 - Result protocol: the runner prints one line `<<<RESULT:{nonce}>>>{json}`; per test: status
   (ok/error/timeout/memory/crash/skipped), normalised output (sets, big ints, tuples encoded losslessly),
   repr, stdout/stderr (capped), exception type/message/traceback (user frames only), duration, peak memory.
@@ -72,7 +72,7 @@ browser ─► jithendar-com (Next.js)                       executor           
    `imagePullPolicy: Always`. The release job moves both `:latest` tags. From then on every push that touches
    `services/executor/` or the practice catalog deploys. It never applies manifests, so changes to
    `minikube/practice-executor-*.yaml` are still applied by hand.
-6. **Connect the site:** `./deploy.sh` (applies the site's egress rule to the executor and restarts it), then
+6. **Connect the site:** run the `deploy to minikube` workflow (applies the site's egress rule to the executor and restarts the site), then
    switch on *Admin → Python practice → Settings → Allow running and submitting code*.
 7. Optional: validate a problem from the admin editor (“Validate”) to see an end-to-end run.
 

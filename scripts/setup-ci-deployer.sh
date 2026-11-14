@@ -4,7 +4,7 @@
 #   MK4_API_SERVER  repository variable  cluster API URL         (from the mk4 context)
 #   MK4_CA_DATA     repository variable  base64 CA certificate   (from the mk4 context)
 #   MK4_CI_TOKEN    repository secret    ServiceAccount token    (from Secret jithendar/github-ci-deployer-token)
-# ./deploy.sh also applies the manifest (it is in minikube/kustomization.yaml).
+# The deploy workflow also applies the manifest (it is in minikube/kustomization.yaml), except the token Secret.
 #
 #   KUBE_CONTEXT=mk4 scripts/setup-ci-deployer.sh            # apply SA + Role + token, test the kubeconfig, store the values
 #   KUBE_CONTEXT=mk4 SKIP_GH=1 scripts/setup-ci-deployer.sh  # only apply and test; set the values in GitHub yourself

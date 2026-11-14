@@ -11,7 +11,7 @@ want covers stored. pgvector is optional (novelty vs the site is skipped without
 
 ## 2. Deploy
 
-1. Merge, let CI build both images, restart the web app (`./deploy.sh`), which applies migration `0017_news_desk.sql`
+1. Merge, let CI build both images, restart the web app (CI does after the merge; or run the `deploy to minikube` workflow), which applies migration `0017_news_desk.sql`
    on start-up.
 2. Apply the agent group (the ConfigMap now has `NEWS_DESK_ENABLED: "false"`, and three news CronJobs):
    `scripts/manifests.sh seo-agent | kubectl apply -f -`

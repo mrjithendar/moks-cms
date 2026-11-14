@@ -9,7 +9,9 @@
 #   miniKube scripts/istio/authz-dry-run-report.py reads the counts. Delete the annotation once they stay at 0.
 # - NetworkPolicy istio-sidecars: what the sidecars themselves need, added to the pods the other policies isolate.
 # Practice sandbox pods get no sidecar (label sidecar.istio.io/inject=false, and istiod's neverInjectSelector).
-# PeerAuthentications are applied by a person (./deploy.sh), never by CI (scripts/ci-app-manifests.py).
+# Since 2026-11-14 CI applies this file's PeerAuthentication and AuthorizationPolicy with the rest of the site group
+# (scripts/ci-app-manifests.py --all; owner decision, services/www/docs/DEPLOYMENT.md): review changes here as
+# changes to who may call the namespace.
 ---
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
