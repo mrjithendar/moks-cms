@@ -25,7 +25,7 @@ from ..state import (
     ReportInput,
     WeeklyInput,
 )
-from .jobs import Ga4SyncFlow, GscSyncFlow, TechAuditFlow
+from .jobs import Ga4SyncFlow, GscSyncFlow, TechAuditFlow, TopicDiscoveryFlow
 from .maintenance import AskGapsFlow, InternalLinkingFlow, ReindexFlow
 from .ml import SeoMlFlow
 from .new_article import NewArticleFlow
@@ -76,6 +76,7 @@ SPECS: dict[str, FlowSpec] = {
     # Promotion (docs/seo/PROMOTION.md): one run per article (or one site-wide run); ideas are site-wide.
     "promotion_flow": FlowSpec("promotion_flow", PromotionFlow.create, PromotionInput, lambda i: str(i.get("article_id") or "site")),
     "content_ideas_flow": FlowSpec("content_ideas_flow", ContentIdeasFlow.create, NoInput, _site),
+    "topic_discovery_flow": FlowSpec("topic_discovery_flow", TopicDiscoveryFlow.create, JobInput, _site),
     # News desk (docs/news/ARCHITECTURE.md). Lock targets: one active run per job; one per job + story for drafts.
     "news_dispatch_flow": FlowSpec("news_dispatch_flow", NewsDispatchFlow.create, NEWS_INPUTS["news_dispatch_flow"], _site),
     "news_job_flow": FlowSpec("news_job_flow", NewsJobFlow.create, NEWS_INPUTS["news_job_flow"], lambda i: f"job:{i['job_id']}"),
@@ -91,7 +92,7 @@ NEWS_FLOWS = frozenset(n for n in SPECS if n.startswith("news_"))
 APPROVAL_ONLY = frozenset({"publish_flow"})
 DRAFTING_FLOWS = ("optimize_article_flow", "new_article_flow")
 MCP_KICKOFF_ALLOWLIST = frozenset({"news_job_flow", "optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"})
-CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "promotion_flow", "content_ideas_flow"})
+CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "promotion_flow", "content_ideas_flow", "topic_discovery_flow"})
 
 
 def check_kickoff(name: str, triggered_by: str) -> None:

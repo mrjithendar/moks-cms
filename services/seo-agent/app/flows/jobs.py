@@ -54,3 +54,5 @@ def _job_flow(flow: str, job: str) -> type[SeoFlow[JobState]]:
 GscSyncFlow = _job_flow("gsc_sync_flow", "gsc_sync")
 Ga4SyncFlow = _job_flow("ga4_sync_flow", "ga4_sync")
 TechAuditFlow = _job_flow("tech_audit_flow", "technical_scan")
+# Topic discovery (docs/seo/TOPICS.md): the web app collects trend items and Search Console demand and scores topics.
+TopicDiscoveryFlow = _job_flow("topic_discovery_flow", "topic_discovery")

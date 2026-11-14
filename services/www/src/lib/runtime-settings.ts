@@ -186,6 +186,16 @@ GROUPS.push(
     ],
   },
   {
+    id: "research-sources",
+    title: "Research sources (topic discovery)",
+    description: "Optional accounts for topic discovery. Each is used only when it is also switched on under Topic discovery → Settings.",
+    fields: [
+      { env: "X_BEARER_TOKEN", label: "X API bearer token", type: "secret", pattern: /^$|^[A-Za-z0-9%_-]{40,300}$/, overlay: true, hint: "App-only bearer token of an X developer app. Recent search needs a paid X API plan." },
+      { env: "DATAFORSEO_LOGIN", label: "DataForSEO API login", type: "text", pattern: /^$|^[^\s@]{1,80}@[^\s@]{3,80}$/, overlay: true, placeholder: "you@example.com" },
+      { env: "DATAFORSEO_PASSWORD", label: "DataForSEO API password", type: "secret", pattern: /^$|^[\x21-\x7e]{8,100}$/, overlay: true, hint: "The API password from the DataForSEO dashboard, not the account password." },
+    ],
+  },
+  {
     id: "editorial-crew",
     title: "Editorial crew (AI drafting)",
     description: "How the SEO agent's crews run. Empty fields use the deployment's values (minikube/seo-agent-40-seo-agent.yaml). Applied to the next crew run.",
