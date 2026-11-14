@@ -9,6 +9,7 @@ import { isProductionEnv, siteUrl } from "@/config/site";
 import { getDb, schema } from "@/db";
 import { mailConfigured, sendMail } from "./mail";
 import { auditLogin } from "./auth-audit";
+import { CLIENT_IP_HEADER } from "./client-ip";
 import { onInvalidate } from "./cache-bus";
 import { activeSocialProviderConfig } from "./integrations";
 import { getSettings } from "./settings";
@@ -162,7 +163,9 @@ async function createAuth() {
       // Callback/redirect URLs must be same-site (trustedOrigins). Explicit so tests run with the check on too
       // (Better Auth turns it off by default under NODE_ENV=test).
       disableOriginCheck: false,
-      ipAddress: { ipAddressHeaders: ["x-forwarded-for", "x-real-ip"] },
+      // Only the header the auth route sets from lib/client-ip.ts (the route removes any value the client sent).
+      // Better Auth would take the left-most X-Forwarded-For entry, which the client chooses.
+      ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
     hooks: {
       // Public sign-up can be switched off from the admin settings.

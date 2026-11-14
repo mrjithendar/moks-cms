@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { clientInfo } from "@/lib/client-ip";
 import { PostError } from "@/lib/posts";
 import { callQuote, confirmCallPayment, createCallOrder, type CallOrder, type CallQuote } from "@/lib/razorpay";
 import { getSessionUser } from "@/lib/session";
@@ -9,10 +10,14 @@ import { getSessionUser } from "@/lib/session";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string; issues?: string[] };
 
-/** Cloudflare sets CF-IPCountry on every proxied request (and overwrites any value a client sends). */
+/**
+ * The visitor's country and address from Cloudflare (CF-IPCountry, CF-Connecting-IP), used only when the request
+ * really came through Cloudflare (lib/client-ip.ts): a request sent straight to the origin cannot choose its country,
+ * and prices in USD.
+ */
 async function requestContext() {
-  const h = await headers();
-  return { country: h.get("cf-ipcountry"), ip: h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null };
+  const { country, ip } = clientInfo(await headers());
+  return { country, ip };
 }
 
 async function guard<T>(fn: () => Promise<T>): Promise<Result<T>> {

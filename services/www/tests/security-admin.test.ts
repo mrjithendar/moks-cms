@@ -5,7 +5,9 @@ import type { Actor } from "@/lib/posts";
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-forwarded-for": "198.51.100.7, 10.0.0.1", "user-agent": "vitest" }) }));
+// A request as it arrives through Cloudflare and the Istio gateway (lib/client-ip.ts): the visitor in CF-Connecting-IP,
+// a forged left-most X-Forwarded-For entry, and the Cloudflare edge address the gateway appended.
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "cf-connecting-ip": "198.51.100.7", "x-forwarded-for": "192.0.2.66, 198.51.100.7, 172.70.10.5", "user-agent": "vitest" }) }));
 
 // Backups write to an in-memory "bucket" instead of R2.
 const bucket = new Map<string, Buffer>();

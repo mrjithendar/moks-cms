@@ -76,8 +76,9 @@ Visitors choose a call length, pay **minutes × your per-minute rate**, then boo
 - **Keys:** Admin → Advanced settings → *Razorpay payments*: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (sealed),
   `RAZORPAY_WEBHOOK_SECRET` (sealed). Same env names work as deployment variables.
 - **Currency:** decided on the server from Cloudflare's `CF-IPCountry` header: `IN` → INR, anything else or missing →
-  USD. Cloudflare overwrites the header on proxied requests, so a visitor cannot pick the cheaper rate. (Requests that
-  reach the origin without Cloudflare would default to USD.)
+  USD. Cloudflare overwrites the header on proxied requests, so a visitor cannot pick the cheaper rate. The header is
+  read only when the request came through Cloudflare (`src/lib/client-ip.ts`, [DEPLOYMENT.md](DEPLOYMENT.md) "Client
+  addresses"): a request sent straight to the origin with its own `CF-IPCountry` prices in USD.
 - **Flow** (`src/lib/razorpay.ts`, `src/components/hire/PaidCall.tsx`, `src/app/_actions/payments.ts`): the cached page
   asks the server for the visitor's price on load → *Pay* runs Turnstile (skipped when signed in) and a rate limit
   (10/hour per IP, 5/hour per email), then the **server computes the amount** and creates a Razorpay Order

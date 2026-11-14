@@ -50,8 +50,31 @@ delegate `jithendar-com-site` in `minikube/60-istio-routing.yaml`.
 - `https://jithendar.com/` → site. The other applications' prefixes (`/argocd`, `/db`, `/grafana`, `/moks`, `/prometheus`, `/roboshop`, ...) are delegated before it.
 - `http://…/*` → 301 to https (the Gateway's `httpsRedirect`).
 - `https://www.jithendar.com/*` → 308 to `https://jithendar.com/*`, path and query kept.
-- X-Forwarded-For is exactly the visitor's address (from the host's PROXY protocol); a client cannot set its own.
+- The gateway learns the connecting address from the host's PROXY protocol and reports it in `x-envoy-external-address`
+  and as the last `X-Forwarded-For` entry. Behind Cloudflare's proxy that address is a Cloudflare edge server, not the
+  visitor: see "Client addresses" below.
 - Text responses are compressed by the gateway (zstd/br/gzip; EnvoyFilter `istio-ingress/response-compression`).
+
+## Client addresses
+
+Rate limits (sign-in, contact, paid calls, Ask the Blog, OAuth), the audit log and the paid-call currency all need the
+visitor's address or country. `src/lib/client-ip.ts` is the only place that decides them:
+
+1. The address the gateway saw: `x-envoy-external-address`, else the last `X-Forwarded-For` entry. Entries to the left
+   of it were sent by the client and are never used.
+2. `TRUSTED_EDGE=cloudflare` (the default, set in `minikube/30-jithendar-com.yaml`): when that address is one of
+   [Cloudflare's](https://www.cloudflare.com/ips/), the visitor is `CF-Connecting-IP` and the country `CF-IPCountry`.
+   A request that reaches the origin directly from any other public address is taken at its own address, whatever
+   Cloudflare headers it sends, and gets no country (paid calls price in USD).
+3. If the gateway reports a private address (the cluster's network hides the sender), Cloudflare's headers are used
+   without that check. In that case the host firewall must only accept Cloudflare's ranges on 80/443, or anyone who
+   knows the origin address can send their own `CF-Connecting-IP`.
+4. `TRUSTED_EDGE=gateway`: no Cloudflare proxy in front (DNS only). Cloudflare's headers are ignored and step 1 is
+   the answer.
+
+Better Auth reads the result from `x-client-ip`, which the auth route sets (and overwrites) on every request. The
+access log's `ip` field shows the decision: after a deploy, check that it is your own address and not `172.6x`/`162.158`
+(Cloudflare) or a `10.`/`192.168.` one. `CLOUDFLARE_IP_RANGES` replaces the built-in list if Cloudflare changes it.
 
 ## Release
 

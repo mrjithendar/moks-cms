@@ -63,6 +63,11 @@ spec:
           value: production
         - name: SITE_URL
           value: https://jithendar.com
+        # Visitors arrive through Cloudflare's proxy: their address and country are CF-Connecting-IP / CF-IPCountry,
+        # used only when the gateway saw one of Cloudflare's addresses (src/lib/client-ip.ts, docs/DEPLOYMENT.md
+        # "Client addresses"). "gateway" = DNS only, no Cloudflare proxy.
+        - name: TRUSTED_EDGE
+          value: cloudflare
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://otel-collector.observability:4318
         - name: OTEL_SERVICE_NAME

@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { clientIp as clientIpFrom } from "@/lib/client-ip";
 import { submitContact, submitEnquiry } from "@/lib/contact";
 import { PostError } from "@/lib/posts";
 import { getSessionUser } from "@/lib/session";
@@ -8,7 +9,7 @@ import { getSessionUser } from "@/lib/session";
 export type PublicResult = { ok: true; message: string } | { ok: false; error: string; issues?: string[] };
 
 async function clientIp() {
-  return (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  return clientIpFrom(await headers());
 }
 
 async function guard(fn: () => Promise<string>): Promise<PublicResult> {
