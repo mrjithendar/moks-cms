@@ -58,7 +58,7 @@ KCFG="$(mktemp)"
 trap 'rm -f "$KCFG"' EXIT
 perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' "$TEMPLATE" > "$KCFG"
 can() { command kubectl --kubeconfig "$KCFG" auth can-i "$@" -n "$NS"; }
-for allowed in "patch deployments" "create ingresses.networking.k8s.io" "patch roles.rbac.authorization.k8s.io" "escalate roles.rbac.authorization.k8s.io" "patch serviceaccounts" "patch namespaces/$NS"; do
+for allowed in "patch deployments" "create ingresses.networking.k8s.io" "patch roles.rbac.authorization.k8s.io" "escalate roles.rbac.authorization.k8s.io" "patch serviceaccounts" "patch namespaces/$NS" "create pods/portforward"; do
   # shellcheck disable=SC2086
   [[ "$(can $allowed 2>/dev/null || true)" == yes ]] || { echo "The rendered kubeconfig may not '$allowed'; the workflow needs it." >&2; exit 1; }
 done
