@@ -105,9 +105,29 @@ class AskAnswer(BaseModel):
 
 
 
+class AskTurn(BaseModel):
+    """One earlier turn of a site conversation, sent by the widget so a follow-up can be understood. Untrusted: it
+    comes from the reader's browser, is checked like a question and only ever reaches the condense prompt as data."""
+
+    model_config = ConfigDict(extra="forbid")
+    q: str = Field(min_length=1, max_length=500)
+    a: str = Field(default="", max_length=600)
+
+
 class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     question: str = Field(min_length=1, max_length=2000)
     ip_hash: str | None = Field(default=None, max_length=128)
     stream: bool = False
+    # Earlier turns, oldest first (Admin → Ask the Blog → follow-up questions). Ignored when follow-ups are off.
+    history: list[AskTurn] = Field(default_factory=list, max_length=5)
+    # The article the reader has open, so retrieval can rank its sections a little higher. Ignored when page context is off.
+    context_slug: str | None = Field(default=None, max_length=160, pattern=r"^[a-z0-9][a-z0-9-]*$")
+
+
+class Standalone(BaseModel):
+    """condense_question output: the follow-up rewritten so it can be understood without the conversation."""
+
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(description="The reader's latest question rewritten as one standalone question, in the reader's words where possible. Unchanged if it already stands alone.")
 

@@ -245,7 +245,7 @@ async def test_answer_prompt_gets_only_the_graded_excerpts_and_citations_map_bac
     r = await c.ask.ask("How often are certificates renewed (renews)?")
     answer_prompt = next(s for s in llm.calls if s.purpose == "ask_answer").user
     assert "STRICT mTLS between sidecars" in answer_prompt and "cert-manager renews" not in answer_prompt and "S3 native locking" not in answer_prompt
-    assert r["outcome"] == "answered" and r["citations"] == [{"title": "Istio on minikube › mTLS", "url": "/blog/istio#mtls"}]
+    assert r["outcome"] == "answered" and r["citations"] == [{"title": "Istio on minikube › mTLS", "url": "/blog/istio#mtls", "refs": [1]}]
     rows = c.ask.log.rows
     assert rows[-1]["prompt_version"] == "ask-blog-v3"
     graded = [x for x in rows[-1]["retrieval"] if x["graded"]]
