@@ -11,7 +11,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
   { id: "schedules", label: "Schedules", sections: ["schedules"], description: "When the web worker runs each job (UTC). With SEO_ORCHESTRATOR=crewai the agent's CronJobs own the flow jobs instead." },
   { id: "scoring", label: "Scoring & rules", sections: ["weights", "thresholds"], description: "How recommendations are found and ranked (docs/seo/SCORING.md)." },
   { id: "content", label: "Content & links", sections: ["keywords", "links", "submission"], description: "Keyword opportunities, internal-linking limits and search-engine submission." },
-  { id: "ai", label: "AI & drafts", sections: ["drafts", "llm"], description: "Claude drafting (always stops at human review) and the optional explanation model." },
+  { id: "ai", label: "AI & drafts", sections: ["drafts", "llm", "aiVisibility"], description: "Claude drafting (always stops at human review), the optional explanation model, and AI visibility (are AI assistants citing the site?)." },
   { id: "crawler", label: "Crawler", sections: ["crawler"], description: "Limits for the technical SEO crawl of this site." },
   { id: "reports", label: "Reports", sections: ["reports"], description: "Weekly and monthly report e-mail." },
 ];
@@ -29,11 +29,21 @@ export const SECTION_LABELS: Record<string, string> = {
   links: "Internal linking limits (conservative by default)",
   submission: "Search-engine submission (kill switch: SEO_SUBMISSION_ENABLED)",
   keywords: "Keyword opportunities",
+  aiVisibility: "AI visibility (weekly prompts to AI assistants with web search; API keys only in the site's Secret)",
   dataforseo: "DataForSEO (pay as you go; credentials DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD in the site's Secret)",
 };
 
 /** One line of help per field that isn't self-explanatory, keyed by its dotted path. */
 export const FIELD_HELP: Record<string, string> = {
+  "aiVisibility.enabled": "Master switch for the weekly run. Each assistant also needs its switch below and its API key.",
+  "aiVisibility.monthlyBudgetUsd": "Hard cap per calendar month (UTC) across all assistants; the run stops before a call that would cross it.",
+  "aiVisibility.costPerAnswerUsd": "ChatGPT, Perplexity and Gemini do not return a price: each answer is counted at this estimate. Set it from their pricing.",
+  "aiVisibility.brandNames": "Names that count as a mention besides the site name and host, e.g. the author's name.",
+  "aiVisibility.models.claude": "Anthropic model id (web search needs a current model).",
+  "aiVisibility.models.chatgpt": "OpenAI model id with web search support; required to switch ChatGPT on.",
+  "aiVisibility.models.perplexity": "Perplexity Sonar model id (sonar, sonar-pro).",
+  "aiVisibility.models.gemini": "Gemini model id with Google Search grounding; required to switch Gemini on.",
+  "aiVisibility.providers.google_ai_overview": "The AI Overview on Google's results page, read through DataForSEO (needs its credentials; billed by DataForSEO, counted here).",
   "dataforseo.enabled": "Master switch. Nothing is bought while off or while the credentials are missing.",
   "dataforseo.locationCode": "Market for volume and rankings: 2840 United States, 2356 India, 2826 United Kingdom, 2276 Germany.",
   "dataforseo.monthlyBudgetUsd": "Hard cap per calendar month (UTC), counted from the cost DataForSEO returns. 0 = buy nothing.",

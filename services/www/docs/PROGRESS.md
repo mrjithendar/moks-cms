@@ -1,5 +1,22 @@
 # Progress log — jithendar.com
 
+## AI visibility: are ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews citing the site? (2026-11-14, owner request)
+
+Third part of "add what is worth taking from open-seo". Details: [seo/AI_VISIBILITY.md](seo/AI_VISIBILITY.md).
+
+- Weekly job `ai_visibility` (web worker; Run now): every active prompt goes to every enabled, configured assistant
+  with web search on. Answers, cited sources, cited rank and name mentions are stored per prompt, assistant and day
+  (`0031_seo_ai_visibility.sql`, additive, manual rollback).
+- Claude through the Anthropic SDK (`web_search_20260209`, server-side refusal fallback, exact cost from usage);
+  ChatGPT (Responses API), Perplexity (Sonar) and Gemini (Search grounding) over HTTPS; Google AI Overview through
+  DataForSEO. Each is off until switched on and its key (and, for ChatGPT/Gemini, model id) is set.
+- Admin → AI visibility: cited share per assistant with a weekly trend, prompt × assistant grid, prompts no assistant
+  cites (Send to editorial calendar), domains cited instead, per-prompt answer history. Prompts by hand or from
+  question-like Search Console queries.
+- Off by default; monthly cap $10 across assistants, checked before each call. `scripts/set-ai-visibility-config.sh`.
+
+**Manual configuration required:** keys for the assistants beyond Claude; switch on in Settings.
+
 ## DataForSEO: volume, keyword difficulty, live ranks and backlinks (2026-11-14, owner request)
 
 Second part of "add what is worth taking from open-seo". Search Console cannot give search volume, difficulty, rankings

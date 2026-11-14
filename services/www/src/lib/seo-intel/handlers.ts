@@ -62,6 +62,7 @@ registerSeoHandler("keywords_refresh", async (ctx) => {
 registerSeoHandler("dataforseo_keywords", async (ctx) => (await import("./dataforseo")).runKeywordMetrics(ctx));
 registerSeoHandler("serp_ranks", async (ctx) => (await import("./dataforseo")).runSerpRanks(ctx));
 registerSeoHandler("backlinks", async (ctx) => (await import("./dataforseo")).runBacklinks(ctx));
+registerSeoHandler("ai_visibility", async (ctx) => (await import("./ai-visibility")).runAiVisibility(ctx));
 
 export { seoJobHandler, runSeoJob } from "./jobs";
 export { draftJobHandler } from "./drafts";

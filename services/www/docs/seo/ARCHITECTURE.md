@@ -140,6 +140,7 @@ route, zod validation (400 + `issues`), audit log on mutations, `no-store` + `no
 | `SEO_GA4_PROPERTY_ID` | ConfigMap `jithendar-com-public` | optional | Numeric GA4 property id; Settings override it |
 | `PAGESPEED_API_KEY` | Secret | optional | Only used when PageSpeed is enabled in Settings |
 | `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` | Secret `jithendar-com-env` | optional | DataForSEO API (volume, difficulty, live ranks, backlinks); only used when switched on in Settings ([DATAFORSEO.md](DATAFORSEO.md)) |
+| `PERPLEXITY_API_KEY` | Secret `jithendar-com-env` | optional | AI visibility: Perplexity answers ([AI_VISIBILITY.md](AI_VISIBILITY.md)); OpenAI / Gemini keys above serve ChatGPT and Gemini there too |
 | `OPENAI_API_KEY` / `GEMINI_API_KEY` | Secret (existing) | optional | Fallback for the LLM key when none is saved in Settings |
 | `SETTINGS_ENCRYPTION_KEY` | Secret (existing) | yes (prod) | Seals the optional LLM key |
 | `SITE_URL` | Deployment (existing) | yes | Canonical origin; crawler allowlist |

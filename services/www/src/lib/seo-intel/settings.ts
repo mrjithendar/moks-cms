@@ -187,6 +187,21 @@ const settingsSchema = z.object({
     rankTracking: z.object({ enabled: z.boolean(), weekday, hourUtc: hour, depth: num(10, 100) }),
     backlinks: z.object({ enabled: z.boolean(), weekday, hourUtc: hour }),
   }),
+  /** AI visibility (ai-visibility.ts): weekly prompts to AI assistants; are we cited? Keys only from the environment. */
+  aiVisibility: z.object({
+    enabled: z.boolean(),
+    weekday,
+    hourUtc: hour,
+    maxPrompts: num(1, 200),
+    /** Hard monthly cap (USD) across all assistants. */
+    monthlyBudgetUsd: num(0, 500),
+    /** Counted per answer for APIs whose cost is not returned (ChatGPT, Perplexity, Gemini). */
+    costPerAnswerUsd: num(0, 1),
+    /** Extra names that count as a mention (the site name and host always do). */
+    brandNames: z.array(z.string().trim().min(3).max(60)).max(10),
+    providers: z.object({ claude: z.boolean(), chatgpt: z.boolean(), perplexity: z.boolean(), gemini: z.boolean(), google_ai_overview: z.boolean() }),
+    models: z.object({ claude: modelId.min(1), chatgpt: modelId, perplexity: modelId, gemini: modelId }),
+  }),
 });
 
 export type SeoSettings = z.infer<typeof settingsSchema> & { llmKey: Sealed | null };
@@ -257,6 +272,17 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     rankTracking: { enabled: true, weekday: 3, hourUtc: 5, depth: 30 },
     backlinks: { enabled: false, weekday: 0, hourUtc: 5 },
   },
+  aiVisibility: {
+    enabled: false,
+    weekday: 4,
+    hourUtc: 6,
+    maxPrompts: 25,
+    monthlyBudgetUsd: 10,
+    costPerAnswerUsd: 0.03,
+    brandNames: [],
+    providers: { claude: true, chatgpt: false, perplexity: false, gemini: false, google_ai_overview: false },
+    models: { claude: "claude-opus-5-5", chatgpt: "", perplexity: "sonar", gemini: "" },
+  },
   llmKey: null,
 };
 
@@ -291,6 +317,12 @@ function merge(stored: Stored | undefined): SeoSettings {
       keywordMetrics: { ...d.dataforseo.keywordMetrics, ...s.dataforseo?.keywordMetrics },
       rankTracking: { ...d.dataforseo.rankTracking, ...s.dataforseo?.rankTracking },
       backlinks: { ...d.dataforseo.backlinks, ...s.dataforseo?.backlinks },
+    },
+    aiVisibility: {
+      ...d.aiVisibility,
+      ...s.aiVisibility,
+      providers: { ...d.aiVisibility.providers, ...s.aiVisibility?.providers },
+      models: { ...d.aiVisibility.models, ...s.aiVisibility?.models },
     },
     llmKey: (s.llmKey as Sealed | null | undefined) ?? null,
   };
