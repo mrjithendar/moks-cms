@@ -1,7 +1,7 @@
 {
   "uid": "jithendar-com-observability",
   "title": "Jithendar.com · Observability",
-  "description": "Metrics (Prometheus), logs (Loki) and traces (Jaeger) for jithendar.com on one page. Source: jithendar.com repository, services/grafana/.",
+  "description": "Metrics (Prometheus), logs (Loki) and traces (Jaeger) for jithendar.com on one page. Source: jithendar.com repository, sites/jithendar.com/grafana/.",
   "tags": [
     "jithendar-com",
     "prometheus",

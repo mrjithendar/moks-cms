@@ -11,6 +11,7 @@ sites/<domain>/
   content/         blog/ news/ projects/ pages/ authors/ (MDX), python-practice/
   public/images/   images the articles use, served as /images/…
   docs/            sources of the articles' figures, and scripts that check the articles (never shipped)
+  grafana/         the site's Grafana dashboards: JSON files and a kustomization.yaml that makes them one ConfigMap
 ```
 
 | Folder | Site |
@@ -66,7 +67,12 @@ Until here nothing is deployed. To put the site on the cluster, a person does th
    `kubernetes/80-ci-deployer.yaml`), and let the Harbor robot push to the content image's repository.
 7. **API key**: create an API key in the new site's Admin → API keys (scopes posts:read + posts:write) and store it as a
    repository secret.
-8. **Deploy block**: add it to `site.json`; from then on, merging content for this site releases it:
+8. **Dashboards**: add the site's dashboards to `grafana/` (copy jithendar.com's and change the `jithendar-com` job,
+   service and namespace names, the uids and the titles), name the ConfigMap after the site, and add an Argo CD
+   Application for the folder and the ConfigMap to Grafana's dashboard provider (tools repo, next to jithendar.com's
+   `deploy/minikube/applications/grafana.yaml`). `python3 scripts/check-dashboards.py <domain>` checks the folder;
+   uids and ConfigMap names must be unique across sites, since all sites share one Grafana.
+9. **Deploy block**: add it to `site.json`; from then on, merging content for this site releases it:
 
    ```json
    "deploy": {

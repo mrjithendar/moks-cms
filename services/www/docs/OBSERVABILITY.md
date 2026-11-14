@@ -3,7 +3,7 @@
 jithendar.com uses the cluster's shared monitoring stack (configured in the `tools` repo, synced by Argo CD from
 `roboshop-ai/argocd`): OpenTelemetry collector + Jaeger (traces), Alloy + Loki (logs), Prometheus (metrics) and
 Grafana at `https://jithendar.com/grafana/` (folder **Jithendar.com**). The dashboards are kept in this repository,
-[`services/grafana/`](../../grafana/README.md); start with **Jithendar.com · Observability**, which puts all three signals on
+[`sites/jithendar.com/grafana/`](../../../sites/jithendar.com/grafana/README.md); start with **Jithendar.com · Observability**, which puts all three signals on
 one page.
 
 | Signal | From the site | Collected by | Where to look |
@@ -162,9 +162,9 @@ identical labels, so one `rate()` over both failed with "vector cannot contain m
 
 1. Deploy the site: merge the pull request (CI builds the image; the `deploy to kubernetes` workflow applies `kubernetes/`, including the `strip-trace-headers` middleware on the
    `jithendar-com` Ingress).
-2. Push this repository (dashboards in `services/grafana/`) and the `tools` repo, then sync `loki`, `prometheus` and
+2. Push this repository (dashboards in `sites/jithendar.com/grafana/`) and the `tools` repo, then sync `loki`, `prometheus` and
    `grafana` in Argo CD (Alloy patterns, scrape jobs, alerts, the Jaeger data source and the dashboards; the
-   `grafana` app reads `services/grafana/` from this repository's `master`).
+   `grafana` app reads `sites/jithendar.com/grafana/` from this repository's `master`).
 3. The collector and Jaeger have no Argo CD Application: `kubectl apply -k
    deploy/minikube/observability/otel-collector` and `… -k deploy/minikube/observability/jaeger` from `tools`.
    Jaeger restarts with an empty store (it is in memory).
