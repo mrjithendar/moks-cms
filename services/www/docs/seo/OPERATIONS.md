@@ -112,6 +112,9 @@ retried with backoff; persistent errors fire `SeoGoogleApiErrorsPersistent`.
 - GA4 sessions ≠ GSC clicks: different measurements (GA4 depends on consent and JavaScript).
 - No recommendations: GSC rules need synced data; content rules (outdated tech, quality, links) work without it.
 - Technical scan finds nothing: check that `SITE_URL` is the public origin and the site's robots.txt is reachable.
+- Technical scan reports `ai_crawlers` errors with HTTP 403 or a challenge page while robots.txt allows the crawler:
+  the CDN turns AI crawlers away. Check Cloudflare → AI Crawl Control and Security → Bots for this zone (a person
+  changes Cloudflare settings; agents do not). To block crawlers on purpose, set `aiCrawlers` in `sites/<SITE>/site.json`.
 
 ## Alerts
 

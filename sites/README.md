@@ -6,7 +6,9 @@ belongs to one site lives in its folder; the code in `services/` is shared.
 ```
 sites/<domain>/
   site.json        identity: host, name, tagline, description, language, time zone, author, social links, AdSense ID,
-                   and where CI deploys the site's content ("deploy")
+                   and where CI deploys the site's content ("deploy"); "aiCrawlers" sets robots.txt for AI crawlers: "search" (answer
+                   engines that cite pages: OAI-SearchBot, Claude-SearchBot, PerplexityBot…) and "training" (GPTBot,
+                   ClaudeBot, Google-Extended, CCBot…), each "allow" or "block" (services/www/src/lib/seo/ai-crawlers.ts)
   config/          redirects.ts, gone.ts (URLs answered with 410), hire-me-profile.ts (/hire-me)
   content/         blog/ news/ projects/ pages/ authors/ (MDX), python-practice/
   public/images/   images the articles use, served as /images/…
