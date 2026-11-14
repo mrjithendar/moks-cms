@@ -126,3 +126,29 @@ describe("AI visibility job", () => {
     expect((await suggestPrompts(db)).map((s) => s.query).sort()).toEqual(["argo cd vs flux", "how to rollback a helm release"]);
   });
 });
+
+describe("admin MCP data views", () => {
+  let db: Db;
+  beforeEach(async () => {
+    db = await freshDb();
+    await db.insert(schema.user).values({ id: "admin", name: "Admin", email: "admin@example.com", role: "admin" });
+    await saveSeoSettings(on(), "admin");
+    await addPrompt(db, "How do Argo CD sync waves work?", "manual", "admin");
+    await db.execute(sql`insert into seo_tracked_keywords (query) values ('argo cd sync waves')`);
+  });
+  afterEach(() => setDbForTests(undefined));
+
+  it("serve AI visibility, a prompt's answers, tracked keywords and backlinks to the agent", async () => {
+    const { data } = await import("@/lib/seo-agent/callbacks-v4");
+    const { fetchImpl } = vendors();
+    await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW });
+    const av = (await data("ai-visibility", new URLSearchParams())) as { prompts: { id: string; answers: Record<string, { cited: boolean } | null> }[] };
+    expect(av.prompts[0]!.answers.claude).toMatchObject({ cited: true });
+    const one = (await data("ai-prompt", new URLSearchParams({ id: av.prompts[0]!.id }))) as { answers: { provider: string }[] };
+    expect(one.answers.map((a) => a.provider).sort()).toEqual(["claude", "google_ai_overview", "perplexity"]);
+    await expect(data("ai-prompt", new URLSearchParams({ id: "x" }))).rejects.toThrow();
+    const tk = (await data("tracked-keywords", new URLSearchParams())) as { rows: { query: string; google: unknown; volume: unknown }[] };
+    expect(tk.rows).toEqual([expect.objectContaining({ query: "argo cd sync waves", google: null, volume: null })]);
+    expect(await data("backlinks", new URLSearchParams())).toMatchObject({ note: expect.stringContaining("No backlink snapshot") });
+  });
+});

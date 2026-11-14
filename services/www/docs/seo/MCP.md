@@ -80,11 +80,19 @@ the shared Valkey carries only the web app's cache-bus pub/sub), so a restart re
 | `get_audit_issues(severity, type, limit, cursor)` | seo:read | latest technical audit |
 | `list_flow_runs(flow?, status?)` / `get_flow_run(run_id)` | seo:read | job history, errors, tokens, cost |
 | `get_llm_usage(period)` | seo:read | tokens and cost by purpose/model vs. the budget |
+| `get_ai_visibility()` | seo:read | cited/mentioned share per AI assistant, domains cited instead, latest result per prompt and assistant (`gap` = answered, cited by none); prompts untrusted ([AI_VISIBILITY.md](AI_VISIBILITY.md)) |
+| `get_ai_prompt_answers(prompt_id)` | seo:read | stored answers for one prompt with their sources; answer text and source titles untrusted |
+| `get_tracked_keywords()` | seo:read | Search Console position plus, with DataForSEO, live Google position, AI Overview, top results, volume, KD, CPC, intent |
+| `get_backlinks()` | seo:read | latest DataForSEO backlink snapshot: totals, strongest referring domains, gained and lost ([DATAFORSEO.md](DATAFORSEO.md)) |
 | `kickoff_flow(flow_name, inputs)` | seo:flows | **allowlist:** optimize_article_flow, new_article_flow, internal_linking_flow, tech_audit_flow, report_flow, gsc_sync_flow, ga4_sync_flow. Never publish_flow. Drafting flows only for a draft that is new (reserved, never generated) or `generation_failed`, of the flow's kind and for the given article/calendar item; `feedback` reaches the crew as untrusted data. Regenerating a draft under review happens only from the web review page |
 | `reject_draft(draft_id, reason)` | seo:review:reject | closes a draft (reversible: regenerate) |
 | `add_review_note(draft_id, note)` | seo:review:reject | a note shown in the web diff view |
 
-Prompts: `triage_review_queue`, `weekly_seo_briefing`, `investigate_drop(slug)`.
+Prompts: `triage_review_queue`, `weekly_seo_briefing`, `investigate_drop(slug)`, `ai_visibility_review`.
+
+Agent skills built on these tools live in `.claude/skills/` at the repository root (`seo-weekly-review`,
+`ai-visibility-review`, `keyword-research`, `backlink-review`): Claude Code picks them up in this repository, and they
+can be copied into any client that supports Agent Skills. They only read and suggest; every flow start asks first.
 
 - **Rate limits:** `ADMIN_MCP_RPM_PER_TOKEN` (120/min per client), `kickoff_flow` `ADMIN_MCP_KICKOFFS_PER_HOUR` (10/h);
   Kong 120/min per IP, 256 KB bodies. `kickoff_flow` also refuses drafting/report flows once the monthly LLM budget is
