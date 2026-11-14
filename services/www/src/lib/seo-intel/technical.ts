@@ -3,6 +3,7 @@ import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { readServiceAccount, SCOPES } from "./google/auth";
 import { googleJson } from "./google/http";
+import { AI_CRAWLERS, aiCrawlerAllowed, aiCrawlerPolicy, type AiCrawlerPolicy } from "@/lib/seo/ai-crawlers";
 import { parseRobots, robotsAllows, safeFetcher, type FetchResult, type PageFetcher, type Robots } from "./crawler";
 import type { RunContext, RunOutcome } from "./jobs";
 import { normalizeUrl, siteOrigin } from "./urls";
@@ -11,7 +12,10 @@ import { normalizeUrl, siteOrigin } from "./urls";
  * Weekly technical SEO audit of the public site (own host only). Checks: robots.txt, sitemaps, status codes,
  * redirect chains, canonicals, titles and meta descriptions (missing/duplicate), headings, alt text, JSON-LD
  * validity, Open Graph, viewport, indexability (meta robots, X-Robots-Tag, canonical conflicts), broken internal
- * links and orphaned pages. Optional: URL Inspection (Google's last-known state) and PageSpeed Insights / CrUX.
+ * links and orphaned pages; title and description length, thin content, pages that seem to need JavaScript to show
+ * their text, slow responses, dead ends (no internal links), click depth from the home page, and AI-crawler access
+ * (robots.txt against the site's policy, and the home page requested as each AI crawler). Optional: URL Inspection
+ * (Google's last-known state) and PageSpeed Insights / CrUX.
  * Private paths are never crawled.
  */
 export type Issue = { url: string; check: string; severity: "error" | "warning" | "info"; message: string; detail?: Record<string, unknown> };
@@ -34,8 +38,30 @@ export type PageInfo = {
   viewport: boolean;
   links: string[];
   html: boolean;
+  /** Words of visible text in <main> (the whole body when there is none), scripts, styles and navigation removed. */
+  words: number;
+  scripts: number;
+  elapsedMs: number | null;
   error?: string;
 };
+
+/** Thresholds for the content and performance checks. */
+export const THIN_WORDS = 300;
+export const JS_SHELL_WORDS = 50;
+export const SLOW_MS = { info: 1500, warning: 3000 };
+export const MAX_CLICK_DEPTH = 3;
+export const TITLE_CHARS = { min: 15, max: 65 };
+export const DESCRIPTION_CHARS = { min: 70, max: 160 };
+
+export function visibleWords(body: string): number {
+  const main = /<main\b[^>]*>([\s\S]*?)<\/main>/i.exec(body)?.[1] ?? /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(body)?.[1] ?? body;
+  const text = decode(
+    main
+      .replace(/<(script|style|noscript|template|svg|nav|header|footer)\b[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  );
+  return text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
 
 const PRIVATE = /^\/(admin|api|account|login|setup|preview|_next)(\/|$)/;
 const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
@@ -95,6 +121,9 @@ export function parsePage(res: FetchResult, origin: URL): PageInfo {
     viewport: Boolean(metaContent(head, "name", "viewport")),
     links: [...new Set(links)],
     html,
+    words: html ? visibleWords(body) : 0,
+    scripts: [...body.matchAll(/<script\b/gi)].length,
+    elapsedMs: res.elapsedMs ?? null,
     error: res.error,
   };
 }
@@ -114,6 +143,7 @@ export function checkPages(pages: Map<string, PageInfo>, sitemapUrls: Set<string
   for (const p of pages.values()) for (const l of p.links) if (norm(l) !== norm(p.url)) inbound.set(norm(l), (inbound.get(norm(l)) ?? 0) + 1);
   const titles = new Map<string, string[]>();
   const descs = new Map<string, string[]>();
+  const depth = clickDepths(pages, origin);
   for (const p of pages.values()) {
     const u = p.url;
     if (p.error && p.status === 0) {
@@ -123,7 +153,19 @@ export function checkPages(pages: Map<string, PageInfo>, sitemapUrls: Set<string
     if (p.status >= 400) issues.push({ url: u, check: "status_code", severity: "error", message: `HTTP ${p.status}.`, detail: { linkedFrom: inbound.get(norm(u)) ?? 0, inSitemap: sitemapUrls.has(norm(u)) } });
     if (p.redirects.length > 1) issues.push({ url: u, check: "redirect_chain", severity: "warning", message: `Redirect chain of ${p.redirects.length} hops: ${[p.redirects[0]!.from, ...p.redirects.map((r) => r.to)].join(" → ")}.` });
     if (p.redirects.length && sitemapUrls.has(norm(u))) issues.push({ url: u, check: "sitemap_redirect", severity: "warning", message: "The sitemap lists a URL that redirects; list the final URL instead." });
+    if (p.elapsedMs !== null && p.elapsedMs >= SLOW_MS.info) issues.push({ url: u, check: "slow_response", severity: p.elapsedMs >= SLOW_MS.warning ? "warning" : "info", message: `Took ${(p.elapsedMs / 1000).toFixed(1)} s to answer (audit crawler, redirects included).`, detail: { elapsedMs: p.elapsedMs } });
     if (p.status !== 200 || !p.html) continue;
+    const indexable = !noindex(p);
+    const isHome = new URL(norm(u)).pathname === "/";
+    if (indexable && !isHome && sitemapUrls.has(norm(u))) {
+      if (p.words < JS_SHELL_WORDS && p.scripts > 0) issues.push({ url: u, check: "js_rendering", severity: "warning", message: `Only ${p.words} words in the HTML: the text seems to need JavaScript, which AI crawlers and some search crawlers do not run.`, detail: { words: p.words, scripts: p.scripts } });
+      else if (p.words < THIN_WORDS) issues.push({ url: u, check: "thin_content", severity: "warning", message: `Thin content: ${p.words} words of main text (under ${THIN_WORDS}).`, detail: { words: p.words } });
+    }
+    if (!p.links.some((l) => norm(l) !== norm(u))) issues.push({ url: u, check: "dead_end", severity: "warning", message: "No links to other pages on this site: readers and crawlers stop here." });
+    const d = depth.get(norm(u));
+    if (indexable && d !== undefined && d > MAX_CLICK_DEPTH) issues.push({ url: u, check: "click_depth", severity: d > MAX_CLICK_DEPTH + 1 ? "warning" : "info", message: `${d} clicks from the home page (keep important pages within ${MAX_CLICK_DEPTH}).`, detail: { depth: d } });
+    if (p.title && (p.title.length < TITLE_CHARS.min || p.title.length > TITLE_CHARS.max)) issues.push({ url: u, check: "title_length", severity: "info", message: `Title is ${p.title.length} characters (aim for ${TITLE_CHARS.min}–${TITLE_CHARS.max}; longer ones are cut off in results).` });
+    if (p.description && (p.description.length < DESCRIPTION_CHARS.min || p.description.length > DESCRIPTION_CHARS.max)) issues.push({ url: u, check: "description_length", severity: "info", message: `Meta description is ${p.description.length} characters (aim for ${DESCRIPTION_CHARS.min}–${DESCRIPTION_CHARS.max}).` });
     const canon = p.canonical ? norm(p.canonical) : null;
     if (!p.canonical) issues.push({ url: u, check: "canonical", severity: "warning", message: "No canonical link." });
     else if (canon !== norm(p.finalUrl)) {
@@ -158,8 +200,59 @@ export function checkPages(pages: Map<string, PageInfo>, sitemapUrls: Set<string
   return issues;
 }
 
+/** Shortest number of link hops from the home page to each crawled page (pages it cannot reach are absent). */
+export function clickDepths(pages: Map<string, PageInfo>, origin: URL): Map<string, number> {
+  const norm = (u: string) => normalizeUrl(u, origin)?.url ?? u;
+  const home = norm(new URL("/", origin).href);
+  const depth = new Map<string, number>();
+  if (!pages.has(home)) return depth;
+  depth.set(home, 0);
+  const queue = [home];
+  while (queue.length) {
+    const at = queue.shift()!;
+    for (const l of pages.get(at)?.links ?? []) {
+      const n = norm(l);
+      if (!depth.has(n) && pages.has(n)) {
+        depth.set(n, depth.get(at)! + 1);
+        queue.push(n);
+      }
+    }
+  }
+  return depth;
+}
+
+const BLOCKED_STATUS = new Set([0, 401, 403, 406, 429, 503]);
+const challenge = (r: FetchResult) => /cf-chl|challenge-platform|Just a moment\.\.\.|Attention Required!/i.test(r.body.slice(0, 20_000));
+
+/**
+ * AI crawlers: robots.txt must say what the site's policy says, and an allowed crawler must actually get the page. A CDN
+ * or firewall rule (Cloudflare's AI bot blocking, Bot Fight Mode, a WAF rule) can turn them away whatever robots.txt
+ * says. The live request comes from this server with the crawler's User-Agent, not from the vendor's addresses, so a
+ * block here is a strong hint, not proof: the CDN may treat the real crawler differently.
+ */
+export async function checkAiCrawlers(robots: Robots, origin: URL, policy: AiCrawlerPolicy, opts: { homeStatus: number | null; fetchAs?: (url: string, userAgent: string) => Promise<FetchResult>; sleep: (ms: number) => Promise<void>; gap: number }): Promise<Issue[]> {
+  const issues: Issue[] = [];
+  const robotsUrl = new URL("/robots.txt", origin).href;
+  const home = new URL("/", origin).href;
+  const allowedByRobots: string[] = [];
+  for (const c of AI_CRAWLERS) {
+    const want = aiCrawlerAllowed(c, policy);
+    const robotsSays = robotsAllows(robots, "/", c.token.toLowerCase());
+    if (robotsSays) allowedByRobots.push(c.token);
+    if (want !== robotsSays) issues.push({ url: robotsUrl, check: "ai_crawlers", severity: c.purpose === "search" && !robotsSays ? "error" : "warning", message: `robots.txt ${robotsSays ? "allows" : "blocks"} ${c.token} (${c.vendor}, ${c.purpose === "search" ? "AI answers and citations" : "model training"}) but the site policy is to ${want ? "allow" : "block"} it.`, detail: { token: c.token, purpose: c.purpose } });
+    if (!want || !robotsSays || !c.userAgent || !opts.fetchAs || opts.homeStatus !== 200) continue;
+    await opts.sleep(opts.gap);
+    const r = await opts.fetchAs(home, c.userAgent);
+    if (BLOCKED_STATUS.has(r.status) || challenge(r)) {
+      issues.push({ url: home, check: "ai_crawlers", severity: c.purpose === "search" ? "error" : "warning", message: `${c.token} (${c.vendor}) ${challenge(r) ? "got a bot challenge page" : r.status ? `got HTTP ${r.status}` : "was refused"} for the home page, while the audit crawler got 200: a CDN or firewall rule seems to block it even though robots.txt allows it. Check the CDN's AI crawler and bot settings. (Tested with its User-Agent from this server, not from ${c.vendor}'s addresses.)`, detail: { token: c.token, purpose: c.purpose, status: r.status, challenge: challenge(r) } });
+    }
+  }
+  issues.push({ url: robotsUrl, check: "ai_crawlers", severity: "info", message: `AI crawler policy: answer engines ${policy.search}, model training ${policy.training}. robots.txt allows ${allowedByRobots.length} of ${AI_CRAWLERS.length} known AI crawlers${allowedByRobots.length ? ` (${allowedByRobots.join(", ")})` : ""}.` });
+  return issues;
+}
+
 /** Crawl (BFS from the sitemap and home page), politely and within limits. */
-export async function crawl(fetcher: PageFetcher, origin: URL, opts: { maxPages: number; requestsPerSecond: number; sleep?: (ms: number) => Promise<void> }) {
+export async function crawl(fetcher: PageFetcher, origin: URL, opts: { maxPages: number; requestsPerSecond: number; sleep?: (ms: number) => Promise<void>; aiPolicy?: AiCrawlerPolicy; fetchAs?: (url: string, userAgent: string) => Promise<FetchResult> }) {
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const gap = Math.ceil(1000 / opts.requestsPerSecond);
   const issues: Issue[] = [];
@@ -214,6 +307,10 @@ export async function crawl(fetcher: PageFetcher, origin: URL, opts: { maxPages:
     }
   }
   issues.push(...checkPages(pages, sitemapUrls, origin));
+  if (robotsRes.status === 200) {
+    const homeStatus = pages.get(normalizeUrl(new URL("/", origin).href, origin)!.url)?.status ?? null;
+    issues.push(...(await checkAiCrawlers(robots, origin, opts.aiPolicy ?? aiCrawlerPolicy(), { homeStatus, fetchAs: opts.fetchAs, sleep, gap })));
+  }
   return { issues, pages, sitemapUrls, truncated: todo.length > 0 };
 }
 
@@ -269,16 +366,19 @@ async function pageSpeed(ctx: RunContext, urls: string[]): Promise<Issue[]> {
 
 // --- Job ----------------------------------------------------------------------------------------------------------
 
-export type TechDeps = { fetcher?: PageFetcher };
+/** `fetchAs` requests a URL with another User-Agent (AI-crawler access check); with a test `fetcher` and no `fetchAs`, that live check is skipped. */
+export type TechDeps = { fetcher?: PageFetcher; fetchAs?: (url: string, userAgent: string) => Promise<FetchResult> };
 
 export async function runTechnicalScan(ctx: RunContext, deps: TechDeps = {}): Promise<RunOutcome> {
   const db = ctx.db;
   const origin = siteOrigin(ctx.deps.env ?? process.env);
   const c = ctx.settings.crawler;
-  const fetcher = deps.fetcher ?? safeFetcher(origin, { timeoutMs: c.timeoutMs, maxBytes: c.maxBytes, maxRedirects: c.maxRedirects });
+  const fetchOpts = { timeoutMs: c.timeoutMs, maxBytes: c.maxBytes, maxRedirects: c.maxRedirects };
+  const fetcher = deps.fetcher ?? safeFetcher(origin, fetchOpts);
+  const fetchAs = deps.fetchAs ?? (deps.fetcher ? undefined : (url: string, userAgent: string) => safeFetcher(origin, fetchOpts, { "User-Agent": userAgent })(url));
   const [scan] = rowsOf<{ id: string }>(await db.execute(sql`insert into seo_technical_scans (status) values ('running') returning id`));
   try {
-    const r = await crawl(fetcher, origin, { maxPages: c.maxPages, requestsPerSecond: c.requestsPerSecond, sleep: ctx.deps.sleep });
+    const r = await crawl(fetcher, origin, { maxPages: c.maxPages, requestsPerSecond: c.requestsPerSecond, sleep: ctx.deps.sleep, fetchAs });
     const top = rowsOf<{ page: string }>(await db.execute(sql`select page from seo_gsc_page_daily where date > current_date - 28 and search_type = 'web' group by page order by sum(clicks) desc limit 50`)).map((p) => p.page);
     const extra = [...(await urlInspection(ctx, top)), ...(await pageSpeed(ctx, top))];
     const issues = [...r.issues, ...extra];

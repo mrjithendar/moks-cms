@@ -48,7 +48,8 @@ describe("environment indexability", () => {
 
   it("does not name other workloads' path routes (that only advertised them) and blocks only the API", () => {
     const prod = robotsTxt(true);
-    expect(prod.match(/^Disallow: .*$/gm)).toEqual(["Disallow: /api/"]);
+    // Each allowed AI crawler's group repeats the `*` rules (lib/seo/ai-crawlers.ts); still nothing but /api/.
+    expect([...new Set(prod.match(/^Disallow: .*$/gm))]).toEqual(["Disallow: /api/"]);
     for (const route of ["argocd", "grafana", "vault", "db", "prometheus"]) expect(prod).not.toContain(route);
   });
 });
