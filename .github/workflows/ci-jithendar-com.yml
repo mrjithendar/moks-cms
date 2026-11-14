@@ -5,12 +5,17 @@ name: jithendar.com
 #           and push as below, tagged :manual-<run number> and :latest; the rollout is on by default and can be
 #           switched off with the `restart` input
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
-#           in the image (job `scope`): npm ci once; the production build (lint and tests already passed on the
-#           pull request in `check`/`test`; manual runs, which have no pull request, run them too); package the
+#           in the image (job `scope`): npm ci once; the production build; package the
 #           build into an arm64 image, smoke-test the image, push it to Harbor as
 #           registry.jithendar.com/jithendar/moks-cms:pr-<number> (the pull request's own tag) and :latest
 #           (the same image), then point every Deployment that runs this image at :pr-<number> and wait for it
 #           (scripts/ci-rollout.py)
+#           Lint and the tests are skipped in `release` only when `scope` finds that the pull request's head commit
+#           passed `check` and every `test` shard in an earlier run of this workflow. Otherwise (merged while a check
+#           was red, still running or cancelled; or a manual run, which has no pull request) `release` runs them
+#           itself and a failure stops the release. The workflow has to check this itself: the repository is private
+#           on GitHub Free, which has no branch protection or required status checks, so nothing else stops a
+#           pull request from being merged before its checks pass.
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds and deploys
 # nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com web=…/moks-cms:pr-<n>`;
@@ -129,8 +134,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # The step "Did the pull request's head commit pass check and test?" reads this workflow's runs and their jobs.
+      actions: read
     outputs:
       image: ${{ steps.files.outputs.image }}
+      verified: ${{ steps.checks.outputs.verified }}
     defaults:
       run:
         working-directory: .
@@ -153,6 +161,59 @@ jobs:
           done < "$RUNNER_TEMP/files.txt"
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "Pull request #$PR changes the image: $image" >> "$GITHUB_STEP_SUMMARY"
+      # `release` skips lint and the tests only when this says "true": the pull request's head commit passed `check`
+      # and every `test` shard in an earlier run of this workflow. Nothing else guarantees it (no branch protection
+      # on this plan, see the top of the file): a pull request can be merged while a check is red, still running or
+      # cancelled. Never fails the job: anything unexpected, including an API error, means "not verified", and
+      # `release` then runs lint and the tests itself.
+      - name: Did the pull request's head commit pass check and test?
+        id: checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          THIS_RUN: ${{ github.run_id }}
+          # The number of `test` shards. Keep in step with the matrix of the `test` job.
+          TEST_SHARDS: 3
+        run: |
+          set -uo pipefail
+          verified=false
+          reason="no earlier run of this workflow for the head commit"
+          # Runs of this workflow for the head commit, newest first. This run (the `closed` event) has the same head
+          # commit and skipped `check` and `test`, so it is left out.
+          if ! runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci-jithendar-com.yml/runs?head_sha=$HEAD_SHA&per_page=30" \
+                --jq ".workflow_runs[] | select(.id != $THIS_RUN) | .id")"; then
+            runs="" reason="the workflow runs could not be listed"
+          fi
+          newest=""
+          for run in $runs; do
+            jobs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=latest&per_page=100" \
+              --jq '.jobs[] | select(.name == "check" or (.name | startswith("test ("))) | "\(.name)=\(.conclusion)"')" \
+              || { [[ -n "$newest" ]] || newest="run $run: its jobs could not be read"; continue; }
+            check=false tests=0 other=""
+            while IFS= read -r job; do
+              case "$job" in
+                "") ;;
+                "check=success") check=true ;;
+                "test ("*"=success") tests=$((tests + 1)) ;;
+                *) other="${other:+$other, }$job" ;;
+              esac
+            done <<<"$jobs"
+            if [[ "$check" == true && "$tests" -eq "$TEST_SHARDS" && -z "$other" ]]; then
+              verified=true reason="run $run passed check and all $tests test shards"
+              break
+            fi
+            # Reported when no run passed: what the newest run looked like.
+            [[ -n "$newest" ]] || newest="run $run: check passed: $check, test shards passed: $tests of $TEST_SHARDS${other:+, not successful: $other}"
+          done
+          [[ "$verified" == true || -z "$newest" ]] || reason="$newest"
+          echo "verified=$verified" >> "$GITHUB_OUTPUT"
+          if [[ "$verified" == true ]]; then
+            echo "Pull request #$PR, head ${HEAD_SHA:0:7}: $reason. The release skips lint and the tests." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Pull request #$PR was merged without passing checks on its head commit ${HEAD_SHA:0:7} ($reason). The release runs lint and the tests itself."
+            echo "Pull request #$PR, head ${HEAD_SHA:0:7}: checks not verified ($reason). The release runs lint and the tests itself." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   release:
     needs: scope
@@ -193,13 +254,15 @@ jobs:
       - run: npm ci --no-audit --no-fund
       # site/, content/ and public/images/ as copies of sites/jithendar.com (the image and output tracing need real files)
       - run: npm run site -- --copy
-      # A merged pull request already passed lint and the tests in `check`/`test` (they took ~7 of this job's ~11
-      # minutes when repeated here), so only manual runs, which have no pull request behind them, run them again.
+      # Lint and the tests took ~7 of this job's ~11 minutes when every release repeated them. They are skipped only
+      # when `scope` verified that the pull request's head commit passed them in `check`/`test`. A pull request merged
+      # without that, and a manual run (no pull request: `scope` is skipped and its output is empty), runs them here,
+      # and a failure stops the release before anything is built or pushed.
       # One step each, in sequence: output streams live and a failure names its step.
-      - if: github.event_name == 'workflow_dispatch'
+      - if: needs.scope.outputs.verified != 'true'
         run: npm run lint
       # Tests rely on development fallbacks (e.g. SETTINGS_ENCRYPTION_KEY); only the build is production.
-      - if: github.event_name == 'workflow_dispatch'
+      - if: needs.scope.outputs.verified != 'true'
         run: npm test
       # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

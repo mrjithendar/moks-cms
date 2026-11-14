@@ -16,9 +16,10 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 
 ## Release
 
-Merge a pull request into `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/moks-cms:pr-<number>`
+Merge a pull request into `master`. CI builds, pushes `registry.jithendar.com/jithendar/moks-cms:pr-<number>`
 and `:latest` (Harbor; the same image) and rolls the site out on `:pr-<number>` (`scripts/ci-rollout.py`). That is
-the whole release. A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
+the whole release. Lint and the tests run on the pull request; the release skips them only if the pull request's last
+commit passed them there, and runs them itself if it was merged before they finished (or while they were failing). A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
 only `ci-content.yml`, for articles and images, still runs on push).
 
 **Content-only changes** (`sites/*/content/**`, `sites/*/public/images/**`) do not rebuild the site. `ci-content.yml`
