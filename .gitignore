@@ -27,7 +27,6 @@ __pycache__/
 .venv/
 services/executor/build/
 *.egg-info/
-infra/**/.terraform/
 *.tfplan
 *.tfstate
 *.tfstate.*
