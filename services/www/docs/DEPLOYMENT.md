@@ -1,12 +1,12 @@
 # Deployment — jithendar.com on mk4
 
-**When a pull request is merged into `master`, CI builds, pushes `jithendar-com:pr-<number>` and `:latest` (one image) and restarts the site** (a plain push to `master` builds nothing: the workflows have no `push` trigger); `./deploy.sh` (repository root) applies manifest changes with `kubectl apply -k`. Argo CD is not used for this site. The site always runs `:latest` with `imagePullPolicy: Always`, never a pinned digest (owner decision, 2026-11-03). CI restarts the Deployment after each image build and, from `deploy-minikube.yml`, applies the application manifests (see Release).
+**When a pull request is merged into `master`, CI builds, pushes `jithendar-com:pr-<number>` and `:latest` (one image) and restarts the site** (a plain push to `master` builds nothing: the workflows have no `push` trigger); `.github/workflows/deploy-minikube.yml` applies manifest changes on the same merge (there is no `deploy.sh` any more, removed 2026-11-14). Argo CD is not used for this site. The site always runs `:latest` with `imagePullPolicy: Always`, never a pinned digest (owner decision, 2026-11-03). CI restarts the Deployment after each image build and, from `deploy-minikube.yml`, applies `minikube/` (see Release).
 
 | Piece | Where |
 |---|---|
 | Image | `registry.jithendar.com/jithendar/jithendar-com:latest` in Harbor (arm64, `latest` is the only tag, last 10 builds kept; CI pushes as robot `robot$jithendar+jithendar-com`, secrets `HARBOR_USERNAME`/`HARBOR_PASSWORD`) |
 | Pipeline | `.github/workflows/ci-jithendar-com.yml`: `check` on pull requests; when a pull request that changes the image is merged into `master`, `release` pushes `jithendar-com:pr-<number>` and `:latest` and runs `kubectl rollout restart` |
-| Deploy | Automatic when a pull request is merged into `master` (never on a direct push). `./deploy.sh` for manifest changes, run by a person with the `mk4` kubeconfig |
+| Deploy | Automatic when a pull request is merged into `master` (never on a direct push): the image workflows restart the Deployments, `deploy-minikube.yml` applies `minikube/`. Run that workflow by hand to re-apply everything and restart the site |
 | Manifests | `minikube/` at the repository root, one file per component (see `minikube/README.md`); the image is `jithendar-com:latest` |
 | Image pulls | Secret `jithendar/harbor-pull` (read-only robot `robot$k8s-pull`, never expires), written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets` |
 | TLS | The Istio gateway's wildcard certificate (`jithendar.com`, `*.jithendar.com`, DNS-01), in the miniKube repo (`deploy/minikube/istio/edge`). `minikube/45-`, `50-` and `55-` are Traefik's certificate and TLSStore, kept only until Traefik is uninstalled (`minikube/README.md`, "Leaving Traefik"). |
@@ -37,7 +37,7 @@ R2 bucket setup (CORS, lifecycle) and the S3 → R2 migration: see `docs/MEDIA.m
 
 1. Create a Turnstile widget for `jithendar.com` in the Cloudflare dashboard (site key + secret key).
 2. `scripts/create-secrets.sh mk4` and keep the printed setup token.
-3. `./deploy.sh` (creates Postgres, runs database migrations on start, deploys the site).
+3. First time only, with the `mk4` kubeconfig: `kubectl apply -k minikube` (creates the namespace and the site; database migrations run on start), then `scripts/setup-ci-deployer.sh` and `scripts/setup-ci-applier.sh` so CI can deploy from then on.
 4. Open `https://jithendar.com/setup`, enter the token, and create the admin account. This also imports the existing articles and pages. `/setup` disappears once an admin exists.
 5. Create the R2 bucket, CORS and lifecycle rules (`docs/MEDIA.md` → Setup), then `scripts/set-media-config.sh mk4` and restart the deployment. (Alternatively configure R2 under Admin → Storage.)
 
@@ -57,27 +57,49 @@ delegate `jithendar-com-site` in `minikube/60-istio-routing.yaml`.
 
 Merge a pull request into `master`. CI's `release` job lints, tests, builds `linux/arm64` with `GIT_SHA` baked in, pushes `jithendar-com:latest` and restarts `deploy/jithendar-com`, which pulls the new `:latest`. Nothing else to do.
 
-After changing `minikube/`, from an up-to-date checkout at the repository root:
-```bash
-./deploy.sh
-```
-It server dry-runs, applies `minikube/`, restarts the site on `:latest`, waits for the rollout and runs the smoke test.
+### Manifest changes (`.github/workflows/deploy-minikube.yml`)
 
-### Manifest changes from CI (`.github/workflows/deploy-minikube.yml`)
+A pull request that changes `minikube/` is applied to mk4 from GitHub Actions when it is merged into `master`. The
+workflow dry-runs every object on the server, prints the diff, applies, restarts what needs it, waits for every
+Deployment and StatefulSet and runs the smoke test (the smoke test runs even when another workload failed to roll
+out). It never deletes anything. `scripts/ci-app-manifests.py` decides what is applied:
 
-A push to `master` that changes `minikube/` (including `minikube/practice-executor-*.yaml`) also applies the **application
-objects** to mk4 from GitHub Actions: Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies,
-PodDisruptionBudgets, cert-manager Certificates and Istio VirtualServices in namespace `jithendar`
-(`scripts/ci-app-manifests.py` decides). It dry-runs on the server, prints the diff, applies, waits for every
-Deployment and StatefulSet and runs the smoke test. It never deletes anything.
+| Group | Applied by CI | Never applied by CI |
+|---|---|---|
+| `site` (`kustomization.yaml`) | everything else: the Namespace `jithendar`, Deployment, Services, PodDisruptionBudget, NetworkPolicies, VirtualService, ServiceAccounts, Roles and RoleBindings (including CI's own), PeerAuthentication, AuthorizationPolicy | the two ServiceAccount token Secrets; the ClusterRole and ClusterRoleBinding in `85-ci-applier.yaml` |
+| `practice-executor` | application objects: ConfigMap, Deployments, Service, NetworkPolicies | RuntimeClass, ServiceAccounts, RBAC, admission policies, quota |
+| `seo-agent` | application objects: ConfigMap, Deployment, Services, NetworkPolicies | CronJobs |
 
-Not applied by CI, still `./deploy.sh` (or `scripts/manifests.sh practice-executor | kubectl apply -f -`): the Namespace,
-ClusterIssuers, TLSStore, RBAC, ServiceAccounts, Secrets, quotas, the RuntimeClass and admission policies. CI signs in as `jithendar/github-ci-applier` (`minikube/85-ci-applier.yaml`), which can only create and
-update those application kinds, so a commit cannot widen its access. Pull requests get the same selection as a
-plan, without cluster access.
+Restarts: pods read a ConfigMap only when they start, so when a group's ConfigMap changed the workflow restarts that
+group's Deployments. A Deployment whose own spec changed rolls by itself.
 
-One-time setup: `scripts/setup-ci-applier.sh` (applies the ServiceAccount, stores secret `MK4_CI_APPLY_TOKEN` and
-sets variable `MINIKUBE_DEPLOY=true`; until then the deploy job is skipped). Turn it off with
+**Manual run** (Actions → deploy to minikube → Run workflow, on `master`; or `gh workflow run deploy-minikube.yml --ref master`):
+applies everything as above and restarts the site on the current `:latest` (input `restart_site`, on by default).
+This is what `./deploy.sh` did.
+
+**What moved from a person to CI on 2026-11-14 (owner decision).** Until then CI applied only application objects,
+and RBAC, ServiceAccounts, the Namespace and the mesh policies needed `./deploy.sh`, "so a commit cannot widen CI's
+own access". The owner chose to remove the script and have the workflow apply the whole site group on merge. The
+consequences, accepted with that decision:
+
+- `jithendar/github-ci-applier` holds `escalate` and `bind` on Roles in namespace `jithendar`. A merged pull request
+  that edits a Role in `minikube/` can give CI, or any ServiceAccount in the namespace, any permission in that
+  namespace, including reading its Secrets. As committed it cannot read Secrets.
+- A merged pull request can also relax the namespace's mTLS (`PeerAuthentication`) and who may call it
+  (`AuthorizationPolicy`).
+- So review pull requests that touch `minikube/70-`, `75-`, `80-`, `85-` as changes to cluster access, and keep
+  branch protection on `master`. Anyone who can merge, or who holds `MK4_CI_APPLY_TOKEN`, has that reach.
+- Unchanged limits: namespace `jithendar` only; nothing is deleted; no Secrets; no pods created directly; nothing
+  cluster-wide except patching the Namespace object `jithendar` itself.
+
+What `./deploy.sh` did that the workflow does not: check first that the Secrets `jithendar-com-env`,
+`postgres-db-credentials` and `harbor-pull` exist (CI cannot read Secrets). A missing one now shows as a rollout
+that does not become ready, and the job fails with the pod list.
+
+One-time setup, **and again after this change**: `scripts/setup-ci-applier.sh` (applies `minikube/85-ci-applier.yaml`
+including its ClusterRole, which CI cannot apply itself, checks what the token may and may not do, stores secret
+`MK4_CI_APPLY_TOKEN` and sets variable `MINIKUBE_DEPLOY=true`; until then the deploy job is skipped). Until it has
+been run once with the widened Role, the workflow's server dry run fails with "forbidden" and changes nothing. Turn it off with
 `gh variable set MINIKUBE_DEPLOY --body false`; revoke with `kubectl -n jithendar delete secret github-ci-applier-token`.
 
 ## Smoke test
@@ -91,7 +113,7 @@ The script checks health (and version), homepage, about, RSS, both sitemaps, rob
 
 ## Rollback
 
-Fastest: `kubectl -n jithendar set image deploy/jithendar-com jithendar-com=registry.jithendar.com/jithendar/jithendar-com:pr-<last good number>` (every release keeps its `pr-<number>` tag; the next merge or `./deploy.sh` returns the Deployment to `:latest`). Or revert the bad change in a pull request and merge it: CI builds it, moves `:latest` and restarts the site. (`kubectl rollout undo` does not help: the previous pod template is also `:latest`.) A failed rollout leaves the old pods serving, so a broken image never takes the site down by itself.
+Fastest: `kubectl -n jithendar set image deploy/jithendar-com jithendar-com=registry.jithendar.com/jithendar/jithendar-com:pr-<last good number>` (every release keeps its `pr-<number>` tag; the next merge that changes `minikube/`, or a manual run of the deploy workflow, returns the Deployment to `:latest`). Or revert the bad change in a pull request and merge it: CI builds it, moves `:latest` and restarts the site. (`kubectl rollout undo` does not help: the previous pod template is also `:latest`.) A failed rollout leaves the old pods serving, so a broken image never takes the site down by itself.
 
 ## Limits
 

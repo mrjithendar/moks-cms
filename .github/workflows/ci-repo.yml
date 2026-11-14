@@ -27,7 +27,7 @@ jobs:
         run: bash scripts/tests/kube-context.test.sh
       - name: shellcheck
         # ubuntu-latest ships shellcheck. verify-practice-sandbox.sh is excluded: it builds eval'd check strings on purpose.
-        run: shellcheck -x deploy.sh scripts/lib/kube-context.sh scripts/tests/kube-context.test.sh scripts/check-conflict-copies.sh scripts/image-size.sh scripts/create-*.sh scripts/set-*.sh scripts/setup-ci-applier.sh scripts/setup-ci-deployer.sh
+        run: shellcheck -x scripts/lib/kube-context.sh scripts/tests/kube-context.test.sh scripts/check-conflict-copies.sh scripts/image-size.sh scripts/create-*.sh scripts/set-*.sh scripts/setup-ci-applier.sh scripts/setup-ci-deployer.sh
       - name: Alerts handoff file is current and valid
         # Structural checks + staleness (scripts/build-alerts.py --check), then full PromQL validation with promtool
         # from the pinned Prometheus image (the same major version as the cluster's).

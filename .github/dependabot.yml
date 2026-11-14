@@ -1,6 +1,6 @@
 # Dependabot version updates. Pull requests run the `check` job in ci-jithendar-com.yml (lint,
-# typecheck, test, build, render manifests). Merging to master releases an image; ./deploy.sh still
-# has to be run to roll it out.
+# typecheck, test, build, render manifests). Merging to master releases an image and
+# restarts the Deployment on it; deploy-minikube.yml applies manifest changes.
 #
 # Minor and patch updates are grouped to keep the PR count down; majors arrive one PR each.
 # Security updates are not grouped and are not held back by the cooldown.
@@ -170,7 +170,7 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: redis
         update-types: ["version-update:semver-major"]
-      # The app image is built by CI and pinned by ./deploy.sh, not by Dependabot.
+      # The app image is built by CI (the manifests name :latest), not by Dependabot.
       - dependency-name: "*/jithendar-com"
 
   # Actions in .github/workflows (pinned by commit SHA; Dependabot updates the SHA and the comment)

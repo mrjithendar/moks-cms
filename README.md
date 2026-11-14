@@ -10,7 +10,6 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 | [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
 | `services/seo-agent/` | SEO v4 agent service (Python: CrewAI Flows and Crews as the only job engine, MCP servers, pgvector, Ask the Blog, report PDFs); see [FLOWS.md](services/www/docs/seo/FLOWS.md) and [MCP.md](services/www/docs/seo/MCP.md) |
 | [`services/grafana/`](services/grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app (its path must be `services/grafana`) |
-| `deploy.sh` | Apply the site manifests and restart the site on `jithendar-com:latest` |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; on `master`, builds and pushes the image to ECR (`infra.yml` applies `infra/`) |
@@ -36,8 +35,9 @@ unless they use an `/images/` file that is not live yet: then CI restarts the si
 `status: published`, or editing or deleting a published one, restarts it as above. Changes under `services/www/docs/` and
 `services/www/*.md` (notes, article diagram sources) are not in the site image and never trigger a site build or deploy.
 
-Run `./deploy.sh` only after changing `minikube/` (it applies the manifests and restarts the site). It needs
-`kubectl` with the `mk4` context. First-time setup,
+Changes to `minikube/` are applied by the `deploy to minikube` workflow when their pull request is merged; run it by
+hand (Actions → deploy to minikube → Run workflow) to re-apply everything and restart the site. There is no
+`deploy.sh` any more (removed 2026-11-14). First-time setup,
 Secrets, routing and rollback: [services/www/docs/DEPLOYMENT.md](services/www/docs/DEPLOYMENT.md).
 
 ## Local development

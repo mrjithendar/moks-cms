@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# One-time: applies minikube/85-ci-applier.yaml (a ServiceAccount that may create and update the application objects in
-# namespace jithendar, nothing else) and stores what .github/workflows/deploy-minikube.yml needs:
+# One-time, and again whenever minikube/85-ci-applier.yaml's ClusterRole changes: applies that file (a ServiceAccount
+# that may create and update the site group's objects in namespace jithendar, RBAC included, and patch the Namespace
+# jithendar itself; see the file's header) and stores what .github/workflows/deploy-minikube.yml needs:
 #   MK4_CI_APPLY_TOKEN       repository secret    ServiceAccount token (from Secret jithendar/github-ci-applier-token)
 #   MINIKUBE_DEPLOY = true   repository variable  turns the workflow's deploy job on
 # MK4_API_SERVER and MK4_CA_DATA are shared with the restart-only deployer: run scripts/setup-ci-deployer.sh first
-# if they are not set yet. ./deploy.sh also applies the manifest (it is in minikube/kustomization.yaml).
+# if they are not set yet. The workflow keeps the ServiceAccount, Role and RoleBinding up to date afterwards (they are
+# in minikube/kustomization.yaml); the ClusterRole, ClusterRoleBinding and token Secret are only ever applied here.
 #
 #   KUBE_CONTEXT=mk4 scripts/setup-ci-applier.sh            # apply SA + Role + token, test the kubeconfig, store the values
 #   KUBE_CONTEXT=mk4 SKIP_GH=1 scripts/setup-ci-applier.sh  # only apply and test; set the values in GitHub yourself
@@ -56,15 +58,18 @@ KCFG="$(mktemp)"
 trap 'rm -f "$KCFG"' EXIT
 perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' "$TEMPLATE" > "$KCFG"
 can() { command kubectl --kubeconfig "$KCFG" auth can-i "$@" -n "$NS"; }
-[[ "$(can patch deployments)" == yes && "$(can create ingresses.networking.k8s.io)" == yes ]] \
-  || { echo "The rendered kubeconfig cannot apply the application manifests." >&2; exit 1; }
-for denied in "get secrets" "create roles.rbac.authorization.k8s.io" "delete deployments" "create pods"; do
+for allowed in "patch deployments" "create ingresses.networking.k8s.io" "patch roles.rbac.authorization.k8s.io" "escalate roles.rbac.authorization.k8s.io" "patch serviceaccounts" "patch namespaces/$NS"; do
   # shellcheck disable=SC2086
-  [[ "$(can $denied || true)" == no ]] || { echo "The ServiceAccount may '$denied'; it must not." >&2; exit 1; }
+  [[ "$(can $allowed 2>/dev/null || true)" == yes ]] || { echo "The rendered kubeconfig may not '$allowed'; the workflow needs it." >&2; exit 1; }
 done
-echo "→ Dry run of every application object as $SA"
-for group in site practice-executor; do
-  scripts/manifests.sh "$group" | python3 scripts/ci-app-manifests.py 2>/dev/null \
+for denied in "get secrets" "delete deployments" "create pods" "create namespaces" "patch namespaces/kube-system" "create clusterroles.rbac.authorization.k8s.io" "create clusterrolebindings.rbac.authorization.k8s.io"; do
+  # shellcheck disable=SC2086
+  [[ "$(can $denied 2>/dev/null || true)" == no ]] || { echo "The ServiceAccount may '$denied'; it must not." >&2; exit 1; }
+done
+echo "→ Dry run of every object the workflow applies, as $SA"
+for group in site practice-executor seo-agent; do
+  flags=(); [[ "$group" == site ]] && flags=(--all)
+  scripts/manifests.sh "$group" | python3 scripts/ci-app-manifests.py "${flags[@]}" 2>/dev/null \
     | command kubectl --kubeconfig "$KCFG" apply --dry-run=server -f - >/dev/null
 done
 
@@ -81,4 +86,4 @@ echo "→ Storing secret MK4_CI_APPLY_TOKEN and variable MINIKUBE_DEPLOY"
 printf '%s' "$MK4_CI_APPLY_TOKEN" | gh secret set MK4_CI_APPLY_TOKEN --repo "$REPO"
 unset MK4_CI_APPLY_TOKEN
 gh variable set MINIKUBE_DEPLOY --repo "$REPO" --body true
-echo "Done: pushes to master that change minikube/ now apply the application manifests to mk4."
+echo "Done: pull requests merged into master that change minikube/ are now applied to mk4 by the deploy workflow."

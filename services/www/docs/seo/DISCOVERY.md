@@ -91,7 +91,7 @@ does not touch them.
 
 ## Deploy, secrets, observability
 
-- Manifests: plain YAML + Kustomize in `minikube/` (`kubectl apply -k minikube`, run by a person via `./deploy.sh`).
+- Manifests: plain YAML + Kustomize in `minikube/` (`kubectl apply -k minikube`; run by a person via `./deploy.sh` until 2026-11-14, since then by `.github/workflows/deploy-minikube.yml` on merge).
   **No Helm chart, and the site is not an Argo CD app** (owner decision 2026-10-27); Argo CD only syncs `grafana/`
   dashboards. CI (`.github/workflows/ci-jithendar-com.yml`): PRs run lint, typecheck, test, build and
   `kubectl kustomize`; `master` builds, pushes `:latest` to Harbor and restarts the Deployment. Pushing a feature

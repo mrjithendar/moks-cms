@@ -13,8 +13,8 @@
 # - It asks for confirmation only when the context was NOT named explicitly (KUBE_CONTEXT unset), YES is not 1, and
 #   stdin is a terminal. CI and pipes never prompt.
 #
-#   KUBE_CONTEXT=mk4 ./deploy.sh      # explicit: no prompt
-#   YES=1 ./deploy.sh                 # current context, no prompt
+#   KUBE_CONTEXT=mk4 scripts/create-secrets.sh      # explicit: no prompt
+#   YES=1 scripts/create-secrets.sh                 # current context, no prompt
 
 if ! command -v kubectl >/dev/null 2>&1; then
   echo "kubectl is not on PATH" >&2

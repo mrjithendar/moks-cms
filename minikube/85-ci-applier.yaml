@@ -1,11 +1,24 @@
-# GitHub Actions (.github/workflows/deploy-minikube.yml) applies the application manifests of minikube/,
-# minikube/practice-executor-*.yaml after a push to master. This ServiceAccount may only create and update
-# the kinds that scripts/ci-app-manifests.py lets through, in namespace jithendar: Deployments, StatefulSets,
-# Services, ConfigMaps, Ingresses, NetworkPolicies, PodDisruptionBudgets, cert-manager Certificates and Istio
-# VirtualServices. It cannot delete anything, read Secrets, create pods directly, or touch
-# RBAC, ServiceAccounts, quotas or anything cluster-wide, so a commit cannot widen its own access (a person applies
-# this file). Separate from github-ci-deployer (80-ci-deployer.yaml), which only restarts Deployments.
-# scripts/setup-ci-applier.sh applies this file and stores its token as the repository secret MK4_CI_APPLY_TOKEN.
+# GitHub Actions (.github/workflows/deploy-minikube.yml) applies minikube/ when a pull request is merged into master:
+# the whole site group (kustomization.yaml, except Secrets and the cluster-wide objects below) and the application
+# objects of minikube/practice-executor-*.yaml and minikube/seo-agent-*.yaml. It replaced ./deploy.sh on 2026-11-14.
+#
+# This ServiceAccount may create and update, in namespace jithendar, the kinds scripts/ci-app-manifests.py lets
+# through: Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies, PodDisruptionBudgets,
+# cert-manager Certificates, Istio VirtualServices and, since 2026-11-14 (owner decision, docs/DEPLOYMENT.md),
+# ServiceAccounts, Roles, RoleBindings, ResourceQuotas, PeerAuthentications and AuthorizationPolicies. It may also
+# patch the Namespace jithendar itself (ClusterRole below, that one name only).
+#
+# WHAT THAT MEANS: with `escalate` and `bind` on Roles, a merged pull request that edits a Role in minikube/ can give
+# this ServiceAccount (or any other in the namespace) any permission in namespace jithendar, including reading its
+# Secrets. Review changes to minikube/*rbac*, 70-, 80- and 85- files as changes to cluster access.
+#
+# It still cannot delete anything, create pods directly, read or write Secrets (as committed here), or touch any
+# other namespace or anything else cluster-wide. Separate from github-ci-deployer (80-ci-deployer.yaml), which only
+# restarts Deployments.
+#
+# CI cannot apply the ClusterRole and ClusterRoleBinding in this file (cluster-wide RBAC stays with a person):
+# scripts/setup-ci-applier.sh applies the whole file and stores the token as the repository secret MK4_CI_APPLY_TOKEN.
+# Run it again after changing them.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -36,6 +49,21 @@ rules:
 - apiGroups: ["networking.istio.io"]
   resources: ["virtualservices"]
   verbs: ["get", "list", "watch", "create", "patch", "update"]
+# The rest of the site group, applied by CI since 2026-11-14 (it was ./deploy.sh before).
+- apiGroups: [""]
+  resources: ["serviceaccounts", "resourcequotas"]
+  verbs: ["get", "list", "watch", "create", "patch", "update"]
+- apiGroups: ["security.istio.io"]
+  resources: ["peerauthentications", "authorizationpolicies"]
+  verbs: ["get", "list", "watch", "create", "patch", "update"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["get", "list", "watch", "create", "patch", "update"]
+# `escalate`: write a Role holding permissions this ServiceAccount does not have itself. `bind`: bind such a Role.
+# Without them the API server refuses any Role change that grants more than the rules in this file.
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles"]
+  verbs: ["get", "list", "watch", "create", "patch", "update", "escalate", "bind"]
 # kubectl rollout status and diagnostics
 - apiGroups: ["apps"]
   resources: ["replicasets", "controllerrevisions"]
@@ -53,6 +81,31 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: github-ci-applier
+subjects:
+- kind: ServiceAccount
+  name: github-ci-applier
+  namespace: jithendar
+---
+# The Namespace object is cluster-scoped: this lets CI apply minikube/00-namespace.yaml (labels such as
+# istio-injection) and nothing else at cluster scope. It cannot create or delete namespaces, or read any other one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: github-ci-applier-namespace-jithendar
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  resourceNames: ["jithendar"]
+  verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: github-ci-applier-namespace-jithendar
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: github-ci-applier-namespace-jithendar
 subjects:
 - kind: ServiceAccount
   name: github-ci-applier

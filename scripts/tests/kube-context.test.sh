@@ -120,7 +120,7 @@ else
 fi
 
 # 7. Every script that changes the cluster sources the guard (manifests.sh only prints).
-for f in "$ROOT/deploy.sh" "$ROOT"/scripts/*.sh; do
+for f in "$ROOT"/scripts/*.sh; do
   base="$(basename "$f")"
   [[ "$base" == manifests.sh ]] && continue
   grep -Eq '^[^#]*\bkubectl\b' "$f" || grep -Eq '^\s*k\(\)' "$f" || continue

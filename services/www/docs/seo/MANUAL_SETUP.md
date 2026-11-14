@@ -135,7 +135,7 @@ Rotate by running the script again and restarting both Deployments.
 
 ## 15. Image and manifests
 1. Merge → CI (`ci-seo-agent.yml`) builds and pushes `registry.jithendar.com/jithendar/seo-agent:latest`.
-2. Apply the site group as usual (`./deploy.sh`): it adds the `jithendar-com-internal` Service (callback port 9465, not
+2. Apply the site group as usual (the `deploy to minikube` workflow, on merge): it adds the `jithendar-com-internal` Service (callback port 9465, not
    routed by the VirtualService) and the NetworkPolicy rules. It's harmless before step 5.
 3. Apply the agent group (a person, once; CI only renders it):
    ```bash
@@ -143,7 +143,7 @@ Rotate by running the script again and restarting both Deployments.
    kubectl -n jithendar rollout status deploy/seo-agent
    kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
    ```
-4. RBAC: `minikube/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. A person applies it (`./deploy.sh`). To let
+4. RBAC: `minikube/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. The `deploy to minikube` workflow applies it on merge (before 2026-11-14 a person did, with `./deploy.sh`). To let
    CI restart the agent after each release, set the repository variable `SEO_AGENT_DEPLOY=true`.
 
 ## 16. Prometheus scrape job, alerts, dashboard (miniKube / tools repos)
@@ -194,7 +194,7 @@ needed. Status of each item: PROGRESS.md "v4".
 ## 20. Migration 0016 and the image
 1. Merge → CI builds `registry.jithendar.com/jithendar/seo-agent:latest` and the site image. Migration
    `0016_seo_v4.sql` (flow runs, review notes, MCP OAuth tables; additive) runs when the site starts.
-2. Apply the site group (`./deploy.sh`): it renames `seo-agent-reindex` to `seo-agent-trigger` in the `istio-sidecars`
+2. Apply the site group (the `deploy to minikube` workflow, on merge): it renames `seo-agent-reindex` to `seo-agent-trigger` in the `istio-sidecars`
    NetworkPolicy (the trigger pods' sidecars need istiod and DNS). CI applies that NetworkPolicy too.
 3. Apply the agent group and remove the v3 CronJob (it is no longer in the manifests):
    ```bash

@@ -185,7 +185,7 @@ did before.
 ## 4. Deploy order
 
 1. miniKube repo: the Terraform above, `terraform apply`. The Secret `jithendar/redis-site-cachebus-credentials` appears.
-2. This repo: `KUBE_CONTEXT=mk4 ./deploy.sh` (env entry and NetworkPolicy `jithendar-com-cache-bus`).
+2. This repo: run the `deploy to minikube` workflow (env entry and NetworkPolicy `jithendar-com-cache-bus`; it restarts the site).
 3. Section 2's checks, then Admin → System status.
 
 The other order works too: the env entry is `optional: true`, so pods start without the Secret and run TTL-only. A

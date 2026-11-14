@@ -13,7 +13,7 @@ name: jithendar.com
 #
 # CI's only cluster access is that restart (kubeconfig template .github/jithendar-ci-deployer.yaml, filled
 # from variables MK4_API_SERVER, MK4_CA_DATA and secret MK4_CI_TOKEN set by scripts/setup-ci-deployer.sh); it
-# never applies manifests. ./deploy.sh applies minikube/ for manifest changes (see minikube/README.md). The site always
+# never applies manifests. deploy-minikube.yml applies minikube/ for manifest changes (see minikube/README.md). The site always
 # runs :latest (the manifests name it); every release is also kept as :pr-<number>.
 #
 # Both jobs run on GitHub-hosted runners, never on the mk4 server: builds there competed with the cluster
