@@ -1,12 +1,24 @@
 ---
 name: backlink-review
-description: Review jithendar.com's backlinks (DataForSEO snapshots through the admin MCP server) - referring domains gained and lost, the strongest linking sites, broken backlinks - and suggest realistic link opportunities from the domains AI assistants and Google rank above the site. Use when asked about backlinks, links, domain authority or link building.
+description: Review a site's backlinks (any site in sites/, host from sites/<domain>/site.json) (DataForSEO snapshots through the admin MCP server) - referring domains gained and lost, the strongest linking sites, broken backlinks - and suggest realistic link opportunities from the domains AI assistants and Google rank above the site. Use when asked about backlinks, links, domain authority or link building.
 ---
 
 # Backlink review
 
-Needs the admin MCP server (`/mcp/admin`, scope `seo:read`) and DataForSEO backlinks switched on
+Needs the site's admin MCP server (`https://<host>/mcp/admin`, scope `seo:read`) and DataForSEO backlinks switched on
 (`services/www/docs/seo/DATAFORSEO.md`). Counts come from DataForSEO's link index, not Google's, so say so.
+
+## Pick the site
+
+The skill works for any site in `sites/`. Resolve it first, before any tool call:
+
+1. The site the user names (a domain or folder under `sites/`). Otherwise `$SITE` if set. Otherwise list the folders in
+   `sites/` (skip names starting with `_`): use the only one, or ask which when there are several.
+2. Read `sites/<domain>/site.json`. `host` is the site's domain, and `tagline` and `description` are its subjects.
+3. Use the admin MCP server for that host (`https://<host>/mcp/admin`). If only another site's server is connected,
+   stop and say which one to add; never report one site's data as another's.
+
+Below, "the site" means that host.
 
 ## Steps
 

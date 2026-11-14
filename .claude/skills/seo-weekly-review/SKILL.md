@@ -1,13 +1,25 @@
 ---
 name: seo-weekly-review
-description: Weekly SEO review of jithendar.com through the admin MCP server (/mcp/admin) - traffic changes with evidence, keyword opportunities with volume and difficulty, tracked-keyword rankings, AI visibility, backlinks, technical issues, failed jobs and drafts waiting for review. Use when asked for an SEO briefing, a weekly review, "how is the site doing", or what to work on next.
+description: Weekly SEO review of a site in sites/ (host from sites/<domain>/site.json) through its admin MCP server (https://<host>/mcp/admin) - traffic changes with evidence, keyword opportunities with volume and difficulty, tracked-keyword rankings, AI visibility, backlinks, technical issues, failed jobs and drafts waiting for review. Use when asked for an SEO briefing, a weekly review, "how is the site doing", or what to work on next.
 ---
 
 # Weekly SEO review
 
-Needs the site's admin MCP server connected (`https://jithendar.com/mcp/admin`, OAuth, scope `seo:read`; setup in
+Needs the site's admin MCP server connected (`https://<host>/mcp/admin`, OAuth, scope `seo:read`; setup in
 `services/www/docs/seo/MCP.md`). Every number comes from a tool. Never estimate one, and quote values exactly as the
 tool returns them.
+
+## Pick the site
+
+The skill works for any site in `sites/`. Resolve it first, before any tool call:
+
+1. The site the user names (a domain or folder under `sites/`). Otherwise `$SITE` if set. Otherwise list the folders in
+   `sites/` (skip names starting with `_`): use the only one, or ask which when there are several.
+2. Read `sites/<domain>/site.json`. `host` is the site's domain, and `tagline` and `description` are its subjects.
+3. Use the admin MCP server for that host (`https://<host>/mcp/admin`). If only another site's server is connected,
+   stop and say which one to add; never report one site's data as another's.
+
+Below, "the site" means that host.
 
 ## Steps
 
