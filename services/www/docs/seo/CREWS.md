@@ -8,9 +8,11 @@ allowlisted tools, the limits and the runner.
 
 - **Process:** sequential. `allow_delegation=False`, `allow_code_execution=False`, `memory=False`, `planning=False`, no
   knowledge sources, `share_crew=False`, `tracing=False`.
-- **Limits:** per agent `max_iter` (`CREW_MAX_ITER`, 4), `max_rpm` (`CREW_MAX_RPM`, 20, also on the crew),
-  `max_execution_time` (half of the crew timeout), `max_retry_limit` 1. Per run `CREW_MAX_TOKENS_PER_RUN` (150k, checked
-  before every call) and `CREW_TIMEOUT_SECONDS` (600, wall clock). Hitting a limit returns a **partial result marked
+- **Limits:** per agent `max_iter` (`CREW_MAX_ITER`, 4; overridden per agent by `SEO_CREW_MAX_ITERS`, a JSON object of
+  `"<crew>.<agent>"` → 1–20, in production researcher 10, writer 6, technical reviewer 8 of the Editorial Crew), `max_rpm` (`CREW_MAX_RPM`, 20, also on the crew),
+  `max_execution_time` (half of the crew timeout), `max_retry_limit` 1. Per run `CREW_MAX_TOKENS_PER_RUN` (300k, checked
+  before every call) and `CREW_TIMEOUT_SECONDS` (1200, wall clock). The Anthropic client waits `SEO_LLM_TIMEOUT_SECONDS`
+  (240 in production, default 120) per request. Hitting a limit returns a **partial result marked
   `incomplete`** with the reason; nothing loops silently. A budget refusal is re-raised and the flow ends `paused_budget`;
   the tokens and cost the crew spent before it are added to the run (`CrewBudgetExceeded`).
 - **Cancellation:** a crew runs in a worker thread. When its flow run is cancelled (reject/regenerate cancel the drafting
@@ -57,8 +59,12 @@ database write. The one write in the system (create/update a draft) is a flow st
 | `style_guide` | the site's style guide | sent with the article context or brief |
 | `fetch_allowlisted_docs` | official documentation | checked in Python (https, default port, no credentials, no IP literal, allowlisted host), then fetched by the web app's SSRF-safe fetcher (DNS resolved inside the socket, private ranges refused, redirects re-checked) |
 
-Docs allowlist (`SEO_AGENT_DOCS_ALLOWLIST`): kubernetes.io, docs.aws.amazon.com, developer.hashicorp.com,
-docs.python.org, docs.crewai.com, modelcontextprotocol.io.
+Docs allowlist (`SEO_AGENT_DOCS_ALLOWLIST`, read by both services; a host or its subdomains): the default is the list of
+official documentation sites in `services/seo-agent/app/config.py` (`DEFAULT_DOCS_ALLOWLIST`), mirrored in
+`services/www/src/lib/seo-agent/config.ts`; a test keeps the two equal. It covers the tools the site writes about
+(Kubernetes, Helm, Docker, Istio, Kong, Argo CD, Karpenter, KEDA, Velero, Cilium, Linkerd, Prometheus, Grafana,
+OpenTelemetry, AWS, Google Cloud, Azure, Terraform, Ansible, GitHub, GitLab, Cloudflare, PostgreSQL, Redis, Next.js,
+React, Node.js, Go, Python, FastAPI, Pydantic, CrewAI, LangChain, Claude, MCP). Forums, blogs and code hosts are not on it.
 
 ## Optimization Crew (existing articles)
 
@@ -78,19 +84,30 @@ look anyway).
 
 | Agent | Job | Tools |
 |---|---|---|
-| Researcher | Related site articles and official docs; list every source URL | vector_search, read_article, fetch_allowlisted_docs |
-| Technical writer | Full MDX draft per STYLE_GUIDE.md, minimal working code | read_article |
-| Technical reviewer | Commands, flags, versions against the sources; unsourced → `needs_fact_check` | fetch_allowlisted_docs |
+| Researcher (Sonnet, ≤ 10 turns) | Related site articles and the specific official doc pages per outline section; exact commands, versions, limits; names the sections it found no source for; lists every source URL | vector_search, read_article, fetch_allowlisted_docs |
+| Technical writer (Opus) | Full MDX draft per STYLE_GUIDE.md from the research and the author's first-hand notes, to the brief's reading time (or 1,500–2,500 words), minimal working code | read_article |
+| Technical reviewer (Opus) | Commands, flags, versions against the sources; unsourced → `needs_fact_check`; corrects without shortening | fetch_allowlisted_docs |
 | SEO editor | Title ≤ 60, meta 120–155, heading plan for the target queries, ≤ 3 internal links to existing paths, **metadata JSON only** (`SeoMetadata`, no body) | gsc_queries_for_topic, vector_search |
 
 Output: `NewArticleDraft` (title, slug_suggestion, meta_description, outline, body_mdx, code_blocks, sources[],
-fact_check_flags[], internal_links[], incomplete, incomplete_reason), **assembled in code** (prompt `seo-crew-v3`):
+fact_check_flags[], internal_links[], incomplete, incomplete_reason), **assembled in code** (prompt `seo-crew-v4`):
 `body_mdx` is the technical reviewer's corrected body (everything before its `NEEDS_FACT_CHECK:` line), `code_blocks`
 are extracted from it, the reviewer's `NEEDS_FACT_CHECK` items join the editor's `fact_check_flags`, and the rest is the
 SEO editor's metadata. The editor never re-emits the body, so a long article cannot be truncated inside its JSON and no
 rewrite can slip in after the technical review (a body it emits anyway is ignored). Without a reviewed body the writer's
 body is kept, flagged "technical review did not finish", and the draft is incomplete. A cited source the crew never
 retrieved during the run is flagged automatically.
+
+**Brief inputs (v4 prompt).** Besides title, gap, audience, intent, outline, queries, code examples and internal links,
+the crew now reads the item's diagrams, reading time and notes, plus two server-side additions:
+
+- `authorNotes` ("First-hand notes" on the calendar item, ≤ 6,000 characters): what the author built, ran, measured or
+  decided. The researcher, writer and reviewer get it as the data block `author_first_hand_notes`. It is the only
+  material the writer may use without a research source, written in the first person; the reviewer keeps it unless a
+  source contradicts it.
+- `examples`: up to two published blog articles (newest in the item's category first; members-only and noindex
+  excluded; 12,000 characters each), added by the web app's `/calendar/{id}/brief`. Only the writer gets them, as
+  examples of voice, depth and structure; it is told to take no facts or sentences from them.
 
 **Feedback (both crews):** a regenerate's reviewer feedback and the validator's errors from the automatic retry are kept
 apart (`feedback`, `validator_feedback` in the flow state) and both reach the prompt, so a validator retry never drops

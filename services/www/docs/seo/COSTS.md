@@ -23,7 +23,7 @@ row (tokens, cache tokens, cost, model, purpose), so actual numbers appear on Se
 |---|---|---|---|---|
 | `optimize_article_flow` (Optimization Crew) | analyst ~2 (Haiku), editor ~2, reviewer ~2 (Sonnet); +1 crew run on a validation retry (assumed 20 %) | analyst in ~7k / out ~0.6k; editor in ~30k (article + rules + style guide, twice) / out ~2.5k; reviewer in ~15k / out ~2k | **$0.12–0.15** (v3 single call: $0.03–0.04) | ~$0.45 (101k-character article, retry); hard cap 150k tokens per crew run ≈ $0.45 |
 | regenerate (reviewer feedback) | one crew run | as above | $0.10–0.13 | ~$0.30 |
-| `new_article_flow` (Editorial Crew) | 4 agents, ~12 calls | in ~91k, out ~13.5k | **$0.25–0.45** | ~$0.45 per run at the cap; ×2 with a retry |
+| `new_article_flow` (Editorial Crew, prompt `seo-crew-v4`) | researcher ≤ 10 turns and SEO editor on Sonnet; writer and technical reviewer on Opus | estimate, not yet measured: Sonnet in ~105k / out ~5k; Opus in ~65k / out ~13k | **≈ $0.60–1.00 (estimate)**; was $0.25–0.45 on Sonnet with 4 turns | hard cap 300k tokens per crew run; ×2 with a retry. Replace the estimate with `seo_llm_usage` numbers after the first runs |
 | `report_flow` (Report Crew, Haiku) | 1–2 calls | in ~3k, out ~0.4k | **< $0.001** | $0.002 |
 | `weekly_recommendations_flow` (N = 10) | N × optimize | | **$1.20–1.50 per week** | ~$4.50 |
 | `gsc/ga4_sync`, `tech_audit`, `internal_linking`, `reindex`, `ask_gaps` | none (data steps, deterministic planner, ONNX) | 0 | $0 | $0 |
@@ -43,9 +43,9 @@ article blocks, the v2 rules and the style guide on each of its turns. Putting t
 |---|---|
 | Weekly optimisation, 10 articles × 4.3 weeks | $5.20–6.50 |
 | Manual "Draft/Fix with Claude", keyword actions and MCP kickoffs (10) + regenerations (5) | $1.70–2.10 |
-| New articles from the Editorial Crew (4) | $1.00–1.80 |
+| New articles from the Editorial Crew (4) | $2.40–4.00 (estimate, see above) |
 | Reports (4 weekly + 1 monthly) | < $0.01 |
-| **Admin total (v2 legacy path and v4 flows share this budget)** | **≈ $8–10.5** against the default **$15** cap (v5; was $10) |
+| **Admin total (v2 legacy path and v4 flows share this budget)** | **≈ $9.50–12.50** against the default **$15** cap (v5; was $10) |
 | Ask the Blog (separate daily cap): 20 questions/day, 60 % answered, 15 % cache hits | ≈ $2.80 |
 | Ask the Blog ceiling | ≤ 31 × $1 = $31 (only if the daily cap is hit every day) |
 
@@ -63,9 +63,9 @@ per draft). v3's graph path had used ~$3–4.5 a month.
    "Paused", every SEO admin page shows the banner, and MCP `kickoff_flow` refuses drafting/report flows.
 2. **Ask the Blog:** `ASK_BLOG_DAILY_BUDGET_USD` (default $1), separate (public spend never pauses drafting). The public
    MCP `ask_blog` counts against it too.
-3. **Per crew run:** `CREW_MAX_TOKENS_PER_RUN` (150k), `CREW_TIMEOUT_SECONDS` (600), `CREW_MAX_ITER` (4), `CREW_MAX_RPM`
-   (20). Hitting one gives a partial result marked incomplete.
-4. **Per flow run:** `SEO_FLOW_TIMEOUT_SECONDS` (1800); one active run per flow + target; weekly fan-out ≤ 2 at once.
+3. **Per crew run:** `CREW_MAX_TOKENS_PER_RUN` (300k), `CREW_TIMEOUT_SECONDS` (1200), `CREW_MAX_ITER` (4; per agent
+   `SEO_CREW_MAX_ITERS`), `CREW_MAX_RPM` (20). Hitting one gives a partial result marked incomplete.
+4. **Per flow run:** `SEO_FLOW_TIMEOUT_SECONDS` (2700); one active run per flow + target; weekly fan-out ≤ 2 at once.
 5. **MCP:** `kickoff_flow` ≤ 10 per hour per client; per-token and per-IP limits; Kong limits.
 6. **Alerts:** `SeoLlmBudget80` (≥ 80 %) and `SeoLlmBudgetReached` (100 %).
 7. **Kill switches:** `SEO_ORCHESTRATOR=legacy`, `ASK_BLOG_ENABLED=false`, `PUBLIC_MCP_ENABLED=false`,
