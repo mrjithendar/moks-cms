@@ -54,7 +54,7 @@ The hijack's root cause was exposing an application before it was initialized. T
 | Editor | Tiptap 3, remark and rehype | Visual Markdown editing, server rendering |
 | Sign-in | Better Auth, Cloudflare Turnstile | Accounts, roles and bot checks |
 | Cluster | Minikube, Traefik, cert-manager | Hosting, ingress, certificates |
-| Delivery | GitHub Actions, Amazon ECR | Tests, image builds and the registry |
+| Delivery | GitHub Actions, Harbor | Tests, image builds and the registry |
 | Monitoring | Prometheus, Grafana, Loki, Jaeger | Metrics, logs and traces |
 
 ## Content is Markdown, and nothing in it runs
@@ -134,12 +134,12 @@ USER 1000:1000
 CMD ["node", "server.js"]
 ```
 
-A push to `master` then does this:
+Merging a pull request into `master` then does this:
 
 1. Lint, test and run the production build.
 2. Build the image and start it in CI. The job checks that `/api/health` reports the commit, and that the image optimizer returns AVIF or WebP. An image that fails this is never pushed.
-3. Push `jithendar-com:<commit-sha>` and move `latest`.
-4. Restart the Deployment, as a ServiceAccount that may only restart and watch that one Deployment.
+3. Push `moks-cms:pr-<number>`, the pull request's own tag, and move `latest` to the same image.
+4. Point every Deployment that runs the image at `:pr-<number>` and wait for the rollout (`scripts/ci-rollout.py`), as a ServiceAccount that may only patch and watch a short list of named Deployments.
 
 `GIT_SHA` makes the check honest, because `/api/health` shows which commit is live:
 
@@ -151,9 +151,9 @@ curl -s https://jithendar.com/api/health
 {"status":"ok","version":"6bc23040ea8dcc867e9defd1cb9c7db9cf8bb537"}
 ```
 
-A second path exists for manifest changes and rollbacks. `./deploy.sh <commit-sha>` pins the image digest, server dry-runs, applies the manifests, waits for the rollout, undoes it if it fails, and runs a smoke test. ECR keeps the last 30 images, so those are the rollback targets.
+Manifest changes take a second path: `deploy-minikube.yml` applies `minikube/` when a merged pull request changes it, as a ServiceAccount that may apply application objects but never RBAC or Secrets. It keeps the image each Deployment is already running (`scripts/keep-live-images.py`), so applying manifests never rolls the site back. Harbor keeps every `pr-<number>` tag, and those are the rollback targets: `kubectl -n jithendar set image deploy/jithendar-com web=…/moks-cms:pr-<n>`.
 
-The two paths have a cost. CI's restart relies on `:latest` with `imagePullPolicy: Always`, and that is what production runs today. It is simple, but it means a pod restart can pick up a newer image and the running version isn't recorded in Git. The digest pin in `kustomization.yaml` gives you that record, but only for what `deploy.sh` last applied.
+Until November 2026 CI only restarted the Deployment, which relied on `:latest` with `imagePullPolicy: Always`: a pod restart could pick up a newer image, and the running version wasn't recorded anywhere. Each release now has its own tag, so the Deployment itself records which release is live (`kubectl -n jithendar get deploy -o wide`), and a pod that restarts gets the same image again.
 
 Rolling updates surge by one pod, a PodDisruptionBudget covers voluntary disruption, and a `preStop` sleep gives Traefik time to stop routing to a pod before it exits. The container filesystem is read-only, so Next.js gets `emptyDir` volumes for `/tmp` and its cache.
 

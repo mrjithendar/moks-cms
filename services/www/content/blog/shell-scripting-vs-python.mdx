@@ -223,9 +223,9 @@ for name in names:
 # Hello, Grace
 ```
 
-`./greet.sh` needs `chmod +x` and uses the shebang; `bash greet.sh` and `sh greet.sh` ignore it, and a strict POSIX `sh` rejects the array on line 3. The `.sh` extension selects nothing. `deploy.sh` in jithendar.com guards against being run by the wrong shell:
+`./greet.sh` needs `chmod +x` and uses the shebang; `bash greet.sh` and `sh greet.sh` ignore it, and a strict POSIX `sh` rejects the array on line 3. The `.sh` extension selects nothing. `deploy.sh` in the Moks CMS repository guarded against being run by the wrong shell:
 
-*Actual repository code.* Repository: jithendar.com. File: `deploy.sh`, lines 8–11.
+*Actual repository code.* Repository: moks-cms (then named jithendar.com), commit `95c4f82`. File: `deploy.sh`, lines 8–11. The script has since been replaced by a workflow.
 
 ```bash
 # Started as `sh deploy.sh`? Re-run under full bash (macOS sh is bash in POSIX mode).
@@ -2237,7 +2237,7 @@ exec nginx -c "$NGINX_RUN_DIR/nginx.conf" -g 'daemon off;'
 
 ### 2. The jithendar.com smoke test (Bash)
 
-**Source:** `scripts/smoke.sh` in jithendar.com, called at the end of `deploy.sh`.
+**Source:** `scripts/smoke.sh` in the moks-cms repository (then named jithendar.com), which `deploy.sh` called at the end of a deploy.
 
 It takes an optional origin and expected version, and makes about a dozen curl checks: health, key pages, redirects, `robots.txt` and a route owned by another workload.
 
