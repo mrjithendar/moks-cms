@@ -10,7 +10,7 @@ Two switches, both needed:
 
 | Switch | Where | Default | Takes effect |
 |---|---|---|---|
-| Deployment switch `ASK_BLOG_ENABLED` | manifests: the web Deployment (`minikube/30-jithendar-com.yaml`) and `seo-agent-config` | `true` in the manifests (`false` in code when unset) | on restart |
+| Deployment switch `ASK_BLOG_ENABLED` | manifests: the web Deployment (`kubernetes/30-jithendar-com.yaml`) and `seo-agent-config` | `true` in the manifests (`false` in code when unset) | on restart |
 | Admin switch "Ask the Blog is on" | Admin → Automation & AI → Ask the Blog | **off** | web app at once; seo-agent within ~30 s |
 
 The admin card saves one document (`setting` key `ask_blog`, `src/lib/seo-agent/ask-settings.ts`), validated on the

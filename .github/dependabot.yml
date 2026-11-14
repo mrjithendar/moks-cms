@@ -1,6 +1,6 @@
 # Dependabot version updates. Pull requests run the `check` job in ci-jithendar-com.yml (lint,
 # typecheck, test, build, render manifests). Merging to master releases an image and
-# restarts the Deployment on it; deploy-minikube.yml applies manifest changes.
+# restarts the Deployment on it; deploy-kubernetes.yml applies manifest changes.
 #
 # Minor and patch updates are grouped to keep the PR count down; majors arrive one PR each.
 # Security updates are not grouped and are not held back by the cooldown.
@@ -131,17 +131,17 @@ updates:
         patterns:
           - node
 
-  # Images in the Kubernetes manifests (minikube/ is flat, so this covers the site's postgres and redis, the
+  # Images in the Kubernetes manifests (kubernetes/ is flat, so this covers the site's postgres and redis, the
   # executor's redis and Adminer)
   - package-ecosystem: docker
-    directory: /minikube
+    directory: /kubernetes
     schedule:
       interval: weekly
       day: monday
       time: "06:00"
       timezone: America/New_York
     commit-message:
-      prefix: "deps(minikube)"
+      prefix: "deps(kubernetes)"
     labels:
       - dependencies
       - kubernetes

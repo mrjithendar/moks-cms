@@ -65,7 +65,7 @@ flowchart LR
 | `promotion_flow` | CronJob `seo-flow-promotion` daily 07:40 UTC; Promotion → "Find opportunities" / "Re-score and draft posts" | collect (web: Reddit read, channel scores) → draft (**Promotion Crew** copywriter) → save | **drafts awaiting a person** ([PROMOTION.md](PROMOTION.md)) |
 | `content_ideas_flow` | CronJob `seo-flow-content-ideas` Tue 05:20 UTC; Promotion → "Suggest content ideas" | collect_signals (web: Search Console demand, Reddit threads) → ideate (**Promotion Crew** strategist) → save (evidence verified by the web app) | **ideas awaiting a person** |
 
-Schedules are configuration in `minikube/seo-agent-60-flow-triggers.yaml` (the two promotion flows: `seo-agent-62-promotion-triggers.yaml`): change a `schedule:` (or
+Schedules are configuration in `kubernetes/seo-agent-60-flow-triggers.yaml` (the two promotion flows: `seo-agent-62-promotion-triggers.yaml`): change a `schedule:` (or
 `kubectl patch cronjob seo-flow-… -p '{"spec":{"schedule":"…"}}'`) without a code change. "Run now" buttons in the admin
 and the MCP `kickoff_flow` tool call the same `POST /flows/{name}/kickoff` endpoint as the CronJobs.
 
@@ -221,7 +221,7 @@ finished_at, updated_at, triggered_by (cron · manual · approval · flow · mcp
 
 ## Scheduling
 
-One CronJob per scheduled flow (`minikube/seo-agent-60-flow-triggers.yaml`): `concurrencyPolicy: Forbid`,
+One CronJob per scheduled flow (`kubernetes/seo-agent-60-flow-triggers.yaml`): `concurrencyPolicy: Forbid`,
 `startingDeadlineSeconds: 3600`, `successfulJobsHistoryLimit: 2`, `failedJobsHistoryLimit: 3`, `activeDeadlineSeconds:
 600`. The container runs `python -m app.trigger <flow> [json inputs]`: one authenticated `POST /flows/{flow}/kickoff`
 (`triggered_by=cron`), then `/quitquitquit` so the Istio sidecar exits. With `SEO_ORCHESTRATOR=crewai` the web app's

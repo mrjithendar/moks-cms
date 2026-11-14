@@ -91,7 +91,7 @@ does not touch them.
 
 ## Deploy, secrets, observability
 
-- Manifests: plain YAML + Kustomize in `minikube/` (`kubectl apply -k minikube`; run by a person via `./deploy.sh` until 2026-11-14, since then by `.github/workflows/deploy-minikube.yml` on merge).
+- Manifests: plain YAML + Kustomize in `kubernetes/` (`kubectl apply -k kubernetes`; run by a person via `./deploy.sh` until 2026-11-14, since then by `.github/workflows/deploy-kubernetes.yml` on merge).
   **No Helm chart, and the site is not an Argo CD app** (owner decision 2026-10-27); Argo CD only syncs `grafana/`
   dashboards. CI (`.github/workflows/ci-jithendar-com.yml`): PRs run lint, typecheck, test, build and
   `kubectl kustomize`; `master` builds, pushes `:latest` to Harbor and restarts the Deployment. Pushing a feature
@@ -106,7 +106,7 @@ does not touch them.
   Dashboards: `grafana/*.json`.
 - Alert rules live in **another repository** (`miniKube`, `deploy/minikube/observability/prometheus/files/alerts.yml`,
   group `jithendar-com`), standard Prometheus rule YAML with `runbook_url` annotations.
-- Ingress: Istio gateway + `VirtualService` (`minikube/60-istio-routing.yaml`). Not touched.
+- Ingress: Istio gateway + `VirtualService` (`kubernetes/60-istio-routing.yaml`). Not touched.
 
 ## Minikube capacity (read-only `kubectl`, 2026-11-09)
 

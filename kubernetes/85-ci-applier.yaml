@@ -1,6 +1,6 @@
-# GitHub Actions (.github/workflows/deploy-minikube.yml) applies minikube/ when a pull request is merged into master:
+# GitHub Actions (.github/workflows/deploy-kubernetes.yml) applies kubernetes/ when a pull request is merged into master:
 # the whole site group (kustomization.yaml, except Secrets and the cluster-wide objects below) and the application
-# objects of minikube/practice-executor-*.yaml and minikube/seo-agent-*.yaml. It replaced ./deploy.sh on 2026-11-14.
+# objects of kubernetes/practice-executor-*.yaml and kubernetes/seo-agent-*.yaml. It replaced ./deploy.sh on 2026-11-14.
 #
 # This ServiceAccount may create and update, in namespace jithendar, the kinds scripts/ci-app-manifests.py lets
 # through: Deployments, StatefulSets, Services, ConfigMaps, Ingresses, NetworkPolicies, PodDisruptionBudgets,
@@ -8,9 +8,9 @@
 # ServiceAccounts, Roles, RoleBindings, ResourceQuotas, PeerAuthentications and AuthorizationPolicies. It may also
 # patch the Namespace jithendar itself (ClusterRole below, that one name only).
 #
-# WHAT THAT MEANS: with `escalate` and `bind` on Roles, a merged pull request that edits a Role in minikube/ can give
+# WHAT THAT MEANS: with `escalate` and `bind` on Roles, a merged pull request that edits a Role in kubernetes/ can give
 # this ServiceAccount (or any other in the namespace) any permission in namespace jithendar, including reading its
-# Secrets. Review changes to minikube/*rbac*, 70-, 80- and 85- files as changes to cluster access.
+# Secrets. Review changes to kubernetes/*rbac*, 70-, 80- and 85- files as changes to cluster access.
 #
 # It still cannot delete anything, create pods directly (it may port-forward to them, for the smoke test), read or
 # write Secrets (as committed here), or touch any other namespace or anything else cluster-wide. Separate from
@@ -92,7 +92,7 @@ subjects:
   name: github-ci-applier
   namespace: jithendar
 ---
-# The Namespace object is cluster-scoped: this lets CI apply minikube/00-namespace.yaml (labels such as
+# The Namespace object is cluster-scoped: this lets CI apply kubernetes/00-namespace.yaml (labels such as
 # istio-injection) and nothing else at cluster scope. It cannot create or delete namespaces, or read any other one.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

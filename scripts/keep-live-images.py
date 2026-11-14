@@ -4,7 +4,7 @@
   kubectl get deployments,statefulsets -o json > live.json
   scripts/keep-live-images.py live.json < rendered.yaml > to-apply.yaml
 
-The manifests in minikube/ name `<image>:latest`, which is only what a first apply starts with. After that the image
+The manifests in kubernetes/ name `<image>:latest`, which is only what a first apply starts with. After that the image
 workflows decide what runs: each release sets its own tag (scripts/ci-rollout.py), and a rollback is a
 `kubectl set image` to an earlier one. Applying the manifests as they are would put every workload back on `:latest`
 each time a manifest changes: an unplanned roll-out, and the end of any rollback.

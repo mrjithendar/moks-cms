@@ -10,7 +10,7 @@ name: wwww-content
 #           sites/<domain>/content and sites/<domain>/public/images into a tiny busybox image, push it as
 #           deploy.contentImage:latest to Harbor, then `kubectl rollout restart deploy/<deploy.deployment>` in
 #           deploy.namespace, so the init container "content" copies the new files into the pods
-#           (minikube/30-jithendar-com.yaml for jithendar.com).
+#           (kubernetes/30-jithendar-com.yaml for jithendar.com).
 #           The restart is skipped when a push only adds or edits articles that are not published (status draft or
 #           review in blog/, news/ or projects/, before and after the push) and only adds new images: such a push
 #           changes nothing a reader can see. The image is still pushed, so the next restart carries it. New articles
@@ -22,7 +22,7 @@ name: wwww-content
 #
 # ci-jithendar-com.yml ignores these paths, so writing a post never rebuilds the moks-cms image.
 # Uses the same Harbor robot (HARBOR_USERNAME/HARBOR_PASSWORD) and the same cluster access (github-ci-deployer)
-# as ci-jithendar-com.yml. A new site's Deployment must be added to that Role (minikube/80-ci-deployer.yaml) and its
+# as ci-jithendar-com.yml. A new site's Deployment must be added to that Role (kubernetes/80-ci-deployer.yaml) and its
 # image repository must be one the robot may push to.
 
 on:

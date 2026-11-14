@@ -13,7 +13,7 @@ Where things run:
 | Flows, ML, crew, quality gates, covers | `services/seo-agent` (`app/news/`, `app/flows/news.py`) | CrewAI Flows are the only orchestrator; ML steps are plain Python inside them |
 | Fetching (SSRF-safe, robots.txt), CMS drafts, media storage, notifications | web app callback API (`src/lib/news/callbacks.ts`) | the agent's egress stays the Anthropic API (+ OpenAI Images only if configured) |
 | Admin UI, admin API, review, publish additions, corrections, feed | web app (`src/app/admin/news`, `src/app/api/admin/news`, `src/lib/news`) | admin-only, same-origin, rate-limited, audited |
-| Scheduling | CronJobs `news-dispatch` (15 min), `news-train`, `news-style-review` | `minikube/seo-agent-61-news-triggers.yaml` |
+| Scheduling | CronJobs `news-dispatch` (15 min), `news-train`, `news-style-review` | `kubernetes/seo-agent-61-news-triggers.yaml` |
 | Data | the shared Postgres, migration `0017_news_desk.sql` | 17 tables, additive; manual rollback script |
 
 ## Flows

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# One-time, and again whenever minikube/85-ci-applier.yaml's ClusterRole changes: applies that file (a ServiceAccount
+# One-time, and again whenever kubernetes/85-ci-applier.yaml's ClusterRole changes: applies that file (a ServiceAccount
 # that may create and update the site group's objects in namespace jithendar, RBAC included, and patch the Namespace
-# jithendar itself; see the file's header) and stores what .github/workflows/deploy-minikube.yml needs:
+# jithendar itself; see the file's header) and stores what .github/workflows/deploy-kubernetes.yml needs:
 #   MK4_CI_APPLY_TOKEN       repository secret    ServiceAccount token (from Secret jithendar/github-ci-applier-token)
 #   MINIKUBE_DEPLOY = true   repository variable  turns the workflow's deploy job on
 # MK4_API_SERVER and MK4_CA_DATA are shared with the restart-only deployer: run scripts/setup-ci-deployer.sh first
 # if they are not set yet. The workflow keeps the ServiceAccount, Role and RoleBinding up to date afterwards (they are
-# in minikube/kustomization.yaml); the ClusterRole, ClusterRoleBinding and token Secret are only ever applied here.
+# in kubernetes/kustomization.yaml); the ClusterRole, ClusterRoleBinding and token Secret are only ever applied here.
 #
 #   KUBE_CONTEXT=mk4 scripts/setup-ci-applier.sh            # apply SA + Role + token, test the kubeconfig, store the values
 #   KUBE_CONTEXT=mk4 SKIP_GH=1 scripts/setup-ci-applier.sh  # only apply and test; set the values in GitHub yourself
@@ -39,8 +39,8 @@ if [[ "${ROTATE:-0}" == "1" ]]; then
   k -n "$NS" delete secret "$SA-token" --ignore-not-found
 fi
 
-echo "→ Applying minikube/85-ci-applier.yaml"
-k apply -f minikube/85-ci-applier.yaml
+echo "→ Applying kubernetes/85-ci-applier.yaml"
+k apply -f kubernetes/85-ci-applier.yaml
 
 echo "→ Waiting for the token"
 MK4_CI_APPLY_TOKEN=""
@@ -86,4 +86,4 @@ echo "→ Storing secret MK4_CI_APPLY_TOKEN and variable MINIKUBE_DEPLOY"
 printf '%s' "$MK4_CI_APPLY_TOKEN" | gh secret set MK4_CI_APPLY_TOKEN --repo "$REPO"
 unset MK4_CI_APPLY_TOKEN
 gh variable set MINIKUBE_DEPLOY --repo "$REPO" --body true
-echo "Done: pull requests merged into master that change minikube/ are now applied to mk4 by the deploy workflow."
+echo "Done: pull requests merged into master that change kubernetes/ are now applied to mk4 by the deploy workflow."

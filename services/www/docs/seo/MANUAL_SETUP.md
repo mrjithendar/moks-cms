@@ -136,7 +136,7 @@ Rotate by running the script again and restarting both Deployments.
 ## 15. Image and manifests
 1. Merge → CI (`ci-seo-agent.yml`) builds and pushes `registry.jithendar.com/jithendar/seo-agent:pr-<number>` and `:latest`
    (the Deployment runs `:pr-<number>`, the flow-trigger CronJobs `:latest` with `imagePullPolicy: Always`).
-2. Apply the site group as usual (the `deploy to minikube` workflow, on merge): it adds the `jithendar-com-internal` Service (callback port 9465, not
+2. Apply the site group as usual (the `deploy to kubernetes` workflow, on merge): it adds the `jithendar-com-internal` Service (callback port 9465, not
    routed by the VirtualService) and the NetworkPolicy rules. It's harmless before step 5.
 3. Apply the agent group (a person, once; CI only renders it):
    ```bash
@@ -144,7 +144,7 @@ Rotate by running the script again and restarting both Deployments.
    kubectl -n jithendar rollout status deploy/seo-agent
    kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
    ```
-4. RBAC: `minikube/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. The `deploy to minikube` workflow applies it on merge (before 2026-11-14 a person did, with `./deploy.sh`). To let
+4. RBAC: `kubernetes/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. The `deploy to kubernetes` workflow applies it on merge (before 2026-11-14 a person did, with `./deploy.sh`). To let
    CI restart the agent after each release, set the repository variable `SEO_AGENT_DEPLOY=true`.
 
 ## 16. Prometheus scrape job, alerts, dashboard (miniKube / tools repos)
@@ -168,10 +168,10 @@ approval needs the agent; reject them, or regenerate them under legacy.
 
 ## 18. Ask the Blog (off until an admin turns it on)
 Since D-89 the manifests set the deployment switch `ASK_BLOG_ENABLED=true` for both workloads (the web Deployment in
-`minikube/30-jithendar-com.yaml`, and `seo-agent-config`), so nothing needs patching. The two manifests are in
+`kubernetes/30-jithendar-com.yaml`, and `seo-agent-config`), so nothing needs patching. The two manifests are in
 different groups and are applied separately:
 
-- web Deployment (site group): the `deploy to minikube` workflow applies it when the pull request is merged;
+- web Deployment (site group): the `deploy to kubernetes` workflow applies it when the pull request is merged;
 - `seo-agent-config` (seo-agent group): `scripts/manifests.sh seo-agent | kubectl apply -f -`, then
   `kubectl -n jithendar rollout restart deploy/seo-agent`. No workflow applies this group until the pull request
   "remove deploy.sh" (#59) is merged; after that the workflow applies it and restarts the agent.
@@ -218,7 +218,7 @@ needed. Status of each item: PROGRESS.md "v4".
 ## 20. Migration 0016 and the image
 1. Merge → CI builds `registry.jithendar.com/jithendar/seo-agent:latest` and the site image. Migration
    `0016_seo_v4.sql` (flow runs, review notes, MCP OAuth tables; additive) runs when the site starts.
-2. Apply the site group (the `deploy to minikube` workflow, on merge): it renames `seo-agent-reindex` to `seo-agent-trigger` in the `istio-sidecars`
+2. Apply the site group (the `deploy to kubernetes` workflow, on merge): it renames `seo-agent-reindex` to `seo-agent-trigger` in the `istio-sidecars`
    NetworkPolicy (the trigger pods' sidecars need istiod and DNS). CI applies that NetworkPolicy too.
 3. Apply the agent group and remove the v3 CronJob (it is no longer in the manifests):
    ```bash
@@ -258,7 +258,7 @@ Keep `SEO_LLM_MONTHLY_BUDGET_USD` equal in `jithendar-com-public` and `seo-agent
 consider $15).
 
 ## 23. Schedules
-Edit `schedule:` in `minikube/seo-agent-60-flow-triggers.yaml` and re-apply, or patch one CronJob:
+Edit `schedule:` in `kubernetes/seo-agent-60-flow-triggers.yaml` and re-apply, or patch one CronJob:
 `kubectl -n jithendar patch cronjob seo-flow-gsc-sync -p '{"spec":{"schedule":"30 5 * * *"}}'`. The Settings page's
 schedule fields only apply to the legacy path.
 
@@ -293,10 +293,10 @@ No client registration is needed: Claude and MCP Inspector register themselves (
 5. SEO › Settings › MCP access lists both clients; **Revoke** one and confirm its next call fails.
 
 ## 27. Gateway routes for /mcp/* (Kong; additive)
-The entities are in `minikube/kong/seo-agent-mcp.deck.yaml` (one Service, two Routes, rate-limiting and
+The entities are in `kubernetes/kong/seo-agent-mcp.deck.yaml` (one Service, two Routes, rate-limiting and
 request-size-limiting, no buffering, 5-minute read timeout, `preserve_host`). They are **not applied** by anything:
 1. Copy them into the tools repo's Kong config (`kong-config/seed/kong.yaml`, docs/kong) or sync just these:
-   `deck gateway diff minikube/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp` then `… sync …`.
+   `deck gateway diff kubernetes/kong/seo-agent-mcp.deck.yaml --select-tag seo-agent-mcp` then `… sync …`.
 2. **Mesh:** namespace `jithendar` is STRICT mTLS. Kong must call `seo-agent-mcp:8090` with a mesh identity (a sidecar
    in the `kong` namespace), or the call is refused before the NetworkPolicy matters. Once Kong is meshed and the
    `allow-known-callers` AuthorizationPolicy leaves dry-run, add `kong` to its `namespaces`.
@@ -308,7 +308,7 @@ request-size-limiting, no buffering, 5-minute read timeout, `preserve_host`). Th
 ## 28. Rollback
 1. `SEO_ORCHESTRATOR=legacy` in `jithendar-com-public`, restart the site: v2's scheduler and direct Claude path resume.
 2. Suspend the CronJobs (§20 loop with `"suspend": true`), set `ADMIN_MCP_ENABLED=false` / `PUBLIC_MCP_ENABLED=false`.
-3. Or redeploy the previous image/manifests (`git checkout <previous> -- minikube/seo-agent-*.yaml`, apply; restore
+3. Or redeploy the previous image/manifests (`git checkout <previous> -- kubernetes/seo-agent-*.yaml`, apply; restore
    `seo-agent-60-reindex.yaml` from git history if you also go back to v3's agent).
 4. Data: migration 0016 is additive; its manual rollback is `src/db/rollback/0016_seo_v4.down.sql` (deletes flow-run
    history, notes and every MCP client/grant/token). Report PDFs stay in R2.

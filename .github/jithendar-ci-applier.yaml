@@ -1,5 +1,5 @@
-# Kubeconfig template for ServiceAccount jithendar/github-ci-applier (minikube/85-ci-applier.yaml).
-# workflows/deploy-minikube.yml fills it in:
+# Kubeconfig template for ServiceAccount jithendar/github-ci-applier (kubernetes/85-ci-applier.yaml).
+# workflows/deploy-kubernetes.yml fills it in:
 #   ${MK4_API_SERVER}       repository variable  cluster API URL (shared with the restart-only deployer)
 #   ${MK4_CA_DATA}          repository variable  base64 CA certificate of the cluster
 #   ${MK4_CI_APPLY_TOKEN}   repository secret    token from Secret jithendar/github-ci-applier-token
