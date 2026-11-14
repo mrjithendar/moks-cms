@@ -15,7 +15,13 @@ async function connect(): Promise<Db> {
   if (url) {
     const { default: postgres } = await import("postgres");
     const { drizzle } = await import("drizzle-orm/postgres-js");
-    const client = postgres(url, { max: Number(process.env.DATABASE_POOL_MAX ?? 5), prepare: false });
+    const client = postgres(url, {
+      max: Number(process.env.DATABASE_POOL_MAX ?? 5),
+      prepare: false,
+      // Seconds before a connection attempt gives up (postgres.js waits 30 by default): with an unreachable database
+      // a request fails after 10 s instead of holding its place in the queue for half a minute.
+      connect_timeout: Number(process.env.DATABASE_CONNECT_TIMEOUT_SECONDS ?? 10),
+    });
     return drizzle(client, { schema }) as unknown as Db;
   }
   if (process.env.NODE_ENV === "production" && process.env.APP_ENV === "production") {
