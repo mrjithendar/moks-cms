@@ -5,7 +5,8 @@ name: jithendar.com
 #           and push as below, tagged :manual-<run number> and :latest; the rollout is on by default and can be
 #           switched off with the `restart` input
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
-#           in the image (job `scope`): npm ci once; lint, tests and the production build (in turn); package the
+#           in the image (job `scope`): npm ci once; the production build (lint and tests already passed on the
+#           pull request in `check`/`test`; manual runs, which have no pull request, run them too); package the
 #           build into an arm64 image, smoke-test the image, push it to Harbor as
 #           registry.jithendar.com/jithendar/moks-cms:pr-<number> (the pull request's own tag) and :latest
 #           (the same image), then point every Deployment that runs this image at :pr-<number> and wait for it
@@ -64,8 +65,8 @@ jobs:
     # including Dependabot's, still run.
     if: github.event_name != 'pull_request' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    # Measured on 2026-11-14 over 17 runs: 8 to 14.7 minutes, of which the tests take about 11. At 15 a run was
-    # cancelled seconds before its build finished, with lint, typecheck and all tests green.
+    # Measured on 2026-11-14 over 17 runs: 8 to 14.7 minutes, of which the tests took about 11 before they moved to
+    # the sharded `test` job below.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,12 +85,40 @@ jobs:
       - run: npm run site -- --copy
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: services/www/.next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
       - run: npm run build
         env:
           APP_ENV: production
       - name: Render production manifests
         run: kubectl kustomize ../../kubernetes > /dev/null
+
+  # The test suite (~1150 tests, ~7 min on one 2-worker runner) split by file across parallel runners.
+  test:
+    if: github.event_name != 'pull_request' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    name: test (${{ matrix.shard }}/3)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: services/www/.nvmrc
+          cache: npm
+          cache-dependency-path: services/www/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
+      - run: npm test -- --shard=${{ matrix.shard }}/3
 
   # Did the merged pull request change anything that is in the image? Notes, article diagram sources, READMEs and
   # manifests are not (.dockerignore: docs, *.md), so merging only those must not rebuild or restart the site.
@@ -164,11 +193,20 @@ jobs:
       - run: npm ci --no-audit --no-fund
       # site/, content/ and public/images/ as copies of sites/jithendar.com (the image and output tracing need real files)
       - run: npm run site -- --copy
-      # One step each, in sequence: output streams live and a failure names its step. (Running them in parallel
-      # only paid off on the shared self-hosted server; on a fresh VM it just stacks three memory peaks.)
-      - run: npm run lint
+      # A merged pull request already passed lint and the tests in `check`/`test` (they took ~7 of this job's ~11
+      # minutes when repeated here), so only manual runs, which have no pull request behind them, run them again.
+      # One step each, in sequence: output streams live and a failure names its step.
+      - if: github.event_name == 'workflow_dispatch'
+        run: npm run lint
       # Tests rely on development fallbacks (e.g. SETTINGS_ENCRYPTION_KEY); only the build is production.
-      - run: npm test
+      - if: github.event_name == 'workflow_dispatch'
+        run: npm test
+      # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: services/www/.next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
       # The production build type-checks the whole project, so no separate typecheck is needed here.
       - run: npm run build
         env:
