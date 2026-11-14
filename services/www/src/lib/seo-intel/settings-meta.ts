@@ -7,7 +7,7 @@ export type SettingsTab = { id: string; label: string; sections: string[]; descr
 
 /** Sections not listed here land in "Other", so a new settings section is never hidden. */
 export const SETTINGS_TABS: SettingsTab[] = [
-  { id: "data", label: "Data sources", sections: ["google", "sync"], description: "Which Google properties are read, how far back, and how long data is kept." },
+  { id: "data", label: "Data sources", sections: ["google", "sync", "dataforseo"], description: "Which Google properties are read, how far back, and how long data is kept; DataForSEO for volume, difficulty, live rankings and backlinks." },
   { id: "schedules", label: "Schedules", sections: ["schedules"], description: "When the web worker runs each job (UTC). With SEO_ORCHESTRATOR=crewai the agent's CronJobs own the flow jobs instead." },
   { id: "scoring", label: "Scoring & rules", sections: ["weights", "thresholds"], description: "How recommendations are found and ranked (docs/seo/SCORING.md)." },
   { id: "content", label: "Content & links", sections: ["keywords", "links", "submission"], description: "Keyword opportunities, internal-linking limits and search-engine submission." },
@@ -29,10 +29,18 @@ export const SECTION_LABELS: Record<string, string> = {
   links: "Internal linking limits (conservative by default)",
   submission: "Search-engine submission (kill switch: SEO_SUBMISSION_ENABLED)",
   keywords: "Keyword opportunities",
+  dataforseo: "DataForSEO (pay as you go; credentials DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD in the site's Secret)",
 };
 
 /** One line of help per field that isn't self-explanatory, keyed by its dotted path. */
 export const FIELD_HELP: Record<string, string> = {
+  "dataforseo.enabled": "Master switch. Nothing is bought while off or while the credentials are missing.",
+  "dataforseo.locationCode": "Market for volume and rankings: 2840 United States, 2356 India, 2826 United Kingdom, 2276 Germany.",
+  "dataforseo.monthlyBudgetUsd": "Hard cap per calendar month (UTC), counted from the cost DataForSEO returns. 0 = buy nothing.",
+  "dataforseo.keywordMetrics.maxKeywords": "Top Search Console queries by impressions (tracked keywords always included) that get volume and difficulty.",
+  "dataforseo.keywordMetrics.refreshDays": "A query's metrics are bought again only after this many days.",
+  "dataforseo.rankTracking.depth": "Results checked per tracked keyword; billed per 10. A keyword below this depth shows as not ranking.",
+  "dataforseo.backlinks.enabled": "The Backlinks API has its own DataForSEO subscription; switch on only once it is active.",
   "google.gscProperty": "sc-domain:example.com for a domain property, or the URL-prefix form with a trailing slash. Empty = SEO_GSC_PROPERTY.",
   "google.ga4PropertyId": "Numeric GA4 property id (Admin → Property details). Empty = SEO_GA4_PROPERTY_ID.",
   "google.urlInspection.dailyLimit": "Google allows 2,000 inspections per property per day; keep well below.",

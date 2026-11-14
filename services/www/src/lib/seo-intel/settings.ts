@@ -175,6 +175,18 @@ const settingsSchema = z.object({
     classifyWithLlm: z.boolean(),
     clusterSimilarity: num(0.1, 0.95),
   }),
+  /** DataForSEO (dataforseo.ts): volume/difficulty, live rank tracking, backlinks. Credentials only from the environment. */
+  dataforseo: z.object({
+    enabled: z.boolean(),
+    /** DataForSEO location code: 2840 United States, 2356 India, 2826 United Kingdom, 2276 Germany. */
+    locationCode: z.coerce.number().int().min(1000).max(99_999_999),
+    languageCode: z.string().trim().regex(/^[a-z]{2}(-[a-z]{2,4})?$/i, "Use a language code such as en or pt-br."),
+    /** Hard monthly cap on DataForSEO spend (USD); a run stops before a request that would cross it. */
+    monthlyBudgetUsd: num(0, 1000),
+    keywordMetrics: z.object({ enabled: z.boolean(), maxKeywords: num(10, 10_000), refreshDays: num(7, 180) }),
+    rankTracking: z.object({ enabled: z.boolean(), weekday, hourUtc: hour, depth: num(10, 100) }),
+    backlinks: z.object({ enabled: z.boolean(), weekday, hourUtc: hour }),
+  }),
 });
 
 export type SeoSettings = z.infer<typeof settingsSchema> & { llmKey: Sealed | null };
@@ -236,6 +248,15 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   },
   submission: { indexNow: true, googleSitemap: true, urlInspection: true, inspectionDelayHours: 60 },
   keywords: { brandRegex: "jithendar", risingMinGrowth: 0.5, decliningPositions: 3, trackedAlertPositions: 3, classifyWithLlm: true, clusterSimilarity: 0.5 },
+  dataforseo: {
+    enabled: false,
+    locationCode: 2840,
+    languageCode: "en",
+    monthlyBudgetUsd: 5,
+    keywordMetrics: { enabled: true, maxKeywords: 1000, refreshDays: 30 },
+    rankTracking: { enabled: true, weekday: 3, hourUtc: 5, depth: 30 },
+    backlinks: { enabled: false, weekday: 0, hourUtc: 5 },
+  },
   llmKey: null,
 };
 
@@ -264,6 +285,13 @@ function merge(stored: Stored | undefined): SeoSettings {
     links: { ...d.links, ...s.links, auto: { ...d.links.auto, ...(s.links?.auto as Partial<SeoSettings["links"]["auto"]> | undefined) }, check: { ...d.links.check, ...(s.links?.check as Partial<SeoSettings["links"]["check"]> | undefined) } },
     submission: { ...d.submission, ...s.submission },
     keywords: { ...d.keywords, ...s.keywords },
+    dataforseo: {
+      ...d.dataforseo,
+      ...s.dataforseo,
+      keywordMetrics: { ...d.dataforseo.keywordMetrics, ...s.dataforseo?.keywordMetrics },
+      rankTracking: { ...d.dataforseo.rankTracking, ...s.dataforseo?.rankTracking },
+      backlinks: { ...d.dataforseo.backlinks, ...s.dataforseo?.backlinks },
+    },
     llmKey: (s.llmKey as Sealed | null | undefined) ?? null,
   };
 }

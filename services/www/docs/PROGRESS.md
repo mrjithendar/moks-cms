@@ -1,5 +1,23 @@
 # Progress log — jithendar.com
 
+## DataForSEO: volume, keyword difficulty, live ranks and backlinks (2026-11-14, owner request)
+
+Second part of "add what is worth taking from open-seo". Search Console cannot give search volume, difficulty, rankings
+for keywords without impressions, or backlinks; DataForSEO (pay as you go) can. Details: [seo/DATAFORSEO.md](seo/DATAFORSEO.md).
+
+- New jobs (web worker, like `keywords_refresh`; no CronJobs): `dataforseo_keywords` (daily, only stale queries),
+  `serp_ranks` (weekly, tracked keywords), `backlinks` (weekly, off by default: separate DataForSEO subscription).
+- Keywords: **Volume** and **KD** columns (sortable, in the CSV). Tracked keywords: live Google position, AI Overview
+  flag, top results, volume/KD, and a form to track any keyword. New **Backlinks** page (gained/lost referring domains).
+  Integrations: DataForSEO status, month spend and Run now.
+- Settings → Data sources → DataForSEO: off by default; market (location 2840 US, language en), monthly cap $5.
+  Spend is DataForSEO's returned `cost`, summed per month from `seo_sync_jobs.detail.costUsd`; a run stops before a
+  request that would cross the cap.
+- Migration `0030_seo_dataforseo.sql` (four new tables; additive), manual rollback file. `scripts/set-dataforseo-config.sh`.
+
+**Manual configuration required:** a DataForSEO account with funds; `scripts/set-dataforseo-config.sh`; switch on in
+Settings. Backlinks also need DataForSEO's Backlinks subscription.
+
 ## AI crawlers, llms.txt and seven new technical checks (2026-11-14, owner request)
 
 Owner request: add what is worth taking from open-seo (github.com/every-app/open-seo, MIT). This first part covers

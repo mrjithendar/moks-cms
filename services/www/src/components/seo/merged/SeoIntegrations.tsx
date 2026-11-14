@@ -1,13 +1,21 @@
 import { Card, StatusPill } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { fmtWhen, Section } from "@/components/seo/ui";
+import { dataForSeoStatus } from "@/lib/seo-intel/dataforseo";
 import { integrationsView } from "@/lib/seo-intel/queries";
+import { getSeoSettings } from "@/lib/seo-intel/settings";
 
 const pill = (s: string) => (s === "ok" || s === "connected" ? "ok" : s === "disconnected" || s === "not_configured" ? "not configured" : s === "stale" || s === "never_synced" ? "degraded" : "down");
 
 /** Search Console + GA4, shown as a section of Admin → Integrations. */
 export async function SeoIntegrations() {
-  const d = await integrationsView();
+  const [d, settings] = await Promise.all([integrationsView(), getSeoSettings()]);
+  const dfs = await dataForSeoStatus(settings);
+  const dfsJobs = [
+    ["dataforseo_keywords", "Volume and difficulty", settings.dataforseo.keywordMetrics.enabled],
+    ["serp_ranks", "Live Google ranks (tracked keywords)", settings.dataforseo.rankTracking.enabled],
+    ["backlinks", "Backlinks", settings.dataforseo.backlinks.enabled],
+  ] as const;
   return (
     <>
       <Section
@@ -47,6 +55,32 @@ export async function SeoIntegrations() {
           );
         })}
       </div>
+      <Section
+        title="DataForSEO"
+        description="Pay as you go: search volume and keyword difficulty, live Google rankings and backlinks. Credentials live only in the cluster Secret (DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD); switches, market and the monthly cap are in Settings → Data sources. Setup: docs/seo/DATAFORSEO.md."
+      >
+        <Card>
+          <p className="flex flex-wrap items-center gap-2 text-sm text-fg">
+            <StatusPill status={!dfs.credentials ? "not configured" : dfs.enabled ? "ok" : "degraded"} />
+            {!dfs.credentials ? "DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD are not set." : dfs.enabled ? "On." : "Credentials set; switched off in Settings."}
+            <span className="text-fg-muted">This month: ${dfs.spentUsd.toFixed(2)} of ${dfs.budgetUsd} cap.</span>
+          </p>
+          <ul className="mt-3 grid gap-2 text-sm">
+            {dfsJobs.map(([job, label, on]) => {
+              const last = dfs.lastRuns.find((r) => r.job_type === job);
+              return (
+                <li key={job} className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <strong>{label}</strong>: {on ? "on" : "off"}
+                    {last && <span className="text-fg-subtle"> · last run {last.status} {fmtWhen(last.finished_at)}{last.error ? ` (${last.error.slice(0, 120)})` : ""}</span>}
+                  </span>
+                  {dfs.enabled && dfs.credentials && on && <ApiButton url="/api/admin/seo/dataforseo/run" body={{ job }} label="Run now" />}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      </Section>
       <Section title="Optional services" description="Off by default. Neither is a paid service at this site's volume, but both stay off until enabled in Settings.">
         <Card>
           <ul className="space-y-2 text-sm">

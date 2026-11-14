@@ -22,11 +22,13 @@ export const KW_COLS: Col[] = [
   { key: "ctr", label: "CTR", numeric: true },
   { key: "expected_ctr", label: "Exp. CTR", numeric: true, title: "Expected CTR for this position on your site's own CTR curve" },
   { key: "gap", label: "Click gap", numeric: true, title: "Estimate, based on your site's CTR curve: impressions × (expected − actual CTR)" },
+  { key: "volume", label: "Volume", numeric: true, title: "Monthly Google searches in the configured market (DataForSEO); — when not bought" },
+  { key: "difficulty", label: "KD", numeric: true, title: "Keyword difficulty 0–100 (DataForSEO): how hard the top 10 is to break into" },
   { key: "trend", label: "Trend", hiddenByDefault: false },
   { key: "intent", label: "Intent" },
   { key: "parent_topic", label: "Parent topic", hiddenByDefault: true },
 ];
-const SORTABLE = new Set(["query", "position", "change", "impressions", "clicks", "ctr", "expected_ctr", "gap", "intent", "parent_topic"]);
+const SORTABLE = new Set(["query", "position", "change", "impressions", "clicks", "ctr", "expected_ctr", "gap", "intent", "parent_topic", "volume", "difficulty"]);
 
 async function act(body: Record<string, unknown>) {
   const res = await fetch("/api/admin/seo/keywords/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
@@ -90,6 +92,10 @@ export function KeywordTable({ rows, view, days }: { rows: KwViewRow[]; view: Vi
         return r.position === null ? "—" : fmtPct(r.expectedCtr);
       case "gap":
         return r.position === null ? "—" : <span className={r.gap > 0 ? "font-medium text-fg" : "text-fg-subtle"}>{r.gap > 0 ? `+${fmtInt(r.gap)}` : fmtInt(r.gap)}</span>;
+      case "volume":
+        return r.volume === null ? <span className="text-fg-subtle">—</span> : fmtInt(r.volume);
+      case "difficulty":
+        return r.difficulty === null ? <span className="text-fg-subtle">—</span> : <span className={r.difficulty >= 70 ? "text-red-800 dark:text-red-300" : r.difficulty >= 40 ? "text-amber-800 dark:text-amber-300" : "text-emerald-800 dark:text-emerald-300"}>{r.difficulty}</span>;
       case "trend":
         return <Sparkline values={r.spark} label={`Impressions per day, last ${days} days`} />;
       case "intent":

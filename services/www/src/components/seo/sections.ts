@@ -20,6 +20,7 @@ export const SEO_GROUPS: { label: string; items: Section[] }[] = [
       { href: "/admin/keywords", label: "Keywords", icon: "key", hint: "Striking distance, low CTR, rising, gaps" },
       { href: "/admin/content-audit", label: "Content audit", icon: "doc", hint: "Audit issues per article" },
       { href: "/admin/links", label: "Internal linking", icon: "link", hint: "Link graph, orphans, pending links" },
+      { href: "/admin/backlinks", label: "Backlinks", icon: "link", hint: "Referring domains gained and lost (DataForSEO)" },
     ],
   },
   {
