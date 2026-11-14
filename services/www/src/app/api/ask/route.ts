@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { clientIp } from "@/lib/client-ip";
 import { hit } from "@/lib/rate-limit";
 import { ipHash } from "@/lib/seo-agent/ask";
 import { askState } from "@/lib/seo-agent/ask-settings";
@@ -10,15 +11,12 @@ export const dynamic = "force-dynamic";
 const HEADERS = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex", "X-Content-Type-Options": "nosniff" };
 
 /**
- * The client address for rate limiting. Envoy (Istio ingress) sets x-envoy-external-address to the address it trusts;
- * otherwise the right-most X-Forwarded-For hop, which the gateway appended. The left-most entry is client-controlled
- * and would let anyone dodge the limit.
+ * The client address for rate limiting (lib/client-ip.ts): the visitor's address from Cloudflare when the request
+ * came through it, otherwise the address the Istio gateway saw. The left-most X-Forwarded-For entry is
+ * client-controlled and would let anyone dodge the limit; it is never used.
  */
 export function clientAddress(h: Headers): string | null {
-  const envoy = h.get("x-envoy-external-address")?.trim();
-  if (envoy) return envoy;
-  const hops = (h.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return hops.at(-1) ?? h.get("x-real-ip")?.trim() ?? null;
+  return clientIp(h);
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;

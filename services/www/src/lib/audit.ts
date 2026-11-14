@@ -1,4 +1,5 @@
 import { getDb, schema } from "@/db";
+import { clientIp } from "./client-ip";
 import { log } from "./log";
 
 export const SEVERITIES = ["info", "notice", "warning", "critical"] as const;
@@ -45,9 +46,9 @@ export function severityOf(action: string): Severity {
 
 export type RequestInfo = { ip: string | null; userAgent: string | null };
 
-/** First address in X-Forwarded-For (the Istio gateway sets exactly the visitor's), else X-Real-IP. */
+/** The visitor's address as the proxies in front report it (lib/client-ip.ts; never a value the client can choose). */
 export function requestInfoFrom(h: Headers): RequestInfo {
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || null;
+  const ip = clientIp(h);
   return { ip: ip ? ip.slice(0, 64) : null, userAgent: h.get("user-agent")?.slice(0, 300) ?? null };
 }
 

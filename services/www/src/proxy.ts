@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isGone } from "@/config/gone";
 import { isIndexableHost } from "@/config/site";
+import { clientIp } from "@/lib/client-ip";
 import { indexNowKey, INDEXNOW_KEY_PATTERN } from "@/lib/indexnow-key";
 import { MAINTENANCE_EXEMPT, maintenancePage, maintenanceState } from "@/lib/site-config/maintenance";
 import { recordRequest } from "@/lib/metrics";
@@ -34,7 +35,7 @@ function accessLog(request: NextRequest, response: NextResponse, requestId: stri
       method: request.method,
       route: loggedPath(request.nextUrl.pathname),
       ...decided,
-      ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      ip: clientIp(request.headers),
       userAgent: request.headers.get("user-agent")?.slice(0, 200) ?? null,
     })}\n`,
   );
