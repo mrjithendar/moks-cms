@@ -665,3 +665,29 @@ logged-in users or all users." See [RAG.md](RAG.md) "Admin settings".
 - **The web switch moved from `jithendar-com-public` to the Deployment manifest** so it is in Git. A key left in that
   ConfigMap no longer has any effect; the hard kill switch is `seo-agent-config` (MANUAL_SETUP.md §18).
 - **Commit and pull request by the agent**, at the owner's explicit request for this change (an exception to A3.12).
+
+## D-90 Ask the Blog as a sitewide chat (owner request 2026-11-14)
+
+"Ask the Blog should be like a chat bot site wide … proceed with fully enabled, can control all the settings from
+admin." See [RAG.md](RAG.md) "Sitewide chat".
+
+- **Everything new is on by default, every part has an admin switch.** Sitewide launcher, follow-ups, page context,
+  kept conversations and feedback default to on; each has its own control on the Ask the Blog card, along with the
+  launcher style, the extra hidden paths and the number of earlier turns. The two existing switches still decide
+  whether the assistant is on at all, and the audience still defaults to signed-in readers (D-89): "fully enabled" was
+  read as all features on, not as opening it to everyone.
+- **Follow-ups are rewritten, not answered with history.** A condense step turns the follow-up into a standalone
+  question; the evaluated answer prompt, the grounding rule and the citation guards see exactly what they saw before.
+  The rewrite is the cache key and the gap-log entry, so a follow-up and the same question asked directly share an
+  answer. The conversation is client-supplied and untrusted: guarded turn by turn, inside `<data>`, never rewriting a
+  question the guards refuse.
+- **No server-side conversation store.** The thread lives in the reader's tab (sessionStorage), so the privacy note
+  stays true and nothing ties questions together on the server.
+- **Feedback by token, not by row id.** An unguessable token per logged answer means a rating can only reach the row
+  it was handed out for; the endpoint gives the same answer whether or not a token exists.
+- **Page context is a ranking nudge (+0.05), not a filter.** Other articles can still answer. The value is not
+  evaluated yet; it is a constant in `ask_pipeline.py` (`CONTEXT_BOOST`), not an admin setting, for the same reason as
+  top-k (D-89).
+- **Migration 0029** adds nullable columns and a partial unique index; the agent detects them, so the order of deploys
+  does not matter.
+

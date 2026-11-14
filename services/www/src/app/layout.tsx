@@ -8,6 +8,7 @@ import { runtimeIntegrations } from "@/lib/runtime-settings";
 import { absoluteUrl, isProductionEnv, site, siteUrl } from "@/config/site";
 import { ThirdParty } from "@/components/integrations/ThirdParty";
 import { HideOnAdmin } from "@/components/HideOnAdmin";
+import { AskSitewide } from "@/components/ask/AskBlog";
 import { themeScript } from "@/components/theme/script";
 import { PreviewBanner } from "@/components/PreviewBanner";
 import { getSiteConfig } from "@/lib/site-config";
@@ -88,6 +89,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <HideOnAdmin>
           <SiteFooter />
         </HideOnAdmin>
+        {/* After the content: position: fixed, so it never shifts the layout or the LCP element. */}
+        {!preview && <AskSitewide />}
         <ThirdParty />
       </body>
     </html>
