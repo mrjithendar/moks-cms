@@ -157,4 +157,13 @@ annotation of `kubectl rollout restart`. Everything else in the pod template has
 - It ships in **warn mode**: a release that breaks a rule still goes through, and kubectl prints
   `Warning: Validation failed for ValidatingAdmissionPolicy 'ci-deployer-rollouts' …` in the release job's log.
 - After one release with no such warning, set `validationActions: ["Deny"]` in the binding and apply the file again.
+- The same file holds a second policy, `ci-deployer-rollouts-extra` (added 2026-11-15), for the parts of the pod template
+  the first one does not compare: probes (an `exec` probe runs a command inside the container, so adding one was as good
+  as changing the command), an init container's hooks and restart policy, container ports and working directory, the
+  RuntimeClass, process-namespace sharing, service-account token mounting, DNS settings and host aliases. It is separate,
+  and also in warn mode, because its rules have not been tried on the cluster yet: apply the file, watch one release
+  for `…'ci-deployer-rollouts-extra'` warnings, then switch its binding to `["Deny"]` on its own. Until both bindings
+  say `Deny`, `MK4_CI_TOKEN` can still change anything in the four Deployments.
+- `scripts/tests/test_admission_policy.py` (job `hygiene`) fails when a Deployment the deployer may patch uses a
+  pod-template field that neither policy compares and that is not listed there as deliberately left alone.
 - It does not cover `github-ci-applier`, which applies `kubernetes/` and may change Deployments by design.
