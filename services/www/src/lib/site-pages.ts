@@ -1,6 +1,6 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
-import { getDb, schema } from "@/db";
+import { getDb, schema, type Db } from "@/db";
 import type { FeaturedImage } from "@/db/schema";
 import { audit } from "./audit";
 import { invalidateContent } from "./content";
@@ -81,39 +81,45 @@ export async function savePage(actor: Actor, originalSlug: string | null, raw: u
     sortOrder: input.sortOrder,
     savedAt: new Date(),
   };
-  let row: typeof schema.page.$inferSelect | undefined;
-  if (originalSlug) {
-    const [current] = await db.select().from(schema.page).where(eq(schema.page.slug, originalSlug));
-    if (!current) throw new PostError("Page not found.", 404);
-    if (current.deletedAt) throw new PostError("This page is in the trash. Restore it first.", 409);
-    if (opts.baseVersion !== undefined && opts.baseVersion !== current.version) throw new ConflictError({ version: current.version, savedAt: current.savedAt.toISOString() });
-    if (originalSlug !== input.slug) {
-      const [clash] = await db.select({ slug: schema.page.slug }).from(schema.page).where(eq(schema.page.slug, input.slug));
-      if (clash) throw new PostError(`A page with slug "${input.slug}" already exists.`, 409);
+  // One transaction, as for posts (lib/posts.ts): the page, its redirect, its revision and its audit entry are
+  // committed together, so a failure part-way cannot leave a new version without its history.
+  const saved = await db.transaction(async (tx) => {
+    const within = tx as unknown as Db;
+    let row: typeof schema.page.$inferSelect | undefined;
+    if (originalSlug) {
+      const [current] = await tx.select().from(schema.page).where(eq(schema.page.slug, originalSlug));
+      if (!current) throw new PostError("Page not found.", 404);
+      if (current.deletedAt) throw new PostError("This page is in the trash. Restore it first.", 409);
+      if (opts.baseVersion !== undefined && opts.baseVersion !== current.version) throw new ConflictError({ version: current.version, savedAt: current.savedAt.toISOString() });
+      if (originalSlug !== input.slug) {
+        const [clash] = await tx.select({ slug: schema.page.slug }).from(schema.page).where(eq(schema.page.slug, input.slug));
+        if (clash) throw new PostError(`A page with slug "${input.slug}" already exists.`, 409);
+      }
+      [row] = await tx
+        .update(schema.page)
+        .set({ ...values, version: current.version + 1 })
+        .where(and(eq(schema.page.slug, originalSlug), eq(schema.page.version, current.version)))
+        .returning();
+      if (!row) throw new ConflictError({ version: current.version + 1, savedAt: new Date().toISOString() });
+      if (originalSlug !== input.slug) {
+        await recordRedirect(`/${originalSlug}`, `/${input.slug}`, within);
+        // Revision history follows the page to its new slug.
+        await tx.update(schema.revision).set({ entityId: input.slug }).where(and(eq(schema.revision.entity, "page"), eq(schema.revision.entityId, originalSlug)));
+      }
+    } else {
+      if (RESERVED_PAGE_SLUGS.has(input.slug)) throw new PostError(`slug: "${input.slug}" is reserved by the site`);
+      [row] = await tx.insert(schema.page).values(values).onConflictDoNothing().returning();
+      if (!row) throw new PostError(`A page with slug "${input.slug}" already exists.`, 409);
     }
-    [row] = await db
-      .update(schema.page)
-      .set({ ...values, version: current.version + 1 })
-      .where(and(eq(schema.page.slug, originalSlug), eq(schema.page.version, current.version)))
-      .returning();
-    if (!row) throw new ConflictError({ version: current.version + 1, savedAt: new Date().toISOString() });
-    if (originalSlug !== input.slug) {
-      await recordRedirect(`/${originalSlug}`, `/${input.slug}`);
-      // Revision history follows the page to its new slug.
-      await db.update(schema.revision).set({ entityId: input.slug }).where(and(eq(schema.revision.entity, "page"), eq(schema.revision.entityId, originalSlug)));
-    }
-  } else {
-    if (RESERVED_PAGE_SLUGS.has(input.slug)) throw new PostError(`slug: "${input.slug}" is reserved by the site`);
-    [row] = await db.insert(schema.page).values(values).onConflictDoNothing().returning();
-    if (!row) throw new PostError(`A page with slug "${input.slug}" already exists.`, 409);
-  }
-  const { version: _v, ...snapshot } = row;
-  void _v;
-  await recordRevision(db, "page", row.slug, row.version, originalSlug ? "update" : "create", snapshot, actor.id);
-  await clearAutosave(actor, "page", originalSlug ?? row.slug);
-  await audit(actor, originalSlug ? "page.update" : "page.create", input.slug);
+    const { version: _v, ...snapshot } = row;
+    void _v;
+    await recordRevision(within, "page", row.slug, row.version, originalSlug ? "update" : "create", snapshot, actor.id);
+    await clearAutosave(actor, "page", originalSlug ?? row.slug, within);
+    await audit(actor, originalSlug ? "page.update" : "page.create", input.slug, undefined, { db: within });
+    return row;
+  });
   invalidateContent();
-  return row;
+  return saved;
 }
 
 /** Move to the trash (the URL returns 404 until restored). */
