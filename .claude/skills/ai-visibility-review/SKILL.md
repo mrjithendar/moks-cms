@@ -1,13 +1,25 @@
 ---
 name: ai-visibility-review
-description: Review whether ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews cite jithendar.com, using the admin MCP server's AI visibility tools, and turn uncited prompts into concrete content work. Use when asked about AI search, AI citations, GEO/AEO, "do AI assistants mention us", or why a competitor gets cited instead.
+description: Review whether ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews cite a site from sites/ (its host in sites/<domain>/site.json), using the admin MCP server's AI visibility tools, and turn uncited prompts into concrete content work. Use when asked about AI search, AI citations, GEO/AEO, "do AI assistants mention us", or why a competitor gets cited instead.
 ---
 
 # AI visibility review
 
-Needs the admin MCP server (`/mcp/admin`, scope `seo:read`) and AI visibility switched on in Settings
+Needs the site's admin MCP server (`https://<host>/mcp/admin`, scope `seo:read`) and AI visibility switched on in Settings
 (`services/www/docs/seo/AI_VISIBILITY.md`). The data is API answers with web search, collected weekly. Say so when you
 report it: the consumer apps can answer differently.
+
+## Pick the site
+
+The skill works for any site in `sites/`. Resolve it first, before any tool call:
+
+1. The site the user names (a domain or folder under `sites/`). Otherwise `$SITE` if set. Otherwise list the folders in
+   `sites/` (skip names starting with `_`): use the only one, or ask which when there are several.
+2. Read `sites/<domain>/site.json`. `host` is the site's domain, and `tagline` and `description` are its subjects.
+3. Use the admin MCP server for that host (`https://<host>/mcp/admin`). If only another site's server is connected,
+   stop and say which one to add; never report one site's data as another's.
+
+Below, "the site" means that host.
 
 ## Steps
 
