@@ -4,7 +4,7 @@ name: wwww-content
 #
 # check   → pull requests touching content: validate content/ (frontmatter schema, internal links)
 # release → default branch: validate, package services/www/content and services/www/public/images into a tiny busybox image,
-#           push registry.jithendar.com/jithendar/jithendar-content:latest to Harbor, then
+#           push registry.jithendar.com/jithendar/moks-cms-content:latest to Harbor, then
 #           `kubectl rollout restart deploy/jithendar-com` so the init container "content" copies the new files
 #           into the pods (minikube/30-jithendar-com.yaml).
 #           The restart is skipped when a push only adds or edits articles that are not published (status draft or
@@ -16,7 +16,7 @@ name: wwww-content
 #           (status: published), editing or deleting a published article, any other content, a changed image, or a
 #           manual run restarts as before.
 #
-# ci-jithendar-com.yml ignores these paths, so writing a post never rebuilds the jithendar-com image.
+# ci-jithendar-com.yml ignores these paths, so writing a post never rebuilds the moks-cms image.
 # Uses the same Harbor robot (HARBOR_USERNAME/HARBOR_PASSWORD, project jithendar) and the same cluster
 # access (github-ci-deployer, which may restart deploy/jithendar-com) as ci-jithendar-com.yml.
 
@@ -41,7 +41,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: jithendar-content-${{ github.ref }}
+  group: moks-cms-content-${{ github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     env:
-      REGISTRY_IMAGE: registry.jithendar.com/jithendar/jithendar-content
+      REGISTRY_IMAGE: registry.jithendar.com/jithendar/moks-cms-content
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -182,7 +182,7 @@ jobs:
           fi
           { echo "sent=$sent"; echo "waiting=$waiting"; } >> "$GITHUB_OUTPUT"
           exit 0
-      # The init container pulls jithendar-content:latest (imagePullPolicy Always) whenever a pod starts.
+      # The init container pulls moks-cms-content:latest (imagePullPolicy Always) whenever a pod starts.
       - name: Restart jithendar-com
         # Readers would see a change, or a new article could not be sent to the API (it needs the restart to arrive).
         if: steps.visible.outputs.restart == 'true' || steps.drafts.outputs.waiting > 0

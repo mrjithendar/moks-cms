@@ -18,8 +18,8 @@ from pathlib import Path
 import yaml
 
 SCRIPTS = Path(__file__).resolve().parents[1]
-SITE = "registry.jithendar.com/jithendar/jithendar-com"
-CONTENT = "registry.jithendar.com/jithendar/jithendar-content"
+SITE = "registry.jithendar.com/jithendar/moks-cms"
+CONTENT = "registry.jithendar.com/jithendar/moks-cms-content"
 
 # Stub kubectl: prints the Deployments in STUB_DEPLOYMENTS for `get deployments -o json`, logs every call, and fails
 # `set image` / `rollout status` for the Deployment names in STUB_FAIL_SET / STUB_FAIL_STATUS.
@@ -131,8 +131,24 @@ class Rollout(unittest.TestCase):
         self.assertNotIn("rollout status deployment/jithendar-com-worker --timeout=5m", calls)
         self.assertIn("80-ci-deployer.yaml", output)
 
+    def test_previous_moves_a_deployment_off_the_repository_the_image_was_renamed_from(self) -> None:
+        old = "registry.jithendar.com/jithendar/jithendar-com"
+        live = [
+            deployment("jithendar-com", {"web": f"{old}:latest"}, init={"content": f"{CONTENT}:latest"}),
+            deployment("seo-agent", {"seo-agent": "registry.jithendar.com/jithendar/seo-agent:pr-5"}),
+        ]
+        code, calls, summary = self.run_script(live, SITE, "pr-7", "--previous", old)
+        self.assertEqual(code, 0)
+        self.assertEqual(calls, ["get deployments -o json", f"set image deployment/jithendar-com web={SITE}:pr-7", "rollout status deployment/jithendar-com --timeout=5m"])
+        self.assertIn("deployment/jithendar-com: ready", summary)
+        # Without --previous the renamed image is not found, as before.
+        code, calls, output = self.run_script(live, SITE, "pr-7")
+        self.assertEqual(code, 2)
+        self.assertIn("No Deployment runs", output)
+
     def test_bad_arguments_are_refused_before_anything_runs(self) -> None:
-        for args in ([], [SITE], [f"{SITE}:latest", "pr-7"], [SITE, "pr-7:1"], [f"{SITE}@sha256:abc", "pr-7"]):
+        for args in ([], [SITE], [f"{SITE}:latest", "pr-7"], [SITE, "pr-7:1"], [f"{SITE}@sha256:abc", "pr-7"],
+                     [SITE, "pr-7", "--previous"], [SITE, "pr-7", "--previous", f"{SITE}:latest"], [SITE, "pr-7", "--other", SITE]):
             code, calls, _ = self.run_script([], *args)
             self.assertEqual(code, 2, args)
             self.assertEqual(calls, [], args)

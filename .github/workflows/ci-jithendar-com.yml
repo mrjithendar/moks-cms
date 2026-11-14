@@ -7,12 +7,12 @@ name: jithendar.com
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #           in the image (job `scope`): npm ci once; lint, tests and the production build (in turn); package the
 #           build into an arm64 image, smoke-test the image, push it to Harbor as
-#           registry.jithendar.com/jithendar/jithendar-com:pr-<number> (the pull request's own tag) and :latest
+#           registry.jithendar.com/jithendar/moks-cms:pr-<number> (the pull request's own tag) and :latest
 #           (the same image), then point every Deployment that runs this image at :pr-<number> and wait for it
 #           (scripts/ci-rollout.py)
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds and deploys
-# nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com web=…/jithendar-com:pr-<n>`;
+# nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com web=…/moks-cms:pr-<n>`;
 # it stays until the next release (deploy-minikube.yml keeps the image a workload is running).
 #
 # CI's only cluster access here is that rollout (kubeconfig template .github/jithendar-ci-deployer.yaml, filled
@@ -139,7 +139,7 @@ jobs:
       group: jithendar-com-release
       cancel-in-progress: false
     env:
-      REGISTRY_IMAGE: registry.jithendar.com/jithendar/jithendar-com
+      REGISTRY_IMAGE: registry.jithendar.com/jithendar/moks-cms
       # Pull requests: pr-<number>. Manual runs: manual-<run number>.
       PR_TAG: ${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_number) || format('pr-{0}', github.event.pull_request.number) }}
       RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
@@ -233,14 +233,16 @@ jobs:
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           trap 'rm -f "$KUBECONFIG"' EXIT
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-          python3 ../../scripts/ci-rollout.py "$REGISTRY_IMAGE" "$PR_TAG"
+          # The image was called jithendar-com until the repository became moks-cms (2026-11-14): --previous moves a
+          # Deployment that still runs the old name onto this release.
+          python3 ../../scripts/ci-rollout.py "$REGISTRY_IMAGE" "$PR_TAG" --previous registry.jithendar.com/jithendar/jithendar-com
       - name: Record image
         env:
           RESTARTED: ${{ github.event_name != 'workflow_dispatch' || inputs.restart }}
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {
-            echo '### jithendar.com image'
+            echo '### moks-cms image (jithendar.com site)'
             echo
             if [[ "$PR_TAG" == pr-* ]]; then source="pull request #${PR_TAG#pr-}"; else source="manual run #${PR_TAG#manual-}"; fi
             echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` ($source, commit \`$RELEASE_SHA\`)"

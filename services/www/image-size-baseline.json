@@ -1,5 +1,5 @@
 {
-  "image": "registry.jithendar.com/jithendar/jithendar-com:latest (linux/arm64, the release build in ci-jithendar-com.yml)",
+  "image": "registry.jithendar.com/jithendar/moks-cms:latest (linux/arm64, the release build in ci-jithendar-com.yml)",
   "uncompressed_bytes": null,
   "compressed_bytes": null,
   "measured": null,

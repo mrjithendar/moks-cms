@@ -16,7 +16,7 @@ groups:
           severity: warning
         annotations:
           summary: 'SEO {{ $labels.job_type }} has failed {{ $value }} times in a row'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#sync-failures'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/OPERATIONS.md#sync-failures'
       # Credentials revoked/expired or the service account lost access to the property: stops immediately.
       - alert: SeoGoogleAuthError
         expr: sum by (job_type) (increase(seo_sync_failure_total{job="jithendar-com", error_code="auth"}[2h])) > 0
@@ -24,7 +24,7 @@ groups:
           severity: warning
         annotations:
           summary: 'Google denied access during SEO {{ $labels.job_type }} (credentials or property permissions)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#auth-errors'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/OPERATIONS.md#auth-errors'
       # Persistent Google API errors (after retries), at least 10 in 6 hours and more than half of requests.
       - alert: SeoGoogleApiErrorsPersistent
         expr: |
@@ -35,7 +35,7 @@ groups:
           severity: warning
         annotations:
           summary: 'More than half of {{ $labels.provider }} API requests failed in the last 6 hours'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#api-errors'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/OPERATIONS.md#api-errors'
       # No successful Search Console sync for 3 days although it has succeeded before (configured, then broke).
       - alert: SeoDataStale
         expr: (time() - max(seo_sync_last_success_timestamp_seconds{job="jithendar-com", job_type="gsc_sync"})) > 3 * 86400 and max(seo_sync_last_success_timestamp_seconds{job="jithendar-com", job_type="gsc_sync"}) > 0
@@ -44,7 +44,7 @@ groups:
           severity: info
         annotations:
           summary: 'No successful Search Console sync for more than 3 days'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/OPERATIONS.md#sync-failures'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/OPERATIONS.md#sync-failures'
 
   # SEO v3 (services/seo-agent, docs/seo/AGENTS.md). Scrape job "seo-agent" (Service seo-agent-metrics, port 8080,
   # /metrics; MANUAL_SETUP.md "v3"). Labels are fixed sets: graph, node, status, purpose, outcome, model.
@@ -57,14 +57,14 @@ groups:
           severity: warning
         annotations:
           summary: 'The seo-agent service is down or not scraped: no CrewAI flow runs (SEO_ORCHESTRATOR=crewai), MCP is unavailable; legacy path unaffected'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/FLOWS.md#operations'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/FLOWS.md#operations'
       - alert: SeoFlowRepeatedFailures
         expr: sum by (flow) (increase(seo_flow_runs_total{job="seo-agent", status="failed"}[6h])) >= 3
         labels:
           severity: warning
         annotations:
           summary: '{{ $value }} {{ $labels.flow }} runs failed in 6 hours'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/FLOWS.md#failed-runs'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/FLOWS.md#failed-runs'
       # "Has not succeeded within 2× its schedule": daily sync flows 2 days, weekly flows 14 days (report_flow covers the
       # weekly report, so 14 days also bounds the monthly one). A flow that never succeeded yet has no series (no alert).
       - alert: SeoFlowStale
@@ -77,14 +77,14 @@ groups:
           severity: warning
         annotations:
           summary: '{{ $labels.flow }} has not succeeded within twice its schedule (check its CronJob seo-flow-* and the run errors)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/FLOWS.md#scheduling'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/FLOWS.md#scheduling'
       - alert: SeoMcpAuthFailureSpike
         expr: sum by (server) (increase(seo_mcp_auth_failures_total{job="seo-agent"}[15m])) > 30
         labels:
           severity: warning
         annotations:
           summary: '{{ $value }} rejected MCP bearer tokens in 15 minutes on /mcp/{{ $labels.server }} (token guessing or a broken client; kill switch ADMIN_MCP_ENABLED=false)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/MCP.md#operations'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/MCP.md#operations'
       - alert: SeoLlmBudget80
         expr: max(seo_llm_budget_used_ratio{job="seo-agent"}) >= 0.8 and max(seo_llm_budget_used_ratio{job="seo-agent"}) < 1
         for: 15m
@@ -92,14 +92,14 @@ groups:
           severity: info
         annotations:
           summary: 'SEO LLM spend is at {{ $value | humanizePercentage }} of the monthly budget (v2 and the v4 flows share it)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/COSTS.md#budget-controls'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/COSTS.md#budget-controls'
       - alert: SeoLlmBudgetReached
         expr: max(seo_llm_budget_used_ratio{job="seo-agent"}) >= 1
         labels:
           severity: warning
         annotations:
           summary: 'SEO LLM monthly budget reached: new drafting/report flow runs pause (paused_budget) until next month or a higher cap'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/COSTS.md#budget-controls'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/COSTS.md#budget-controls'
       - alert: AskBlogErrorRate
         expr: |
           sum(increase(seo_ask_requests_total{job="seo-agent", outcome="error"}[30m]))
@@ -110,7 +110,7 @@ groups:
           severity: warning
         annotations:
           summary: 'Ask the Blog: more than 20% of answers fail (kill switch: ASK_BLOG_ENABLED=false)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/RAG.md#operations'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/RAG.md#operations'
   # v5: SEO-side ML and RAG quality (docs/seo/ML.md, RAG.md). Gauges come from the database (restart-safe).
   - name: jithendar-com-seo-ml
     rules:
@@ -123,7 +123,7 @@ groups:
           severity: warning
         annotations:
           summary: 'seo_ml_flow failed {{ $value }} times in a row'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/ML.md#overriding-and-rolling-back'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/ML.md#overriding-and-rolling-back'
       # A model that was in use no longer beat its rule on retraining: the flow switched the site back to the rule.
       - alert: SeoMlModelFellBackToRule
         expr: sum by (model) (increase(seo_ml_train_runs_total{job="seo-agent", status="fallback_to_rule"}[8d])) > 0
@@ -131,7 +131,7 @@ groups:
           severity: info
         annotations:
           summary: 'The {{ $labels.model }} model fell below its rule on retraining; the site uses the rule again'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/ML.md#model-or-rule-srclibseo-intelmlts-mldecision'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/ML.md#model-or-rule-srclibseo-intelmlts-mldecision'
       # The token-aware chunker must keep every embedded input within the model's 512 tokens.
       - alert: SeoRagChunksTruncated
         expr: sum(increase(seo_rag_chunks_truncated_total{job="seo-agent"}[1d])) > 0
@@ -139,4 +139,4 @@ groups:
           severity: warning
         annotations:
           summary: '{{ $value }} chunks were longer than the embedding model accepts during reindexing (their tails are not searchable)'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/seo/RAG.md#chunking-v5-token-budget'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/seo/RAG.md#chunking-v5-token-budget'
