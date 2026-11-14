@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import statistics
 import time
@@ -42,7 +43,8 @@ from .retrieval import Bm25, Candidate, MemoryRow, RetrievalConfig, candidates_f
 
 K = 6
 EVAL_PATH = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "rag_eval.yaml"
-BLOG_DIR = Path(__file__).resolve().parent.parent.parent / "www" / "content" / "blog"
+# The site's articles: sites/<domain>/content/blog at the repository root (SITE, default jithendar.com).
+BLOG_DIR = Path(__file__).resolve().parents[3] / "sites" / (os.environ.get("SITE") or "jithendar.com") / "content" / "blog"
 TYPES = ("concept", "how-to", "exact-term", "troubleshooting", "no-answer")
 
 
