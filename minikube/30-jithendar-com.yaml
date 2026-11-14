@@ -29,13 +29,13 @@ spec:
         app.kubernetes.io/part-of: jithendar-com
     spec:
       automountServiceAccountToken: false
-      # Content (MDX and /images) ships in its own image, jithendar-content (services/www/Dockerfile.content,
+      # Content (MDX and /images) ships in its own image, moks-cms-content (services/www/Dockerfile.content,
       # .github/workflows/ci-content.yml), so writing a post never rebuilds jithendar-com. This init container copies
       # it into the emptyDirs that the web container mounts over /app/content and /app/public/images; a rollout
       # restart (done by both workflows) pulls the newest :latest of each image.
       initContainers:
       - name: content
-        image: registry.jithendar.com/jithendar/jithendar-content:latest
+        image: registry.jithendar.com/jithendar/moks-cms-content:latest
         imagePullPolicy: Always
         # cp -R: -a would try to set owner/mode/times on the emptyDir mount point itself and log "can't preserve" (Dockerfile.content)
         command: ["sh", "-c", "cp -R /content/. /mnt/content/ && cp -R /images/. /mnt/images/"]
@@ -123,7 +123,7 @@ spec:
         - configMapRef:
             name: jithendar-com-public
             optional: true
-        image: registry.jithendar.com/jithendar/jithendar-com:latest
+        image: registry.jithendar.com/jithendar/moks-cms:latest
         imagePullPolicy: Always
         lifecycle:
           preStop:
