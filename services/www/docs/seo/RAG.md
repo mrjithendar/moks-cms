@@ -21,7 +21,12 @@ a database error before the first read all mean **off**.
 | Setting | Default | Applied by |
 |---|---|---|
 | Who can use it: **signed-in readers only** or everyone | signed-in readers only | web (`/api/ask` checks the session on the server: 401 `code: "signin"` without one); agent (MCP `ask_blog` answers `disabled` unless "everyone") |
-| Show on: home page, article pages | both | web (`AskBlog` server component) |
+| Chat on every page (sitewide launcher), its style (pill / icon) and extra hidden paths | on, pill, none | web (`AskSitewide` in the root layout; hidden paths in `AskDock`) |
+| Card at the end of: home page, article pages | both | web (`AskBlog` server component); with the sitewide chat on, the card opens the corner panel |
+| Understand follow-up questions, earlier turns to send (1–5) | on, 3 | web (forwards the turns) and agent (`condense_question`); either switch off = no history |
+| Prefer the article the reader has open | on | web (forwards the slug) and agent (`CONTEXT_BOOST`) |
+| Keep the conversation when the page reloads | on | widget (sessionStorage, per tab) |
+| Ask readers whether an answer helped | on | agent (hands out a feedback token), web (`POST /api/ask/feedback`) |
 | Widget text: button, intro, placeholder, note, up to 4 example questions | the previous fixed text, no examples | web |
 | Questions per reader per minute / per day, longest question | 6 / 60 / 500 | web limiter; in signed-in-only mode counted per account **and** per IP |
 | Daily budget (USD) | 1 | agent budget guard: `min(saved, ASK_BLOG_DAILY_BUDGET_USD)` |
@@ -39,6 +44,43 @@ Notes:
   `ask-blog-v3-short` / `ask-blog-v3-detailed` in `seo_ask_log.prompt_version` and `seo_llm_usage`, and the answer
   cache key includes the length and the fallback message. Citation rules and guards are the same for all three.
 - Privacy is unchanged in signed-in-only mode: the question log stores neither the account nor the IP address.
+
+## Sitewide chat (D-90)
+
+Ask the Blog is a chat on every public page: a launcher in the bottom-right corner (`components/ask/AskDock.tsx`,
+rendered by `AskSitewide` in the root layout) opens a panel that keeps the conversation while the reader moves around
+the site.
+
+- **Where.** Every public page, except a fixed list (`/admin`, `/login`, `/forgot-password`, `/reset-password`,
+  `/account`, `/setup`, `/preview`, `/mcp-oauth`) and the admin's extra paths (whole path segments:
+  `/python-practice` hides `/python-practice/x`, not `/python-practiced`). The inline cards stay available; with the
+  sitewide chat on they open the corner panel, so a page has one panel and one conversation.
+- **Desktop** shows a non-modal panel above the launcher, so the reader can keep reading. **Phone** (below 640px) shows
+  a full-screen modal sheet with the rest of the page inert; following a source closes it. Esc closes either one and
+  focus returns to the launcher. While the launcher is on the page, the footer gets bottom padding so its last row can
+  scroll clear of it.
+- **The conversation** lives outside React (`components/ask/thread.ts`), so an answer keeps streaming while the panel
+  is closed or the reader navigates. It is kept in sessionStorage for the tab (up to 20 turns) when "keep the
+  conversation" is on. Nothing new is stored on the server.
+- **Answers** stay plain text. Each citation now carries `refs` (the `[n]` markers that point at it), so the widget
+  turns markers into numbered links to the right section. Markers it cannot map (an answer cached before `refs`
+  existed) stay as text.
+- **Follow-ups.** The widget sends the last answered turns (question + the answer cut to 600 characters). `/api/ask`
+  validates them (at most 5, body at most 8,000 bytes) and forwards only as many as the admin allows. In the agent,
+  `AskService._prepare` drops earlier turns that fail `check_input` and never rewrites a question the guards refuse.
+  It then calls `AskPipeline.condense` (`SEO_CLASSIFY_MODEL`, prompt `ask-condense-v1`, conversation inside `<data>`
+  only). The standalone question goes through the unchanged pipeline, cache key and gap log; the answer step never
+  sees the conversation. Logged as `question` (what the reader typed) plus `standalone`, prompt version
+  `…-followup`, and the condense cost added to `cost_usd`. A schema miss falls back to the reader's own question.
+- **Page context.** On `/blog/<slug>`, when the page shows an article, the slug goes with the question. Sections of
+  that article get +0.05 on their cosine score when ranking: enough to decide between near-equal sections, not to lift
+  an unrelated one. The open article is part of the answer cache key.
+- **Feedback.** The agent stores a random 128-bit `feedback_token` on each answered or fallback row it logs (migration
+  0029) and returns it with the answer, never inside the cache. `POST /api/ask/feedback {token, helpful}` sets
+  `feedback` (1 / -1) on that row for a day. It is same-origin only, limited to 30 per minute per IP, and always 204 for
+  a well-formed request. The admin card shows follow-ups and helpful / not helpful for the last 7 days.
+- **Before migration 0029:** the agent checks for the columns once per process and writes rows as before without a
+  token, so either side can deploy first; the widget then simply shows no feedback buttons.
 
 ## Answer path (v4: a plain async pipeline)
 

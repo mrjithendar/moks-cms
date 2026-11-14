@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Card } from "@/components/admin/ui";
 import { Alert, Button, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { ASK_ALWAYS_HIDDEN } from "@/components/ask/types";
 import type { AskSettings, AskStatus } from "@/lib/seo-agent/ask-settings";
 
 type Props = {
@@ -29,19 +30,23 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
   const router = useRouter();
   const [s, setS] = useState<AskSettings>(initial);
   const [examples, setExamples] = useState(initial.copy.examples.join("\n"));
+  const [hideOn, setHideOn] = useState(initial.sitewide.hideOn.join("\n"));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; issues?: string[] } | null>(null);
 
   const set = <K extends keyof AskSettings>(k: K, v: AskSettings[K]) => setS((p) => ({ ...p, [k]: v }));
   const setCopy = (k: keyof AskSettings["copy"], v: string) => setS((p) => ({ ...p, copy: { ...p.copy, [k]: v } }));
   const setLimit = (k: keyof AskSettings["limits"], v: string) => setS((p) => ({ ...p, limits: { ...p.limits, [k]: Number(v) } }));
+  const setSitewide = <K extends keyof AskSettings["sitewide"]>(k: K, v: AskSettings["sitewide"][K]) => setS((p) => ({ ...p, sitewide: { ...p.sitewide, [k]: v } }));
+  const setConv = <K extends keyof AskSettings["conversation"]>(k: K, v: AskSettings["conversation"][K]) => setS((p) => ({ ...p, conversation: { ...p.conversation, [k]: v } }));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (s.enabled && !initial.enabled && !window.confirm(`Turn Ask the Blog on for ${s.audience === "members" ? "signed-in readers" : "everyone"}? Each answer costs money, up to the daily budget.`)) return;
     setBusy(true);
     setMsg(null);
-    const body: AskSettings = { ...s, copy: { ...s.copy, examples: examples.split("\n").map((x) => x.trim()).filter(Boolean) } };
+    const lines = (t: string) => t.split("\n").map((x) => x.trim()).filter(Boolean);
+    const body: AskSettings = { ...s, sitewide: { ...s.sitewide, hideOn: lines(hideOn) }, copy: { ...s.copy, examples: lines(examples) } };
     try {
       const res = await fetch("/api/admin/seo/ask-blog", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await res.json().catch(() => ({}))) as { error?: string; issues?: string[]; reference?: string; settings?: AskSettings };
@@ -50,6 +55,7 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
         if (data.settings) {
           setS(data.settings);
           setExamples(data.settings.copy.examples.join("\n"));
+          setHideOn(data.settings.sitewide.hideOn.join("\n"));
         }
         setMsg({ ok: true, text: "Saved. The site applies it now; the assistant within about 30 seconds." });
         router.refresh();
@@ -77,7 +83,7 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
         </div>
       )}
 
-      <dl className="mt-4 grid gap-3 border-y border-line py-3 text-sm sm:grid-cols-4">
+      <dl className="mt-4 grid gap-3 border-y border-line py-3 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-fg-subtle">Spent today (UTC)</dt>
           <dd className="font-medium tabular-nums text-fg">{status ? `${usd(status.spentTodayUsd)} of ${usd(initial.dailyBudgetUsd)}` : "—"}</dd>
@@ -93,6 +99,14 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
         <div>
           <dt className="text-fg-subtle">Retrieval Recall@3 (last live run)</dt>
           <dd className="font-medium tabular-nums text-fg">{recall3 === null ? "—" : `${(recall3 * 100).toFixed(1)} %`}</dd>
+        </div>
+        <div>
+          <dt className="text-fg-subtle">Follow-up questions, last 7 days</dt>
+          <dd className="font-medium tabular-nums text-fg">{status ? status.week.followUps : "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-fg-subtle">Reader feedback, last 7 days</dt>
+          <dd className="font-medium tabular-nums text-fg">{status ? `${status.week.helpful} helpful, ${status.week.notHelpful} not helpful` : "—"}</dd>
         </div>
       </dl>
 
@@ -120,8 +134,30 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
               </span>
             </label>
           </div>
+        </fieldset>
+
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-semibold text-fg">Where it appears</legend>
+          <label className="flex items-start gap-2 text-sm text-fg">
+            <input type="checkbox" className="mt-0.5" checked={s.sitewide.enabled} onChange={(e) => setSitewide("enabled", e.target.checked)} />
+            <span>
+              Show the chat on every page
+              <span className="block text-fg-subtle">A button in the bottom-right corner of every public page opens the chat. The conversation stays open while the reader moves around the site.</span>
+            </span>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Chat button" htmlFor="ask-launcher">
+              <Select id="ask-launcher" value={s.sitewide.launcher} disabled={!s.sitewide.enabled} onChange={(e) => setSitewide("launcher", e.target.value as AskSettings["sitewide"]["launcher"])}>
+                <option value="pill">Icon and button label (shrinks to the icon after scrolling)</option>
+                <option value="icon">Round icon only</option>
+              </Select>
+            </Field>
+            <Field label="Also hide it on" htmlFor="ask-hide-on" hint={`One path per line, e.g. /python-practice. Always hidden on ${ASK_ALWAYS_HIDDEN.join(", ")}.`} optional>
+              <Textarea id="ask-hide-on" rows={3} value={hideOn} disabled={!s.sitewide.enabled} onChange={(e) => setHideOn(e.target.value)} />
+            </Field>
+          </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <span className="text-sm font-medium text-fg">Show on</span>
+            <span className="text-sm font-medium text-fg">Card at the end of the</span>
             <label className="flex items-center gap-2 text-sm text-fg">
               <input type="checkbox" checked={s.placement.home} onChange={(e) => set("placement", { ...s.placement, home: e.target.checked })} />
               Home page
@@ -131,6 +167,44 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
               Article pages
             </label>
           </div>
+          <p className="text-sm text-fg-subtle">With the chat on every page, the card&apos;s button opens the same chat. Without it, the card expands into the chat in place.</p>
+        </fieldset>
+
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-semibold text-fg">Conversation</legend>
+          <label className="flex items-start gap-2 text-sm text-fg">
+            <input type="checkbox" className="mt-0.5" checked={s.conversation.followUps} onChange={(e) => setConv("followUps", e.target.checked)} />
+            <span>
+              Understand follow-up questions
+              <span className="block text-fg-subtle">Sends the earlier turns with a question, so &quot;and where is the token stored?&quot; is understood. The agent rewrites it as a standalone question first (one small extra call, within the daily budget). Off: each question is answered on its own.</span>
+            </span>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Earlier turns to send" htmlFor="ask-turns" hint="1 to 5">
+              <Input id="ask-turns" type="number" min={1} max={5} step={1} required disabled={!s.conversation.followUps} value={s.conversation.turns} onChange={(e) => setConv("turns", Number(e.target.value))} />
+            </Field>
+          </div>
+          <label className="flex items-start gap-2 text-sm text-fg">
+            <input type="checkbox" className="mt-0.5" checked={s.conversation.pageContext} onChange={(e) => setConv("pageContext", e.target.checked)} />
+            <span>
+              Prefer the article the reader has open
+              <span className="block text-fg-subtle">On article pages, that article&apos;s sections rank a little higher. Other articles can still answer.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-fg">
+            <input type="checkbox" className="mt-0.5" checked={s.conversation.keepThread} onChange={(e) => setConv("keepThread", e.target.checked)} />
+            <span>
+              Keep the conversation when the page reloads
+              <span className="block text-fg-subtle">Kept in the reader&apos;s browser tab only, until the tab is closed or they start a new chat. Nothing extra is stored on the server.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-fg">
+            <input type="checkbox" className="mt-0.5" checked={s.conversation.feedback} onChange={(e) => setConv("feedback", e.target.checked)} />
+            <span>
+              Ask readers whether an answer helped
+              <span className="block text-fg-subtle">Helpful / Not helpful under each answer, saved with the question, without the reader&apos;s account or IP address.</span>
+            </span>
+          </label>
         </fieldset>
 
         <fieldset className="space-y-3">
@@ -206,7 +280,7 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
             type="button"
             variant="secondary"
             onClick={() => {
-              setS({ ...defaults, enabled: s.enabled, audience: s.audience });
+              setS({ ...defaults, enabled: s.enabled, audience: s.audience, sitewide: s.sitewide, conversation: s.conversation });
               setExamples(defaults.copy.examples.join("\n"));
             }}
           >

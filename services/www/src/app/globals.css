@@ -165,6 +165,24 @@ body:has([data-admin-shell]) .site-header-inner {
   }
 }
 
+/* Ask the Blog: while the corner launcher is on the page, the footer gets room below its last row, so nothing there
+   (the theme switch, the legal links) stays hidden behind the launcher at the end of the page. */
+body:has(> [data-ask-dock]) > footer {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Ask the Blog: the corner panel rises into place (components/ask/AskDock.tsx, motion-safe only). */
+@keyframes ask-rise {
+  from {
+    transform: translateY(8px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 /* --- Article typography -------------------------------------------------------------------- */
 
 /* The reading body: 17px on phones (~1.65 line height: short lines need less), 18px from sm at the configured

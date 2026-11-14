@@ -1,86 +1,85 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useRef, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import { checkAccess, OFF_MESSAGE, primaryBtn, SignInPrompt } from "./AskGate";
 import type { PanelProps } from "./AskPanel";
+import { articleSlug, OPEN_EVENT, SIGNIN_EVENT, type AskClientConfig, type AskContext } from "./types";
 
-export type AskCopy = { button: string; intro: string; placeholder: string; disclaimer: string; examples: string[] };
-type Props = { copy: AskCopy; audience: "members" | "everyone"; maxQuestion: number };
+export type { AskCopy } from "./types";
+
+type Props = {
+  config: AskClientConfig;
+  /** "opener": the sitewide chat is on, so the button opens the corner panel (one panel, one conversation per page). */
+  mode: "inline" | "opener";
+};
 type View = "closed" | "checking" | "panel" | "signin" | "off";
 
-const primary = "inline-flex h-10 items-center justify-center rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60";
-const secondary = "inline-flex h-10 items-center justify-center rounded-lg border border-line-strong px-4 text-sm font-semibold text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const load = () => import("./AskPanel").then((m) => m.AskPanel);
 
 /**
- * "Ask the Blog" entry point: a single button, rendered only when the assistant is on (AskBlog.tsx). The panel and
- * its streaming code are a separate chunk loaded on the first interaction (click, or keyboard activation), so pages
- * carry no extra JavaScript work until a reader asks. Hover/focus prefetch the chunk so opening feels instant.
- *
- * Signed-in-only mode (Admin → Automation & AI → Ask the Blog): the page is cached and cannot know who is reading, so
- * opening asks GET /api/ask first. A signed-out reader gets a prompt to sign in (returning to this page) instead of
- * the question box. The server checks the session again on every question.
+ * The "Ask the Blog" card at the end of the home page and of each article (Admin → Ask the Blog → inline cards),
+ * rendered only when the assistant is on (AskBlog.tsx). With the sitewide chat on, its button opens the corner panel.
+ * Otherwise it expands in place into the same chat panel, loaded as a separate chunk on the first interaction.
  */
-export function AskLauncher({ copy, audience, maxQuestion }: Props) {
-  const pathname = usePathname();
+export function AskLauncher({ config, mode }: Props) {
+  const pathname = usePathname() || "/";
   const [Panel, setPanel] = useState<ComponentType<PanelProps> | null>(null);
   const [view, setView] = useState<View>("closed");
+  const [context, setContext] = useState<AskContext>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const load = () => import("./AskPanel").then((m) => m.AskPanel);
+
+  useEffect(() => {
+    if (mode !== "inline") return;
+    const onSignIn = () => setView((v) => (v === "panel" ? "signin" : v));
+    window.addEventListener(SIGNIN_EVENT, onSignIn);
+    return () => window.removeEventListener(SIGNIN_EVENT, onSignIn);
+  }, [mode]);
+
   const openPanel = async () => {
-    if (audience === "members") {
-      setView("checking");
-      const status = (await fetch("/api/ask", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null)) as { enabled?: boolean; signedIn?: boolean | null } | null;
-      if (status && !status.enabled) {
-        setView("off");
-        return;
-      }
-      if (status && status.signedIn === false) {
-        setView("signin");
-        return;
-      }
+    if (mode === "opener") {
+      window.dispatchEvent(new CustomEvent(OPEN_EVENT));
+      return;
     }
-    const P = Panel ?? (await load());
+    setView("checking");
+    const [access, P] = await Promise.all([checkAccess(config.audience), Panel ? Promise.resolve(Panel) : load()]);
+    const slug = articleSlug(pathname);
+    const title = document.querySelector("main article h1")?.textContent?.trim();
+    setContext(slug && title ? { slug, title } : null);
     setPanel(() => P);
-    setView("panel");
+    setView(access === "ok" ? "panel" : access);
   };
   const close = () => {
     setView("closed");
-    button.current?.focus();
+    requestAnimationFrame(() => button.current?.focus());
   };
-  const next = encodeURIComponent(pathname || "/");
   return (
     <section aria-label="Ask the Blog" className="mt-12 rounded-xl border border-line bg-surface p-5 sm:p-6">
       {view === "closed" || view === "checking" ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[0.9375rem] text-fg-muted">{copy.intro}</p>
-          <button ref={button} type="button" onClick={openPanel} onPointerEnter={() => void load()} onFocus={() => void load()} aria-expanded={false} disabled={view === "checking"} className={`shrink-0 ${primary}`}>
-            {copy.button}
+          <p className="text-[0.9375rem] text-fg-muted">{config.copy.intro}</p>
+          <button
+            ref={button}
+            type="button"
+            onClick={openPanel}
+            onPointerEnter={() => void load()}
+            onFocus={() => void load()}
+            aria-expanded={mode === "inline" ? false : undefined}
+            aria-haspopup={mode === "opener" ? "dialog" : undefined}
+            disabled={view === "checking"}
+            className={`shrink-0 ${primaryBtn}`}
+          >
+            {config.copy.button}
           </button>
         </div>
       ) : view === "signin" ? (
-        <div role="status">
-          <h2 className="text-lg font-semibold text-fg">Sign in to ask a question</h2>
-          <p className="mt-2 text-[0.9375rem] text-fg-muted">Ask the Blog is for signed-in readers. An account is free and takes a minute.</p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-            <a href={`/login?next=${next}`} className={primary}>
-              Sign in
-            </a>
-            <a href={`/login?mode=signup&next=${next}`} className={secondary}>
-              Create a free account
-            </a>
-            <button type="button" onClick={close} className={secondary}>
-              Not now
-            </button>
-          </div>
-        </div>
+        <SignInPrompt next={pathname} onClose={close} />
       ) : view === "off" ? (
         <p role="status" className="text-[0.9375rem] text-fg-muted">
-          Ask the Blog is switched off right now. Please use search instead.
+          {OFF_MESSAGE}
         </p>
       ) : (
-        Panel && <Panel onClose={close} onNeedSignIn={() => setView("signin")} copy={copy} maxQuestion={maxQuestion} />
+        Panel && <Panel variant="inline" copy={config.copy} maxQuestion={config.maxQuestion} conversation={config.conversation} context={context} onClose={close} />
       )}
     </section>
   );

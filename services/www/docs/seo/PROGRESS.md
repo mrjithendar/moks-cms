@@ -671,3 +671,43 @@ Admin → Automation & AI → Ask the Blog → switch on and choose the audience
 **Correction (2026-11-14).** This entry and §18 first said `./deploy.sh` applies both manifest changes. It never
 applied the seo-agent group, so the agent's `ASK_BLOG_ENABLED` would have stayed `false` and every question would
 have answered "switched off". Both texts now give the right steps.
+
+## Ask the Blog sitewide chat (2026-11-14, owner request; RAG.md "Sitewide chat", D-90)
+
+**What changed.** Ask the Blog is a chat on every public page: a corner launcher, a panel that keeps the conversation
+across pages and reloads (per tab), follow-up questions, a preference for the open article, citation markers that link
+to their sources, Stop, Copy, and Helpful / Not helpful. Every part has its own switch on the admin card; all default
+on. The assistant itself still needs both existing switches, and the audience default is unchanged.
+
+**Files.** www: `src/components/ask/{AskDock,AskGate}.tsx`, `thread.ts`, `types.ts` (new), `AskPanel.tsx`
+(rewritten as a thread), `AskLauncher.tsx`, `AskBlog.tsx` (+ `AskSitewide`), `src/app/layout.tsx`,
+`src/app/globals.css`, `src/app/api/ask/route.ts`, `src/app/api/ask/feedback/route.ts` (new),
+`src/lib/seo-agent/{ask-settings,client}.ts`, `src/components/seo/AskBlogSettingsCard.tsx`, migration
+`0029_ask_blog_chat.sql` (+ rollback), `tests/ask-blog-settings.test.ts`. seo-agent: `app/{ask,ask_runtime,schemas,main}.py`,
+`app/services/ask_pipeline.py`, `tests/{test_ask_and_chunks,test_rag_v5}.py`. Docs: RAG.md, DECISIONS.md D-90.
+
+**Commands run → result.**
+- seo-agent: `ruff check app tests` passes and `mypy app` passes. `pytest -q`: 394 passed, 7 failed. The 7 are ML tests
+  (`test_news_ml`, `test_review_news`, `test_review_seo_ml`, `test_seo_ml`) and fail the same way on `master`. Two
+  existing assertions were updated for the new `refs` field on citations.
+- www: `npm run lint` and `npm run typecheck` pass. `tests/ask-blog-settings.test.ts`: 18 passed, 9 of them new. Full
+  `vitest run` on local Node 20: 1011 passed, 19 failed. Of those, 14 need Node 22 (shiki calls `Response.bytes`; CI
+  uses `.nvmrc`, 26) and 5 (`news-desk`, `seo-v4-agent`) fail the same way on `master`.
+- Browser check: `next dev` on Node 26 with an embedded database, the assistant switched on, and a stand-in agent
+  streaming SSE, driven with Playwright in Chrome at 1280×820 (light) and 390×844 (dark, touch):
+  - the launcher opens the panel, the answer streams, and markers become source links;
+  - a follow-up sends the earlier turns, and a question on an article URL sends the slug;
+  - following a source keeps the panel open on desktop, and after a reload the 3 turns come back;
+  - the launcher is hidden on `/login`;
+  - the phone sheet makes the page inert, closes when a source is followed, and restores the page;
+  - the home card opens the corner panel;
+  - two problems found this way were fixed: the launcher covered the footer's last row, and the question box kept
+    an old height.
+
+**Not done.** No real model has answered a follow-up, so the condense prompt is untested against a real model. Add
+follow-up pairs to the evaluation set before relying on it. Page context was not seen in a browser on a real article,
+because the local database had none; it is covered by tests on both sides. `CONTEXT_BOOST` is not evaluated.
+
+**Manual steps (owner).** None beyond deploying both services: migration 0029 runs when the web app starts, and the
+agent picks up the new settings from the same row within 30 seconds. Review the new switches on Admin → Automation &
+AI → Ask the Blog and save once if you want to change the defaults.

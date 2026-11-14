@@ -32,6 +32,12 @@ class AskOptions:
     cache_ttl_s: int | None = None
     answer_length: str = "standard"
     fallback_message: str = ""
+    # Sitewide chat (web app `conversation` block): follow-ups rewritten with the earlier turns, the open article
+    # ranked a little higher, and reader feedback on answers. Defaults mirror DEFAULT_ASK_SETTINGS.
+    follow_ups: bool = True
+    follow_up_turns: int = 3
+    page_context: bool = True
+    feedback: bool = True
 
 
 def _one_line(v: Any, max_len: int) -> str:
@@ -49,7 +55,20 @@ def parse_options(value: Any) -> AskOptions:
     ttl = value.get("cacheTtlSeconds")
     audience = value.get("audience")
     length = value.get("answerLength")
+    raw_conv = value.get("conversation")
+    conv: dict[str, Any] = raw_conv if isinstance(raw_conv, dict) else {}
+    turns = conv.get("turns")
+    d = AskOptions()
+
+    def flag(name: str, default: bool) -> bool:
+        v = conv.get(name)
+        return v if isinstance(v, bool) else default
+
     return AskOptions(
+        follow_ups=flag("followUps", d.follow_ups),
+        follow_up_turns=int(turns) if isinstance(turns, int) and not isinstance(turns, bool) and 1 <= turns <= 5 else d.follow_up_turns,
+        page_context=flag("pageContext", d.page_context),
+        feedback=flag("feedback", d.feedback),
         enabled=value.get("enabled") is True,
         audience=audience if isinstance(audience, str) and audience in AUDIENCES else "members",
         daily_budget_usd=float(budget) if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget >= 0 else None,

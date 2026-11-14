@@ -21,6 +21,10 @@ export function clientAddress(h: Headers): string | null {
   return hops.at(-1) ?? h.get("x-real-ip")?.trim() ?? null;
 }
 
+const SLUG = /^[a-z0-9][a-z0-9-]*$/;
+/** A question, five earlier turns (question + 600-character answer each) and the JSON around them. */
+const MAX_BODY = 8000;
+
 const fail = (status: number, error: string, extra: Record<string, string> = {}, code?: string) => Response.json({ error, ...(code ? { code } : {}) }, { status, headers: { ...HEADERS, ...extra } });
 
 /**
@@ -55,10 +59,18 @@ export async function POST(req: Request): Promise<Response> {
   const user = settings.audience === "members" ? await getSessionUser() : null;
   if (settings.audience === "members" && !user) return fail(401, "Sign in to ask a question.", {}, "signin");
   if (!(req.headers.get("content-type") ?? "").includes("application/json")) return fail(415, "Send JSON.");
-  const { limits } = settings;
-  const body = z.object({ question: z.string().trim().min(1).max(limits.maxQuestion) });
+  const { limits, conversation } = settings;
+  const body = z.object({
+    question: z.string().trim().min(1).max(limits.maxQuestion),
+    // Sitewide chat: earlier turns, oldest first. Answers are cut to 600 characters by the widget; longer is refused.
+    history: z
+      .array(z.object({ q: z.string().trim().min(1).max(limits.maxQuestion), a: z.string().max(600) }))
+      .max(5)
+      .optional(),
+    context: z.object({ slug: z.string().regex(SLUG).max(160) }).optional(),
+  });
   const text = await req.text();
-  if (text.length > 4000) return fail(413, "Question too long.");
+  if (text.length > MAX_BODY) return fail(413, "Question too long.");
   let parsed;
   try {
     parsed = body.safeParse(JSON.parse(text));
@@ -76,7 +88,10 @@ export async function POST(req: Request): Promise<Response> {
   const okGlobal = okDay && (await hit("ask:global:m", 120, 60));
   if (!okMinute || !okDay || !okGlobal) return fail(429, "Too many questions. Please try again in a little while.", { "Retry-After": okMinute ? "3600" : "60" });
   try {
-    const upstream = await askStream(parsed.data.question, ipHash(ip));
+    // The admin's switches decide what is forwarded; the agent applies the same switches again from the same row.
+    const history = conversation.followUps ? (parsed.data.history ?? []).slice(-conversation.turns) : [];
+    const contextSlug = conversation.pageContext ? (parsed.data.context?.slug ?? null) : null;
+    const upstream = await askStream(parsed.data.question, ipHash(ip), {}, { history, contextSlug });
     return new Response(upstream.body, { status: 200, headers: { ...HEADERS, "Content-Type": "text/event-stream; charset=utf-8", "X-Accel-Buffering": "no" } });
   } catch (e) {
     return fail(e instanceof AgentError && e.status < 500 ? 400 : 503, "The assistant is unavailable right now. Please use search instead.");

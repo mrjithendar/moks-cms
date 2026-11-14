@@ -82,14 +82,21 @@ export const listRuns = (q: { flow?: string; status?: string; draftId?: string; 
 export const cancelRun = (runId: string, deps?: AgentDeps) => call<{ status: string }>("POST", `/flows/runs/${encodeURIComponent(runId)}/cancel`, {}, deps);
 export const decide = (draftId: string, d: Decision, deps?: AgentDeps) => call<{ run_id?: string; status: string; existing?: boolean }>("POST", `/review/${encodeURIComponent(draftId)}/decision`, d, deps);
 
+export type AskTurn = { q: string; a: string };
+/** Optional parts of a sitewide-chat question: earlier turns (follow-ups) and the article the reader has open. */
+export type AskExtras = { history?: AskTurn[]; contextSlug?: string | null };
+
 /** Streaming answer (server-sent events) for the public /api/ask proxy. */
-export async function askStream(question: string, ipHash: string | null, deps: AgentDeps = {}): Promise<Response> {
+export async function askStream(question: string, ipHash: string | null, deps: AgentDeps = {}, extras: AskExtras = {}): Promise<Response> {
   const token = agentToken(deps.env);
   if (!token) throw new AgentError("not configured", 503);
+  const body: Record<string, unknown> = { question, ip_hash: ipHash, stream: true };
+  if (extras.history?.length) body.history = extras.history;
+  if (extras.contextSlug) body.context_slug = extras.contextSlug;
   const res = await (deps.fetchImpl ?? fetch)(`${agentUrl(deps.env)}/ask`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ question, ip_hash: ipHash, stream: true }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(60_000),
     cache: "no-store",
   }).catch(() => {
