@@ -268,13 +268,14 @@ export async function buildBackup(): Promise<{ filename: string; data: Buffer; e
   return { filename: `${PREFIX}${stamp}.zip`, data, encrypted: Boolean(password) };
 }
 
-export function runBackup(trigger: "manual" | "scheduled", actor?: Actor) {
-  return withSpan("backup.run", { "backup.trigger": trigger }, () => runBackupNow(trigger, actor));
+/** `runId`: the run row the scheduler already created when it claimed this run (claimScheduledRun). */
+export function runBackup(trigger: "manual" | "scheduled", actor?: Actor, runId?: string) {
+  return withSpan("backup.run", { "backup.trigger": trigger }, () => runBackupNow(trigger, actor, runId));
 }
 
-async function runBackupNow(trigger: "manual" | "scheduled", actor?: Actor) {
+async function runBackupNow(trigger: "manual" | "scheduled", actor?: Actor, runId?: string) {
   const db = await getDb();
-  const [run] = await db.insert(schema.backupRun).values({ trigger, status: "running", triggeredBy: actor?.label ?? "scheduler" }).returning();
+  const [run] = runId ? [{ id: runId }] : await db.insert(schema.backupRun).values({ trigger, status: "running", triggeredBy: actor?.label ?? "scheduler" }).returning({ id: schema.backupRun.id });
   const results: { destination: string; ok: boolean; detail: string }[] = [];
   try {
     const c = await readBackupConfig();
@@ -308,7 +309,24 @@ export async function recentRuns(limit = 20) {
   return db.select().from(schema.backupRun).orderBy(desc(schema.backupRun.startedAt)).limit(limit);
 }
 
-/** In-app scheduler: one replica (Postgres advisory lock) runs due backups. Checked every 15 minutes. */
+/**
+ * Claim the next scheduled backup for this replica: the run's row, or null when a run started within `intervalMs`
+ * (this replica's or another's). The check and the insert happen in one short transaction under a
+ * transaction-scoped advisory lock, so two replicas ticking together cannot both claim one, and the lock is released
+ * with the transaction on the connection that took it. The backup itself runs afterwards, outside any transaction.
+ */
+export async function claimScheduledRun(intervalMs: number, now = new Date()): Promise<string | null> {
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_ID})`);
+    const [last] = await tx.select({ startedAt: schema.backupRun.startedAt }).from(schema.backupRun).orderBy(desc(schema.backupRun.startedAt)).limit(1);
+    if (last && now.getTime() - last.startedAt.getTime() < intervalMs) return null;
+    const [run] = await tx.insert(schema.backupRun).values({ trigger: "scheduled", status: "running", triggeredBy: "scheduler", startedAt: now }).returning({ id: schema.backupRun.id });
+    return run!.id;
+  });
+}
+
+/** In-app scheduler: one replica (claimScheduledRun) runs each due backup. Checked every 15 minutes. */
 export function startBackupScheduler() {
   const g = globalThis as unknown as { __backupTimer?: NodeJS.Timeout };
   if (g.__backupTimer) return;
@@ -321,14 +339,8 @@ export function startBackupScheduler() {
       const [last] = await recentRuns(1);
       const interval = c.schedule === "daily" ? 20 * 3600_000 : 6.5 * 86_400_000;
       if (last && now.getTime() - last.startedAt.getTime() < interval) return;
-      const db = await getDb();
-      const [{ locked } = { locked: false }] = rowsOf<{ locked: boolean }>(await db.execute(sql`select pg_try_advisory_lock(${LOCK_ID}) as locked`));
-      if (!locked) return;
-      try {
-        await runBackup("scheduled");
-      } finally {
-        await db.execute(sql`select pg_advisory_unlock(${LOCK_ID})`);
-      }
+      const runId = await claimScheduledRun(interval, now);
+      if (runId) await runBackup("scheduled", undefined, runId);
     } catch (error) {
       log.warn("backup scheduler tick failed", { err: error });
     }
