@@ -107,6 +107,11 @@ spec:
             # Shared CloudNativePG cluster through PgBouncer (session mode), the same Secret the site uses.
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: postgres-db-credentials, key: uri } }
+            # Optional, and preferred when present: the agent's own database role with only the privileges its SQL
+            # needs (services/seo-agent/scripts/db-role.sql; runbook in docs/seo/SECURITY.md). Until someone creates
+            # Secret seo-agent-db-credentials this variable is simply not set and DATABASE_URL above is used.
+            - name: SEO_AGENT_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: seo-agent-db-credentials, key: uri, optional: true } }
           # Measured (docs/seo/FLOWS.md "Resources"): ~310 MiB idle with the model loaded, ~700 MiB peak during a
           # full reindex of 37 articles (1,243 chunks). Requests per the brief; the limit leaves room for a crew run.
           resources:
