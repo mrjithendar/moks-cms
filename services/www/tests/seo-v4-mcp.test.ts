@@ -126,6 +126,17 @@ describe("admin MCP OAuth authorization server", () => {
     expect(await oauth.parseAuthorize({ ...base, scope: "seo:read seo:publish" })).toMatchObject({ back: { error: "invalid_scope" } });
     expect(await oauth.parseAuthorize({ ...base, scope: "seo:flows" })).toMatchObject({ ok: { scopes: ["seo:read", "seo:flows"] } });
   });
+
+  it("stores redirect URIs exactly, whatever characters they hold", async () => {
+    // Commas, quotes, braces and backslashes are all legal in a URL.
+    const awkward = ['https://app.example/cb?ids=1,2&q={"a":"b"}', "https://app.example/back\\slash", REDIRECT];
+    const c = await oauth.register({ client_name: "Awkward", redirect_uris: awkward });
+    expect((await oauth.getClient(c.client_id))?.redirectUris).toEqual(awkward);
+    for (const redirect_uri of awkward) {
+      const request = { response_type: "code", client_id: c.client_id, redirect_uri, code_challenge: CHALLENGE, code_challenge_method: "S256", scope: "seo:read" };
+      expect(await oauth.parseAuthorize(request)).toMatchObject({ ok: { redirectUri: redirect_uri } });
+    }
+  });
 });
 
 describe("scheduling: each job runs once, through one scheduler", () => {

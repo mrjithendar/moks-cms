@@ -48,6 +48,41 @@ describe("splitting an article for members", () => {
     expect(splitForMembers("", 30)).toEqual({ preview: "", rest: "" });
   });
 
+  it("gives each half the link and footnote definitions it refers to, and only those", () => {
+    const body =
+      [
+        `${paragraph(1)} See the [docs][k8s] and a note.[^public]`,
+        paragraph(2),
+        `${paragraph(3)} Read [the guide][guide].[^members]`,
+        paragraph(4),
+        "[k8s]: https://kubernetes.io/docs/",
+        "[guide]: https://example.com/guide",
+        "[^public]: A note for everyone, with a [link][k8s].",
+        "[^members]: A note only members may read.",
+      ].join("\n\n") + "\n";
+    const { preview, rest } = splitForMembers(body, 30);
+    // Written at the end of the article, so they used to land in the members-only half alone and the preview showed
+    // a literal "[docs][k8s]".
+    expect(preview).toContain("[k8s]: https://kubernetes.io/docs/");
+    expect(preview).toContain("[^public]: A note for everyone");
+    // Nothing from behind the gate reaches the public preview.
+    expect(preview).not.toContain("Paragraph 3");
+    expect(preview).not.toContain("[guide]:");
+    expect(preview).not.toContain("only members may read");
+    expect(rest).toContain("[guide]: https://example.com/guide");
+    expect(rest).toContain("[^members]: A note only members may read.");
+  });
+
+  it("copies a definition from the preview when the rest refers to it, once", () => {
+    const body = ["[top]: https://example.com/top", paragraph(1), paragraph(2), `${paragraph(3)} A [link][top] here.`, paragraph(4)].join("\n\n") + "\n";
+    const { preview, rest } = splitForMembers(body, 30);
+    expect(rest).toContain("[top]: https://example.com/top");
+    expect(preview.match(/\[top\]:/g)).toHaveLength(1);
+    // A definition nobody refers to is not copied anywhere.
+    const unused = splitForMembers(`${paragraph(1)}\n\n${paragraph(2)}\n\n${paragraph(3)}\n\n[x]: https://example.com/x\n`, 30);
+    expect(unused.preview).not.toContain("[x]:");
+  });
+
   it("keeps shortcode blocks whole", () => {
     const body = `${paragraph(1)}\n\n:::callout{type="tip"}\nFirst line.\n\nSecond line.\n:::\n\n${paragraph(2)}\n\n${paragraph(3)}\n`;
     for (const percent of [20, 50, 70]) {

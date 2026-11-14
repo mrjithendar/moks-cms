@@ -77,7 +77,9 @@ const nextConfig: NextConfig = {
       { source: "/icon.svg", headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }] },
       // Pages may not be framed by other sites; editor previews may be framed by the editor itself.
       // Other sites may not frame any page (clickjacking); the site itself may, for the admin's device previews.
-      { source: "/((?!preview/).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }, { key: "Content-Security-Policy", value: "frame-ancestors 'self'" }] },
+      // No plugins (<object>, <embed>) and no <base> pointing relative URLs at another origin: the site uses neither,
+      // and both turn an HTML injection into something worse.
+      { source: "/((?!preview/).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }, { key: "Content-Security-Policy", value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" }] },
       { source: "/preview/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }, { key: "Cache-Control", value: "private, no-store" }] },
       // Per-user responses are never stored by browsers' shared caches or any proxy.
       { source: "/account/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },

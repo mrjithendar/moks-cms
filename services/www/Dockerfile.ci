@@ -5,7 +5,9 @@
 FROM node:26-bookworm-slim
 WORKDIR /app
 ARG GIT_SHA=dev
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 GIT_SHA=$GIT_SHA
+# APP_ENV=production: this is the release image, so the production rules (secure cookies, required secrets) apply even
+# if the Deployment's own APP_ENV is ever lost. Set APP_ENV to something else to run it as a non-production site.
+ENV NODE_ENV=production APP_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 GIT_SHA=$GIT_SHA
 COPY --chown=1000:1000 .next/standalone ./
 COPY --chown=1000:1000 .next/static ./.next/static
 COPY --chown=1000:1000 public ./public

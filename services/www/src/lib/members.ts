@@ -34,7 +34,46 @@ export function previewPercentFor(postPercent: number | null | undefined, siteDe
 
 export type MembersSplit = { preview: string; rest: string };
 
-type Block = { type: string; position?: { start: { offset?: number }; end: { offset?: number } } };
+type Block = { type: string; identifier?: string; children?: Block[]; position?: { start: { offset?: number }; end: { offset?: number } } };
+
+/** `[label]: https://…` and `[^note]: …`, written once (usually at the end) and referred to from anywhere. */
+const DEFINITIONS: Record<string, string> = { definition: "link", footnoteDefinition: "footnote" };
+const REFERENCES: Record<string, string> = { linkReference: "link", imageReference: "link", footnoteReference: "footnote" };
+
+type Definition = { text: string; start: number; end: number; node: Block };
+
+/** "link:label" / "footnote:label" for every definition these blocks refer to. */
+function referencesIn(blocks: Block[], found = new Set<string>()): Set<string> {
+  for (const b of blocks) {
+    const kind = REFERENCES[b.type];
+    if (kind && b.identifier) found.add(`${kind}:${b.identifier}`);
+    if (b.children) referencesIn(b.children, found);
+  }
+  return found;
+}
+
+/**
+ * Append the definitions one half refers to but does not contain. The two halves are rendered on their own, so a
+ * reference whose definition fell on the other side of the cut would show as literal `[text][label]`.
+ * Only what the half itself refers to is added (following references inside a definition), so the public preview
+ * never receives a footnote that is only cited behind the gate.
+ */
+function withDefinitions(half: string, blocks: Block[], definitions: Map<string, Definition>, contains: (d: Definition) => boolean): string {
+  const missing: Definition[] = [];
+  const seen = new Set<string>();
+  const queue = [...referencesIn(blocks)];
+  for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const d = definitions.get(key);
+    if (!d) continue;
+    if (!contains(d)) missing.push(d);
+    queue.push(...referencesIn(d.node.children ?? []));
+  }
+  if (missing.length === 0) return half;
+  missing.sort((a, b) => a.start - b.start);
+  return `${half.trimEnd()}\n\n${missing.map((d) => d.text).join("\n\n")}\n`;
+}
 
 /**
  * Split a Markdown body into the public preview and the members-only rest. `rest` is empty when the article is too
@@ -61,5 +100,22 @@ export function splitForMembers(body: string, percent: number): MembersSplit {
   if (last.length > 1 && last.at(-1)!.type === "heading") cut = last.at(-2)!.position!.end.offset!;
   const preview = body.slice(0, cut).trimEnd();
   const rest = body.slice(cut).trim();
-  return rest ? { preview: `${preview}\n`, rest: `${rest}\n` } : { preview: body, rest: "" };
+  if (!rest) return { preview: body, rest: "" };
+
+  // The first definition of a label wins, as in Markdown.
+  const definitions = new Map<string, Definition>();
+  for (const node of tree.children) {
+    const kind = DEFINITIONS[node.type];
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (!kind || !node.identifier || typeof start !== "number" || typeof end !== "number") continue;
+    const key = `${kind}:${node.identifier}`;
+    if (!definitions.has(key)) definitions.set(key, { text: body.slice(start, end), start, end, node });
+  }
+  const shownBlocks = blocks.filter((b) => b.position!.end.offset! <= cut);
+  const heldBlocks = blocks.filter((b) => b.position!.end.offset! > cut);
+  return {
+    preview: withDefinitions(`${preview}\n`, shownBlocks, definitions, (d) => d.end <= cut),
+    rest: withDefinitions(`${rest}\n`, heldBlocks, definitions, (d) => d.start >= cut),
+  };
 }

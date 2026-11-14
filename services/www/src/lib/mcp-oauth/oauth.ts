@@ -96,17 +96,20 @@ export async function register(raw: unknown) {
   if (b.grant_types && !b.grant_types.every((g) => g === "authorization_code" || g === "refresh_token")) throw new OAuthError("invalid_client_metadata", "Unsupported grant type.");
   const clientId = `mcp_${randomBytes(16).toString("hex")}`;
   const db = await getDb();
-  await db.execute(sql`insert into seo_mcp_clients (client_id, client_name, redirect_uris, software_id) values (${clientId}, ${b.client_name}, ${`{${b.redirect_uris.map((u) => `"${u.replace(/"/g, "")}"`).join(",")}}`}::text[], ${b.software_id ?? null})`);
+  // One bound parameter per URI. They used to be pasted into an array literal by hand, which dropped quotes and let a
+  // backslash escape the character after it, so a registered URI could differ from the one later compared against it.
+  const uris = sql.join(b.redirect_uris.map((u) => sql`${u}::text`), sql`, `);
+  await db.execute(sql`insert into seo_mcp_clients (client_id, client_name, redirect_uris, software_id) values (${clientId}, ${b.client_name}, array[${uris}]::text[], ${b.software_id ?? null})`);
   return { client_id: clientId, client_name: b.client_name, redirect_uris: b.redirect_uris, grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none", client_id_issued_at: Math.floor(Date.now() / 1000) };
 }
 
 export async function getClient(clientId: string) {
   if (!/^mcp_[0-9a-f]{32}$/.test(clientId)) return null;
   const db = await getDb();
-  const [c] = rowsOf<{ client_id: string; client_name: string; redirect_uris: string[] | string }>(await db.execute(sql`select client_id, client_name, redirect_uris from seo_mcp_clients where client_id = ${clientId}`));
+  // As JSON text: the same for every driver, and a URI with a comma or a quote in it comes back whole.
+  const [c] = rowsOf<{ client_id: string; client_name: string; redirect_uris: string }>(await db.execute(sql`select client_id, client_name, array_to_json(redirect_uris)::text as redirect_uris from seo_mcp_clients where client_id = ${clientId}`));
   if (!c) return null;
-  const uris = Array.isArray(c.redirect_uris) ? c.redirect_uris : String(c.redirect_uris).replace(/^\{|\}$/g, "").split(",").map((s) => s.replace(/^"|"$/g, ""));
-  return { clientId: c.client_id, name: c.client_name, redirectUris: uris };
+  return { clientId: c.client_id, name: c.client_name, redirectUris: JSON.parse(c.redirect_uris) as string[] };
 }
 
 export type AuthorizeRequest = { clientId: string; clientName: string; redirectUri: string; state: string | null; scopes: Scope[]; codeChallenge: string; resource: string };
