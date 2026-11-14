@@ -562,7 +562,7 @@ kubectl -n moks-cms rollout undo deploy/moks-cms
 kubectl -n moks-cms rollout history deploy/moks-cms
 ```
 
-That only works with **immutable tags**. If you deploy `:latest` with `imagePullPolicy: Always`, as production jithendar.com does for simplicity, the previous revision is also `:latest`, and `rollout undo` restarts the same broken image. Production rolls back by setting a specific older tag instead.
+That only works with **immutable tags**. If you deploy `:latest` with `imagePullPolicy: Always`, as jithendar.com did until November 2026, the previous revision is also `:latest`, and `rollout undo` restarts the same broken image. That is why production now deploys every release under its own `pr-<number>` tag.
 
 As on one server, migrations only move forward: the previous image must run on the new schema. Write additive migrations (new nullable columns, new tables) and remove old columns in a later release.
 
@@ -638,7 +638,6 @@ jithendar.com runs Moks CMS on k3s too, but its cluster grew into a few things t
 | HTTP-01 certificate for two names | DNS-01 wildcard certificate through Cloudflare ([how it renews](/blog/lets-encrypt-k3s-cert-manager-automatic-renewal)) |
 | One CloudNativePG cluster per app | One shared CloudNativePG cluster with a PgBouncer pooler, created by Terraform ([the setup](/blog/cloudnativepg-postgres-cluster-minikube-terraform)) |
 | Articles come from the app image | A separate small content image, copied in by an init container, so publishing an article does not rebuild the app |
-| Immutable tags | `:latest` with `imagePullPolicy: Always`, and rollback by setting an older `pr-<number>` tag |
 | CI updates the image | CI also applies changed manifests on merge |
 
 None of these are needed to run the site well. They exist because the same cluster hosts other applications.

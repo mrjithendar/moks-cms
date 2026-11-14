@@ -81,7 +81,7 @@ Inside the namespace, mTLS is **STRICT** with no plain-text port. Even Prometheu
 
 I spend my days on AWS EKS, so I copied the habits that matter there, even where minikube doesn't force them.
 
-**Namespaces and least-privilege CI.** CI has two ServiceAccounts. `github-ci-deployer` may only restart and watch specific Deployments. `github-ci-applier` may apply application objects (Deployments, Services, ConfigMaps, NetworkPolicies, PDBs, VirtualServices) but never RBAC, Secrets, Namespaces or PeerAuthentications. That way a commit can't widen CI's own access. Nothing is ever pruned.
+**Namespaces and least-privilege CI.** CI has two ServiceAccounts. `github-ci-deployer` may only patch (set the image of, or restart) and watch specific Deployments. `github-ci-applier` may apply application objects (Deployments, Services, ConfigMaps, NetworkPolicies, PDBs, VirtualServices) but never RBAC, Secrets, Namespaces or PeerAuthentications. That way a commit can't widen CI's own access. Nothing is ever pruned.
 
 **Secrets never in Git.** `scripts/create-secrets.sh` creates the site Secret. Database and Valkey credentials are written by Terraform in the cluster repo. Every script that changes the cluster sources `scripts/lib/kube-context.sh`, which prints the target context and API server and asks for confirmation unless `KUBE_CONTEXT` is set. On a laptop with several kubeconfigs, that guard has saved me more than once.
 
@@ -109,7 +109,7 @@ topologySpreadConstraints:
 
 **Backups.** Admin → Backups writes zip files to Cloudflare R2, optionally AES-256 encrypted with a passphrase only I know. They contain content, configuration and accounts, but no password hashes, sessions or stored credentials.
 
-**Where minikube differs from EKS.** There's no managed control plane, so I restart the cluster after a host reboot myself (`scripts/protect-host.sh` installs a systemd unit for it). There's no IRSA: pods get credentials from Kubernetes Secrets, not IAM roles. The registry is a self-hosted Harbor, not ECR. The Terraform for ECR and a GitHub OIDC role is still in `infra/`, but the release workflows push to Harbor. Every node shares one physical host, so "spread across nodes" protects against a node failing, not against the host failing. And Argo CD is only used for dashboards. The site itself deploys through CI and `./deploy.sh`, not GitOps.
+**Where minikube differs from EKS.** There's no managed control plane, so I restart the cluster after a host reboot myself (`scripts/protect-host.sh` installs a systemd unit for it). There's no IRSA: pods get credentials from Kubernetes Secrets, not IAM roles. The registry is a self-hosted Harbor, not ECR; the unused ECR Terraform was removed in November 2026. Every node shares one physical host, so "spread across nodes" protects against a node failing, not against the host failing. And Argo CD is only used for dashboards. The site itself deploys through CI (`ci-jithendar-com.yml` for the image, `deploy-minikube.yml` for manifests), not GitOps.
 
 ## The AI content pipeline with CrewAI
 
@@ -186,7 +186,7 @@ For content suggestions, the weekly flow takes the top-scoring articles without 
 
 ## CI/CD: tagged by PR number, built only on merge
 
-![How releases work. Opening, updating or reopening a pull request runs the check job: lint, typecheck, test, build, and rendering the production manifests with kubectl kustomize. A push straight to master runs nothing, because there is no push trigger. When the pull request is merged into master, the release job runs on a GitHub-hosted arm64 runner from the merge commit: scope checks whether image files changed, then lint, test and build run one step at a time, an image size gate fails above 15 percent over the baseline, a smoke test checks that /api/health reports the commit and that the image optimiser serves AVIF or WebP, and two tags are pushed, pr-number and latest. The Harbor registry keeps every pr tag. A least-privilege deployer identity that may only restart and watch runs a rollout restart, and deploy/jithendar-com pulls latest with imagePullPolicy Always. Rollback is kubectl set image to the last good pr tag. Other workflows: ci-content.yml on push checks MDX, builds a content image and restarts the site only for published changes; deploy-minikube.yml applies application objects with the applier identity when a merged pull request touches minikube/; infra.yml on push applies Terraform in infra/ on the default branch.](/images/how-i-built-jithendar-com/release-pipeline.svg)
+![How releases work. Opening, updating or reopening a pull request runs the check job: lint, typecheck, test, build, and rendering the production manifests with kubectl kustomize. A push straight to master runs nothing, because there is no push trigger. When the pull request is merged into master, the release job runs on a GitHub-hosted arm64 runner from the merge commit: scope checks whether image files changed, then lint, test and build run one step at a time, an image size gate fails above 15 percent over the baseline, a smoke test checks that /api/health reports the commit and that the image optimiser serves AVIF or WebP, and two tags are pushed, pr-number and latest. The Harbor registry keeps every pr tag. A least-privilege deployer identity that may only patch and watch runs ci-rollout.py, which sets deploy/jithendar-com to moks-cms:pr-number, so the Deployment records which release is live. Rollback is kubectl set image to the last good pr tag. Other workflows: ci-content.yml on push checks MDX, builds a content image and restarts the site only for published changes; deploy-minikube.yml applies application objects with the applier identity when a merged pull request touches minikube/; ci-seo-agent.yml and ci-practice-executor.yml release their own images the same way.](/images/how-i-built-jithendar-com/release-pipeline.svg)
 
 Every workflow runs on `pull_request` and starts its release job only when the PR is merged into the default branch:
 
@@ -206,9 +206,9 @@ on:
       RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
 ```
 
-The release job builds from the merge commit, not the PR's test merge. It runs lint, tests and the production build on a native arm64 runner, fails if the image grew more than 15% over a stored baseline, and smoke-tests the container (health version must match the commit, the image optimiser must return AVIF or WebP). Then it pushes `:pr-<number>` and `:latest` and restarts the Deployment.
+The release job builds from the merge commit, not the PR's test merge. It runs lint, tests and the production build on a native arm64 runner, fails if the image grew more than 15% over a stored baseline, and smoke-tests the container (health version must match the commit, the image optimiser must return AVIF or WebP). Then it pushes `moks-cms:pr-<number>` and `:latest`, and points the Deployment at `:pr-<number>` (`scripts/ci-rollout.py`).
 
-There's **no `push` trigger**, on purpose. Every release maps to a reviewed PR, and its tag is the rollback handle: `kubectl set image ... :pr-<n>`. A stray push to `master` deploys nothing. Two exceptions run on push: `ci-content.yml`, which ships articles and images as a small content image, and `infra.yml`, which applies Terraform.
+There's **no `push` trigger**, on purpose. Every release maps to a reviewed PR, and its tag is the rollback handle: `kubectl set image ... :pr-<n>`. A stray push to `master` deploys nothing. One exception runs on push: `ci-content.yml`, which ships articles and images as a small content image.
 
 ## What broke
 

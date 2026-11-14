@@ -1793,7 +1793,7 @@ All three projects check types with `tsc`, but they turn TypeScript into JavaScr
 
 | Project | What turns TypeScript into JavaScript | Where types are checked | Verified in |
 | --- | --- | --- | --- |
-| jithendar.com | Next.js 16 compiles and bundles the app during `next build` | `npm run typecheck` runs `next typegen && tsc --noEmit`, and CI runs it before `npm run build`. Next.js also fails a production build on type errors unless `typescript.ignoreBuildErrors` is set, and this project does not set it. | `www/package.json`, `.github/workflows/ci-jithendar-com.yml`, `www/next.config.ts` |
+| Moks CMS (jithendar.com) | Next.js 16 compiles and bundles the app during `next build` | `npm run typecheck` runs `next typegen && tsc --noEmit`, and CI runs it before `npm run build`. Next.js also fails a production build on type errors unless `typescript.ignoreBuildErrors` is set, and this project does not set it. | `www/package.json`, `.github/workflows/ci-jithendar-com.yml`, `www/next.config.ts` |
 | MOKS web UI | Vite 8 transpiles with Oxc, which removes types without checking them | `npm run build` is `tsc --noEmit && vite build`, so the check runs first. Vite's docs say it "does NOT perform type checking". | `frontend/package.json` |
 | RoboShop AI storefront | `tsc` itself compiles `src/*.ts` to `dist/`, with `noEmitOnError` set | The same `tsc` run, through `scripts/build.mjs`. The Docker build runs it in a Node 26 stage and copies the output into nginx. | `services/web/frontend/tsconfig.json`, `services/web/Dockerfile` |
 

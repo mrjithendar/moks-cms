@@ -31,11 +31,11 @@ sources:
     url: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect
     publisher: GitHub
 ---
-<Todo>(1) The API port is written as `<api-port>` on purpose. The real port is in the public repository already (a comment in scripts/setup-ci-deployer.sh), but decide whether you want the article to name it. (2) Section 8 describes a live bug (CI restarts the site but the site keeps running an older image). Fix it or keep the section as a lesson; the text must match whatever you choose. (3) The repositories do not record why a long-lived token was chosen over GitHub OIDC for Kubernetes, so the article gives no reason; add yours if you have one. (4) Add your own commentary, confirm the AI-assistance line against the AI use policy, then set status and publishedAt.</Todo>
+<Todo>(1) The API port is written as `<api-port>` on purpose. The real port is in the public repository already (a comment in scripts/setup-ci-deployer.sh), but decide whether you want the article to name it. (2) Section 8 describes a bug that was fixed on 2026-11-14 (per-release image tags and scripts/ci-rollout.py); it now reads as a lesson with its fix. Check that is how you want to tell it. (3) The repositories do not record why a long-lived token was chosen over GitHub OIDC for Kubernetes, so the article gives no reason; add yours if you have one. (4) Add your own commentary, confirm the AI-assistance line against the AI use policy, then set status and publishedAt.</Todo>
 
 This site is built by GitHub Actions and runs on **mk4**, a four-node minikube cluster on a single server that I manage myself. GitHub's runners live on the public internet and mk4 does not, so every release has to answer one question: how does a throwaway virtual machine at GitHub prove to my cluster that it is allowed to touch the site?
 
-This article walks through the exact answer used today, file by file, and then through its weak spots. All of it was checked against the live cluster on 3 November 2026.
+This article walks through the exact answer used today, file by file, and then through its weak spots. All of it was checked against the live cluster on 3 November 2026, and updated on 14 November 2026 after releases moved to their own image tags and the repository was renamed to `moks-cms`.
 
 ## 1. The short version
 
@@ -46,7 +46,7 @@ A release job on GitHub does four things to reach the cluster:
 3. It checks the server's certificate against the cluster's own certificate authority (CA), stored in GitHub as a variable.
 4. It presents a bearer token that belongs to one ServiceAccount, `jithendar/github-ci-deployer`, which RBAC allows to do almost nothing.
 
-Then it runs `kubectl rollout restart` and `kubectl rollout status`, and deletes the file.
+Then it points every Deployment that runs the new image at the release's own tag with `kubectl set image`, waits with `kubectl rollout status`, and deletes the file.
 
 ```text
 GitHub-hosted runner
@@ -64,16 +64,16 @@ kube-apiserver
   └─ Authorization: Role github-ci-deployer in namespace jithendar
 ```
 
-## 2. Two clouds, two kinds of credential
+## 2. Two systems, two kinds of credential
 
 The same release job talks to two systems, and they authenticate differently.
 
 | Target | How the job proves who it is | What is stored in GitHub |
 |---|---|---|
-| Amazon ECR (image registry) | GitHub OIDC: the job gets a short-lived signed token from GitHub and exchanges it for temporary AWS credentials of role `github-jithendar-com-ci` | Only the role ARN, as a variable. No key. |
+| Harbor (image registry) | A Harbor robot account that may only push and pull in project `jithendar` | Its name and password, as repository secrets `HARBOR_USERNAME` and `HARBOR_PASSWORD` |
 | mk4 (Kubernetes API) | A static ServiceAccount token | The token itself, as a repository secret |
 
-AWS trusts GitHub's OIDC issuer, so nothing secret has to sit in the repository settings. The cluster does not trust GitHub's issuer, so a token has to be copied in by hand. Most of this article is about that second row.
+Neither of them trusts GitHub's OIDC issuer, so both need a credential copied into the repository settings by hand. Until November 2026 images went to Amazon ECR instead, which does: the job exchanged a short-lived GitHub token for temporary AWS credentials, and only a role ARN was stored. That Terraform was removed once every release pushed to Harbor. Most of this article is about the second row.
 
 ## 3. Making a minikube API server reachable from the internet
 
@@ -107,7 +107,7 @@ Because `jithendar.com` is in the certificate, `kubectl` can verify the server n
 
 ## 4. The identity: one ServiceAccount, one Role
 
-The account CI uses is defined in `k8s/80-ci-deployer.yaml`. It has a ServiceAccount, a Role, a RoleBinding and a token Secret, all in namespace `jithendar`.
+The account CI uses is defined in `minikube/80-ci-deployer.yaml`. It has a ServiceAccount, a Role, a RoleBinding and a token Secret, all in namespace `jithendar`.
 
 ```yaml
 apiVersion: v1
@@ -126,15 +126,11 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets"]
   verbs: ["get", "list", "watch"]
-# kubectl rollout restart, plus new image digests for the practice executor
+# kubectl set image, and kubectl rollout restart when a release is run again
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  resourceNames: ["jithendar-com", "practice-executor-api", "practice-dispatcher"]
+  resourceNames: ["jithendar-com", "practice-executor-api", "practice-dispatcher", "seo-agent"]
   verbs: ["patch"]
-- apiGroups: [""]
-  resources: ["configmaps"]
-  resourceNames: ["practice-executor-config"]
-  verbs: ["get", "patch"]
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list", "watch"]
@@ -143,10 +139,10 @@ rules:
 Three details make this Role narrow:
 
 - It is a **Role**, not a ClusterRole, so it grants nothing outside `jithendar`.
-- `patch` is limited with `resourceNames` to three named Deployments and one ConfigMap.
+- `patch` is limited with `resourceNames` to four named Deployments: the site, the two practice executor Deployments and the SEO agent.
 - There is no rule for `secrets`, no `create` and no `delete`.
 
-`kubectl rollout restart` works with only `patch`, because it does not delete pods. It writes a `kubectl.kubernetes.io/restartedAt` annotation into the pod template, and the Deployment controller replaces the pods. `rollout status` only needs to read Deployments and ReplicaSets.
+`kubectl set image` and `kubectl rollout restart` both work with only `patch`, because neither deletes pods. `set image` changes the container image in the pod template, and `restart` writes a `kubectl.kubernetes.io/restartedAt` annotation into it; either way the Deployment controller replaces the pods. `rollout status` only needs to read Deployments and ReplicaSets.
 
 You can check the result without the token, by impersonating the ServiceAccount as a cluster admin:
 
@@ -185,7 +181,7 @@ On mk4 that token was issued on 30 October 2026 and has not been rotated since.
 `scripts/setup-ci-deployer.sh` is run once from my Mac, where `kubectl` has admin access to mk4 and `gh` is signed in. It does the whole setup:
 
 1. Reads the API URL and CA certificate from my own `mk4` kubeconfig context.
-2. Applies `k8s/80-ci-deployer.yaml` and waits for the token controller to fill in the token.
+2. Applies `minikube/80-ci-deployer.yaml` and waits for the token controller to fill in the token.
 3. Builds a kubeconfig exactly as CI will, in a temporary file, and checks that it can patch `deployment/jithendar-com`.
 4. Stores three values in the repository:
 
@@ -226,10 +222,11 @@ contexts:
 current-context: mk4
 ```
 
-The release job in `.github/workflows/ci-jithendar-com.yml` fills it in, uses it, and removes it:
+The release job in `.github/workflows/ci-jithendar-com.yml` fills it in, uses it, and removes it (comments left out):
 
 ```yaml
-- name: Restart jithendar-com
+- name: Roll out jithendar-com
+  if: github.event_name != 'workflow_dispatch' || inputs.restart
   env:
     MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
     MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
@@ -241,9 +238,8 @@ The release job in `.github/workflows/ci-jithendar-com.yml` fills it in, uses it
     done
     export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
     trap 'rm -f "$KUBECONFIG"' EXIT
-    (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-    kubectl -n jithendar rollout restart deploy/jithendar-com
-    kubectl -n jithendar rollout status deploy/jithendar-com --timeout=5m
+    (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
+    python3 ../../scripts/ci-rollout.py "$REGISTRY_IMAGE" "$PR_TAG" --previous registry.jithendar.com/jithendar/jithendar-com
 ```
 
 Line by line:
@@ -252,31 +248,35 @@ Line by line:
 - **`$RUNNER_TEMP`** is a per-job directory that GitHub cleans up. The `trap` deletes the file earlier, when the step ends.
 - **`umask 077`** makes the new file readable only by the runner user. It runs in a subshell `( … )` so it does not change the rest of the step.
 - **The `perl` one-liner** replaces only placeholders that look like `${MK4_…}` with the matching environment variable. It does the same job as `envsubst`, but it cannot touch any other `$` in the file. The setup script uses the identical command, so what it tested locally is what CI builds.
+- **`ci-rollout.py`** finds every Deployment in the namespace that runs a container from `$REGISTRY_IMAGE`, sets it to `:pr-<number>` and waits for each rollout. `--previous` also matches the image's old name, `jithendar-com`, so the first release after the rename still found the site.
 - **The secret only enters this one step**, through `env:`. Other steps never see it, and GitHub masks its value in the log.
 
-The practice executor workflow (`ci-practice-executor.yml`) signs in the same way, with the same three values, to patch new image digests into its two Deployments and its ConfigMap. That is why the Role names those objects too.
+The practice executor and SEO agent workflows (`ci-practice-executor.yml`, `ci-seo-agent.yml`) sign in the same way, with the same three values, and run the same `ci-rollout.py` for their own images. That is why the Role names their Deployments too.
 
 ## 8. A catch: authenticated is not the same as deployed
 
-Authentication works. The last release on 2 November logged:
+Authentication worked from the start. The release on 2 November logged:
 
 ```text
 deployment.apps/jithendar-com restarted
 deployment "jithendar-com" successfully rolled out
 ```
 
-But the restart was designed for a Deployment that runs `jithendar-com:latest` with `imagePullPolicy: Always`, so new pods pull whatever `:latest` points to. That is no longer how the site is deployed. `./deploy.sh` pins an exact image digest in `k8s/kustomization.yaml` and applies it, and the live Deployment now runs:
+and the site went on serving an older commit. The restart was designed for a Deployment that ran `jithendar-com:latest` with `imagePullPolicy: Always`, so new pods would pull whatever `:latest` pointed to. By then the site was no longer deployed that way: a separate `./deploy.sh` pinned an exact image digest in the kustomization and applied it, and the live Deployment ran:
 
 ```text
 jithendar-com@sha256:ab475be7…   (commit a153283)
 ```
 
-while `:latest` in ECR points to commit `dc249e8`. A restart re-creates pods from the same pod template, so they pull the pinned digest again. CI reports success, and the site keeps serving `a153283`, which is exactly what `/api/health` returns.
+while `:latest` in the registry pointed to commit `dc249e8`. A restart re-creates pods from the same pod template, so they pulled the pinned digest again. CI reported success, and the site kept serving `a153283`, which is exactly what `/api/health` returned.
 
-There are two consistent ways out, and the Role already allows the first:
+The fix (14 November 2026) used a permission the Role already had: CI now sets the image instead of only restarting. Each release pushes the image under the pull request's own tag, `moks-cms:pr-<number>` (the image was renamed from `jithendar-com` along with the repository), and `scripts/ci-rollout.py` points every Deployment that runs that image at the new tag with `kubectl set image`, which is a `patch` like `restart`. Only a Deployment that is already on that tag, because the job was run again, is restarted. `deploy.sh` is gone: `deploy-minikube.yml` applies manifest changes and keeps the image each Deployment is running, so applying manifests never rolls the site back. The Deployment now records which release is live:
 
-- Let CI set the digest it just pushed: `kubectl set image deploy/jithendar-com web=<registry>/jithendar-com@sha256:…` (this is a `patch`, the same permission as `restart`). This is what the practice executor workflow already does.
-- Or remove the restart from CI and leave every site deploy to `./deploy.sh`.
+```bash
+kubectl -n jithendar get deploy jithendar-com -o wide
+```
+
+and going back is `kubectl -n jithendar set image deploy/jithendar-com web=<registry>/moks-cms:pr-<earlier number>`.
 
 The general lesson: a green `rollout status` only proves the pods are ready. To prove the right code is running, check the version the app reports, as the smoke test before the push already does.
 
@@ -290,19 +290,18 @@ This setup is deliberately small, but it has real limits.
 
 **`patch` on a Deployment is more than restart.** The Role cannot read Secrets or create pods directly, but whoever can patch `deployment/jithendar-com` can change its image or its pod template. The Deployment controller would then run that code with every Secret the site's pods already receive, such as the database URL. The namespace has no Pod Security labels and the admission policies on mk4 cover the practice sandbox, not the site. Treat this token as close to "can run code as the website".
 
-**The secret is repository-wide.** `MK4_CI_TOKEN` is a repository secret, so a workflow running on any branch pushed to this repository can read it. The `if:` on the release job does not protect it; a changed workflow file on another branch could print or use it. Forks do not get repository secrets. The AWS side is stricter: its role only trusts the default branch, and the Terraform role only trusts the GitHub environment `aws-infra`.
+**The secret is repository-wide.** `MK4_CI_TOKEN` is a repository secret, so a workflow running on any branch pushed to this repository can read it. The `if:` on the release job does not protect it; a changed workflow file on another branch could print or use it. Forks do not get repository secrets. The Harbor robot's password is a repository secret too.
 
-**Comments have drifted.** The header of `k8s/80-ci-deployer.yaml` still says the script stores a secret named `KUBECONFIG_MK4`, the template says it is filled in "with envsubst", and the workflow says the live Deployment runs `:latest`. None of these is true any more.
+**Comments have drifted.** The header of `minikube/80-ci-deployer.yaml` still says CI restarts the site after pushing a new `:latest` image, and the kubeconfig template says a step called "Restart jithendar-com" fills it in "with envsubst". Neither is true any more.
 
 ## 10. What I would change next
 
 In order of effort:
 
-1. **Fix the deploy step** so CI either sets the pushed digest or stops restarting (section 8).
-2. **Move `MK4_CI_TOKEN` into a GitHub environment** restricted to the default branch, like `aws-infra`. Then only jobs that declare that environment can read the token.
-3. **Rotate the token on a schedule** with `ROTATE=1`, and after any change of who has write access to the repository.
-4. **Add Pod Security `restricted` labels** to the `jithendar` namespace, so a patched Deployment cannot ask for privileged pods or host paths.
-5. **Drop the static token entirely.** Kubernetes can be configured to accept JWTs from an external OIDC issuer with the API server's structured authentication configuration. With GitHub's issuer trusted, a job would sign in with the same kind of short-lived token it already uses for AWS, and the `sub` claim could be limited to this repository's default branch. On minikube that means passing an authentication config file to the API server, which I have not tried on mk4.
+1. **Move `MK4_CI_TOKEN` into a GitHub environment** restricted to the default branch. Then only jobs that declare that environment can read the token.
+2. **Rotate the token on a schedule** with `ROTATE=1`, and after any change of who has write access to the repository.
+3. **Add Pod Security `restricted` labels** to the `jithendar` namespace, so a patched Deployment cannot ask for privileged pods or host paths.
+4. **Drop the static token entirely.** Kubernetes can be configured to accept JWTs from an external OIDC issuer with the API server's structured authentication configuration. With GitHub's issuer trusted, a job would sign in with the short-lived OIDC token GitHub can issue to every job, and the `sub` claim could be limited to this repository's default branch. On minikube that means passing an authentication config file to the API server, which I have not tried on mk4.
 
 ## 11. Recap
 

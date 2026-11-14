@@ -134,16 +134,16 @@ def release():
              ("smoke", "smoke test", "/api/health = SHA", "AVIF or WebP"), ("pushs", "push two tags", ":pr-<n>", ":latest")]
     for i, (key, title, a, b) in enumerate(steps):
         d.node(key, "ops", 50 + i * 175, 358, 160, 72, title, a, b)
-    d.node("restart", "security", 750, 456, 160, 60, "rollout restart", "restart + watch only")
+    d.node("restart", "security", 750, 456, 160, 60, "ci-rollout.py", "patch + watch only")
     d.node("reg", "data", 35, 550, 280, 70, "Harbor registry", "every release keeps :pr-<n>", shape="db")
-    d.node("deploy", "service", 340, 550, 280, 70, "deploy/jithendar-com", "runs :latest,", "imagePullPolicy Always")
+    d.node("deploy", "service", 340, 550, 280, 70, "deploy/jithendar-com", "runs moks-cms:pr-<n>,", "the live release on record")
     d.node("rb", "ops", 645, 550, 280, 70, "Rollback", "kubectl set image", "… :pr-<last good>")
     d.zone("z-other", "Other workflows", 20, 640, 920, 100)
     d.node("content", "ops", 50, 668, 270, 62, "ci-content.yml (push)", "MDX checks, content image;",
            "restart only if published")
     d.node("manifests", "security", 345, 668, 270, 62, "deploy-minikube.yml", "merged PR touching minikube/:",
            "applier SA, app objects only")
-    d.node("infra", "ops", 640, 668, 270, 62, "infra.yml (push)", "Terraform in infra/,", "on the default branch")
+    d.node("infra", "ops", 640, 668, 270, 62, "ci-seo-agent.yml,", "ci-practice-executor.yml:", "same pr-<n> releases")
 
     d.edge("pr", "check", exit=(0.5, 1), entry=((175 - 50) / 860, 0))
     d.edge("merge", "scope", exit=(0.5, 1), entry=(0.5, 0), via=[(175, 340), (130, 340)])
@@ -151,10 +151,10 @@ def release():
         d.edge(a, b, exit=(1, 0.5), entry=(0, 0.5))
     d.edge("pushs", "restart", exit=(0.5, 1), entry=(0.5, 0))
     d.edge("pushs", "reg", exit=(0.2, 1), entry=(0.5, 0), via=[(782, 442), (175, 442)])
-    d.edge("restart", "deploy", exit=(0, 0.5), entry=(0.5, 0), via=[(480, 486)], label="pulls :latest")
+    d.edge("restart", "deploy", exit=(0, 0.5), entry=(0.5, 0), via=[(480, 486)], label="set image :pr-<n>")
     d.edge("rb", "deploy", exit=(0, 0.5), entry=(1, 0.5), kind="control")
     d.text("note", 20, 752, 920, 32, "Every release maps to a reviewed pull request, and its tag is the rollback handle. "
-           "The deployer may only restart and watch the Deployments; RBAC, Secrets and mesh policy stay with a person.",
+           "The deployer may only patch and watch named Deployments; RBAC, Secrets and mesh policy stay with a person.",
            size=11)
     d.legend(792, labels={"security": "Least-privilege CI identity", "optional": "Does nothing"})
     return d
