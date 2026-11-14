@@ -84,7 +84,8 @@ No newsletter exists, so no newsletter events.
 
 `Strict-Transport-Security` (1 year), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (camera,
 microphone, geolocation, payment, USB off), `X-Frame-Options: DENY` (previews: `SAMEORIGIN` for the editor).
-No Content-Security-Policy yet: with AdSense, Google recommends a nonce-based strict CSP, which would make every page
+No script-src Content-Security-Policy yet (the policy that is sent only restricts framing, plugins and `<base>`:
+`frame-ancestors 'self'; object-src 'none'; base-uri 'self'`, `next.config.ts`): with AdSense, Google recommends a nonce-based strict CSP, which would make every page
 dynamic; tracked as a follow-up rather than shipping a broad allowlist.
 
 ## Owner checklist (manual)
