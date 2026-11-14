@@ -61,16 +61,19 @@ async function currentRequest(): Promise<RequestInfo> {
   }
 }
 
-/** Append-only record of admin/API/auth actions. Never store secrets (or passwords) in `detail`. */
+/**
+ * Append-only record of admin/API/auth actions. Never store secrets (or passwords) in `detail`.
+ * Pass the caller's transaction as `db` to commit the entry with the change it describes.
+ */
 export async function audit(
   actor: { id?: string | null; label: string },
   action: string,
   target?: string,
   detail?: Record<string, unknown>,
-  opts: { severity?: Severity; request?: RequestInfo } = {},
+  opts: { severity?: Severity; request?: RequestInfo; db?: Pick<Awaited<ReturnType<typeof getDb>>, "insert"> } = {},
 ) {
   const req = opts.request ?? (await currentRequest());
-  const db = await getDb();
+  const db = opts.db ?? (await getDb());
   await db.insert(schema.auditLog).values({
     actorId: actor.id ?? null,
     actor: actor.label,

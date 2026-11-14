@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { collections, type Collection } from "@/config/taxonomy";
-import { getDb, schema } from "@/db";
+import { getDb, schema, type Db } from "@/db";
 import { audit } from "./audit";
 import type { Role } from "./auth";
 import { invalidateContent } from "./content";
@@ -219,6 +219,12 @@ function canTouch(actor: Actor, row: PostRow) {
   return actor.role === "admin" || (actor.role === "author" && row.authorId === actor.id);
 }
 
+/**
+ * A transaction, typed as the `Db` the shared helpers take. A post row, its redirect, its revision and its
+ * audit entry are written through it, so they are committed together or not at all.
+ */
+const within = (tx: unknown) => tx as Db;
+
 function uniqueViolation(error: unknown): boolean {
   const e = error as { code?: string; cause?: { code?: string } };
   return e?.code === "23505" || e?.cause?.code === "23505";
@@ -258,16 +264,20 @@ export async function createPost(actor: Actor, raw: unknown, opts: { incompleteD
   const input = postInput.parse(raw);
   const { data, warnings } = await validate(input, actor.id, undefined, opts.incompleteDrafts);
   const db = await getDb();
+  let row: PostRow;
   try {
-    const [row] = await db.insert(schema.post).values({ ...toRow(input, data), authorId: actor.id }).returning();
-    await recordRevision(db, "post", row!.id, row!.version, "create", snapshot(row!), actor.id);
-    await audit(actor, "post.create", row!.id, { slug: row!.slug, status: row!.status });
-    await afterChange(null, row!);
-    return Object.assign(row!, { warnings });
+    row = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(schema.post).values({ ...toRow(input, data), authorId: actor.id }).returning();
+      await recordRevision(within(tx), "post", created!.id, created!.version, "create", snapshot(created!), actor.id);
+      await audit(actor, "post.create", created!.id, { slug: created!.slug, status: created!.status }, { db: within(tx) });
+      return created!;
+    });
   } catch (error) {
     if (uniqueViolation(error)) throw new PostError(`A ${input.collection} post with slug "${data.slug}" already exists.`, 409);
     throw error;
   }
+  await afterChange(null, row);
+  return Object.assign(row, { warnings });
 }
 
 export class ConflictError extends PostError {
@@ -300,28 +310,35 @@ export async function updatePost(actor: Actor, id: string, patch: unknown, opts:
   });
   const { data, warnings } = await validate(merged, current.authorId, id, opts.incompleteDrafts);
   const db = await getDb();
+  let row: PostRow | undefined;
   try {
-    const [row] = await db
-      .update(schema.post)
-      .set({ ...toRow(merged, data), version: current.version + 1 })
-      .where(and(eq(schema.post.id, id), eq(schema.post.version, current.version)))
-      .returning();
-    if (!row) {
-      const [latest] = await db.select().from(schema.post).where(eq(schema.post.id, id));
-      throw new ConflictError({ version: latest?.version ?? current.version, savedAt: (latest?.savedAt ?? current.savedAt).toISOString() });
-    }
-    const oldPath = `/${current.collection}/${current.slug}`;
-    const newPath = `/${row.collection}/${row.slug}`;
-    if (oldPath !== newPath) await recordRedirect(oldPath, newPath);
-    await recordRevision(db, "post", id, row.version, opts.reason ?? (row.status === "published" ? "update" : "save"), snapshot(row), actor.id);
-    await clearAutosave(actor, "post", id);
-    await audit(actor, "post.update", id, { slug: row.slug, status: row.status, version: row.version });
-    await afterChange(current, row, { notifySearchEngines: opts.notifySearchEngines });
-    return Object.assign(row, { warnings });
+    // One transaction: a failure after the row was written (the redirect, the revision, the audit entry) used to
+    // leave a new version with no history, which the editor then reported as someone else's newer save.
+    row = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(schema.post)
+        .set({ ...toRow(merged, data), version: current.version + 1 })
+        .where(and(eq(schema.post.id, id), eq(schema.post.version, current.version)))
+        .returning();
+      if (!updated) return undefined;
+      const oldPath = `/${current.collection}/${current.slug}`;
+      const newPath = `/${updated.collection}/${updated.slug}`;
+      if (oldPath !== newPath) await recordRedirect(oldPath, newPath, within(tx));
+      await recordRevision(within(tx), "post", id, updated.version, opts.reason ?? (updated.status === "published" ? "update" : "save"), snapshot(updated), actor.id);
+      await clearAutosave(actor, "post", id, within(tx));
+      await audit(actor, "post.update", id, { slug: updated.slug, status: updated.status, version: updated.version }, { db: within(tx) });
+      return updated;
+    });
   } catch (error) {
     if (uniqueViolation(error)) throw new PostError(`A ${merged.collection} post with slug "${data.slug}" already exists.`, 409);
     throw error;
   }
+  if (!row) {
+    const [latest] = await db.select().from(schema.post).where(eq(schema.post.id, id));
+    throw new ConflictError({ version: latest?.version ?? current.version, savedAt: (latest?.savedAt ?? current.savedAt).toISOString() });
+  }
+  await afterChange(current, row, { notifySearchEngines: opts.notifySearchEngines });
+  return Object.assign(row, { warnings });
 }
 
 /**
@@ -335,6 +352,17 @@ export async function publishPost(actor: Actor, id: string, patch: Record<string
   return updatePost(actor, id, { ...patch, status: scheduled ? "scheduled" : "published", publishedAt: toIsoOffset(when) }, { ...opts, reason: scheduled ? "schedule" : "publish" });
 }
 
+/**
+ * A new post that is published (or scheduled, with a future date) from its first save. One write, checked as
+ * strictly as publishing: when the post is not ready, nothing is stored. Saving a draft first and publishing it
+ * second left that draft behind on a failed check, holding the slug the next attempt needed.
+ */
+export async function createPublishedPost(actor: Actor, raw: Record<string, unknown>, now = new Date()): Promise<SavedPost> {
+  const when = typeof raw.publishedAt === "string" && raw.publishedAt ? new Date(raw.publishedAt) : now;
+  const scheduled = when.getTime() > now.getTime() + 30_000;
+  return createPost(actor, { ...raw, status: scheduled ? "scheduled" : "published", publishedAt: toIsoOffset(when) });
+}
+
 /** Server-side scheduler (lib/scheduler.ts): publish every scheduled post whose time has come. Idempotent. */
 export async function publishDuePosts(now = new Date()): Promise<string[]> {
   const db = await getDb();
@@ -344,15 +372,21 @@ export async function publishDuePosts(now = new Date()): Promise<string[]> {
     .where(and(eq(schema.post.status, "scheduled"), isNull(schema.post.deletedAt), sql`${schema.post.publishedAt} <= ${now.toISOString()}`));
   const published: string[] = [];
   for (const before of due) {
-    // Conditional update: two replicas (or a retry) can never publish the same post twice.
-    const [row] = await db
-      .update(schema.post)
-      .set({ status: "published", version: before.version + 1, savedAt: new Date() })
-      .where(and(eq(schema.post.id, before.id), eq(schema.post.status, "scheduled"), eq(schema.post.version, before.version)))
-      .returning();
+    // Conditional update: two replicas (or a retry) can never publish the same post twice. Its revision and audit
+    // entry commit with it: if they fail the post stays scheduled for the next tick, instead of going live without
+    // the cache refresh below.
+    const row = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(schema.post)
+        .set({ status: "published", version: before.version + 1, savedAt: new Date() })
+        .where(and(eq(schema.post.id, before.id), eq(schema.post.status, "scheduled"), eq(schema.post.version, before.version)))
+        .returning();
+      if (!updated) return undefined;
+      await recordRevision(within(tx), "post", updated.id, updated.version, "scheduled-publish", snapshot(updated), null);
+      await audit({ id: null, label: "scheduler" }, "post.publish.scheduled", updated.id, { slug: updated.slug, publishedAt: updated.publishedAt?.toISOString() }, { db: within(tx) });
+      return updated;
+    });
     if (!row) continue;
-    await recordRevision(db, "post", row.id, row.version, "scheduled-publish", snapshot(row), null);
-    await audit({ id: null, label: "scheduler" }, "post.publish.scheduled", row.id, { slug: row.slug, publishedAt: row.publishedAt?.toISOString() });
     await afterChange(before, row);
     published.push(row.id);
   }
@@ -403,13 +437,15 @@ export async function duplicatePost(actor: Actor, id: string): Promise<PostRow> 
   let slug = base;
   for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
   const title = src.title.length <= 103 ? `${src.title} (copy)` : src.title;
-  const [row] = await db
-    .insert(schema.post)
-    .values({ ...snapshot(src), id: undefined, slug, title, status: "draft", publishedAt: null, updatedAt: null, deletedAt: null, authorId: actor.id, createdAt: new Date(), savedAt: new Date(), corrections: [] })
-    .returning();
-  await recordRevision(db, "post", row!.id, row!.version, "duplicate", snapshot(row!), actor.id);
-  await audit(actor, "post.duplicate", row!.id, { from: id, slug });
-  return row!;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(schema.post)
+      .values({ ...snapshot(src), id: undefined, slug, title, status: "draft", publishedAt: null, updatedAt: null, deletedAt: null, authorId: actor.id, createdAt: new Date(), savedAt: new Date(), corrections: [] })
+      .returning();
+    await recordRevision(within(tx), "post", row!.id, row!.version, "duplicate", snapshot(row!), actor.id);
+    await audit(actor, "post.duplicate", row!.id, { from: id, slug }, { db: within(tx) });
+    return row!;
+  });
 }
 
 export async function postCounts() {

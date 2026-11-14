@@ -65,6 +65,10 @@ stored Markdown ─parse─▶ editor document ─serialize─▶ stored Markdow
 - **Optimistic concurrency**: every commit carries the version it was based on; a newer save elsewhere returns a
   conflict with *Load latest* (your edits are kept as a recovery copy) or *Overwrite with mine* (the overwritten version
   stays in history).
+- **One commit, one transaction**: the row, a slug redirect, the revision, the cleared autosave and the audit entry
+  are written together (`lib/posts.ts`, `lib/site-pages.ts`), so a failed save changes nothing and can be retried
+  with the same version. Publishing a post that was never saved is a single write too: if it is not ready to
+  publish nothing is stored (the text stays in the editor and in browser storage).
 - **Recovery**: after a refresh/crash/offline period the editor offers the newer autosaved copy (restore/discard).
 - **Revisions**: every commit (create, save, publish, schedule, update, unpublish, restore, scheduled publish) stores a
   snapshot with author and time. Preview any revision; *Load into editor* then Save creates a new revision — history is

@@ -8,6 +8,7 @@ import { rowToForm, type PostFormValue } from "@/lib/post-form";
 import {
   ConflictError,
   createPost,
+  createPublishedPost,
   deletePostPermanently,
   duplicatePost,
   getPostRow,
@@ -51,10 +52,14 @@ export async function savePostAction(id: string | null, data: PostFormValue, int
   try {
     const actor = await editorActor();
     if (!id) {
+      if (intent === "publish") {
+        // One write. A draft saved first stayed behind when the post was not ready to publish: the editor had no
+        // id for it, so the next Publish tried to create it again and failed on its slug.
+        const row = await createPublishedPost(actor, { ...data });
+        return ok(row, row.status === "scheduled" ? "Scheduled." : "Published.");
+      }
       const created = await createPost(actor, { ...data, status: data.status === "published" || data.status === "scheduled" ? "draft" : data.status }, { incompleteDrafts: true });
-      if (intent !== "publish") return ok(created, "Draft saved.");
-      const row = await publishPost(actor, created.id, { ...data }, { baseVersion: created.version });
-      return ok(row, row.status === "scheduled" ? "Scheduled." : "Published.");
+      return ok(created, "Draft saved.");
     }
     if (intent === "publish") {
       const row = await publishPost(actor, id, { ...data }, { baseVersion });

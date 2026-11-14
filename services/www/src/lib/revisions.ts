@@ -59,7 +59,7 @@ export async function getAutosave(actor: Actor, entity: Entity, entityId: string
   return row ?? null;
 }
 
-export async function clearAutosave(actor: Actor, entity: Entity, entityId: string) {
-  const db = await getDb();
+export async function clearAutosave(actor: Actor, entity: Entity, entityId: string, tx?: Db) {
+  const db = tx ?? (await getDb());
   await db.delete(schema.autosave).where(and(eq(schema.autosave.entity, entity), eq(schema.autosave.entityId, entityId), eq(schema.autosave.userId, actor.id)));
 }
