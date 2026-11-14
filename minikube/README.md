@@ -88,7 +88,7 @@ creates `jithendar-com-env`; Terraform in the miniKube repository writes the dat
 
 ## Deploy
 
-The site runs `registry.jithendar.com/jithendar/jithendar-com:pr-<number>` (Harbor), the tag of its last release. CI pushes `:pr-<number>` and `:latest` and sets
+The site runs `registry.jithendar.com/jithendar/moks-cms:pr-<number>` (Harbor), the tag of its last release. CI pushes `:pr-<number>` and `:latest` and sets
 the Deployment to `:pr-<number>` when a pull request is merged into `master`, so new code needs nothing here. The manifests
 name `:latest` for a first apply only; applying them later keeps the image each workload runs (`scripts/keep-live-images.py`).
 
