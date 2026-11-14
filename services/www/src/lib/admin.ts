@@ -1,3 +1,4 @@
+import { DEMO_READ_ONLY_MESSAGE } from "./demo";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
 import { getSessionUser, requireRole, type SessionUser } from "./session";
@@ -19,6 +20,7 @@ export const SESSION_EXPIRED_MESSAGE =
 export async function editorActor(): Promise<Actor> {
   const user = await getSessionUser();
   if (!user) throw new PostError(SESSION_EXPIRED_MESSAGE, 401);
+  if (user.demo) throw new PostError(DEMO_READ_ONLY_MESSAGE, 403);
   if (user.role !== "admin" && user.role !== "author") throw new PostError("Your account cannot edit content.", 403);
   return actorOf(user);
 }

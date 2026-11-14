@@ -13,7 +13,7 @@ export const reportReasonLabels: Record<ReportReason, string> = {
 };
 
 export type CommentSort = "oldest" | "newest";
-export type Viewer = { id: string; role: "admin" | "author" | "user" } | null;
+export type Viewer = { id: string; role: "admin" | "author" | "demo" | "user" } | null;
 
 export type DiscussionState = { enabled: boolean; locked: boolean; requireApproval: boolean; editWindowMinutes: number };
 

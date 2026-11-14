@@ -7,7 +7,7 @@ import { PasswordInput } from "@/components/ui/PasswordInput";
 import { authClient } from "@/lib/auth-client";
 import { PASSWORD_HINT, PASSWORD_MIN, passwordProblem } from "@/lib/password-policy";
 
-export function ResetPasswordForm({ token }: { token: string }) {
+export function ResetPasswordForm({ token, signInHref = "/login" }: { token: string; signInHref?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -41,7 +41,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
     return (
       <Alert tone="success">
         Your password has been changed.{" "}
-        <Link href="/login" className="underline">
+        <Link href={signInHref} className="underline">
           Sign in with it
         </Link>
         .

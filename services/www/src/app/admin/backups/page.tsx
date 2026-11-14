@@ -54,7 +54,7 @@ async function runNow() {
 }
 
 export default async function BackupsPage({ searchParams }: { searchParams: FlashParams }) {
-  await requireRole("admin");
+  const me = await requireRole("admin");
   const [b, runs, stored, sp] = await Promise.all([backupSummary(), recentRuns(), listStoredBackups().catch(() => null), searchParams]);
   return (
     <>
@@ -64,7 +64,8 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
         actions={
           <>
             <form action={runNow}><Button type="submit">Back up now</Button></form>
-            <a href="/api/admin/backup" download className="inline-flex items-center rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold">Download backup</a>
+            {/* A demo account never downloads the database (the route refuses it too). */}
+            {!me.demo && <a href="/api/admin/backup" download className="inline-flex items-center rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold">Download backup</a>}
           </>
         }
       />
@@ -135,7 +136,7 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
                   <td className={`${td} whitespace-nowrap`}>{f.lastModified ? <LocalTime iso={f.lastModified} /> : "—"}</td>
                   <td className={td}>
                     <div className="flex items-center gap-4 whitespace-nowrap">
-                      <a className="link" href={`/api/admin/backup?file=${encodeURIComponent(f.name)}`} download>Download</a>
+                      {!me.demo && <a className="link" href={`/api/admin/backup?file=${encodeURIComponent(f.name)}`} download>Download</a>}
                       {/* Older .json.gz.enc backups are always encrypted; a zip asks for the passphrase only if it is encrypted. */}
                       {(b.hasPassphrase || !isLegacyBackup(f.name)) && <RestoreButton name={f.name} created={f.lastModified ?? f.name} action={restore} />}
                     </div>

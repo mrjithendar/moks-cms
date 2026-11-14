@@ -3,6 +3,7 @@ import { getDb, schema } from "@/db";
 import { audit } from "./audit";
 import { COMMENT_MAX, REPORT_NOTE_MAX, REPORT_REASONS, type CommentPage, type CommentSort, type CommentView, type DiscussionState, type ReportReason, type Viewer } from "./comment-types";
 import { renderCommentMarkdown } from "./comment-markdown";
+import { DEMO_READ_ONLY_MESSAGE } from "./demo";
 import { log } from "./log";
 import { recordComment } from "./metrics";
 import type { Actor } from "./posts";
@@ -320,6 +321,8 @@ export type SubmitInput = { postId: string; parentId?: string | null; body: unkn
  * a resubmitted form (same client key) returns the first comment instead of creating another.
  */
 export async function submitComment(user: { id: string; role: string }, input: SubmitInput): Promise<{ id: string; status: "approved" | "pending"; duplicate: boolean }> {
+  // A write, so a demo account arrives with its stored role (lib/demo.ts): demos never post publicly.
+  if (user.role === "demo") throw new PostError(DEMO_READ_ONLY_MESSAGE, 403);
   const state = await discussionFor(input.postId);
   assertOpen(state);
   const text = cleanBody(input.body);
@@ -401,6 +404,7 @@ async function ownComment(userId: string, id: string) {
 }
 
 export async function editComment(user: { id: string; role: string }, id: string, body: unknown): Promise<void> {
+  if (user.role === "demo") throw new PostError(DEMO_READ_ONLY_MESSAGE, 403);
   const row = await ownComment(user.id, id);
   if (row.status !== "approved" && row.status !== "pending") throw new PostError("This comment can no longer be edited.", 403);
   const state = await discussionFor(row.postId);

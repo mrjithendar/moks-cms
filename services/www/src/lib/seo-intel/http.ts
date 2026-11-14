@@ -2,6 +2,7 @@ import "server-only";
 import type { z } from "zod";
 import { actorOf } from "../admin";
 import { audit } from "../audit";
+import { DEMO_READ_ONLY_MESSAGE } from "../demo";
 import { reportError, routeFields } from "../http-errors";
 import { hit } from "../rate-limit";
 import { readBodyTextOrNull } from "../read-body";
@@ -64,7 +65,7 @@ export function seoRoute<P = Record<string, string>>(name: string, opts: Opts, f
     try {
       const user = await getSessionUser();
       if (!user) return json({ error: "Sign in as an admin.", code: "auth_required" }, 401);
-      if (user.role !== "admin") return json({ error: "Admins only.", code: "forbidden" }, 403);
+      if (user.role !== "admin") return user.demo ? json({ error: DEMO_READ_ONLY_MESSAGE, code: "demo_read_only" }, 403) : json({ error: "Admins only.", code: "forbidden" }, 403);
       if (opts.mutating) {
         if (!sameOrigin(req)) return json({ error: "Cross-site request refused.", code: "cross_site" }, 403);
       }

@@ -40,6 +40,33 @@ exists); after that, admins change roles in Admin → Users. Existing users, pas
 Every admin page and admin API checks the role on the server (`requireRole`, `staffActor`, `adminActor`,
 `editorActor`); hiding the Dashboard link is only cosmetic.
 
+### Demo accounts (read-only, for product demonstrations)
+
+Role `demo` (2026-11-14): sees every admin page an admin sees, changes nothing. Admin → Users → **Invite demo
+users** takes an email (and optional name); there is no limit on how many.
+
+- **Invite.** A new account is created with role `demo`, email marked verified and no password. The email carries a
+  one-time set-password link valid for 72 hours (Better Auth's reset token, so `/reset-password` creates the
+  password login on first use; the page is worded as an invitation and sign-in leads to `/admin`). After expiry the
+  person uses *Forgot password*, or the admin presses **Resend invite**. Inviting a reader turns it into a demo
+  account; an admin or author is never downgraded by an invite. Requires email (Admin → Storage & email): without it
+  the invite is refused. Audited as `user.demo_invite` / `user.demo_reinvite`.
+- **Read-only enforcement** (`lib/demo.ts`). The proxy stamps every forwarded request with `x-moks-request-method`
+  (overwriting any client value). `getSessionUser()` returns a demo account as `role: "admin", demo: true` on
+  GET/HEAD and as `role: "demo"` on anything else — server actions, POST/PUT/PATCH/DELETE routes — and with no stamp
+  at all (fail closed). No staff check accepts `demo`, so every save, publish, delete, send, sync and AI run is
+  refused without each check knowing about demos. Refused server actions return to the page with a read-only
+  notice; admin APIs answer 403 `demo_read_only`; the editor shows the same message. Paid AI and external calls are
+  all POST, so a demo account cannot spend money.
+- **Also refused:** backup download (the route and the Backups page links; it is the whole database), posting or
+  editing comments, MCP grants and API keys (both creation paths are writes, and both re-check the stored role).
+- **What a demo account does see:** real data, as an admin does — users and their emails, messages, bookings,
+  payments, comments with commenter emails, the audit log. Secrets stay masked (settings show only "set"; the
+  database browser redacts secret columns). Invite only people you would show that to.
+- **Ending access.** Ban or delete the account, or change its role. Any role change or ban now ends the user's
+  sessions through Better Auth (`internalAdapter.deleteUserSessions`), which also clears sessions kept in Redis:
+  those carry a copy of the user, so before this a role change or ban did not reach a session already in Redis.
+
 ## Callback URLs
 
 Derived from `SITE_URL` (Better Auth's `baseURL`) and the auth route `/api/auth`:

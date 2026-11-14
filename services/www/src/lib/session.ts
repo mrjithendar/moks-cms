@@ -1,17 +1,25 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getAuth, type Role } from "./auth";
+import { getAuth, ROLES, type Role } from "./auth";
+import { demoDeniedTarget, isReadRequest } from "./demo";
 
-export type SessionUser = { id: string; name: string; email: string; role: Role; emailVerified: boolean; image: string | null; sessionCreatedAt: Date };
+/**
+ * `role` is the role in effect for this request. A demo account (`demo: true`) is "admin" while it only reads and
+ * "demo" on a write, which no staff check accepts (lib/demo.ts).
+ */
+export type SessionUser = { id: string; name: string; email: string; role: Role; emailVerified: boolean; image: string | null; sessionCreatedAt: Date; demo?: true };
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   const auth = await getAuth();
-  const session = await auth.api.getSession({ headers: await headers() });
+  const h = await headers();
+  const session = await auth.api.getSession({ headers: h });
   if (!session) return null;
   const u = session.user as typeof session.user & { role?: string; banned?: boolean | null };
   if (u.banned) return null;
-  const role = (["admin", "author", "user"] as const).includes(u.role as Role) ? (u.role as Role) : "user";
-  return { id: u.id, name: u.name, email: u.email, role, emailVerified: u.emailVerified, image: u.image ?? null, sessionCreatedAt: new Date(session.session.createdAt) };
+  const stored = ROLES.includes(u.role as Role) ? (u.role as Role) : "user";
+  const base = { id: u.id, name: u.name, email: u.email, emailVerified: u.emailVerified, image: u.image ?? null, sessionCreatedAt: new Date(session.session.createdAt) };
+  if (stored === "demo") return { ...base, role: isReadRequest(h) ? "admin" : "demo", demo: true };
+  return { ...base, role: stored };
 }
 
 /**
@@ -31,6 +39,8 @@ async function signInRedirect(next: string): Promise<never> {
 export async function requireRole(...roles: Role[]): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) return signInRedirect("/admin");
+  // A demo account trying to save: back to the page it was on, with the read-only notice.
+  if (user.demo && !roles.includes(user.role)) redirect(demoDeniedTarget((await headers()).get("referer")));
   if (!roles.includes(user.role)) redirect("/account?denied=1");
   return user;
 }

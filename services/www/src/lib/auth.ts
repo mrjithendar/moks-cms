@@ -17,7 +17,8 @@ import { passwordProblem, PASSWORD_MAX, PASSWORD_MIN } from "./password-policy";
 import { getRedis } from "./redis";
 import { turnstileKeys } from "./turnstile";
 
-export const ROLES = ["admin", "author", "user"] as const;
+/** Stored roles. "demo" is a read-only look at the admin for product demonstrations (lib/demo.ts). */
+export const ROLES = ["admin", "author", "demo", "user"] as const;
 export type Role = (typeof ROLES)[number];
 
 const INCREMENT_WITH_TTL = "local c = redis.call('INCR', KEYS[1]) if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end return c";
@@ -40,7 +41,7 @@ export function isSelfRegistration(path: string | undefined): boolean {
 export const FRESH_SESSION_SECONDS = 60 * 60;
 
 const ac = createAccessControl(defaultStatements);
-const roles = { admin: adminAc, author: userAc, user: userAc };
+const roles = { admin: adminAc, author: userAc, demo: userAc, user: userAc };
 
 async function createAuth() {
   const db = await getDb();
