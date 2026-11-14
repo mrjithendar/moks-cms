@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { hit } from "@/lib/rate-limit";
+import { readBodyTextOrNull } from "@/lib/read-body";
 import { askState } from "@/lib/seo-agent/ask-settings";
 import { clientAddress } from "../route";
 
@@ -27,8 +28,8 @@ export async function POST(req: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "Cross-site request refused." }, { status: 403, headers: HEADERS });
   }
-  const text = await req.text();
-  if (text.length > 200) return Response.json({ error: "Too large." }, { status: 413, headers: HEADERS });
+  const text = await readBodyTextOrNull(req, 200);
+  if (text === null) return Response.json({ error: "Too large." }, { status: 413, headers: HEADERS });
   let parsed;
   try {
     parsed = body.safeParse(JSON.parse(text));

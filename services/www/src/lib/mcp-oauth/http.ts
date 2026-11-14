@@ -1,5 +1,6 @@
 import { clientAddress } from "@/app/api/ask/route";
 import { hit } from "../rate-limit";
+import { readBodyTextOrNull } from "../read-body";
 import { adminMcpEnabled } from "../seo-agent/config";
 import { OAuthError } from "./oauth";
 
@@ -17,8 +18,8 @@ export const fail = (e: OAuthError) => Response.json(e.body(), { status: e.statu
 
 export async function readParams(req: Request): Promise<Record<string, string | undefined> | unknown> {
   const ct = req.headers.get("content-type") ?? "";
-  const text = await req.text();
-  if (text.length > 20_000) throw new OAuthError("invalid_request", "Request too large.");
+  const text = await readBodyTextOrNull(req, 20_000);
+  if (text === null) throw new OAuthError("invalid_request", "Request too large.");
   if (ct.includes("application/json")) {
     try {
       return JSON.parse(text);

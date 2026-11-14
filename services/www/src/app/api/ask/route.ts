@@ -5,6 +5,7 @@ import { ipHash } from "@/lib/seo-agent/ask";
 import { askState } from "@/lib/seo-agent/ask-settings";
 import { AgentError, askStream } from "@/lib/seo-agent/client";
 import { getSessionUser } from "@/lib/session";
+import { readBodyTextOrNull } from "@/lib/read-body";
 
 export const dynamic = "force-dynamic";
 
@@ -67,8 +68,9 @@ export async function POST(req: Request): Promise<Response> {
       .optional(),
     context: z.object({ slug: z.string().regex(SLUG).max(160) }).optional(),
   });
-  const text = await req.text();
-  if (text.length > MAX_BODY) return fail(413, "Question too long.");
+  // Nothing has been rate-limited yet, so never buffer more than a question can be (lib/read-body.ts).
+  const text = await readBodyTextOrNull(req, MAX_BODY);
+  if (text === null) return fail(413, "Question too long.");
   let parsed;
   try {
     parsed = body.safeParse(JSON.parse(text));

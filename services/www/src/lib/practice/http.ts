@@ -1,5 +1,6 @@
 import "server-only";
 import { reportError, routeFields } from "../http-errors";
+import { readBodyTextOrNull } from "../read-body";
 import { isNextControlFlow } from "../trace";
 import { getSessionUser, type SessionUser } from "../session";
 import { PracticeError } from "./errors";
@@ -28,8 +29,8 @@ export function sameOrigin(req: Request): boolean {
 
 export async function readJson(req: Request): Promise<unknown> {
   if (!req.headers.get("content-type")?.includes("application/json")) throw new PracticeError("Send JSON.", 415, "unsupported_media_type");
-  const text = await req.text();
-  if (text.length > 200_000) throw new PracticeError("Request too large.", 413, "too_large");
+  const text = await readBodyTextOrNull(req, 200_000);
+  if (text === null) throw new PracticeError("Request too large.", 413, "too_large");
   try {
     return JSON.parse(text);
   } catch {
