@@ -38,7 +38,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "promotion_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -80,7 +80,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "content_ideas_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }

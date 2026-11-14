@@ -3,11 +3,12 @@ name: practice-executor
 # check   → pull requests and pushes touching the executor or the practice catalog: executor tests, then the
 #           catalog build check (runs every reference solution through the sandbox runner and verifies the
 #           committed catalog.generated.json is up to date)
-# release → default branch: build the arm64 images and push them to Harbor as
-#           registry.jithendar.com/jithendar/practice-executor:latest and practice-sandbox:latest (the only tags)
-# deploy  → default branch, only when repository variable PRACTICE_EXECUTOR_DEPLOY is "true": restart the
-#           executor Deployments so they pull :latest, and wait for the rollout. Everything runs :latest; sandbox
-#           pods pull practice-sandbox:latest with imagePullPolicy Always.
+# release → a merged pull request: build the arm64 images and push them to Harbor as
+#           registry.jithendar.com/jithendar/practice-executor and practice-sandbox, each as :pr-<number> and :latest
+# deploy  → after release, only when repository variable PRACTICE_EXECUTOR_DEPLOY is "true": point the executor
+#           Deployments at practice-executor:pr-<number> and wait for the rollout (scripts/ci-rollout.py). Sandbox
+#           pods keep pulling practice-sandbox:latest (imagePullPolicy Always): that name is in the ConfigMap, which
+#           this job may not change.
 #           It never applies manifests: namespaces, RuntimeClass, admission policy, RBAC and Secrets are applied
 #           once by a person (services/www/docs/PYTHON_PRACTICE_EXECUTOR.md). Set the variable only after
 #           scripts/verify-practice-sandbox.sh passes on mk4; until then the job is skipped.
@@ -91,8 +92,8 @@ jobs:
       - name: Build and push
         id: push
         working-directory: services/executor
-        # Two tags for one image: pr-<number> is this release's own tag; latest is what the cluster runs
-        # (imagePullPolicy Always). A re-run builds and pushes again.
+        # Two tags for one image: pr-<number> is this release's own tag and what the Deployments will run; latest
+        # names the newest release (sandbox pods use it). A re-run builds and pushes again.
         run: |
           set -euo pipefail
           docker build --platform linux/arm64 --provenance=false -t "$REGISTRY/practice-executor:latest" .
@@ -111,8 +112,8 @@ jobs:
             echo "- also tagged $PR_TAG; commit $RELEASE_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Signs in as ServiceAccount jithendar/github-ci-deployer (minikube/80-ci-deployer.yaml), the same one that restarts the
-  # site: it may only restart the two executor Deployments here, cannot read Secrets or create pods, so it cannot
+  # Signs in as ServiceAccount jithendar/github-ci-deployer (minikube/80-ci-deployer.yaml), the same one that rolls out
+  # the site: it may only patch the two executor Deployments here, cannot read Secrets or create pods, so it cannot
   # weaken the sandbox.
   # Roll back: revert the commit on the default branch (CI rebuilds and redeploys), or switch execution off in
   # Admin → Python practice → Settings (instant).
@@ -124,13 +125,18 @@ jobs:
     concurrency:
       group: practice-executor-deploy
       cancel-in-progress: false
+    env:
+      IMAGE: registry.jithendar.com/jithendar/practice-executor
+      PR_TAG: pr-${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # A merged pull request is built from its merge commit on the default branch.
           ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
-          sparse-checkout: .github/jithendar-ci-deployer.yaml
+          sparse-checkout: |
+            .github/jithendar-ci-deployer.yaml
+            scripts/ci-rollout.py
           sparse-checkout-cone-mode: false
       - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
       - name: Roll out to mk4
@@ -146,21 +152,7 @@ jobs:
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           trap 'rm -f "$KUBECONFIG"' EXIT
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-          k() { kubectl -n jithendar "$@"; }
-
-          # Both Deployments and sandbox pods run :latest with imagePullPolicy Always, so a restart deploys the release.
-          for d in practice-executor-api practice-dispatcher; do
-            k rollout restart deploy/"$d"
-          done
-          for d in practice-executor-api practice-dispatcher; do
-            if ! k rollout status deploy/"$d" --timeout=5m; then
-              echo "::error::Rollout of $d did not finish within 5 minutes"
-              k get pods -l app="$d" -o wide || true
-              exit 1
-            fi
-          done
-          {
-            echo '### Deployed to mk4'
-            echo "- practice-executor-api, practice-dispatcher restarted on \`practice-executor:latest\` ($GITHUB_SHA)"
-            echo "- sandbox runtime python-3.13 → \`practice-sandbox:latest\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          # Both executor Deployments run this release's own tag from here on (a re-run restarts them instead).
+          # Sandbox pods are created by the dispatcher from practice-sandbox:latest with imagePullPolicy Always.
+          python3 scripts/ci-rollout.py "$IMAGE" "$PR_TAG"
+          echo "- sandbox runtime python-3.13 → \`practice-sandbox:latest\` ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"

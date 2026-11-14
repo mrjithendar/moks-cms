@@ -37,7 +37,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "gsc_sync_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -79,7 +79,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "ga4_sync_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -121,7 +121,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "tech_audit_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -163,7 +163,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "ask_gaps_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -205,7 +205,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "weekly_recommendations_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -247,7 +247,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "report_flow", '{"period":"weekly"}']
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -289,7 +289,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "internal_linking_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -331,7 +331,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "report_flow", '{"period":"monthly"}']
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -373,7 +373,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "reindex_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
@@ -417,7 +417,7 @@ spec:
           containers:
             - name: trigger
               image: registry.jithendar.com/jithendar/seo-agent:latest
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command: ["python", "-m", "app.trigger", "seo_ml_flow"]
               env:
                 - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }

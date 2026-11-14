@@ -7,7 +7,7 @@ First-time Google setup: [MANUAL_SETUP.md](MANUAL_SETUP.md).
 
 Nothing new runs in the cluster: the platform lives in the `jithendar-com` Deployment and its existing worker.
 
-1. Merge the PR to `master` (a person). CI builds and pushes `jithendar-com:latest` and restarts the Deployment. On
+1. Merge the PR to `master` (a person). CI builds and pushes `jithendar-com:pr-<number>` and rolls the Deployment out on it. On
    start the migrator applies `0011_seo_intelligence.sql` (additive, under the existing advisory lock).
 2. `scripts/set-seo-config.sh /path/to/key.json` (a person, `mk4` context): merges `GOOGLE_SEO_SERVICE_ACCOUNT_JSON`
    (and optional `PAGESPEED_API_KEY`) into Secret `jithendar-com-env`, and `SEO_GSC_PROPERTY` / `SEO_GA4_PROPERTY_ID`
