@@ -62,8 +62,9 @@ export async function standbyCheck(start: () => Promise<void> | void, afterMs: n
 }
 
 /**
- * Web side: look at the heartbeat every minute until this replica has taken over. The first look is a minute after
- * start, which gives a worker that restarts in the same release time to come back.
+ * Web side: look at the heartbeat every minute until this replica has taken over. The first look comes a full
+ * silence period after start: a release restarts the worker at the same moment as this replica, and on the very
+ * first roll-out the worker has never reported at all.
  */
 export function startStandby(start: () => Promise<void> | void): void {
   const g = globalThis as unknown as { __standbyTimer?: NodeJS.Timeout };
@@ -80,6 +81,10 @@ export function startStandby(start: () => Promise<void> | void): void {
       busy = false;
     }
   };
-  g.__standbyTimer = setInterval(() => void look(), STANDBY_CHECK_MS);
+  g.__standbyTimer = setTimeout(() => {
+    g.__standbyTimer = setInterval(() => void look(), STANDBY_CHECK_MS);
+    g.__standbyTimer.unref?.();
+    void look();
+  }, STANDBY_AFTER_MS);
   g.__standbyTimer.unref?.();
 }
