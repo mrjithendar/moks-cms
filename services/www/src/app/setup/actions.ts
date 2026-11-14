@@ -10,6 +10,7 @@ import { adminExists, createOrPromoteAdmin } from "@/lib/setup";
 import { audit } from "@/lib/audit";
 import { hashPassword } from "better-auth/crypto";
 import { invalidateContent } from "@/lib/content";
+import { site } from "@/config/site";
 import { importFromFiles } from "@/lib/content/import";
 
 const input = z.object({
@@ -47,7 +48,7 @@ export async function setupAction(_prev: SetupState, form: FormData): Promise<Se
   const userId = await createOrPromoteAdmin(db, { name, email, hash });
 
   const root = process.env.CONTENT_SEED_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), "content");
-  const authorSlug = "jithendar-dharmapuri";
+  const authorSlug = site.primaryAuthor;
   const imported = await importFromFiles(db, root, new Map([[authorSlug, userId]]));
   const author = imported.authors.get(authorSlug);
   await db

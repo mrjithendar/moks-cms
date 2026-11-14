@@ -21,7 +21,7 @@ and `:latest` (Harbor; the same image) and rolls the site out on `:pr-<number>` 
 the whole release. A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
 only `ci-content.yml`, for articles and images, still runs on push).
 
-**Content-only changes** (`services/www/content/**`, `services/www/public/images/**`) do not rebuild the site. `ci-content.yml`
+**Content-only changes** (`sites/*/content/**`, `sites/*/public/images/**`) do not rebuild the site. `ci-content.yml`
 validates the MDX (schema and internal links), packages both folders into the small
 `registry.jithendar.com/jithendar/moks-cms-content:latest` image (`services/www/Dockerfile.content`), pushes it and restarts
 the site. The pods' init container `content` copies it over `/app/content` and `/app/public/images`. This takes about a

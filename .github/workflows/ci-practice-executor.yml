@@ -22,7 +22,7 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - 'services/executor/**'
-      - 'services/www/content/python-practice/**'
+      - 'sites/*/content/python-practice/**'
       - 'minikube/practice-executor-*.yaml'
       - 'scripts/manifests.sh'
       - '.github/workflows/ci-practice-executor.yml'
@@ -57,7 +57,7 @@ jobs:
       - name: Catalog is valid and up to date
         run: |
           python services/executor/tools/build_problems.py
-          git diff --exit-code -- services/www/content/python-practice/catalog.generated.json || {
+          git diff --exit-code -- sites/jithendar.com/content/python-practice/catalog.generated.json || {
             echo "::error::catalog.generated.json is stale: run python services/executor/tools/build_problems.py and commit it"; exit 1; }
       - name: Render manifests
         run: scripts/manifests.sh practice-executor | python scripts/ci-app-manifests.py > /dev/null

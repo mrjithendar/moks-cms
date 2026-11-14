@@ -3,7 +3,7 @@ name: wwww-content
 # Content-only releases: no lint, no typecheck, no Next.js build.
 #
 # check   → pull requests touching content: validate content/ (frontmatter schema, internal links)
-# release → default branch: validate, package services/www/content and services/www/public/images into a tiny busybox image,
+# release → default branch: validate, package sites/$SITE/content and sites/$SITE/public/images into a tiny busybox image,
 #           push registry.jithendar.com/jithendar/moks-cms-content:latest to Harbor, then
 #           `kubectl rollout restart deploy/jithendar-com` so the init container "content" copies the new files
 #           into the pods (minikube/30-jithendar-com.yaml).
@@ -24,15 +24,15 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'services/www/content/**'
-      - 'services/www/public/images/**'
+      - 'sites/*/content/**'
+      - 'sites/*/public/images/**'
       - 'services/www/Dockerfile.content'
       - 'services/www/Dockerfile.content.dockerignore'
       - '.github/workflows/ci-content.yml'
   push:
     paths:
-      - 'services/www/content/**'
-      - 'services/www/public/images/**'
+      - 'sites/*/content/**'
+      - 'sites/*/public/images/**'
       - 'services/www/Dockerfile.content'
       - 'services/www/Dockerfile.content.dockerignore'
       - '.github/workflows/ci-content.yml'
@@ -43,6 +43,10 @@ permissions:
 concurrency:
   group: moks-cms-content-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  # The site in sites/ whose content this workflow ships.
+  SITE: jithendar.com
 
 defaults:
   run:
@@ -63,6 +67,7 @@ jobs:
           cache: npm
           cache-dependency-path: services/www/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
       - name: Validate content
         run: npx vitest run tests/content.test.ts tests/links.test.ts
 
@@ -83,6 +88,7 @@ jobs:
           cache: npm
           cache-dependency-path: services/www/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
       - name: Validate content
         run: npx vitest run tests/content.test.ts tests/links.test.ts
       - name: Log in to Harbor
@@ -103,8 +109,8 @@ jobs:
           out="$(mktemp -d)"; mkdir -p "$out/content" "$out/images"; chmod 777 "$out/content" "$out/images"
           docker run --rm -v "$out/content:/mnt/content" -v "$out/images:/mnt/images" "$REGISTRY_IMAGE:latest"
           test -d "$out/content/blog" && test -d "$out/content/authors"
-          [[ "$(find "$out/content" -name '*.mdx' | wc -l)" -eq "$(find content -name '*.mdx' | wc -l)" ]]
-          [[ "$(find "$out/images" -type f | wc -l)" -eq "$(find public/images -type f | wc -l)" ]]
+          [[ "$(find "$out/content" -name '*.mdx' | wc -l)" -eq "$(find "../../sites/$SITE/content" -name '*.mdx' | wc -l)" ]]
+          [[ "$(find "$out/images" -type f | wc -l)" -eq "$(find "../../sites/$SITE/public/images" -type f | wc -l)" ]]
           echo "Copied $(find "$out/content" -name '*.mdx' | wc -l) MDX files and $(find "$out/images" -type f | wc -l) images"
       - name: Push
         run: docker push --quiet "$REGISTRY_IMAGE:latest"
@@ -121,18 +127,19 @@ jobs:
             git show "$1:$2" 2>/dev/null | awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit }
               /^status:[[:space:]]*["'"'"']?published/ { found = 1 } END { exit !found }'
           }
+          C="sites/$SITE/content" I="sites/$SITE/public/images"
           restart=true reason="manual run or unknown range"
           if [[ "$EVENT" == push && -n "$BEFORE" && ! "$BEFORE" =~ ^0+$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             restart=false reason="only unpublished articles and new images changed"
             while IFS=$'\t' read -r status path; do
               case "$path" in
-                services/www/content/blog/*.mdx|services/www/content/news/*.mdx|services/www/content/projects/*.mdx)
+                "$C"/blog/*.mdx|"$C"/news/*.mdx|"$C"/projects/*.mdx)
                   if published "$BEFORE" "$path" || published "$GITHUB_SHA" "$path"; then restart=true reason="published: $path"; break; fi ;;
-                services/www/public/images/*)
+                "$I"/*)
                   if [[ "$status" != A ]]; then restart=true reason="image changed: $path"; break; fi ;;
                 *) restart=true reason="other change: $path"; break ;;
               esac
-            done < <(git diff --name-status --no-renames "$BEFORE" "$GITHUB_SHA" -- services/www/content services/www/public/images \
+            done < <(git diff --name-status --no-renames "$BEFORE" "$GITHUB_SHA" -- "$C" "$I" \
                        services/www/Dockerfile.content services/www/Dockerfile.content.dockerignore .github/workflows/ci-content.yml)
           fi
           echo "Restart: $restart ($reason)"
@@ -152,8 +159,8 @@ jobs:
         run: |
           set -uo pipefail
           mapfile -t added < <(git -C "$GITHUB_WORKSPACE" diff --name-only --no-renames --diff-filter=A "$BEFORE" "$GITHUB_SHA" -- \
-            'services/www/content/blog/*.mdx' 'services/www/content/news/*.mdx' 'services/www/content/projects/*.mdx' \
-            | sed 's#^services/www/##')
+            "sites/$SITE/content/blog/*.mdx" "sites/$SITE/content/news/*.mdx" "sites/$SITE/content/projects/*.mdx" \
+            | sed 's#^#../../#')
           sent=0 waiting=0
           {
             echo '### New draft articles'
