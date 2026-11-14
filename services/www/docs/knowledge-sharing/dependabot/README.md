@@ -16,4 +16,4 @@ The SVG is rendered by the script (shared writer in `../roboshop-ai/diagrams`), 
   alerts and security updates enabled in all five; `allow_auto_merge` false.
 - `gh pr list --author app/dependabot --state all` and `/dependabot/alerts` for the counts in section 1.
 - Deploy row: header comments of each `dependabot.yml`, `tools/.github/workflows/create-aws-infrastructure.yml`
-  (master only), `jithendar.com/.github/workflows/ci-jithendar-com.yml` (forks skipped).
+  (master only), `moks-cms/.github/workflows/ci-jithendar-com.yml` (forks skipped).

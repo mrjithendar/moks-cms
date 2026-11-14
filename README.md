@@ -1,6 +1,6 @@
-# jithendar.com
+# moks-cms
 
-Personal website and tech blog covering DevOps, cloud infrastructure, Kubernetes and AI engineering.
+The source of [jithendar.com](https://jithendar.com) (this repository was called `jithendar.com` until 2026-11-14): a personal website and tech blog covering DevOps, cloud infrastructure, Kubernetes and AI engineering.
 Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 
 | Path | Contents |
@@ -12,18 +12,18 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 | [`services/grafana/`](services/grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app (its path must be `services/grafana`) |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
-| `.github/workflows/` | CI: checks pull requests; when one is merged, builds the images, pushes them to Harbor (`registry.jithendar.com`), rolls them out and applies `minikube/` |
+| `.github/workflows/` | CI: checks pull requests; when one is merged, builds the images (`moks-cms`, `moks-cms-content`, `seo-agent`, `practice-executor`), pushes them to Harbor (`registry.jithendar.com/jithendar`), rolls them out and applies `minikube/` |
 
 ## Release
 
-Merge a pull request into `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/jithendar-com:pr-<number>`
+Merge a pull request into `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/moks-cms:pr-<number>`
 and `:latest` (Harbor; the same image) and rolls the site out on `:pr-<number>` (`scripts/ci-rollout.py`). That is
 the whole release. A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
 only `ci-content.yml`, for articles and images, still runs on push).
 
 **Content-only changes** (`services/www/content/**`, `services/www/public/images/**`) do not rebuild the site. `ci-content.yml`
 validates the MDX (schema and internal links), packages both folders into the small
-`registry.jithendar.com/jithendar/jithendar-content:latest` image (`services/www/Dockerfile.content`), pushes it and restarts
+`registry.jithendar.com/jithendar/moks-cms-content:latest` image (`services/www/Dockerfile.content`), pushes it and restarts
 the site. The pods' init container `content` copies it over `/app/content` and `/app/public/images`. This takes about a
 minute, not a full build. A push that changes both code and content runs both workflows.
 

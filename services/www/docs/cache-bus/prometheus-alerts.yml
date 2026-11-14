@@ -16,4 +16,4 @@ groups:
         annotations:
           summary: 'Cache bus: no site pod is subscribed to Valkey for 15 minutes (caches converge only after their TTL)'
           description: 'Check Admin → System status (Cache bus), the site logs (event cache_bus_subscriber), Secret jithendar/redis-site-cachebus-credentials, NetworkPolicy jithendar-com-cache-bus (pod port 6380) and the Valkey pods in namespace redis.'
-          runbook_url: 'https://github.com/mrjithendar/jithendar.com/blob/master/services/www/docs/redis-site-cachebus.md#troubleshooting'
+          runbook_url: 'https://github.com/mrjithendar/moks-cms/blob/master/services/www/docs/redis-site-cachebus.md#troubleshooting'

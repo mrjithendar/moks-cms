@@ -1,13 +1,13 @@
 # Deployment — jithendar.com on mk4
 
-**When a pull request is merged into `master`, CI builds, pushes `jithendar-com:pr-<number>` and `:latest` (one image) and rolls the site out on `:pr-<number>`** (a plain push to `master` builds nothing: the workflows have no `push` trigger); `.github/workflows/deploy-minikube.yml` applies manifest changes on the same merge (there is no `deploy.sh` any more, removed 2026-11-14). Argo CD is not used for this site. The site runs the tag of its last release, `:pr-<number>`, with `imagePullPolicy: Always`, never a digest (owner decision 2026-11-14; until then it always ran `:latest`). CI points the Deployment at the new tag after each image build and, from `deploy-minikube.yml`, applies `minikube/` without changing the image a workload runs (see Release).
+**When a pull request is merged into `master`, CI builds, pushes `moks-cms:pr-<number>` and `:latest` (one image) and rolls the site out on `:pr-<number>`** (a plain push to `master` builds nothing: the workflows have no `push` trigger); `.github/workflows/deploy-minikube.yml` applies manifest changes on the same merge (there is no `deploy.sh` any more, removed 2026-11-14). Argo CD is not used for this site. The site runs the tag of its last release, `:pr-<number>`, with `imagePullPolicy: Always`, never a digest (owner decision 2026-11-14; until then it always ran `:latest`). CI points the Deployment at the new tag after each image build and, from `deploy-minikube.yml`, applies `minikube/` without changing the image a workload runs (see Release).
 
 | Piece | Where |
 |---|---|
-| Image | `registry.jithendar.com/jithendar/jithendar-com` in Harbor (arm64; every release is `:pr-<number>`, `:latest` names the newest; last 10 builds kept; CI pushes as robot `robot$jithendar+jithendar-com`, secrets `HARBOR_USERNAME`/`HARBOR_PASSWORD`) |
-| Pipeline | `.github/workflows/ci-jithendar-com.yml`: `check` on pull requests; when a pull request that changes the image is merged into `master`, `release` pushes `jithendar-com:pr-<number>` and `:latest` and runs `scripts/ci-rollout.py`, which sets every Deployment that uses the image to `:pr-<number>` and waits |
+| Image | `registry.jithendar.com/jithendar/moks-cms` in Harbor (arm64; every release is `:pr-<number>`, `:latest` names the newest; last 10 builds kept; CI pushes as robot `robot$jithendar+jithendar-com`, secrets `HARBOR_USERNAME`/`HARBOR_PASSWORD`) |
+| Pipeline | `.github/workflows/ci-jithendar-com.yml`: `check` on pull requests; when a pull request that changes the image is merged into `master`, `release` pushes `moks-cms:pr-<number>` and `:latest` and runs `scripts/ci-rollout.py`, which sets every Deployment that uses the image to `:pr-<number>` and waits |
 | Deploy | Automatic when a pull request is merged into `master` (never on a direct push): the image workflows roll the Deployments out on the new tag, `deploy-minikube.yml` applies `minikube/`. Run that workflow by hand to re-apply everything and restart the site |
-| Manifests | `minikube/` at the repository root, one file per component (see `minikube/README.md`); they name `jithendar-com:latest`, which only a first apply uses: a workload that exists keeps the image it runs (`scripts/keep-live-images.py`) |
+| Manifests | `minikube/` at the repository root, one file per component (see `minikube/README.md`); they name `moks-cms:latest`, which only a first apply uses: a workload that exists keeps the image it runs (`scripts/keep-live-images.py`) |
 | Image pulls | Secret `jithendar/harbor-pull` (read-only robot `robot$k8s-pull`, never expires), written by the tools repository's `deploy/minikube/harbor/registry.py pull-secrets` |
 | TLS | The Istio gateway's wildcard certificate (`jithendar.com`, `*.jithendar.com`, DNS-01), in the miniKube repo (`deploy/minikube/istio/edge`). `minikube/45-`, `50-` and `55-` are Traefik's certificate and TLSStore, kept only until Traefik is uninstalled (`minikube/README.md`, "Leaving Traefik"). |
 
@@ -78,7 +78,7 @@ access log's `ip` field shows the decision: after a deploy, check that it is you
 
 ## Release
 
-Merge a pull request into `master`. CI's `release` job lints, tests, builds `linux/arm64` with `GIT_SHA` baked in, pushes `jithendar-com:pr-<number>` and `:latest`, sets `deploy/jithendar-com` (and any other Deployment that runs this image) to `:pr-<number>` and waits for the rollout. Nothing else to do. `kubectl -n jithendar get deploy -o wide` shows which release is live. A pod that restarts later gets the same image again, whatever has been pushed since.
+Merge a pull request into `master`. CI's `release` job lints, tests, builds `linux/arm64` with `GIT_SHA` baked in, pushes `moks-cms:pr-<number>` and `:latest`, sets `deploy/jithendar-com` (and any other Deployment that runs this image) to `:pr-<number>` and waits for the rollout. Nothing else to do. `kubectl -n jithendar get deploy -o wide` shows which release is live. A pod that restarts later gets the same image again, whatever has been pushed since.
 
 ### Manifest changes (`.github/workflows/deploy-minikube.yml`)
 
@@ -136,7 +136,7 @@ The script checks health (and version), homepage, about, RSS, both sitemaps, rob
 
 ## Rollback
 
-Fastest: `kubectl -n jithendar set image deploy/jithendar-com web=registry.jithendar.com/jithendar/jithendar-com:pr-<last good number>` (the container is called `web`; `python3 scripts/ci-rollout.py registry.jithendar.com/jithendar/jithendar-com pr-<last good number>` does the same for every Deployment that runs the image and waits) (every release keeps its `pr-<number>` tag). It stays there until the next release: applying `minikube/`, by a merge or a manual run of the deploy workflow, does not change the image. `kubectl -n jithendar rollout undo deploy/jithendar-com` also works now that each release has its own tag. Or revert the bad change in a pull request and merge it: CI builds it and rolls it out as a new `pr-<number>`. A failed rollout leaves the old pods serving, so a broken image never takes the site down by itself.
+Fastest: `kubectl -n jithendar set image deploy/jithendar-com web=registry.jithendar.com/jithendar/moks-cms:pr-<last good number>` (the container is called `web`; `python3 scripts/ci-rollout.py registry.jithendar.com/jithendar/moks-cms pr-<last good number>` does the same for every Deployment that runs the image and waits) (every release keeps its `pr-<number>` tag). It stays there until the next release: applying `minikube/`, by a merge or a manual run of the deploy workflow, does not change the image. `kubectl -n jithendar rollout undo deploy/jithendar-com` also works now that each release has its own tag. Or revert the bad change in a pull request and merge it: CI builds it and rolls it out as a new `pr-<number>`. A failed rollout leaves the old pods serving, so a broken image never takes the site down by itself.
 
 ## Limits
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Roll every Deployment that runs an image repository to one tag, and wait until it is ready.
 
-  scripts/ci-rollout.py registry.jithendar.com/jithendar/jithendar-com pr-123
+  scripts/ci-rollout.py registry.jithendar.com/jithendar/moks-cms pr-123
+  scripts/ci-rollout.py registry.jithendar.com/jithendar/moks-cms pr-123 --previous registry.jithendar.com/jithendar/jithendar-com
 
 The release jobs call this after pushing an image (ci-jithendar-com.yml, ci-seo-agent.yml, ci-practice-executor.yml):
 
@@ -10,6 +11,8 @@ The release jobs call this after pushing an image (ci-jithendar-com.yml, ci-seo-
   second Deployment that runs the same image is released with the first;
 - a Deployment that is already on that tag is restarted instead: the job was run again and pushed the tag again,
   and imagePullPolicy Always pulls it on restart;
+- `--previous <repository>` (repeatable) names a repository the image was renamed from: containers that still run it
+  are moved to <repository>:<tag> as well. Without it, the first release after a rename would find no Deployment;
 - each rollout is waited for (ROLLOUT_TIMEOUT, default 5m). One that does not finish fails the job; the others are
   still waited for.
 
@@ -36,14 +39,16 @@ def repository(image: str) -> str:
     return f"{head}/{last}" if head else last
 
 
-def plan(deployments: list[dict], repo: str, tag: str) -> tuple[dict[str, list[str]], list[str]]:
-    """(Deployment → containers to set, Deployments already on the tag) for everything that runs `repo`."""
+def plan(deployments: list[dict], repo: str, tag: str, previous: tuple[str, ...] = ()) -> tuple[dict[str, list[str]], list[str]]:
+    """(Deployment → containers to set, Deployments already on the tag) for everything that runs `repo` (or one of
+    the `previous` repositories it was renamed from)."""
     target = f"{repo}:{tag}"
+    repos = {repo, *previous}
     to_set: dict[str, list[str]] = {}
     current: list[str] = []
     for d in deployments:
         spec = d.get("spec", {}).get("template", {}).get("spec", {})
-        ours = [c for c in [*spec.get("initContainers", []), *spec.get("containers", [])] if repository(c.get("image", "")) == repo]
+        ours = [c for c in [*spec.get("initContainers", []), *spec.get("containers", [])] if repository(c.get("image", "")) in repos]
         if not ours:
             continue
         name = d["metadata"]["name"]
@@ -64,10 +69,19 @@ def kubectl(*args: str, capture: bool = False) -> subprocess.CompletedProcess[st
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3 or not argv[2] or ":" in argv[2] or not argv[1] or repository(argv[1]) != argv[1]:
-        print(f"usage: {argv[0]} <image repository without a tag> <tag>", file=sys.stderr)
+    usage = f"usage: {argv[0]} <image repository without a tag> <tag> [--previous <repository>]..."
+    args, previous = argv[1:3], []
+    rest = argv[3:]
+    while rest:
+        if rest[0] != "--previous" or len(rest) < 2 or not rest[1] or repository(rest[1]) != rest[1]:
+            print(usage, file=sys.stderr)
+            return 2
+        previous.append(rest[1])
+        rest = rest[2:]
+    if len(args) != 2 or not args[1] or ":" in args[1] or not args[0] or repository(args[0]) != args[0]:
+        print(usage, file=sys.stderr)
         return 2
-    repo, tag = argv[1], argv[2]
+    repo, tag = args
     target = f"{repo}:{tag}"
     timeout = os.environ.get("ROLLOUT_TIMEOUT", "5m")
 
@@ -75,7 +89,7 @@ def main(argv: list[str]) -> int:
     if listed.returncode != 0:
         print("::error::Could not list Deployments (is the kubeconfig set up? scripts/setup-ci-deployer.sh)", file=sys.stderr)
         return 1
-    to_set, current = plan(json.loads(listed.stdout).get("items", []), repo, tag)
+    to_set, current = plan(json.loads(listed.stdout).get("items", []), repo, tag, tuple(previous))
     if not to_set and not current:
         print(f"::error::No Deployment runs {repo}. Apply minikube/ first; the release only moves workloads that exist.", file=sys.stderr)
         return 2
