@@ -20,5 +20,6 @@ resources:
 - 81-ci-deployer-admission.yaml
 - 85-ci-applier.yaml
 
-# The site always runs jithendar-com:latest (imagePullPolicy Always, set in 30-jithendar-com.yaml): CI pushes
-# :latest and restarts the Deployment. No digest pinning.
+# The manifests name moks-cms:latest (imagePullPolicy Always, set in 30-jithendar-com.yaml) for a first apply only:
+# each release runs its own moks-cms:pr-<number> (scripts/ci-rollout.py), and deploy-minikube.yml keeps that tag when
+# it applies (scripts/keep-live-images.py). No digest pinning.
