@@ -63,6 +63,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/recommendations", label: "Recommendations", section: "Insights" },
           { href: "/admin/content-audit", label: "Content audit", section: "Insights" },
           { href: "/admin/links", label: "Internal linking", section: "Insights" },
+          { href: "/admin/backlinks", label: "Backlinks", section: "Insights" },
           { href: "/admin/technical", label: "Technical health", section: "Insights" },
           { href: "/admin/reports", label: "Reports", section: "Insights" },
         ]

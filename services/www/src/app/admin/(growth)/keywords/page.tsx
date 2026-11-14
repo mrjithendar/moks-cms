@@ -65,7 +65,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
     <>
       <AdminHeader
         title="Keyword opportunities"
-        description="From your Search Console data only. There are no search-volume or difficulty columns because no licensed third-party source is configured; anonymised queries are not included, so totals are partial."
+        description="From your Search Console data; anonymised queries are not included, so totals are partial. Volume and keyword difficulty (KD) come from DataForSEO when it is configured (Settings → Data sources) and show — otherwise."
         actions={<Link href="/admin/keywords/tracked" className="inline-flex min-h-9 items-center rounded-md border border-line-strong px-3 text-sm">Tracked keywords</Link>}
       />
       <nav aria-label="Opportunity views" className="-mx-1 mb-4 overflow-x-auto pb-1">

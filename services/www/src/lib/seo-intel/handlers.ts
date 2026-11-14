@@ -59,6 +59,10 @@ registerSeoHandler("keywords_refresh", async (ctx) => {
   return { status: "succeeded", rows: r.clustered, detail: { ...r, alerts: alerts.length } };
 });
 
+registerSeoHandler("dataforseo_keywords", async (ctx) => (await import("./dataforseo")).runKeywordMetrics(ctx));
+registerSeoHandler("serp_ranks", async (ctx) => (await import("./dataforseo")).runSerpRanks(ctx));
+registerSeoHandler("backlinks", async (ctx) => (await import("./dataforseo")).runBacklinks(ctx));
+
 export { seoJobHandler, runSeoJob } from "./jobs";
 export { draftJobHandler } from "./drafts";
 export { verifyJobHandler } from "./publish";

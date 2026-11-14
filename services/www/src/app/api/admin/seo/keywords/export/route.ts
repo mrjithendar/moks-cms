@@ -13,11 +13,11 @@ const cell = (v: unknown) => {
 /** GET /api/admin/seo/keywords/export?…same filters as the page… — CSV of the current view (up to 5,000 rows). */
 export const GET = seoRoute("keywords-export", { rate: { max: 20, windowSeconds: 600 } }, async (_req, ctx) => {
   const p = { ...parseKwParams(ctx.query), limit: 500, offset: 0 };
-  const header = ["query", "best_page", "position", "position_change", "impressions", "clicks", "ctr", "expected_ctr_site_curve", "click_gap_estimate", "intent", "parent_topic", "brand", "tracked"];
+  const header = ["query", "best_page", "position", "position_change", "impressions", "clicks", "ctr", "expected_ctr_site_curve", "click_gap_estimate", "intent", "parent_topic", "brand", "tracked", "search_volume_dataforseo", "keyword_difficulty_dataforseo"];
   const lines = [header.join(",")];
   for (let page = 0; page < 10; page++) {
     const r = await keywordTable({ ...p, offset: page * 500 });
-    for (const x of r.rows) lines.push([x.query, x.page, x.position, x.change, x.impressions, x.clicks, x.ctr, x.expectedCtr, x.gap, x.intent, x.parentTopic, x.brand, x.tracked].map(cell).join(","));
+    for (const x of r.rows) lines.push([x.query, x.page, x.position, x.change, x.impressions, x.clicks, x.ctr, x.expectedCtr, x.gap, x.intent, x.parentTopic, x.brand, x.tracked, x.volume, x.difficulty].map(cell).join(","));
     if (r.rows.length < 500) break;
   }
   return new Response(`${lines.join("\n")}\n`, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="keywords-${p.view}-${p.days}d.csv"`, "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" } });

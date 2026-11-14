@@ -22,7 +22,7 @@ import { syncGa4PagePairs, syncGa4Window, syncGscWindow } from "./sync";
  *   window, status, rows, API requests, retries, error and correlation id, and records Prometheus metrics.
  * - Backfills are manual only and resumable: each job handles a time-boxed slice and enqueues the rest.
  */
-export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest", "keywords_refresh", "auto_links", "link_check"] as const;
+export const JOB_TYPES = ["gsc_sync", "ga4_sync", "gsc_backfill", "ga4_backfill", "technical_scan", "recommendations", "report_weekly", "report_monthly", "retention", "outcomes", "drafts_weekly", "drafts_poll", "drafts_digest", "keywords_refresh", "auto_links", "link_check", "dataforseo_keywords", "serp_ranks", "backlinks"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 export type Trigger = "schedule" | "manual" | "backfill";
 export const JOB_KIND = "seo";
@@ -317,6 +317,13 @@ export function dueSlots(s: SeoSettings, now: Date): { type: JobType; slot: stri
   if (s.links.enabled && al.enabled && dow === al.weekday && h >= al.hourUtc) out.push({ type: "auto_links", slot: day });
   const lc = s.links.check;
   if (lc.enabled && dow === lc.weekday && h >= lc.hourUtc) out.push({ type: "link_check", slot: day });
+  const dfs = s.dataforseo;
+  if (dfs.enabled) {
+    // Daily after the keyword refresh: only stale metrics are bought, so most days cost nothing.
+    if (dfs.keywordMetrics.enabled && h >= Math.min(23, sc.gscDaily.hourUtc + 2)) out.push({ type: "dataforseo_keywords", slot: day });
+    if (dfs.rankTracking.enabled && dow === dfs.rankTracking.weekday && h >= dfs.rankTracking.hourUtc) out.push({ type: "serp_ranks", slot: day });
+    if (dfs.backlinks.enabled && dow === dfs.backlinks.weekday && h >= dfs.backlinks.hourUtc) out.push({ type: "backlinks", slot: day });
+  }
   if (h >= 2) out.push({ type: "retention", slot: day });
   if (h >= 9) out.push({ type: "outcomes", slot: day });
   return out;

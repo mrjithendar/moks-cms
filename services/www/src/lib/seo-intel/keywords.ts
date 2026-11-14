@@ -12,8 +12,9 @@ import { claudeConfig, getSeoSettings, type SeoSettings } from "./settings";
 import { addDays } from "./sqlutil";
 
 /**
- * v2 Phase 6: keyword opportunities from data the site actually has — Search Console queries (and content). No search
- * volume or keyword difficulty: no licensed third-party source is configured, so those columns do not exist.
+ * v2 Phase 6: keyword opportunities from data the site actually has — Search Console queries (and content). Search
+ * volume and keyword difficulty come from DataForSEO when it is configured (dataforseo.ts, seo_keyword_metrics) and
+ * are null otherwise.
  *
  * - Expected CTR comes from the site's OWN position→CTR curve (last 90 days, web), pooled to be non-increasing; sparse
  *   positions fall back to the v1 yardstick and are marked as such. Click gap = impressions × (expected − actual CTR),
@@ -27,7 +28,7 @@ export const VIEWS = ["all", "striking", "low_ctr", "rising", "new", "lost", "ca
 export type View = (typeof VIEWS)[number];
 export const INTENTS = ["informational", "navigational", "commercial", "troubleshooting", "comparison"] as const;
 export type Intent = (typeof INTENTS)[number];
-export const SORTABLE = ["query", "position", "change", "impressions", "clicks", "ctr", "expected_ctr", "gap", "intent", "parent_topic"] as const;
+export const SORTABLE = ["query", "position", "change", "impressions", "clicks", "ctr", "expected_ctr", "gap", "intent", "parent_topic", "volume", "difficulty"] as const;
 const MAX_POS = 30;
 
 // --- CTR curve (pure) ---------------------------------------------------------------------------------------------
@@ -153,7 +154,7 @@ export function parseKwParams(input: Record<string, string | undefined> | URLSea
 /** "gap:desc,impressions:desc" → allowlisted ORDER BY text (multi-column sort). */
 export function orderByText(sort: string | undefined, view: View): string {
   const def = { all: "impressions:desc", striking: "gap:desc", low_ctr: "gap:desc", rising: "growth:desc", new: "impressions:desc", lost: "prev_impressions:desc", cannibalization: "impressions:desc", gaps: "impressions:desc" }[view];
-  const cols: Record<string, string> = { query: "query", position: "position", change: "change", impressions: "impressions", clicks: "clicks", ctr: "ctr", expected_ctr: "expected_ctr", gap: "gap", intent: "intent", parent_topic: "parent_topic", growth: "growth", prev_impressions: "prev_impressions" };
+  const cols: Record<string, string> = { query: "query", position: "position", change: "change", impressions: "impressions", clicks: "clicks", ctr: "ctr", expected_ctr: "expected_ctr", gap: "gap", intent: "intent", parent_topic: "parent_topic", growth: "growth", prev_impressions: "prev_impressions", volume: "volume", difficulty: "difficulty" };
   const parts = (sort || def).split(",").slice(0, 3).map((p) => p.split(":")).filter(([c]) => cols[c!]).map(([c, d]) => `${cols[c!]} ${d === "asc" ? "asc" : "desc"} nulls last`);
   return [...(parts.length ? parts : [`${def.replace(":", " ")} nulls last`]), "query asc"].join(", ");
 }
@@ -178,7 +179,7 @@ export async function siteCurve(db: Db, asOf: string): Promise<Curve> {
 
 const pgArray = (xs: number[]) => `{${xs.map((x) => x.toFixed(6)).join(",")}}`;
 
-export type KwRow = { query: string; page: string | null; articleId: string | null; position: number | null; prevPosition: number | null; change: number | null; impressions: number; prevImpressions: number; clicks: number; ctr: number; expectedCtr: number; gap: number; intent: Intent | null; intentSource: string | null; clusterId: number | null; parentTopic: string | null; parentTopicSource: string | null; brand: boolean; tracked: boolean; firstSeen: string | null };
+export type KwRow = { query: string; page: string | null; articleId: string | null; position: number | null; prevPosition: number | null; change: number | null; impressions: number; prevImpressions: number; clicks: number; ctr: number; expectedCtr: number; gap: number; intent: Intent | null; intentSource: string | null; clusterId: number | null; parentTopic: string | null; parentTopicSource: string | null; brand: boolean; tracked: boolean; firstSeen: string | null; /** DataForSEO monthly search volume / difficulty (0–100); null when not bought. */ volume: number | null; difficulty: number | null };
 
 /** The keyword table for a view: aggregation, derived metrics, filters, sort and pagination all in SQL. */
 export async function keywordTable(p: KwParams) {
@@ -245,8 +246,10 @@ export async function keywordTable(p: KwParams) {
           pr.position - c.position as change,
           case when coalesce(pr.impressions, 0) > 0 then coalesce(c.impressions, 0) / pr.impressions - 1 else null end as growth,
           qi.intent, case when qi.source = 'model' then qi.model else qi.source end as intent_source, qc.cluster_id, qc.parent_topic, qc.source as cluster_source, coalesce(c.query, pr.query) ~* ${brand} as brand,
-          exists (select 1 from seo_tracked_keywords t where t.query = coalesce(c.query, pr.query)) as tracked, fs.first_seen
+          exists (select 1 from seo_tracked_keywords t where t.query = coalesce(c.query, pr.query)) as tracked, fs.first_seen,
+          km.search_volume as volume, km.keyword_difficulty as difficulty
         from cur c full outer join prev pr on pr.query = c.query
+        left join seo_keyword_metrics km on km.query = coalesce(c.query, pr.query)
         left join best b on b.query = coalesce(c.query, pr.query)
         left join seo_query_intents qi on qi.query = coalesce(c.query, pr.query)
         left join seo_query_clusters qc on qc.query = coalesce(c.query, pr.query)
@@ -284,6 +287,8 @@ export async function keywordTable(p: KwParams) {
         brand: Boolean(r.brand),
         tracked: Boolean(r.tracked),
         firstSeen: (r.first_seen as string | null) ?? null,
+        volume: n(r.volume),
+        difficulty: n(r.difficulty),
       }),
     ),
   };
