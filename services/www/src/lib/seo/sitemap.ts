@@ -4,6 +4,7 @@ import { collections } from "@/config/taxonomy";
 import { getCategories } from "@/lib/categories";
 import { articlesInCategory, getAuthors, getPages, getPublishedContent, isCategoryIndexable, lastModified, type Article } from "@/lib/content";
 import { getPublishedConfig } from "@/lib/site-config/store";
+import { GUIDE, GUIDE_PUBLIC_BASE, guideArticlePath } from "@/lib/user-guide";
 import { isSelfCanonical } from "./canonical";
 
 function newest(articles: Article[]): string | undefined {
@@ -39,8 +40,12 @@ export async function buildSitemap(now: Date = new Date()): Promise<MetadataRout
   // Hire me (/hire-me) while it is switched on (Admin → Appearance → Hire me).
   const publishedConfig = (await getPublishedConfig()).config;
   if (publishedConfig.hireMe.enabled) entries.push({ url: absoluteUrl("/hire-me") });
-  // The user manual (/user-manual) while it is public (Admin → Appearance → General → Public user manual).
-  if (publishedConfig.general.features.publicGuide) entries.push({ url: absoluteUrl("/user-manual") });
+  // The user manual while it is public (Admin → Appearance → General → Public user manual): its home page and one page
+  // per guide. Questions are answered in full on the home page, so their own pages are noindex and not listed.
+  if (publishedConfig.general.features.publicGuide) {
+    entries.push({ url: absoluteUrl(GUIDE_PUBLIC_BASE) });
+    for (const e of GUIDE) if (e.kind === "guide") entries.push({ url: absoluteUrl(guideArticlePath(GUIDE_PUBLIC_BASE, e.id)) });
+  }
   for (const article of published.filter((a) => isSelfCanonical(a) && !a.frontmatter.noindex)) {
     // Image sitemap entry: the public cover image the article actually shows.
     const cover = article.frontmatter.featuredImage;

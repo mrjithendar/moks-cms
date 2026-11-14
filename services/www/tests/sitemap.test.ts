@@ -45,7 +45,12 @@ describe("sitemap.xml: the public user manual", () => {
     config.general.features.publicGuide = true;
     vi.doMock("@/lib/site-config/store", async (orig) => ({ ...(await orig<object>()), getPublishedConfig: async () => ({ config }) }));
     const { buildSitemap: build } = await import("@/lib/seo/sitemap");
-    expect((await build(NOW)).map((e) => e.url)).toContain("https://jithendar.com/user-manual");
+    const listed = (await build(NOW)).map((e) => e.url);
+    expect(listed).toContain("https://jithendar.com/user-manual");
+    // One page per guide; a question's own page is noindex (the home page answers it in full) and is not listed.
+    expect(listed).toContain("https://jithendar.com/user-manual/posts");
+    expect(listed.some((u) => u.includes("/user-manual/faq-"))).toBe(false);
+    expect(listed).not.toContain("https://jithendar.com/user-manual/print");
     vi.doUnmock("@/lib/site-config/store");
     vi.resetModules();
   });

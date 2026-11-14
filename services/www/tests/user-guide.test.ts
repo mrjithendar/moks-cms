@@ -81,6 +81,62 @@ describe("user guide content", () => {
   });
 });
 
+describe("pages of the manual", () => {
+  it("gives every entry an id that can be the last part of its address", async () => {
+    const { GUIDE, GUIDE_RESERVED_IDS, guideArticlePath, GUIDE_ADMIN_BASE, GUIDE_PUBLIC_BASE } = await import("@/lib/user-guide");
+    for (const e of GUIDE) {
+      expect(e.id, e.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+      expect(GUIDE_RESERVED_IDS, `${e.id} is a page of the manual itself`).not.toContain(e.id);
+    }
+    // The reserved segments are the pages that exist next to [id] in both copies of the manual.
+    for (const base of ["src/app/admin/user-manual", "src/app/user-manual"]) {
+      const pages = readdirSync(path.join(ROOT, base)).filter((n) => statSync(path.join(ROOT, base, n)).isDirectory() && n !== "[id]");
+      expect(pages.sort(), base).toEqual([...GUIDE_RESERVED_IDS].sort());
+      expect(existsSync(path.join(ROOT, base, "[id]/page.tsx")), `${base}/[id]/page.tsx`).toBe(true);
+    }
+    expect(guideArticlePath(GUIDE_ADMIN_BASE, "posts")).toBe("/admin/user-manual/posts");
+    expect(guideArticlePath(GUIDE_PUBLIC_BASE, "posts")).toBe("/user-manual/posts");
+  });
+
+  it("lists every entry once in the contents, guides before questions in each category", async () => {
+    const { GUIDE, GUIDE_SECTIONS, guideFor, guideReadingOrder, guideToc } = await import("@/lib/user-guide");
+    const order = guideReadingOrder(GUIDE);
+    expect(order.map((e) => e.id).sort()).toEqual(GUIDE.map((e) => e.id).sort());
+    const toc = guideToc(GUIDE);
+    expect(toc.map((s) => s.section)).toEqual(GUIDE_SECTIONS.filter((s) => GUIDE.some((e) => e.section === s)));
+    for (const s of toc) {
+      expect(s.guides.every((e) => e.kind === "guide" && e.section === s.section), s.section).toBe(true);
+      expect(s.faqs.every((e) => e.kind === "faq" && e.section === s.section), s.section).toBe(true);
+    }
+    // An author's contents hold nothing an author may not read, and no empty category.
+    const authors = guideToc(guideFor(false));
+    expect(authors.flatMap((s) => [...s.guides, ...s.faqs]).some((e) => e.adminOnly)).toBe(false);
+    expect(authors.every((s) => s.guides.length + s.faqs.length > 0)).toBe(true);
+  });
+
+  it("links each entry to the one before and the one after it in reading order", async () => {
+    const { GUIDE, guideNeighbours, guideReadingOrder } = await import("@/lib/user-guide");
+    const order = guideReadingOrder(GUIDE);
+    expect(guideNeighbours(GUIDE, order[0]!.id)).toEqual({ previous: undefined, next: order[1] });
+    expect(guideNeighbours(GUIDE, order.at(-1)!.id)).toEqual({ previous: order.at(-2), next: undefined });
+    expect(guideNeighbours(GUIDE, order[5]!.id)).toEqual({ previous: order[4], next: order[6] });
+    expect(guideNeighbours(GUIDE, "no-such-entry")).toEqual({ previous: undefined, next: undefined });
+  });
+
+  it("suggests entries about the same admin page first, then the rest of the category, never the entry itself", async () => {
+    const { GUIDE, guideRelated, sameAdminPage } = await import("@/lib/user-guide");
+    const backups = GUIDE.find((e) => e.id === "backups")!;
+    const related = guideRelated(GUIDE, backups);
+    expect(related.length).toBeGreaterThan(0);
+    expect(related.map((e) => e.id)).not.toContain("backups");
+    const samePage = related.filter((e) => e.href && sameAdminPage(backups, e.href));
+    expect(related.slice(0, samePage.length)).toEqual(samePage);
+    expect(related.slice(samePage.length).every((e) => e.section === backups.section)).toBe(true);
+    expect(sameAdminPage(backups, "/admin/backups?tab=x")).toBe(true);
+    expect(sameAdminPage(backups, "/admin/storage")).toBe(false);
+  });
+});
+
 describe("settings reference", () => {
   it("lists every Automation & AI (SEO agent) setting, Advanced setting and MCP scope", async () => {
     const { settingsReference, seoSettingPaths } = await import("@/lib/user-guide-settings");

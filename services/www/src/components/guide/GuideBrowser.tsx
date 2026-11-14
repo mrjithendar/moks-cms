@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SearchIcon } from "@/components/icons";
 import { inputClass } from "@/components/ui/form";
-import { GUIDE_SECTIONS, searchGuide, type GuideEntry } from "@/lib/user-guide";
+import { GUIDE_SECTIONS, guideArticlePath, searchGuide, type GuideEntry } from "@/lib/user-guide";
 import type { SettingsGroup } from "@/lib/user-guide-settings";
+import { GuideBody, GuidePageLink, SettingsTable } from "./parts";
 
 export type GuideKind = "all" | "guide" | "faq" | "settings";
 const KINDS: { id: GuideKind; label: string }[] = [
@@ -48,63 +50,22 @@ function filterSettings(groups: SettingsGroup[], query: string, section: string)
     .filter((g) => g.rows.length > 0);
 }
 
-function Body({ lines }: { lines: string[] }) {
-  const blocks: (string | string[])[] = [];
-  for (const line of lines) {
-    if (line.startsWith("- ")) {
-      const last = blocks.at(-1);
-      if (Array.isArray(last)) last.push(line.slice(2));
-      else blocks.push([line.slice(2)]);
-    } else blocks.push(line);
-  }
-  return (
-    <div className="mt-3 space-y-3 text-sm leading-6 text-fg-muted">
-      {blocks.map((b, i) =>
-        Array.isArray(b) ? (
-          <ul key={i} className="list-disc space-y-1 pl-5">
-            {b.map((li) => <li key={li}>{li}</li>)}
-          </ul>
-        ) : (
-          <p key={i}>{b}</p>
-        ),
-      )}
-    </div>
-  );
-}
-
-function PageLink({ href, linkToAdmin }: { href?: string; linkToAdmin: boolean }) {
-  if (!href) return null;
-  return linkToAdmin ? (
-    <Link href={href} className="link mt-3 inline-block text-sm font-medium">Open this page →</Link>
-  ) : (
-    <p className="mt-3 text-xs text-fg-subtle">In the admin: <span className="font-mono">{href}</span></p>
-  );
-}
-
-function Diagram({ d }: { d: NonNullable<GuideEntry["diagram"]> }) {
-  const src = `/guide/${d.name}.drawio.svg`;
-  return (
-    <figure className="mt-4">
-      {/* The SVG carries its draw.io source: open it in draw.io (app.diagrams.net) to edit. */}
-      <a href={src} target="_blank" rel="noopener" className="block overflow-x-auto rounded-lg border border-line bg-white p-2">
-        {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimisation needed */}
-        <img src={src} alt={d.alt} loading="lazy" className="h-auto min-w-[640px] max-w-full" />
-      </a>
-      <figcaption className="mt-1 text-xs text-fg-subtle">Diagram (draw.io). Select it to open full size.</figcaption>
-    </figure>
-  );
-}
+/** A type-ahead match: an entry opens its own page; a settings group is on this page and is scrolled to. */
+type Suggestion = { id: string; title: string; label: string; href?: string };
 
 export function GuideBrowser({
   entries,
   settings,
   initial,
+  base,
   readUrlOnMount = false,
   linkToAdmin,
 }: {
   entries: GuideEntry[];
   settings: SettingsGroup[];
   initial: { q?: string; area?: string; kind?: string };
+  /** Where this copy of the manual lives (GUIDE_ADMIN_BASE or GUIDE_PUBLIC_BASE): every entry has a page at <base>/<id>. */
+  base: string;
   /** Public page: the server renders the whole manual (cacheable, crawlable); the browser then applies ?q=&area=&kind=. */
   readUrlOnMount?: boolean;
   /** In the admin, entries link to their pages; on the public guide the path is only named. */
@@ -164,12 +125,12 @@ export function GuideBrowser({
   // Type-ahead: the best matches across guides, FAQ and settings, to jump straight to one instead of reading the list.
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const suggestions = useMemo(() => {
+  const suggestions = useMemo<Suggestion[]>(() => {
     if (!q.trim()) return [];
-    const items = searchGuide(entries, q).slice(0, 6).map((e) => ({ id: e.id, title: e.title, label: e.kind === "faq" ? "FAQ" : e.section }));
+    const items = searchGuide(entries, q).slice(0, 6).map((e) => ({ id: e.id, title: e.title, label: e.kind === "faq" ? "FAQ" : e.section, href: guideArticlePath(base, e.id) }));
     const groups = filterSettings(settings, q, "").slice(0, 3).map((g) => ({ id: g.id, title: g.title, label: `Settings · ${g.area}` }));
     return [...items, ...groups].slice(0, 8);
-  }, [entries, settings, q]);
+  }, [entries, settings, q, base]);
   const showSuggestions = open && suggestions.length > 0;
 
   /** Show everything that matches (so the target is rendered), then scroll to it and open it if it is collapsed. */
@@ -184,6 +145,15 @@ export function GuideBrowser({
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       el.focus({ preventScroll: true });
     });
+  };
+
+  const router = useRouter();
+  /** Open a suggestion: an entry's own page, or (settings) the group further down this page. */
+  const go = (s: Suggestion) => {
+    if (s.href) {
+      setOpen(false);
+      router.push(s.href);
+    } else jump(s.id);
   };
 
   // "/" focuses the search box from anywhere on the page (unless the reader is typing in a field).
@@ -216,7 +186,7 @@ export function GuideBrowser({
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && suggestions[0]) { e.preventDefault(); jump(suggestions[0].id); }
+              if (e.key === "Enter" && suggestions[0]) { e.preventDefault(); go(suggestions[0]); }
               if (e.key === "Escape") setOpen(false);
             }}
             placeholder="Type what you need: publish, backup, budget, MCP, sandbox…  (press / to search)"
@@ -230,7 +200,7 @@ export function GuideBrowser({
             <ul id="guide-suggestions" role="listbox" aria-label="Jump to" className="absolute inset-x-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
               {suggestions.map((s, i) => (
                 <li key={s.id} role="option" aria-selected={i === 0}>
-                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => jump(s.id)} className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-muted focus:bg-surface-muted">
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => go(s)} className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-muted focus:bg-surface-muted">
                     <span className="text-fg">{s.title}</span>
                     <span className="shrink-0 text-xs text-fg-subtle">{s.label}</span>
                   </button>
@@ -271,18 +241,24 @@ export function GuideBrowser({
       {guides.length > 0 && (
         <section aria-labelledby="guide-guides" className="mt-6">
           <h2 id="guide-guides" className="text-lg font-semibold text-fg">Guides</h2>
-          <div className="mt-3 space-y-4">
-            {guides.map((e) => (
-              <article key={e.id} id={e.id} tabIndex={-1} className="scroll-mt-40 outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-xl border border-line bg-surface p-5 shadow-xs">
-                <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{e.section}</p>
-                <h3 className="mt-1 text-base font-semibold text-fg">{e.title}</h3>
-                <p className="mt-1 text-sm text-fg-muted">{e.summary}</p>
-                <Body lines={e.body} />
-                {e.diagram && <Diagram d={e.diagram} />}
-                <PageLink href={e.href} linkToAdmin={linkToAdmin} />
-              </article>
-            ))}
-          </div>
+          {/* Searching: one list, best match first. Browsing: grouped by category, in the order of the contents. */}
+          {(searching ? [{ section: "", items: guides }] : sections.map((sec) => ({ section: sec as string, items: guides.filter((e) => e.section === sec) })).filter((g) => g.items.length > 0)).map((g) => (
+            <div key={g.section || "results"} className="mt-4">
+              {g.section && <h3 className="text-sm font-semibold text-fg">{g.section}</h3>}
+              <ul className="mt-2 grid gap-3 sm:grid-cols-2">
+                {g.items.map((e) => (
+                  <li key={e.id} id={e.id} className="scroll-mt-40">
+                    <Link href={guideArticlePath(base, e.id)} className="flex h-full flex-col rounded-xl border border-line bg-surface p-4 shadow-xs transition-colors hover:border-line-strong">
+                      {!g.section && <span className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{e.section}</span>}
+                      <span className="text-base font-semibold text-fg">{e.title}</span>
+                      <span className="mt-1 text-sm text-fg-muted">{e.summary}</span>
+                      <span className="link mt-3 text-sm font-medium">Read the guide →</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
       )}
 
@@ -296,8 +272,9 @@ export function GuideBrowser({
                   <span>{e.title}</span>
                   <span className="text-xs font-normal text-fg-subtle">{e.section}</span>
                 </summary>
-                <Body lines={e.body} />
-                <PageLink href={e.href} linkToAdmin={linkToAdmin} />
+                <GuideBody lines={e.body} />
+                <GuidePageLink href={e.href} linkToAdmin={linkToAdmin} />
+                <p className="mt-2 text-xs"><Link href={guideArticlePath(base, e.id)} className="link">Open this answer as its own page</Link></p>
               </details>
             ))}
           </div>
@@ -317,30 +294,8 @@ export function GuideBrowser({
                 </summary>
                 <div className="border-t border-line px-5 pb-4 pt-3">
                   {g.description && <p className="text-sm text-fg-muted">{g.description}</p>}
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full min-w-[560px] text-left text-sm">
-                      <thead>
-                        <tr className="text-xs text-fg-subtle">
-                          <th className="py-2 pr-4 font-semibold">Setting</th>
-                          <th className="py-2 pr-4 font-semibold">What it does</th>
-                          <th className="py-2 font-semibold">Default</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-line">
-                        {g.rows.map((r) => (
-                          <tr key={`${r.key ?? ""}${r.name}`} className="align-top">
-                            <td className="py-2 pr-4 font-medium text-fg">
-                              {r.name}
-                              {r.key && <span className="mt-0.5 block font-mono text-xs font-normal text-fg-subtle">{r.key}</span>}
-                            </td>
-                            <td className="py-2 pr-4 text-fg-muted">{r.help ?? "—"}</td>
-                            <td className="py-2 font-mono text-xs text-fg-muted">{r.default ?? "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <PageLink href={g.href} linkToAdmin={linkToAdmin} />
+                  <SettingsTable group={g} />
+                  <GuidePageLink href={g.href} linkToAdmin={linkToAdmin} />
                 </div>
               </details>
             ))}
