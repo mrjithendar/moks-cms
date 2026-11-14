@@ -46,6 +46,8 @@ spec:
       containers:
         - name: api
           image: registry.jithendar.com/jithendar/practice-executor:latest
+          # Said out loud: the default is Always only for :latest, and CI sets this image to pr-<number>.
+          imagePullPolicy: Always
           command: ["python", "-m", "app.main"]
           env:
             # Shared Valkey (namespace redis, ACL user practice, database 1; Terraform in the miniKube repo).
@@ -85,6 +87,8 @@ spec:
       containers:
         - name: dispatcher
           image: registry.jithendar.com/jithendar/practice-executor:latest
+          # Said out loud: the default is Always only for :latest, and CI sets this image to pr-<number>.
+          imagePullPolicy: Always
           command: ["python", "-m", "app.dispatcher"]
           env:
             # Shared Valkey (namespace redis, ACL user practice, database 1; Terraform in the miniKube repo).

@@ -67,9 +67,9 @@ browser ─► jithendar-com (Next.js)                       executor           
    loopback only, no token, API server / metadata / internet / DNS unreachable, a sandbox pod without gVisor is
    rejected, the dispatcher cannot start a pod reading the site's Secret or delete the site's pods).
 5. **Let CI deploy:** `gh variable set PRACTICE_EXECUTOR_DEPLOY --body true`, then re-run the workflow on `master`.
-   The `deploy` job signs in with the site's existing CI credentials (`MK4_CI_TOKEN`) and restarts both executor
-   Deployments, which run `practice-executor:latest`; sandbox pods use `practice-sandbox:latest` with
-   `imagePullPolicy: Always`. The release job moves both `:latest` tags. From then on every push that touches
+   The `deploy` job signs in with the site's existing CI credentials (`MK4_CI_TOKEN`) and sets both executor
+   Deployments to `practice-executor:pr-<number>`; sandbox pods use `practice-sandbox:latest` with
+   `imagePullPolicy: Always`. The release job pushes `:pr-<number>` and moves `:latest` for both images. From then on every push that touches
    `services/executor/` or the practice catalog deploys. It never applies manifests, so changes to
    `minikube/practice-executor-*.yaml` are still applied by hand.
 6. **Connect the site:** run the `deploy to minikube` workflow (applies the site's egress rule to the executor and restarts the site), then

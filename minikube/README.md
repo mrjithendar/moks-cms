@@ -18,7 +18,7 @@ belongs to; each group is applied on its own, and `scripts/manifests.sh <group>`
 | `30-jithendar-com.yaml` | Deployment (2 replicas), Service, Service `jithendar-com-internal` (SEO agent callbacks, port 9465, never routed publicly), PodDisruptionBudget, NetworkPolicy `jithendar-com`, NetworkPolicy `jithendar-com-cache-bus` (egress to the Valkey pods, pod port 6380 only) |
 | `60-istio-routing.yaml` | Delegate VirtualService `jithendar-com-site`: the default route of the jithendar.com routing table in the miniKube repo (`deploy/minikube/istio/edge`, which also does www → apex, HTTP → HTTPS and compression). Strips client trace headers |
 | `70-observability.yaml` | Headless Service `jithendar-com-metrics` (Prometheus, port 9464) and Role/RoleBinding `alloy-logs`; see `services/www/docs/OBSERVABILITY.md` |
-| `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only restart the site, the executor and the SEO agent (`scripts/setup-ci-deployer.sh`) |
+| `80-ci-deployer.yaml` | ServiceAccount `github-ci-deployer`: CI may only set the image of, and restart, the site, the executor and the SEO agent (`scripts/setup-ci-deployer.sh`) |
 | `85-ci-applier.yaml` | ServiceAccount `github-ci-applier`: `.github/workflows/deploy-minikube.yml` applies the site group, RBAC included, and may patch the Namespace `jithendar` (not Secrets, nothing else cluster-wide; read the file's header; `scripts/setup-ci-applier.sh`) |
 
 The Grafana dashboards are not cluster manifests here: they live in [`../grafana/`](../grafana/README.md) and
@@ -43,8 +43,9 @@ scripts/manifests.sh practice-executor | kubectl apply -f -
 | `practice-executor-40-executor.yaml` | ConfigMap, API and dispatcher Deployments, Service `practice-executor` |
 | `practice-executor-50-networkpolicies.yaml` | Allowed traffic |
 
-Images are always `:latest`. CI (`ci-practice-executor.yml`, job `deploy`) pushes `:latest` and restarts both
-Deployments on every release once repository variable `PRACTICE_EXECUTOR_DEPLOY` is `true`.
+The manifests name `:latest`. CI (`ci-practice-executor.yml`, job `deploy`) pushes `:pr-<number>` and `:latest` and sets
+both Deployments to `:pr-<number>` on every release once repository variable `PRACTICE_EXECUTOR_DEPLOY` is `true`;
+sandbox pods keep using `practice-sandbox:latest`.
 
 ## Database (shared CloudNativePG cluster)
 
@@ -87,8 +88,9 @@ creates `jithendar-com-env`; Terraform in the miniKube repository writes the dat
 
 ## Deploy
 
-The site always runs `registry.jithendar.com/jithendar/jithendar-com:latest` (Harbor) with `imagePullPolicy: Always`. CI pushes `:pr-<number>` and `:latest` and restarts
-the Deployment when a pull request is merged into `master`, so new code needs nothing here.
+The site runs `registry.jithendar.com/jithendar/jithendar-com:pr-<number>` (Harbor), the tag of its last release. CI pushes `:pr-<number>` and `:latest` and sets
+the Deployment to `:pr-<number>` when a pull request is merged into `master`, so new code needs nothing here. The manifests
+name `:latest` for a first apply only; applying them later keeps the image each workload runs (`scripts/keep-live-images.py`).
 
 Manifest changes are applied by `.github/workflows/deploy-minikube.yml` when their pull request is merged (server
 dry run, diff, apply, wait, smoke test). To re-apply everything and restart the site without a merge, which is what
@@ -106,9 +108,10 @@ current kubectl context, refuses a context that doesn't exist, prints the contex
 `--context` to every kubectl call so the whole run stays on one cluster. Without `KUBE_CONTEXT` it asks for confirmation
 when run from a terminal (`YES=1` skips the question; CI and pipes never prompt). `scripts/manifests.sh` only prints,
 so it has no guard; the `kubectl` you pipe it into uses your current context.
-Tests: `bash scripts/tests/kube-context.test.sh` (stub kubectl, no cluster).
+Tests: `bash scripts/tests/kube-context.test.sh` and `python3 -m unittest discover -s scripts/tests -p 'test_*.py'`
+(stub kubectl, no cluster).
 
-Server dry-runs, applies the `site` group, restarts the site so it pulls `:latest`, waits for the rollouts and runs
+Server dry-runs, applies the `site` group, restarts the site (on the image it runs), waits for the rollouts and runs
 `scripts/smoke.sh`.
 
 To apply manifest changes without a new image, review and apply one group directly:

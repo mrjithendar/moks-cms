@@ -18,7 +18,7 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 ## Release
 
 Merge a pull request into `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/jithendar-com:pr-<number>`
-and `:latest` (Harbor; the same image) and restarts the site, which runs `:latest` with `imagePullPolicy: Always`. That is
+and `:latest` (Harbor; the same image) and rolls the site out on `:pr-<number>` (`scripts/ci-rollout.py`). That is
 the whole release. A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
 only `ci-content.yml`, for articles and images, and `infra.yml` still run on push).
 

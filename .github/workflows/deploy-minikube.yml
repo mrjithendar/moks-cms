@@ -1,8 +1,10 @@
 name: deploy to minikube
 
 # Applies minikube/ to the mk4 minikube cluster. Since 2026-11-14 this workflow is the only deploy path: it does
-# everything ./deploy.sh did (the script is gone) and a little more. The image workflows are unchanged: they build
-# images and restart Deployments on :latest (ci-jithendar-com.yml, ci-practice-executor.yml, ci-seo-agent.yml).
+# everything ./deploy.sh did (the script is gone) and a little more. The image workflows build images and point the
+# Deployments at each release's own tag, pr-<number> (ci-jithendar-com.yml, ci-practice-executor.yml,
+# ci-seo-agent.yml). This workflow never changes which image a workload runs: the manifests name :latest for a first
+# apply only, and a workload that exists keeps the image it has (scripts/keep-live-images.py).
 #
 # plan   → pull requests touching the manifests (and manual runs): render the three groups of minikube/
 #          (scripts/manifests.sh), keep the objects CI applies (scripts/ci-app-manifests.py), list the rest.
@@ -24,7 +26,8 @@ name: deploy to minikube
 # policies, CronJobs. Nothing is ever deleted (no --prune).
 #
 # Manual run (Actions → deploy to minikube → Run workflow, on the default branch) is the old `./deploy.sh`: apply
-# everything, restart the site on :latest (input restart_site, on by default), wait, smoke-test.
+# everything, restart the site on the image it runs (input restart_site, on by default), wait, smoke-test. To put
+# another image on the site, run the jithendar.com workflow, or `kubectl set image` to an earlier pr-<number>.
 #
 # Cluster access: ServiceAccount jithendar/github-ci-applier (minikube/85-ci-applier.yaml), kubeconfig template
 # .github/jithendar-ci-applier.yaml, values MK4_API_SERVER, MK4_CA_DATA (variables, shared with the deployer) and
@@ -35,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       restart_site:
-        description: 'Restart the site on jithendar-com:latest after applying'
+        description: 'Restart the site after applying (it keeps the image it runs)'
         type: boolean
         default: true
   pull_request:
@@ -137,6 +140,15 @@ jobs:
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-applier.yaml > "$KUBECONFIG")
           groups=(site practice-executor seo-agent)
 
+          # The image workflows decide what each workload runs (pr-<number>, or an earlier one after a rollback); the
+          # manifests name :latest only so that a first apply has something to start. Without this step every
+          # manifest change would roll the workloads back onto :latest.
+          kubectl get deployments,statefulsets -o json > "$RUNNER_TEMP/live.json"
+          for g in "${groups[@]}"; do
+            python scripts/keep-live-images.py "$RUNNER_TEMP/live.json" < "$RUNNER_TEMP/$g.yaml" > "$RUNNER_TEMP/$g.live.yaml"
+            mv "$RUNNER_TEMP/$g.live.yaml" "$RUNNER_TEMP/$g.yaml"
+          done
+
           # Every object must pass the API server's validation and admission before anything changes.
           for g in "${groups[@]}"; do
             if ! kubectl apply --dry-run=server -f "$RUNNER_TEMP/$g.yaml" > /dev/null; then
@@ -168,7 +180,7 @@ jobs:
               done < "$RUNNER_TEMP/$g.rollouts"
             fi
           done
-          # A manual run is the old ./deploy.sh: put the site on the current jithendar-com:latest.
+          # A manual run is the old ./deploy.sh: restart the site. It comes back on the image it was running.
           if [[ "$RESTART_SITE" == "true" && ! " ${restarted[*]} " == *" deployment/jithendar-com "* ]]; then
             kubectl rollout restart deployment/jithendar-com
             restarted+=("deployment/jithendar-com")

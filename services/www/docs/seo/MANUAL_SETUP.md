@@ -134,7 +134,8 @@ one first. `SEO_AGENT_TOKEN` (web → agent) and `SEO_AGENT_CALLBACK_TOKEN` (age
 Rotate by running the script again and restarting both Deployments.
 
 ## 15. Image and manifests
-1. Merge → CI (`ci-seo-agent.yml`) builds and pushes `registry.jithendar.com/jithendar/seo-agent:latest`.
+1. Merge → CI (`ci-seo-agent.yml`) builds and pushes `registry.jithendar.com/jithendar/seo-agent:pr-<number>` and `:latest`
+   (the Deployment runs `:pr-<number>`, the flow-trigger CronJobs `:latest` with `imagePullPolicy: Always`).
 2. Apply the site group as usual (the `deploy to minikube` workflow, on merge): it adds the `jithendar-com-internal` Service (callback port 9465, not
    routed by the VirtualService) and the NetworkPolicy rules. It's harmless before step 5.
 3. Apply the agent group (a person, once; CI only renders it):
@@ -392,7 +393,8 @@ shows `pagePairs: unsupported` if the property can't provide it.
   days and every feature falls back to its rule.
 - Retrieval: `RAG_MODE=vector` (already the default), `RAG_MAX_PER_ARTICLE=0` for v4's undiversified list,
   `ASK_BLOG_MIN_SCORE=0.15` for v4's floor, then `rollout restart deploy/seo-agent`.
-- Code: redeploy the previous image (CI pushes `:latest` only; rebuild from the previous commit) or revert the merge.
+- Code: `kubectl -n jithendar set image deploy/seo-agent seo-agent=registry.jithendar.com/jithendar/seo-agent:pr-<earlier number>`
+  (every release keeps its tag), or revert the merge.
 
 ## 37. Promotion: Reddit API app and the promotion CronJobs
 

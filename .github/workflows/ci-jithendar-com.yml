@@ -2,22 +2,24 @@ name: jithendar.com
 
 # check   → pull requests (opened, updated) and manual runs: lint, typecheck, test, build, render manifests
 # release → also on a manual run (workflow_dispatch) started on the default branch: same build, test, smoke test
-#           and push as below, tagged :manual-<run number> and :latest; the rollout restart is on by default and
-#           can be switched off with the `restart` input
+#           and push as below, tagged :manual-<run number> and :latest; the rollout is on by default and can be
+#           switched off with the `restart` input
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #           in the image (job `scope`): npm ci once; lint, tests and the production build (in turn); package the
 #           build into an arm64 image, smoke-test the image, push it to Harbor as
-#           registry.jithendar.com/jithendar/jithendar-com:pr-<number> (the pull request's own tag, kept for
-#           rollbacks) and :latest (the same image), then `kubectl rollout restart deploy/jithendar-com` so the
-#           cluster pulls the new :latest
+#           registry.jithendar.com/jithendar/jithendar-com:pr-<number> (the pull request's own tag) and :latest
+#           (the same image), then point every Deployment that runs this image at :pr-<number> and wait for it
+#           (scripts/ci-rollout.py)
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds and deploys
-# nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com jithendar-com=…/jithendar-com:pr-<n>`.
+# nothing. Roll back with `kubectl -n jithendar set image deploy/jithendar-com web=…/jithendar-com:pr-<n>`;
+# it stays until the next release (deploy-minikube.yml keeps the image a workload is running).
 #
-# CI's only cluster access is that restart (kubeconfig template .github/jithendar-ci-deployer.yaml, filled
+# CI's only cluster access here is that rollout (kubeconfig template .github/jithendar-ci-deployer.yaml, filled
 # from variables MK4_API_SERVER, MK4_CA_DATA and secret MK4_CI_TOKEN set by scripts/setup-ci-deployer.sh); it
-# never applies manifests. deploy-minikube.yml applies minikube/ for manifest changes (see minikube/README.md). The site always
-# runs :latest (the manifests name it); every release is also kept as :pr-<number>.
+# never applies manifests. deploy-minikube.yml applies minikube/ for manifest changes (see minikube/README.md). The site
+# runs the tag of its last release, which `kubectl -n jithendar get deploy -o wide` shows. The manifests name :latest
+# only for a first apply; :latest is still pushed with every release and names the newest image.
 #
 # Both jobs run on GitHub-hosted runners, never on the mk4 server: builds there competed with the cluster
 # for memory and disk and froze the host (2026-10-29). The release job logs in to Harbor as robot
@@ -28,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       restart:
-        description: Restart deploy/jithendar-com after pushing :latest
+        description: Roll the site out on the image this run pushes
         type: boolean
         default: true
   pull_request:
@@ -121,7 +123,7 @@ jobs:
   release:
     needs: scope
     # scope is skipped on manual runs, so !cancelled() keeps this job from being skipped with it. Manual runs
-    # release only from the default branch: :latest is what the cluster runs.
+    # release only from the default branch: what they push is rolled out.
     if: >-
       !cancelled() && (needs.scope.outputs.image == 'true' ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch))
@@ -203,16 +205,17 @@ jobs:
           [[ "$type" == image/avif* || "$type" == image/webp* ]] || { echo "Image optimiser returned: $type" >&2; exit 1; }
           echo "Image healthy; optimiser served $type"
       - name: Push
-        # Two tags for one image: pr-<number> stays as this release's own tag; latest is what the cluster runs.
-        # The commit is inside the image (/api/health reports it).
+        # Two tags for one image: pr-<number> is this release's own tag and what the cluster will run; latest
+        # names the newest release. The commit is inside the image (/api/health reports it).
         run: |
           docker push --quiet "$REGISTRY_IMAGE:$PR_TAG"
           docker push --quiet "$REGISTRY_IMAGE:latest"
-      # The live deployment runs jithendar-com:latest with imagePullPolicy Always, so a restart pulls the image
-      # just pushed. Signs in as ServiceAccount jithendar/github-ci-deployer, which may only restart and watch
-      # deployment/jithendar-com: the template .github/jithendar-ci-deployer.yaml filled in with the values that
-      # scripts/setup-ci-deployer.sh stored.
-      - name: Restart jithendar-com
+      # Every Deployment that runs this image is pointed at the tag just pushed and waited for; one that is already
+      # on it (this job was run again) is restarted so that it pulls the image again (scripts/ci-rollout.py).
+      # Signs in as ServiceAccount jithendar/github-ci-deployer, which may only read and patch the Deployments named
+      # in minikube/80-ci-deployer.yaml: the template .github/jithendar-ci-deployer.yaml filled in with the values
+      # that scripts/setup-ci-deployer.sh stored.
+      - name: Roll out jithendar-com
         if: github.event_name != 'workflow_dispatch' || inputs.restart
         env:
           MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
@@ -226,11 +229,7 @@ jobs:
           export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           trap 'rm -f "$KUBECONFIG"' EXIT
           (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' ../../.github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-          kubectl -n jithendar rollout restart deploy/jithendar-com
-          if ! kubectl -n jithendar rollout status deploy/jithendar-com --timeout=5m; then
-            echo "::error::Rollout of jithendar-com did not finish within 5 minutes"
-            exit 1
-          fi
+          python3 ../../scripts/ci-rollout.py "$REGISTRY_IMAGE" "$PR_TAG"
       - name: Record image
         env:
           RESTARTED: ${{ github.event_name != 'workflow_dispatch' || inputs.restart }}
@@ -244,8 +243,8 @@ jobs:
             echo "- Digest: \`$digest\`"
             echo
             if [[ "$RESTARTED" == true ]]; then
-              echo "Deployed: deploy/jithendar-com restarted on \`:latest\`"
+              echo "Deployed as \`:$PR_TAG\` (see the rollout above)"
             else
-              echo "Not deployed: restart skipped; the cluster picks up \`:latest\` on its next restart"
+              echo "Not deployed: the rollout was switched off; the cluster keeps the image it runs"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
