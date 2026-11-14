@@ -74,12 +74,18 @@ are owned by other workloads — the site must not shadow them.
 13. No secrets in Git, logs, error responses, or client bundles. Server-only env vars must never be prefixed `NEXT_PUBLIC_`.
 14. Pin third-party GitHub Actions to full commit SHAs with a version comment (new workflows; existing repo workflows use tags — see AUD-012).
 15. Prefer existing dependencies; justify every new one in the phase report.
+16. **Keep the user guide current.** Adding, changing or removing an admin page, a setting, an option or a feature
+    also updates the in-app user guide in the same change: `src/lib/user-guide.ts` (guides and FAQ, in plain words),
+    `src/lib/user-guide-settings.ts` (hand-written setting rows; the SEO agent, Advanced settings and MCP scopes are
+    generated from code) and, when a flow changes, its diagram in `docs/guide/diagrams/` (re-export with
+    `scripts/export-guide-diagrams.sh`). `tests/user-guide.test.ts` fails when a nav page, form label, setting or
+    diagram is not covered. See `docs/USER_GUIDE.md`.
 
 ## A4. Definition of done (every phase)
 
 - [ ] `lint`, `typecheck`, `test`, and `build` have been run and their real output is summarized.
 - [ ] New behavior has automated tests (or a documented reason why not).
-- [ ] Relevant docs in `docs/` are updated.
+- [ ] Relevant docs in `docs/` are updated, and the in-app user guide (rule 16).
 - [ ] `docs/PROGRESS.md` updated: what changed, files touched, commands run + results, open issues, manual steps required.
 - [ ] Work stops and a phase report (A5) is produced. Do not start the next phase unprompted.
 

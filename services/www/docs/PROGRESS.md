@@ -1,5 +1,34 @@
 # Progress log — jithendar.com
 
+## User manual: in the admin, optionally public, searchable, with draw.io diagrams (2026-11-15, owner request)
+
+Owner request: a user manual for admins and read-only demo users after sign-in, searchable and filterable by category,
+with an FAQ, draw.io diagrams, every setting and option explained in simple words (SEO agent, AI/ML, integrations, MCP,
+the executor, CrewAI), optionally public and indexable, and kept up to date as features change. Details: [USER_GUIDE.md](USER_GUIDE.md).
+
+- **Admin → User manual** (`/admin/user-manual`, first item under Overview; the demo banner links to it): 42 guides and
+  29 FAQ in plain words across 9 categories, 8 draw.io diagrams, and a settings reference (every setting with what it does
+  and its default). Authors see only the parts about pages they can open.
+- **Search and filters:** type-ahead suggestions (Enter or a click jumps to the entry and opens it), `/` to focus search,
+  kind chips (All, Guides, FAQ, Settings) and category chips with live counts; the address bar keeps the view.
+- **Public:** Appearance & settings → General → **Public user manual** (`general.features.publicGuide`, default off)
+  serves the same content at `/user-manual`: ISR, canonical, `index, follow`, in `sitemap.xml`, `FAQPage` JSON-LD.
+  Off: 404 and not in the sitemap. `user-manual` is a reserved page slug.
+- **Settings reference:** Automation & AI (SEO agent), Advanced settings and MCP scopes are generated from the code
+  registries; Appearance, Integrations and Storage & email are hand-written with the exact form labels.
+- **Kept current:** `tests/user-guide.test.ts` fails when an admin menu page, a form label, an SEO/Advanced setting,
+  an MCP scope or a diagram is not covered, or when the manual links to a removed page. AGENTS.md rule 16 makes
+  updating the manual part of every feature change.
+- **Diagrams:** sources `docs/guide/diagrams/*.drawio`, exported by `scripts/export-guide-diagrams.sh` to
+  `public/guide/*.drawio.svg` (editable in draw.io; plain-text labels keep each SVG ~20 KB).
+- Files: `src/lib/user-guide.ts`, `src/lib/user-guide-settings.ts`, `src/components/guide/GuideBrowser.tsx`,
+  `src/app/admin/user-manual/page.tsx`, `src/app/user-manual/page.tsx` (all new); `src/app/admin/layout.tsx`,
+  `src/app/admin/appearance/panels.tsx`, `src/lib/site-config/schema.ts`, `src/lib/settings.ts`, `src/lib/site-pages.ts`,
+  `src/lib/seo/sitemap.ts`; tests `tests/user-guide.test.ts` (new), `tests/sitemap.test.ts`, `tests/discussions.test.ts`;
+  docs `docs/USER_GUIDE.md` (new), `AGENTS.md`.
+- Commands: `tsc --noEmit` pass; eslint on changed files pass; `npm test` 97 files / 1179 tests pass (1 skipped);
+  `next build` (APP_ENV=production) pass: `/user-manual` static with 5 min revalidation, `/admin/user-manual` dynamic.
+
 ## Read-only demo accounts with email invitations (2026-11-14, owner request)
 
 Owner request: demo users who see what an admin sees but cannot edit anything, as many as needed, invited by email.

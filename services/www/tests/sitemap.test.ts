@@ -34,3 +34,19 @@ describe("sitemap.xml", () => {
     expect(entry?.lastModified).toBe("2026-10-22T10:00:00+05:30");
   });
 });
+
+describe("sitemap.xml: the public user manual", () => {
+  it("is listed only while Public user manual is on", async () => {
+    const { vi } = await import("vitest");
+    const { defaultConfig } = await import("@/lib/site-config/schema");
+    expect((await urls()).some((u) => u.endsWith("/user-manual"))).toBe(false); // default: off
+    vi.resetModules();
+    const config = defaultConfig();
+    config.general.features.publicGuide = true;
+    vi.doMock("@/lib/site-config/store", async (orig) => ({ ...(await orig<object>()), getPublishedConfig: async () => ({ config }) }));
+    const { buildSitemap: build } = await import("@/lib/seo/sitemap");
+    expect((await build(NOW)).map((e) => e.url)).toContain("https://jithendar.com/user-manual");
+    vi.doUnmock("@/lib/site-config/store");
+    vi.resetModules();
+  });
+});

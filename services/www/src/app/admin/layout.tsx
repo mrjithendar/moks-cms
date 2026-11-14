@@ -38,6 +38,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   // Grouped by category; each category expands and collapses in the sidebar (components/admin/AdminNav.tsx).
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", section: "Overview" },
+    { href: "/admin/user-manual", label: "User manual", section: "Overview" },
     // Content: what is published.
     { href: "/admin/posts", label: "Posts", section: "Content" },
     { href: "/admin/pages", label: "Pages", section: "Content" },
@@ -128,7 +129,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           {user.demo && (
             <div data-demo-banner className="mb-6">
               <Alert tone="info">
-                <strong>Read-only demo.</strong> You see the admin exactly as the site owner does, but nothing you change is saved and nothing is sent.
+                <strong>Read-only demo.</strong> You see the admin exactly as the site owner does, but nothing you change is saved and nothing is sent.{" "}
+                New here? Start with the <Link href="/admin/user-manual" className="link">User manual</Link>.
               </Alert>
             </div>
           )}

@@ -124,7 +124,13 @@ const general = z.object({
   dateFormat: z.enum(Object.keys(DATE_FORMATS) as [keyof typeof DATE_FORMATS, ...(keyof typeof DATE_FORMATS)[]]),
   contact: z.object({ email: z.union([z.literal(""), z.email("Enter a valid email address.").max(200)]), location: text(80) }),
   social: z.object({ github: httpsOrEmpty, x: httpsOrEmpty, linkedin: httpsOrEmpty, youtube: httpsOrEmpty, mastodon: httpsOrEmpty }),
-  features: z.object({ comments: z.boolean(), registration: z.boolean(), contactForm: z.boolean() }),
+  features: z.object({
+    comments: z.boolean(),
+    registration: z.boolean(),
+    contactForm: z.boolean(),
+    /** The user guide (lib/user-guide.ts) at /user-manual for everyone; off: only signed-in staff see it, in the admin. */
+    publicGuide: z.boolean(),
+  }),
   /** Comment rules (comments themselves are switched by features.comments; each post can also lock or close its discussion). */
   discussion: z.object({
     /** New comments from readers wait for a moderator. Authors' and admins' comments never wait. */
@@ -548,7 +554,7 @@ export function defaultConfig(): SiteConfig {
       dateFormat: "d-mmm-yyyy",
       contact: { email: "", location: "" },
       social: { ...siteFile.social },
-      features: { comments: true, registration: true, contactForm: true },
+      features: { comments: true, registration: true, contactForm: true, publicGuide: false },
       discussion: { requireApproval: true, editWindowMinutes: 1440 },
       maintenance: { enabled: false, message: "We are making improvements and will be back shortly.", retryAfterMinutes: 30 },
     },

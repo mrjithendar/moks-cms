@@ -37,7 +37,10 @@ export async function buildSitemap(now: Date = new Date()): Promise<MetadataRout
     entries.push({ url: absoluteUrl(page.path), ...(page.frontmatter.updatedAt ? { lastModified: page.frontmatter.updatedAt } : {}) });
   }
   // Hire me (/hire-me) while it is switched on (Admin → Appearance → Hire me).
-  if ((await getPublishedConfig()).config.hireMe.enabled) entries.push({ url: absoluteUrl("/hire-me") });
+  const publishedConfig = (await getPublishedConfig()).config;
+  if (publishedConfig.hireMe.enabled) entries.push({ url: absoluteUrl("/hire-me") });
+  // The user manual (/user-manual) while it is public (Admin → Appearance → General → Public user manual).
+  if (publishedConfig.general.features.publicGuide) entries.push({ url: absoluteUrl("/user-manual") });
   for (const article of published.filter((a) => isSelfCanonical(a) && !a.frontmatter.noindex)) {
     // Image sitemap entry: the public cover image the article actually shows.
     const cover = article.frontmatter.featuredImage;
