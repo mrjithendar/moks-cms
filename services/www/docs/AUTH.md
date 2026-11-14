@@ -67,6 +67,14 @@ users** takes an email (and optional name); there is no limit on how many.
   sessions through Better Auth (`internalAdapter.deleteUserSessions`), which also clears sessions kept in Redis:
   those carry a copy of the user, so before this a role change or ban did not reach a session already in Redis.
 
+### Accounts created by an admin (with a password)
+
+Admin → Users → **Add a user with a password** (2026-11-15) creates an account of any role (reader, author, demo,
+admin) with a password the admin types: no email is sent and email need not be set up. The address is marked verified;
+the password follows the sign-up rules (`lib/password-policy.ts` plus the Have I Been Pwned range check, which must be
+reachable). An existing email is refused (change that account's role in the table instead). Authors and admins get an
+author profile, as with a role change. Audited as `user.create`. The admin shares the password out of band.
+
 ## Callback URLs
 
 Derived from `SITE_URL` (Better Auth's `baseURL`) and the auth route `/api/auth`:

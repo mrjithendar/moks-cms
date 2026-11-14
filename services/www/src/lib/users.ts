@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { hashPassword } from "better-auth/crypto";
 import { count, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
@@ -7,6 +9,7 @@ import { invalidateContent } from "./content";
 import { siteUrl } from "@/config/site";
 import { DEMO_INVITE_HOURS, DEMO_INVITE_REDIRECT, DEMO_INVITE_SUBJECT, demoInviteText } from "./demo";
 import { mailConfigured, sendMail } from "./mail";
+import { passwordProblem } from "./password-policy";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
 
@@ -137,4 +140,61 @@ export async function inviteDemoUser(actor: Actor, raw: { email: unknown; name?:
   }
   await audit(actor, result === "resent" ? "user.demo_reinvite" : "user.demo_invite", id, { email, from: existing?.role ?? null });
   return result;
+}
+
+const createInput = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address.").max(254),
+  name: z.string().trim().max(80).optional(),
+  role: z.enum(ROLES, { message: "Choose a role." }),
+  password: z.string(),
+});
+
+/** Is the password in a known breach? The same k-anonymity range query Better Auth's haveIBeenPwned plugin makes. */
+async function passwordBreached(password: string): Promise<boolean> {
+  const sha1 = createHash("sha1").update(password).digest("hex").toUpperCase();
+  let res: Response;
+  try {
+    res = await fetch(`https://api.pwnedpasswords.com/range/${sha1.slice(0, 5)}`, { headers: { "Add-Padding": "true" }, signal: AbortSignal.timeout(5_000) });
+  } catch {
+    res = new Response(null, { status: 503 });
+  }
+  if (!res.ok) throw new PostError("The breached-password check is unreachable right now. Try again in a minute.", 503);
+  const suffix = sha1.slice(5);
+  return (await res.text()).split("\n").some((line) => line.split(":")[0]?.trim() === suffix && Number(line.split(":")[1]) > 0);
+}
+
+/**
+ * Create an account of any role with a password the admin chooses: no email is sent and none needs to be set up.
+ * The address is marked verified (the admin vouches for it) and the password follows the sign-up rules (composition
+ * and breached-password check). An existing email is refused: change that account's role in the table instead.
+ */
+export async function createUser(actor: Actor, raw: { email: unknown; name?: unknown; role: unknown; password: unknown }): Promise<string> {
+  adminOnly(actor);
+  const parsed = createInput.safeParse({
+    email: raw.email,
+    name: typeof raw.name === "string" && raw.name.trim() ? raw.name : undefined,
+    role: raw.role,
+    password: typeof raw.password === "string" ? raw.password : "",
+  });
+  if (!parsed.success) throw new PostError(parsed.error.issues[0]?.message ?? "Check the fields.");
+  const { email, role, password } = parsed.data;
+  const name = parsed.data.name || email.split("@")[0]!;
+  const problem = passwordProblem(password);
+  if (problem) throw new PostError(problem);
+  if (await passwordBreached(password)) throw new PostError("That password appears in a known data breach. Choose another one.");
+  const db = await getDb();
+  const [existing] = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, email));
+  if (existing) throw new PostError(`${email} already has an account. Change its role in the table below instead.`, 409);
+  const hash = await hashPassword(password);
+  const id = crypto.randomUUID();
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.user).values({ id, name, email, emailVerified: true, role });
+    await tx.insert(schema.account).values({ id: crypto.randomUUID(), accountId: id, providerId: "credential", userId: id, password: hash });
+    if (role === "admin" || role === "author") {
+      await tx.insert(schema.authorProfile).values({ userId: id, slug: slugFrom(name, id), displayName: name }).onConflictDoNothing();
+    }
+  });
+  await audit(actor, "user.create", id, { email, role });
+  if (role === "admin" || role === "author") invalidateContent();
+  return id;
 }

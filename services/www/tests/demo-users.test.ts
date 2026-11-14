@@ -263,3 +263,37 @@ describe("a signed-in demo account", () => {
     expect(await getSessionUser()).toBeNull();
   });
 });
+
+describe("admin-created accounts with a password", () => {
+  it("create a demo account that signs in with the chosen password, without any email", async () => {
+    const { createUser } = await import("@/lib/users");
+    mailOn = false;
+    const id = await createUser(admin, { email: " Guest@Example.com ", name: "", role: "demo", password: PASSWORD });
+    const [u] = await db.select().from(schema.user).where(eq(schema.user.id, id));
+    expect(u).toMatchObject({ email: "guest@example.com", name: "guest", role: "demo", emailVerified: true });
+    expect(sent).toHaveLength(0);
+    const signIn = await authPost("/sign-in/email", { email: "guest@example.com", password: PASSWORD });
+    expect(signIn.status).toBe(200);
+    const [entry] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "user.create"));
+    expect(entry).toBeDefined();
+  });
+
+  it("create any role; authors and admins get an author profile", async () => {
+    const { createUser } = await import("@/lib/users");
+    for (const role of ["user", "author", "admin"] as const) {
+      const id = await createUser(admin, { email: `new-${role}@example.com`, name: `New ${role}`, role, password: PASSWORD });
+      const [u] = await db.select().from(schema.user).where(eq(schema.user.id, id));
+      expect(u!.role).toBe(role);
+      const profiles = await db.select().from(schema.authorProfile).where(eq(schema.authorProfile.userId, id));
+      expect(profiles).toHaveLength(role === "user" ? 0 : 1);
+    }
+  });
+
+  it("refuse weak passwords, unknown roles, existing emails and non-admins", async () => {
+    const { createUser } = await import("@/lib/users");
+    await expect(createUser(admin, { email: "a@example.com", role: "demo", password: "short" })).rejects.toThrow(/at least/);
+    await expect(createUser(admin, { email: "a@example.com", role: "owner", password: PASSWORD })).rejects.toThrow(/role/i);
+    await expect(createUser(admin, { email: "admin@example.com", role: "demo", password: PASSWORD })).rejects.toThrow(/already has an account/);
+    await expect(createUser({ id: "x", role: "author", label: "x" }, { email: "b@example.com", role: "demo", password: PASSWORD })).rejects.toThrow(/Only admins/);
+  });
+});
