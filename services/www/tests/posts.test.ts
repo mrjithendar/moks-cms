@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, setDbForTests, type Db } from "@/db";
 import { invalidateContent } from "@/lib/content";
 import { importFromFiles } from "@/lib/content/import";
-import { createPost, deletePost, PostError, updatePost, type Actor } from "@/lib/posts";
+import { createPost, deletePostPermanently, PostError, trashPost, updatePost, type Actor } from "@/lib/posts";
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
@@ -86,7 +86,8 @@ describe("post service", () => {
     await updatePost(admin, p.id, { slug: "a-renamed-post" });
     const [r] = await db.select().from(schema.redirect).where(eq(schema.redirect.fromPath, "/blog/a-fresh-post"));
     expect(r?.toPath).toBe("/blog/a-renamed-post");
-    await deletePost(admin, p.id);
+    await trashPost(admin, p.id);
+    await deletePostPermanently(admin, p.id);
     expect(await db.select().from(schema.post)).toHaveLength(0);
   });
 });

@@ -388,12 +388,6 @@ export async function deletePostPermanently(actor: Actor, id: string): Promise<v
   invalidateContent();
 }
 
-/** API compatibility: DELETE moves to the trash, then deletes permanently. */
-export async function deletePost(actor: Actor, id: string): Promise<void> {
-  await trashPost(actor, id);
-  await deletePostPermanently(actor, id);
-}
-
 /** A new draft copy with a unique slug; never published, no dates. */
 export async function duplicatePost(actor: Actor, id: string): Promise<PostRow> {
   const src = await getPostRow(actor, id);
