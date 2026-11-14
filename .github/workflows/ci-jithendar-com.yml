@@ -63,7 +63,9 @@ jobs:
     # including Dependabot's, still run.
     if: github.event_name != 'pull_request' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Measured on 2026-11-14 over 17 runs: 8 to 14.7 minutes, of which the tests take about 11. At 15 a run was
+    # cancelled seconds before its build finished, with lint, typecheck and all tests green.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
