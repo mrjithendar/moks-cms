@@ -39,7 +39,7 @@ async function restore(form: FormData) {
   await flash("/admin/backups", async () => {
     const r = await restoreStoredBackup(actor, name);
     const n = (k: string) => r.restored[k] ?? 0;
-    return `Restored ${name}: ${n("post")} posts, ${n("page")} pages, ${n("comment")} comments, ${n("media")} media records${r.usersAdded ? `, ${r.usersAdded} account(s) recreated` : ""}. The previous state was saved as ${r.safetyBackup}.`;
+    return `Restored ${name}: ${n("post")} posts, ${n("page")} pages, ${n("comment")} comments, ${n("media")} media records${r.usersAdded ? `, ${r.usersAdded} account(s) recreated` : ""}. The previous state was saved as ${r.safetyBackup}.${r.rolesNotRestored ? ` ${r.rolesNotRestored} recreated account(s) had a staff role in the backup and are readers now: give the roles back in Users (the audit log entry names them).` : ""}`;
   });
 }
 

@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, setDbForTests, type Db } from "@/db";
+import { rowsOf } from "@/db/rows";
 import type { Actor } from "@/lib/posts";
 import { freshDb } from "./db-helpers";
 
@@ -220,6 +221,83 @@ describe("restore", () => {
     await new Promise((r) => setTimeout(r, 1100)); // the safety backup gets its own timestamped name
     await restoreStoredBackup(admin, "jithendar-backup-20261002-000000.json.gz.enc");
     expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug)).toEqual(["from-legacy"]);
+  });
+
+  it("keeps what hangs off a post or category outside the backup (SEO drafts, URL map, news topics); it goes only with a post the backup does not have", async () => {
+    const { listStoredBackups, restoreStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
+    const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
+    await db.insert(schema.category).values({ slug: "kubernetes", label: "Kubernetes", intro: "Clusters and what runs on them." }).onConflictDoNothing();
+    const [kept] = await db.insert(schema.post).values({ ...base, slug: "kept", title: "Original title" }).returning({ id: schema.post.id });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "" });
+    await saveDestination(admin, { enabled: true, bucket: "" });
+    await runBackup("manual", admin);
+    const [snapshot] = await listStoredBackups();
+
+    // After the backup: SEO work on the kept post, a news topic in its category, an edit, and a new post with a draft.
+    const draftOf = (id: string) => sql`insert into seo_drafts (article_id, collection, base_version, base_snapshot) values (${id}::uuid, 'blog', 1, '{}'::jsonb)`;
+    await db.execute(draftOf(kept!.id));
+    await db.execute(sql`insert into seo_url_map (url, path, article_id) values ('https://jithendar.com/blog/kept', '/blog/kept', ${kept!.id}::uuid)`);
+    await db.execute(sql`insert into news_topics (slug, label, category_slug) values ('k8s-news', 'Kubernetes news', 'kubernetes')`);
+    await db.update(schema.post).set({ title: "Edited later" }).where(eq(schema.post.id, kept!.id));
+    const [later] = await db.insert(schema.post).values({ ...base, slug: "added-later", title: "Added later" }).returning({ id: schema.post.id });
+    await db.execute(draftOf(later!.id));
+    await new Promise((r) => setTimeout(r, 1100)); // the safety backup gets its own timestamped name
+
+    const r = await restoreStoredBackup(admin, snapshot!.name);
+    expect(r.restored.post).toBe(1);
+    expect(await db.select({ id: schema.post.id, slug: schema.post.slug, title: schema.post.title }).from(schema.post)).toEqual([{ id: kept!.id, slug: "kept", title: "Original title" }]);
+    // The kept post's draft and URL mapping are still there and still point at it; the deleted post's draft went with it.
+    expect(rowsOf<{ article_id: string }>(await db.execute(sql`select article_id::text as article_id from seo_drafts`))).toEqual([{ article_id: kept!.id }]);
+    expect(rowsOf<{ article_id: string | null }>(await db.execute(sql`select article_id::text as article_id from seo_url_map`))).toEqual([{ article_id: kept!.id }]);
+    expect(rowsOf<{ category_slug: string | null }>(await db.execute(sql`select category_slug from news_topics where slug = 'k8s-news'`))).toEqual([{ category_slug: "kubernetes" }]);
+  });
+
+  it("restores posts that have traded slugs since the backup", async () => {
+    const { listStoredBackups, restoreStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
+    const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
+    const [one] = await db.insert(schema.post).values({ ...base, slug: "one", title: "One" }).returning({ id: schema.post.id });
+    const [two] = await db.insert(schema.post).values({ ...base, slug: "two", title: "Two" }).returning({ id: schema.post.id });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "" });
+    await saveDestination(admin, { enabled: true, bucket: "" });
+    await runBackup("manual", admin);
+    const [snapshot] = await listStoredBackups();
+
+    await db.update(schema.post).set({ slug: "parked" }).where(eq(schema.post.id, one!.id));
+    await db.update(schema.post).set({ slug: "one" }).where(eq(schema.post.id, two!.id));
+    await db.update(schema.post).set({ slug: "two" }).where(eq(schema.post.id, one!.id));
+    await new Promise((r) => setTimeout(r, 1100)); // the safety backup gets its own timestamped name
+
+    await restoreStoredBackup(admin, snapshot!.name);
+    const slugs = Object.fromEntries((await db.select({ id: schema.post.id, slug: schema.post.slug }).from(schema.post)).map((p) => [p.id, p.slug]));
+    expect(slugs).toEqual({ [one!.id]: "one", [two!.id]: "two" });
+  });
+
+  it("recreates a missing account as a reader, whatever role the backup file gives it, and never changes an existing one", async () => {
+    const { restoreStoredBackup, saveDestination, saveGeneral, zipBackup } = await import("@/lib/backups");
+    // A file put into the bucket by someone else: an admin nobody created, and a promotion for an existing author.
+    const payload = JSON.stringify({
+      format: "jithendar-backup",
+      version: 1,
+      createdAt: "2026-10-03T00:00:00.000Z",
+      tables: {
+        user: [
+          { id: "planted", name: "Planted", email: "planted@example.net", email_verified: true, role: "admin" },
+          { id: "author", name: "A", email: "a@example.com", email_verified: true, role: "admin" },
+          { id: "reader", name: "Reader", email: "reader@example.net", email_verified: false, role: "user" },
+        ],
+      },
+    });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "" });
+    await saveDestination(admin, { enabled: true, bucket: "" });
+    bucket.set("media/jithendar/backups/jithendar-backup-20261003-000000.zip", await zipBackup(payload, "2026-10-03T00:00:00.000Z"));
+
+    const r = await restoreStoredBackup(admin, "jithendar-backup-20261003-000000.zip");
+    expect(r).toMatchObject({ usersAdded: 2, rolesNotRestored: 1 });
+    const roles = Object.fromEntries((await db.select({ id: schema.user.id, role: schema.user.role }).from(schema.user)).map((u) => [u.id, u.role]));
+    expect(roles).toEqual({ admin: "admin", author: "author", planted: "user", reader: "user" });
+    // The audit entry names who lost a staff role, so an admin can give it back on purpose.
+    const [entry] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "backup.restore"));
+    expect(entry!.detail).toMatchObject({ usersAdded: 2, rolesNotRestoredCount: 1, rolesNotRestored: [{ email: "planted@example.net", role: "admin" }] });
   });
 });
 

@@ -181,6 +181,24 @@ transaction replaces posts, pages, categories, author profiles, comments (with l
 messages, media records, redirects and Appearance settings with the backup. Accounts are merged: missing ones
 are recreated without a password (they use “Forgot password” or social sign-in); existing accounts, sign-in
 methods, sessions, API keys and stored credentials are never touched. Media files in R2 are not changed.
+
+Two rules protect what a backup does not hold (since 2026-11-15):
+
+- **Posts and categories are updated in place** (`KEEP_ROWS`). A post or category that is in the backup and still
+  exists keeps its row; only those the backup does not have are deleted. Tables outside the backup hang off them
+  (`seo_drafts`, `seo_content_audits`, `seo_article_optimizations`, `seo_internal_link_suggestions`,
+  `seo_ml_related_articles` and `seo_promo_opportunities` are deleted with their post; `seo_recommendations`,
+  `seo_editorial_calendar`, `seo_url_map`, `seo_search_submissions` and `news_topics` lose their link), and a restore
+  used to delete every post and category first, which emptied or unlinked all of them although the same posts came
+  straight back. That SEO data is kept as it is, not rolled back: a draft or audit made after the backup now sits
+  next to the older article text.
+- **A recreated account is always a reader.** The role in the file is ignored, because the file comes from a bucket:
+  with the role taken from it, anyone who can write to that bucket could add an admin of their own and then set its
+  password with “Forgot password”. The success message says how many recreated accounts had a staff role in the
+  backup, and the `backup.restore` audit entry names them (`rolesNotRestored`); an admin gives the roles back in
+  Admin → Users. A plain (unencrypted) zip is still accepted while encryption is on, so that backups made before it was
+  switched on can be restored; a file planted in the bucket can therefore still replace content if an admin restores
+  it, but it can no longer grant access.
 Logged as `backup.restore` (critical). Backups made before 2026-10-29 lack Appearance settings and comment
 likes/reports; restoring one leaves those empty/default.
 

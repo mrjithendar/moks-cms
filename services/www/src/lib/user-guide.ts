@@ -634,6 +634,7 @@ const guides: GuideEntry[] = [
     keywords: ["backup", "restore", "export", "download", "zip", "encrypt"],
     body: [
       "Create zip backups of content and configuration, encrypted if you choose. Backups exclude password hashes, sessions, API-key hashes and stored credentials.",
+      "Restore replaces posts, pages, categories, comments, media records, redirects and Appearance settings with a stored backup, after saving the current state as a new backup. A post or category that is also in the backup is updated in place, so its SEO drafts, audits and news topics stay. An account the site no longer has is recreated as a reader without a password, whatever role it had in the backup: give staff their roles back in Users.",
       "Demo accounts cannot download backups.",
     ],
   },

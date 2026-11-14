@@ -353,6 +353,17 @@ export function startBackupScheduler() {
 
 /** Restore order (parents first); deletion runs in reverse. `user` is merged, never replaced. */
 const RESTORE_ORDER = ["category", "author_profile", "post", "page", "media", "comment", "comment_like", "comment_report", "contact_message", "redirect", "site_config"] as const;
+/**
+ * Tables whose rows are updated in place (matched on this key column) instead of deleted and inserted again. Tables
+ * that are not in a backup hang off them:
+ * - `post`: with ON DELETE CASCADE seo_drafts, seo_content_audits, seo_article_optimizations,
+ *   seo_internal_link_suggestions, seo_ml_related_articles and seo_promo_opportunities; with ON DELETE SET NULL
+ *   seo_recommendations, seo_editorial_calendar, seo_url_map and seo_search_submissions;
+ * - `category`: news_topics.category_slug (ON DELETE SET NULL).
+ * Deleting every row first, as the other tables are, deleted or unlinked all of that for good, although the same posts
+ * and categories came straight back. Only rows the backup does not have are deleted.
+ */
+const KEEP_ROWS: Record<string, string> = { post: "id", category: "slug" };
 /** Columns that point at a user, per table (remapped when an account was recreated with a new id). */
 const USER_REFS: Record<string, string[]> = { author_profile: ["user_id"], post: ["author_id"], comment: ["user_id"], comment_like: ["user_id"], comment_report: ["user_id"], media: ["uploaded_by"] };
 const RESTORE_LOCK_ID = 7_250_033;
@@ -367,15 +378,19 @@ export function parseBackup(json: string): BackupPayload {
   return payload as BackupPayload;
 }
 
-export type RestoreResult = { safetyBackup: string; restored: Record<string, number>; usersAdded: number };
+/** `rolesNotRestored`: recreated accounts that were staff (admin, author, demo) in the backup and are readers now. */
+export type RestoreResult = { safetyBackup: string; restored: Record<string, number>; usersAdded: number; rolesNotRestored: number };
 
 /**
  * Replace content and settings with a stored backup, in one transaction (all or nothing). Before anything
  * changes, the current state is saved to R2 as a new backup, so a restore can itself be undone.
  * Replaced: posts, pages, categories, author profiles, comments (likes, reports), messages, media records,
- * redirects, Appearance & settings. Accounts are merged: missing ones are recreated (without a password: they
- * use "Forgot password" or social sign-in), existing ones and all sign-in methods, sessions, API keys and
- * stored credentials are left alone. Media files themselves stay in R2 and are not touched.
+ * redirects, Appearance & settings. A post that is in the backup and still exists is updated in place (KEEP_ROWS), so
+ * what hangs off it outside the backup (SEO drafts, audits, optimisations, link suggestions…) stays; posts the backup
+ * does not have are deleted. Accounts are merged: missing ones are recreated (without a password: they use "Forgot
+ * password" or social sign-in) as readers, whatever role the backup gives them; existing ones and all sign-in
+ * methods, sessions, API keys and stored credentials are left alone. Media files themselves stay in R2 and are not
+ * touched.
  */
 export async function restoreStoredBackup(actor: Actor, name: string): Promise<RestoreResult> {
   admin(actor);
@@ -404,17 +419,26 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
   const db = await getDb();
   const restored: Record<string, number> = {};
   let usersAdded = 0;
+  let rolesNotRestored: { email: string; role: string }[] = [];
   await db.transaction(async (tx) => {
     const [{ locked } = { locked: false }] = rowsOf<{ locked: boolean }>(await tx.execute(sql`select pg_try_advisory_xact_lock(${RESTORE_LOCK_ID}) as locked`));
     if (!locked) throw new PostError("Another restore is running. Try again in a minute.", 409);
 
     const columns = async (table: string) =>
       new Set(rowsOf<{ c: string }>(await tx.execute(sql`select column_name as c from information_schema.columns where table_schema = current_schema() and table_name = ${table}`)).map((r) => r.c));
-    const insert = async (table: string, rows: Row[], conflict = "") => {
+    // onConflict "nothing": a row that is already there stays as it is. { key }: a row with the same key takes the
+    // backup's values (KEEP_ROWS).
+    const insert = async (table: string, rows: Row[], onConflict: "" | "nothing" | { key: string } = "") => {
       if (rows.length === 0) return 0;
       const known = await columns(table);
       const keys = Object.keys(rows[0]!).filter((k) => known.has(k));
       const list = keys.map((k) => `"${k}"`).join(", ");
+      let conflict = onConflict === "nothing" ? "on conflict do nothing" : "";
+      if (typeof onConflict === "object" && known.has(onConflict.key)) {
+        const key = onConflict.key;
+        const assignments = keys.filter((k) => k !== key).map((k) => `"${k}" = excluded."${k}"`).join(", ");
+        if (assignments) conflict = `on conflict ("${key}") do update set ${assignments}`;
+      }
       let n = 0;
       for (let i = 0; i < rows.length; i += 500) {
         const chunk = JSON.stringify(rows.slice(i, i + 500));
@@ -427,20 +451,40 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
     };
 
     // Accounts: add the missing ones; map backup ids to current ids by email (an account may have been recreated).
+    // A recreated account is always a reader, whatever role the file gives it. The file comes from a bucket, and a
+    // role taken from it would let whoever can write there make themselves an admin: the account has no password,
+    // but "Forgot password" sets one. An admin gives staff their roles back in Admin → Users.
     const users = payload.tables.user ?? [];
-    usersAdded = await insert("user", users, "on conflict do nothing");
+    const before = new Set(rowsOf<{ id: string }>(await tx.execute(sql`select id from "user"`)).map((u) => u.id));
+    usersAdded = await insert("user", users.map((u) => ({ ...u, role: "user" })), "nothing");
     const current = rowsOf<{ id: string; email: string }>(await tx.execute(sql`select id, email from "user"`));
+    const recreated = new Set(current.filter((u) => !before.has(u.id)).map((u) => u.id));
+    rolesNotRestored = users.filter((u) => recreated.has(String(u.id)) && typeof u.role === "string" && u.role !== "user").map((u) => ({ email: String(u.email), role: String(u.role) }));
     const byEmail = new Map(current.map((u) => [u.email.toLowerCase(), u.id]));
     const idMap = new Map(users.map((u) => [String(u.id), byEmail.get(String(u.email).toLowerCase()) ?? null]));
 
-    for (const table of [...RESTORE_ORDER].reverse()) await tx.execute(sql`delete from ${sql.identifier(table)}`);
+    // The backup's key values of a KEEP_ROWS table, as a JSON array for jsonb_array_elements_text.
+    const keysOf = (table: string, key: string) => JSON.stringify((payload.tables[table] ?? []).map((row) => String(row[key])));
+    for (const table of [...RESTORE_ORDER].reverse()) {
+      const key = KEEP_ROWS[table];
+      // KEEP_ROWS: only the rows the backup does not have go; the others are updated below.
+      if (key) await tx.execute(sql`delete from ${sql.identifier(table)} where ${sql.identifier(key)}::text not in (select jsonb_array_elements_text(${keysOf(table, key)}::jsonb))`);
+      else await tx.execute(sql`delete from ${sql.identifier(table)}`);
+    }
     for (const table of RESTORE_ORDER) {
       const rows = (payload.tables[table] ?? []).map((row) => {
         const out = { ...row };
         for (const col of USER_REFS[table] ?? []) if (out[col] != null) out[col] = idMap.get(String(out[col])) ?? out[col];
         return out;
       });
-      restored[table] = await insert(table, rows);
+      // Two kept posts may have traded slugs since the backup. Rows are updated one at a time, so the first would
+      // collide with the slug the second still has (unique collection + slug). Every kept post gets a placeholder
+      // first; the update then gives each one its slug from the backup.
+      if (table === "post" && rows.length > 0 && "slug" in rows[0]!) {
+        await tx.execute(sql`update "post" set slug = '~restore~' || id::text where id::text in (select jsonb_array_elements_text(${keysOf(table, "id")}::jsonb))`);
+      }
+      const key = KEEP_ROWS[table];
+      restored[table] = await insert(table, rows, key ? { key } : "");
     }
   });
 
@@ -449,7 +493,9 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
   invalidateContent();
   broadcastInvalidate("categories");
   broadcastInvalidate("settings");
-  await audit(actor, "backup.restore", name, { safetyBackup: safety.filename, restored, usersAdded }, { severity: "critical" });
-  log.warn("backup restored", { name, safetyBackup: safety.filename, restored, usersAdded });
-  return { safetyBackup: safety.filename, restored, usersAdded };
+  // Who lost a staff role, so an admin can give it back on purpose (at most 50 named; the count is exact).
+  const detail = { safetyBackup: safety.filename, restored, usersAdded, ...(rolesNotRestored.length ? { rolesNotRestored: rolesNotRestored.slice(0, 50), rolesNotRestoredCount: rolesNotRestored.length } : {}) };
+  await audit(actor, "backup.restore", name, detail, { severity: "critical" });
+  log.warn("backup restored", { name, safetyBackup: safety.filename, restored, usersAdded, rolesNotRestored: rolesNotRestored.length });
+  return { safetyBackup: safety.filename, restored, usersAdded, rolesNotRestored: rolesNotRestored.length };
 }

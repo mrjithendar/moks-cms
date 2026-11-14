@@ -1,5 +1,30 @@
 # Progress log — jithendar.com
 
+## Restore keeps what hangs off posts and never grants roles from a backup file (2026-11-15, owner request after a repository review)
+
+Two defects in `restoreStoredBackup` (`src/lib/backups.ts`), found in a review of the repository.
+
+- **Data outside the backup was deleted.** A restore deleted every `post` and `category` row and inserted the backup's
+  rows. Six SEO tables reference `post` with ON DELETE CASCADE and are not in a backup (`seo_drafts`,
+  `seo_content_audits`, `seo_article_optimizations`, `seo_internal_link_suggestions`, `seo_ml_related_articles`,
+  `seo_promo_opportunities`), four more with ON DELETE SET NULL, and `news_topics` references `category`: every restore
+  emptied or unlinked all of them. Posts and categories are now updated in place (`KEEP_ROWS`); only rows the backup
+  does not have are deleted. Kept posts get a placeholder slug first, so two posts that traded slugs since the backup
+  do not collide on the unique `collection + slug` index while they are updated one by one.
+- **Roles came from the file.** Missing accounts were recreated with the `role` in the backup's `user` rows, and a plain
+  zip is accepted even with encryption on, so anyone who can write to the backup bucket could plant an admin and set
+  its password with “Forgot password”. Recreated accounts are now always readers. `RestoreResult.rolesNotRestored`
+  counts those that were staff in the backup; the success message says so and the `backup.restore` audit entry names
+  them.
+- Files: `src/lib/backups.ts`, `src/app/admin/backups/page.tsx` (success message), `src/lib/user-guide.ts` (Backups
+  article), `tests/security-admin.test.ts` (three new restore tests), `docs/MEDIA.md`.
+- Commands: **not run locally.** The environment this was written in has no `node_modules` and cannot install packages
+  (and has Node 22, not ≥ 24), so `npm run lint`, `typecheck`, `test` and `build` ran only in CI on the pull request;
+  see its checks.
+- Open: SEO rows of a kept post are not rolled back with it (a draft made after the backup stays next to the older
+  text). `media` is still deleted and inserted again, so `image_generation.media_id` (ON DELETE SET NULL) loses its
+  link on a restore. A plain zip is still accepted while encryption is on (older backups need that).
+
 ## User manual: in the admin, optionally public, searchable, with draw.io diagrams (2026-11-15, owner request)
 
 Owner request: a user manual for admins and read-only demo users after sign-in, searchable and filterable by category,
