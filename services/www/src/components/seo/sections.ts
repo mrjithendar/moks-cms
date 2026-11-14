@@ -21,6 +21,7 @@ export const SEO_GROUPS: { label: string; items: Section[] }[] = [
       { href: "/admin/content-audit", label: "Content audit", icon: "doc", hint: "Audit issues per article" },
       { href: "/admin/links", label: "Internal linking", icon: "link", hint: "Link graph, orphans, pending links" },
       { href: "/admin/backlinks", label: "Backlinks", icon: "link", hint: "Referring domains gained and lost (DataForSEO)" },
+      { href: "/admin/ai-visibility", label: "AI visibility", icon: "chart", hint: "Do ChatGPT, Claude, Perplexity, Gemini and AI Overviews cite the site?" },
     ],
   },
   {
