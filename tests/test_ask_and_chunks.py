@@ -244,3 +244,140 @@ def test_title_is_part_of_the_stored_hash() -> None:
 
     assert _embed_hash("Old title", "h") != _embed_hash("New title", "h")
     assert _embed_hash("Same", "h") == _embed_hash("Same", "h")
+
+
+# --- Admin settings (web app → `setting` row "ask_blog", app/ask_runtime.py) ---------------------------------------
+
+
+def test_stored_settings_parse_tolerantly_and_default_to_off() -> None:
+    from app.ask_runtime import AskOptions, parse_options
+
+    assert parse_options(None) == AskOptions() and AskOptions().enabled is False and AskOptions().audience == "members"
+    assert parse_options({"enabled": "true"}).enabled is False  # only a real boolean true switches it on
+    o = parse_options({"enabled": True, "audience": "everyone", "dailyBudgetUsd": 0.5, "cacheTtlSeconds": 60, "answerLength": "short", "fallbackMessage": "Nothing\non this\x00 yet."})
+    assert o == AskOptions(enabled=True, audience="everyone", daily_budget_usd=0.5, cache_ttl_s=60, answer_length="short", fallback_message="Nothing on this yet.")
+    bad = parse_options({"enabled": True, "audience": "admins", "dailyBudgetUsd": -1, "cacheTtlSeconds": True, "answerLength": "essay", "fallbackMessage": 7})
+    assert bad == AskOptions(enabled=True)  # every invalid field falls back to its safe default
+
+
+async def test_pg_runtime_caches_fails_closed_and_keeps_the_last_value_on_errors() -> None:
+    from app.ask_runtime import PgAskRuntime
+
+    class Pool:
+        def __init__(self) -> None:
+            self.row: dict | None = None
+            self.fail = False
+            self.reads = 0
+
+        def connection(self):
+            pool = self
+
+            class Conn:
+                async def __aenter__(self):
+                    if pool.fail:
+                        raise RuntimeError("database down")
+                    return self
+
+                async def __aexit__(self, *a):
+                    return False
+
+                async def execute(self, _sql, _args):
+                    pool.reads += 1
+
+                    class Cur:
+                        async def fetchone(self):
+                            return pool.row
+
+                    return Cur()
+
+            return Conn()
+
+    pool = Pool()
+    pool.fail = True
+    rt = PgAskRuntime(pool, ttl_s=0)
+    assert (await rt.options()).enabled is False  # never read: off
+    pool.fail = False
+    assert (await rt.options()).enabled is False  # no row: off
+    pool.row = {"value": {"enabled": True, "audience": "everyone"}}
+    assert (await rt.options()).enabled is True
+    pool.fail = True
+    assert (await rt.options()).enabled is True  # an outage does not flip the switch
+    cached = PgAskRuntime(pool, ttl_s=300)
+    pool.fail = False
+    before = pool.reads
+    await cached.options()
+    await cached.options()
+    assert pool.reads == before + 1
+
+
+async def test_admin_switch_turns_the_assistant_off_without_a_restart(llm: FakeLlm, web: FakeWebApp) -> None:
+    from app.ask_runtime import AskOptions
+
+    c = container(llm, web)
+    c.ask.runtime.value = AskOptions(enabled=False)
+    r = await c.ask.ask("How does cert-manager renew certificates?")
+    events = [e async for e in c.ask.stream("How does cert-manager renew certificates?")]
+    assert r["outcome"] == "disabled" and '"outcome": "disabled"' in events[-1] and llm.calls == []
+    # the environment switch still wins over a saved "on"
+    off = container(llm, web, ask_enabled=False)
+    off.ask.runtime.value = AskOptions(enabled=True, audience="everyone")
+    assert (await off.ask.ask("How does cert-manager renew certificates?"))["outcome"] == "disabled"
+
+
+async def test_signed_in_only_mode_switches_the_public_mcp_tool_off_but_not_the_site(llm: FakeLlm, web: FakeWebApp) -> None:
+    from app.ask_runtime import AskOptions
+
+    c = container(llm, web)
+    c.ask.runtime.value = AskOptions(enabled=True, audience="members")
+    assert (await c.ask.ask("How does cert-manager renew certificates?", None, source="mcp"))["outcome"] == "disabled" and llm.calls == []
+    llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
+    llm.queue("ask_answer", "cert-manager renews 30 days before expiry [1].")
+    assert (await c.ask.ask("How does cert-manager renew certificates?"))["outcome"] == "answered"  # the web app checked the session
+
+
+async def test_admin_budget_applies_but_never_above_the_environment_ceiling(web: FakeWebApp) -> None:
+    from app.ask_runtime import AskOptions
+
+    store = MemorySpendStore()
+    store.rows.append({"purpose": "ask_answer", "cost_usd": 0.5})
+    llm = FakeLlm(BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=1.0))
+    c = memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits()))
+    c.ask.runtime.value = AskOptions(enabled=True, audience="everyone", daily_budget_usd=0.25)
+    assert (await c.ask.ask("How does cert-manager renew certificates?"))["outcome"] == "budget" and llm.guard.ask_daily_usd == 0.25
+    c.ask.runtime.value = AskOptions(enabled=True, audience="everyone", daily_budget_usd=50.0)
+    llm.queue("ask_grade", Relevance(relevant=False, reason="r"))
+    await c.ask.ask("How does cert-manager renew certificates?")
+    assert llm.guard.ask_daily_usd == 1.0  # ASK_BLOG_DAILY_BUDGET_USD is the ceiling
+
+
+async def test_answer_length_changes_the_prompt_the_token_cap_and_the_cache_key(llm: FakeLlm, web: FakeWebApp) -> None:
+    from app.ask_runtime import AskOptions
+    from app.services.ask_pipeline import ANSWER_RULES, answer_rules, prompt_version
+
+    assert answer_rules("standard") == ANSWER_RULES and "at most 6 sentences" in ANSWER_RULES and prompt_version() == "ask-blog-v3"
+    assert answer_rules("nonsense") == ANSWER_RULES  # unknown → standard
+    c = container(llm, web)
+    for _ in range(2):
+        llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
+        llm.queue("ask_answer", "cert-manager renews 30 days before expiry [1].")
+    await c.ask.ask("How does cert-manager renew certificates?")
+    c.ask.runtime.value = AskOptions(enabled=True, audience="everyone", answer_length="short")
+    r = await c.ask.ask("How does cert-manager renew certificates?")
+    assert r.get("cached") is None  # a new style is never answered from the old style's cache
+    standard, short = (s for s in llm.calls if s.purpose == "ask_answer")
+    assert standard.max_tokens == 700 and short.max_tokens == 400
+    assert "at most 3 sentences" in short.cached_system[0] and short.prompt_version == "ask-blog-v3-short"
+    assert c.ask.log.rows[-1]["prompt_version"] == "ask-blog-v3-short"
+
+
+async def test_fallback_message_and_cache_ttl_follow_the_settings(llm: FakeLlm, web: FakeWebApp) -> None:
+    from app.ask_runtime import AskOptions
+
+    c = container(llm, web)
+    c.ask.runtime.value = AskOptions(enabled=True, audience="everyone", cache_ttl_s=0, fallback_message="Not covered yet.")
+    for _ in range(2):
+        llm.queue("ask_grade", Relevance(relevant=False, reason="nothing on GPUs"))
+    a = await c.ask.ask("How do I schedule GPU workloads with Volcano?")
+    b = await c.ask.ask("How do I schedule GPU workloads with Volcano?")
+    assert a["outcome"] == "fallback" and a["answer"].startswith("Not covered yet.")
+    assert b.get("cached") is None  # 0 seconds = no reuse
