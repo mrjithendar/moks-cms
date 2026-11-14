@@ -2,8 +2,8 @@
 
 The agent reads and writes the web app's database. Its tests declare the few columns they need inline, so a migration
 in services/www that renames, drops or retypes one of those columns would leave these tests green while the agent
-fails in production. Here every migration is applied to a scratch schema, each hand-written `create table` found in the
-test sources is created beside it, and each of its columns has to exist in the real table with the same type.
+fails in production. Here every migration is applied to a scratch database, each hand-written `create table` found in
+the test sources is created beside it, and each of its columns has to exist in the real table with the same type.
 
 Needs SEO_AGENT_TEST_DATABASE_URL (the CI service container); skipped without it.
 """
@@ -64,40 +64,39 @@ async def test_hand_written_tables_match_the_web_app_migrations() -> None:
     if not url:
         pytest.skip("set SEO_AGENT_TEST_DATABASE_URL to check the test tables against the web app's migrations")
     import psycopg
+    from psycopg.conninfo import make_conninfo
 
     tables, migrations = hand_written_tables(), migration_statements()
-    real = f"real_{uuid.uuid4().hex[:10]}"
-    schemas = [real]
+    # A database of its own: the migrations name the `public` schema explicitly ("public"."user"), and the other
+    # Postgres tests share this server's default database.
+    database = f"contract_{uuid.uuid4().hex[:10]}"
     problems: list[str] = []
-    async with await psycopg.AsyncConnection.connect(url, autocommit=True) as c:
+    async with await psycopg.AsyncConnection.connect(url, autocommit=True) as admin:
+        await admin.execute(f"create database {database}")
         try:
-            await c.execute(f"create schema {real}")
-            await c.execute(f"set search_path to {real}, public")
-            # The migrator's own ledger (services/www/src/db/migrate.ts), then every migration in its order.
-            await c.execute("create table schema_migrations (name text primary key, applied_at timestamptz not null default now())")
-            for stmt in migrations:
-                await c.execute(stmt)
-            for i, (file, table, stmt) in enumerate(tables):
-                if table in AGENT_OWNED:
-                    continue
-                have = await columns(c, real, table)
-                if not have:
-                    problems.append(f"{file}: no migration creates {table}")
-                    continue
-                # Its own schema first, so the copy does not collide with the real table; the real schema next, so
-                # its foreign keys resolve.
-                copy = f"{real}_{i}"
-                schemas.append(copy)
-                await c.execute(f"create schema {copy}")
-                await c.execute(f"set search_path to {copy}, {real}, public")
-                await c.execute(stmt)
-                for name, kind in (await columns(c, copy, table)).items():
-                    if name not in have:
-                        problems.append(f"{file}: {table}.{name} is not in the migrations")
-                    elif have[name] != kind:
-                        problems.append(f"{file}: {table}.{name} is {kind} in the test and {have[name]} in the migrations")
+            async with await psycopg.AsyncConnection.connect(make_conninfo(url, dbname=database), autocommit=True) as c:
+                # The migrator's own ledger (services/www/src/db/migrate.ts), then every migration in its order.
+                await c.execute("create table schema_migrations (name text primary key, applied_at timestamptz not null default now())")
+                for stmt in migrations:
+                    await c.execute(stmt)
+                for i, (file, table, stmt) in enumerate(tables):
+                    if table in AGENT_OWNED:
+                        continue
+                    have = await columns(c, "public", table)
+                    if not have:
+                        problems.append(f"{file}: no migration creates {table}")
+                        continue
+                    # A schema of its own, so the copy does not collide with the real table; `public` stays on the
+                    # path, so its foreign keys resolve.
+                    copy = f"copy_{i}"
+                    await c.execute(f"create schema {copy}")
+                    await c.execute(f"set search_path to {copy}, public")
+                    await c.execute(stmt)
+                    for name, kind in (await columns(c, copy, table)).items():
+                        if name not in have:
+                            problems.append(f"{file}: {table}.{name} is not in the migrations")
+                        elif have[name] != kind:
+                            problems.append(f"{file}: {table}.{name} is {kind} in the test and {have[name]} in the migrations")
         finally:
-            await c.execute("set search_path to public")
-            for schema in reversed(schemas):
-                await c.execute(f"drop schema if exists {schema} cascade")
+            await admin.execute(f"drop database if exists {database} with (force)")
     assert not problems, "\n".join(problems)
