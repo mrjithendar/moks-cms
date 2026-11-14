@@ -64,6 +64,63 @@ spec:
   policyName: practice-sandbox-pods
   validationActions: ["Deny"]
 ---
+# More of what the dispatcher's pods look like (services/executor/app/backends.py pod_spec), not yet enforced: the
+# image comes from this project's registry, there is one container, it drops every capability, the default seccomp
+# profile applies, the pod is never restarted, publishes no host port and its scratch space has a size limit.
+#
+# Separate from practice-sandbox-pods on purpose. That policy denies, so a rule in it that turns out not to
+# evaluate on this cluster's Kubernetes version stops every sandbox pod (see the note on resources.limits above).
+# This one only warns and writes to the audit log; a pod that breaks a rule is still created. To see whether it
+# ever fires, after a few practice runs:
+#   kubectl get --raw /metrics | grep 'apiserver_validating_admission_policy_check_total.*practice-sandbox-pods-extra'
+# Only enforcement_action="allow" lines: change validationActions below to ["Deny"]. Anything else: fix the rule or
+# the pod first. tests/test_executor.py checks that the image rule matches EXECUTOR_RUNTIMES.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: practice-sandbox-pods-extra
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: jithendar
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: sandbox-or-dispatcher
+      expression: >-
+        request.userInfo.username == 'system:serviceaccount:jithendar:practice-dispatcher' ||
+        object.spec.serviceAccountName == 'practice-sandbox' ||
+        (has(object.metadata.labels) && 'app.kubernetes.io/name' in object.metadata.labels &&
+         object.metadata.labels['app.kubernetes.io/name'] == 'practice-sandbox')
+  validations:
+    - expression: "object.spec.containers.all(c, c.image.startsWith('registry.jithendar.com/jithendar/practice-sandbox'))"
+      message: "sandbox pods run the practice-sandbox image from registry.jithendar.com/jithendar"
+    - expression: "size(object.spec.containers) == 1"
+      message: "sandbox pods have exactly one container"
+    - expression: "object.spec.containers.all(c, has(c.securityContext) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop.exists(d, d == 'ALL') && !has(c.securityContext.capabilities.add))"
+      message: "containers must drop ALL capabilities and add none"
+    - expression: "has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && object.spec.securityContext.seccompProfile.type == 'RuntimeDefault'"
+      message: "sandbox pods must use the RuntimeDefault seccomp profile"
+    - expression: "has(object.spec.restartPolicy) && object.spec.restartPolicy == 'Never'"
+      message: "sandbox pods are never restarted"
+    - expression: "object.spec.containers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0))"
+      message: "no host ports"
+    - expression: "!has(object.spec.volumes) || object.spec.volumes.all(v, has(v.emptyDir) && has(v.emptyDir.sizeLimit))"
+      message: "emptyDir volumes need a sizeLimit"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: practice-sandbox-pods-extra
+spec:
+  policyName: practice-sandbox-pods-extra
+  validationActions: ["Warn", "Audit"]
+---
 # The dispatcher may delete only sandbox pods, not the site's, the database's or the executor's own.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy

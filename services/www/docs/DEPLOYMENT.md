@@ -141,3 +141,20 @@ Fastest: `kubectl -n jithendar set image deploy/jithendar-com jithendar-com=regi
 ## Limits
 
 Single host: if the server goes down, the site is down. Two replicas cover pod restarts and rollouts only.
+
+## What the release jobs' token may change
+
+The image workflows sign in as ServiceAccount `github-ci-deployer` (`minikube/80-ci-deployer.yaml`). Its Role allows
+`patch` on four Deployments, and a patch can change anything in a Deployment: with that token alone someone could
+start another image, or the site's image with another command, next to the database credentials.
+
+`minikube/81-ci-deployer-admission.yaml` is a ValidatingAdmissionPolicy (`ci-deployer-rollouts`) that describes what a
+release actually changes: container images, from `registry.jithendar.com/jithendar/` only, and the `restartedAt`
+annotation of `kubectl rollout restart`. Everything else in the pod template has to stay as it is.
+
+- It is **not applied by CI** (admission policies never are). A cluster admin applies it once:
+  `kubectl apply -f minikube/81-ci-deployer-admission.yaml`.
+- It ships in **warn mode**: a release that breaks a rule still goes through, and kubectl prints
+  `Warning: Validation failed for ValidatingAdmissionPolicy 'ci-deployer-rollouts' …` in the release job's log.
+- After one release with no such warning, set `validationActions: ["Deny"]` in the binding and apply the file again.
+- It does not cover `github-ci-applier`, which applies `minikube/` and may change Deployments by design.
