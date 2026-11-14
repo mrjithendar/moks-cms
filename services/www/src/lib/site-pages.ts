@@ -16,7 +16,7 @@ import { ConflictError, unsafeLinks } from "./posts";
 /** Top-level paths owned by the application; a page slug can never shadow them. */
 export const RESERVED_PAGE_SLUGS = new Set([
   "admin", "api", "account", "login", "setup", "search", "media", "images", "authors", "category", "tag",
-  "blog", "news", "projects", "feed", "page", "_next", "favicon.ico", "robots.txt", "sitemap.xml",
+  "blog", "news", "projects", "feed", "page", "user-manual", "_next", "favicon.ico", "robots.txt", "sitemap.xml",
 ]);
 
 const pageInput = z.object({

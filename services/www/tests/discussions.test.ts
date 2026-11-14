@@ -13,7 +13,7 @@ let currentUser: SessionUser | null = null;
 vi.mock("@/lib/session", () => ({ getSessionUser: async () => currentUser }));
 
 const settings = {
-  features: { comments: true, registration: true, contactForm: true },
+  features: { comments: true, registration: true, contactForm: true, publicGuide: false },
   discussion: { requireApproval: true, editWindowMinutes: 1440 },
 };
 vi.mock("@/lib/settings", () => ({ getSettings: async () => settings }));

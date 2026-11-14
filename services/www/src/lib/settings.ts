@@ -10,7 +10,7 @@ export type Settings = {
   publicationName: string;
   description: string;
   hero: { eyebrow: string; title: string; highlight: string; subtitle: string };
-  features: { comments: boolean; registration: boolean; contactForm: boolean };
+  features: { comments: boolean; registration: boolean; contactForm: boolean; publicGuide: boolean };
   discussion: { requireApproval: boolean; editWindowMinutes: number };
   social: { github: string; x: string; linkedin: string };
   announcement: { enabled: boolean; text: string; href: string };

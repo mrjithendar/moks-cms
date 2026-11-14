@@ -48,6 +48,7 @@ export function GeneralPanel() {
         <NumberField path="general.discussion.editWindowMinutes" label="Readers can edit their comments for" min={0} max={43200} step={30} unit=" min" hint="0 means no time limit. Comments can always be deleted by their author." />
         <Toggle path="general.features.registration" label="Reader sign-up" hint="New accounts by email or Google/GitHub. Existing users can always sign in." />
         <Toggle path="general.features.contactForm" label="Contact form" hint="Shown on /contact; messages arrive in Admin → Messages." />
+        <Toggle path="general.features.publicGuide" label="Public user manual" hint="Publishes the CMS user guide (how-tos, FAQ, diagrams and the settings reference, without any of your data) at /user-manual. Off: only signed-in staff see it, under Admin → User manual." />
       </Panel>
       <Panel title="Maintenance mode" description="Public pages answer 503 (Service Unavailable) with Retry-After, so search engines keep your pages indexed. Admins and authors keep browsing; sign-in, admin and account pages stay available. Applies on every server within 10 seconds of publishing.">
         {maintenance.value && <Alert tone="info">Maintenance mode is on in this draft. Publishing will take the public site offline for readers.</Alert>}
