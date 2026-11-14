@@ -16,5 +16,6 @@
     "youtube": "",
     "mastodon": ""
   },
-  "adsenseClientId": ""
+  "adsenseClientId": "",
+  "aiCrawlers": { "search": "allow", "training": "allow" }
 }

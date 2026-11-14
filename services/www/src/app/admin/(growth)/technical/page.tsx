@@ -14,7 +14,7 @@ export default async function TechnicalPage({ searchParams }: { searchParams: Pr
     <>
       <AdminHeader
         title="Technical health"
-        description="Weekly crawl of the public site (this host only, robots.txt honoured, ≤ 1 request/second by default, private paths skipped): robots.txt, sitemaps, status codes, redirects, canonicals, titles, meta descriptions, headings, alt text, JSON-LD, Open Graph, viewport, indexability, broken links and orphans. URL Inspection and PageSpeed are optional (Integrations)."
+        description="Weekly crawl of the public site (this host only, robots.txt honoured, ≤ 1 request/second by default, private paths skipped): robots.txt, sitemaps, status codes, redirects, canonicals, titles, meta descriptions, headings, alt text, JSON-LD, Open Graph, viewport, indexability, broken links, orphans, title and description length, thin content, JavaScript-only text, slow responses, dead ends, click depth and AI-crawler access (robots.txt policy and a live request as each crawler). URL Inspection and PageSpeed are optional (Integrations)."
         actions={<ApiButton url="/api/admin/seo/technical/scan" label="Scan now" variant="primary" confirm="Queue a crawl of the public site now?" />}
       />
       {!d ? <Empty>No scan yet. &ldquo;Scan now&rdquo; queues one; the weekly schedule runs it automatically.</Empty> : (

@@ -18,6 +18,30 @@ for keywords without impressions, or backlinks; DataForSEO (pay as you go) can. 
 **Manual configuration required:** a DataForSEO account with funds; `scripts/set-dataforseo-config.sh`; switch on in
 Settings. Backlinks also need DataForSEO's Backlinks subscription.
 
+## AI crawlers, llms.txt and seven new technical checks (2026-11-14, owner request)
+
+Owner request: add what is worth taking from open-seo (github.com/every-app/open-seo, MIT). This first part covers
+crawler access and the technical audit.
+
+- **robots.txt**: one explicit group per AI crawler (`src/lib/seo/ai-crawlers.ts`): answer engines (OAI-SearchBot,
+  ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User) and training crawlers (GPTBot, ClaudeBot,
+  Google-Extended, Applebot-Extended, CCBot, meta-externalagent). Policy per site: `aiCrawlers` in `site.json`
+  (`search` / `training`, `allow` or `block`). All three sites are set to allow both, so what crawlers may fetch is
+  unchanged.
+- **/llms.txt** (llmstxt.org): published, indexable, self-canonical articles by category, with the public MCP server
+  when `PUBLIC_MCP_ENABLED` is on (`src/lib/seo/llms.ts`, `src/app/llms.txt/route.ts`).
+- **Technical audit** (`technical.ts`), new checks: `ai_crawlers` (robots.txt against the policy, then the home page
+  requested with each allowed crawler's User-Agent; a 401/403/429/503 or a bot-challenge page means a CDN or firewall
+  rule turns it away), `thin_content` (< 300 words of main text), `js_rendering` (< 50 words and scripts: text needs
+  JavaScript), `slow_response` (≥ 1.5 s info, ≥ 3 s warning), `dead_end` (no internal links), `click_depth` (> 3 clicks
+  from home), `title_length` and `description_length`. The fetcher now records `elapsedMs` and can send another
+  User-Agent.
+- The live AI-crawler request comes from this server, not from the vendors' addresses: a block there is a strong hint
+  that Cloudflare's AI-crawler or bot settings turn crawlers away, not proof.
+
+Commands: `npx vitest run tests/seo-ai-crawlers.test.ts tests/seo-intel-technical.test.ts tests/indexing.test.ts`
+(69 passed); full lint/typecheck/test results in the pull request.
+
 ## deploy.sh removed; the deploy workflow applies everything (2026-11-14, owner request)
 
 Owner request: "Remove deploy.sh, whatever it is doing can you do it via workflow." Delivered as a pull request from a

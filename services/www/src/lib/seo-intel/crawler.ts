@@ -112,7 +112,7 @@ export function guardedLookup(hostname: string, options: dns.LookupOptions, call
   });
 }
 
-export type FetchResult = { url: string; finalUrl: string; status: number; headers: Record<string, string>; body: string; redirects: { from: string; to: string; status: number }[]; truncated: boolean; error?: string };
+export type FetchResult = { url: string; finalUrl: string; status: number; headers: Record<string, string>; body: string; redirects: { from: string; to: string; status: number }[]; truncated: boolean; error?: string; /** Wall time for the whole fetch, redirects included (the real fetcher sets it). */ elapsedMs?: number };
 export type PageFetcher = (url: string) => Promise<FetchResult>;
 
 export function allowedHosts(origin: URL): Set<string> {
@@ -147,10 +147,13 @@ function once(url: URL, timeoutMs: number, maxBytes: number, extraHeaders: Recor
   });
 }
 
-/** The real fetcher: allowlisted hosts only, guarded DNS, manual redirects. */
-export function safeFetcher(origin: URL, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }): PageFetcher {
+/**
+ * The real fetcher: allowlisted hosts only, guarded DNS, manual redirects. `headers` may override the User-Agent (the
+ * technical audit's AI-crawler access check requests the home page as each AI crawler would).
+ */
+export function safeFetcher(origin: URL, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, headers: Record<string, string> = {}): PageFetcher {
   const hosts = allowedHosts(origin);
-  return hostFetcher((h) => hosts.has(h), opts);
+  return hostFetcher((h) => hosts.has(h), opts, ["http:", "https:"], headers);
 }
 
 /**
@@ -180,6 +183,15 @@ export function headerFetcher(domains: string[], opts: { timeoutMs: number; maxB
 }
 
 function hostFetcher(allowed: (host: string) => boolean, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, protocols = ["http:", "https:"], headers: Record<string, string> = {}): PageFetcher {
+  const hops = hopFetcher(allowed, opts, protocols, headers);
+  return async (start: string) => {
+    const t0 = performance.now();
+    const r = await hops(start);
+    return { ...r, elapsedMs: Math.round(performance.now() - t0) };
+  };
+}
+
+function hopFetcher(allowed: (host: string) => boolean, opts: { timeoutMs: number; maxBytes: number; maxRedirects: number }, protocols: string[], headers: Record<string, string>): PageFetcher {
   return async (start: string) => {
     const redirects: FetchResult["redirects"] = [];
     let current = new URL(start);
