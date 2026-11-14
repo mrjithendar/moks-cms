@@ -18,6 +18,11 @@ Anyone with a free account can submit arbitrary Python. Assume every submission 
 | Weaken the sandbox via the dispatcher | create a privileged pod, or a pod that mounts the site's Secrets | Everything runs in namespace `jithendar` with the site (owner decision 2026-11-02), and pod-create rights there would normally reach every Secret. ValidatingAdmissionPolicy `practice-sandbox-pods` therefore checks every pod the dispatcher creates (and every pod labelled or running as `practice-sandbox`): gVisor runtime, no token, emptyDir volumes only, no env from Secrets/ConfigMaps, no host namespaces, non-root, unprivileged, limits and a deadline. `practice-dispatcher-deletes` lets it delete only sandbox pods. It can still list pods and read pod logs in `jithendar` |
 | Abuse the executor API | submit jobs directly | Bearer token known only to the site; the API itself never runs code and holds no Kubernetes credentials |
 
+A second policy, `practice-sandbox-pods-extra`, describes more of the pod (image from the project's registry, one
+container, all capabilities dropped, `RuntimeDefault` seccomp, never restarted, no host ports, size-limited scratch
+space). It only warns and audits for now; `minikube/practice-executor-15-admission.yaml` says how to check it and
+switch it to `Deny`. The dispatcher's NetworkPolicy lets it reach the Kubernetes API on private addresses only.
+
 **Why not plain Docker or Python-level sandboxing?** Containers share the host kernel; a kernel bug is a
 host compromise. Restricted-Python approaches (`exec` with filtered builtins, audit hooks) are routinely
 bypassed. **Why gVisor rather than Kata?** Kata needs nested virtualisation (KVM) inside minikube's node

@@ -17,6 +17,7 @@ resources:
 - 70-observability.yaml
 - 75-mesh.yaml
 - 80-ci-deployer.yaml
+- 81-ci-deployer-admission.yaml
 - 85-ci-applier.yaml
 
 # The site always runs jithendar-com:latest (imagePullPolicy Always, set in 30-jithendar-com.yaml): CI pushes
