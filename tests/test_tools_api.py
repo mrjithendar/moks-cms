@@ -176,3 +176,21 @@ def test_cronjob_trigger_posts_one_kickoff_and_stops_the_sidecar(monkeypatch) ->
     assert calls[0] == ("http://seo-agent.jithendar:8080/flows/report_flow/kickoff", {"inputs": {"period": "monthly"}, "triggered_by": "cron"})
     assert calls[1][0].endswith("/quitquitquit")
     assert trigger.main(["rm -rf /"]) == 2 and trigger.main([]) == 2  # only flow names
+    assert trigger.main(["ga4_sync_flow"]) == 0  # digits are allowed: the GA4 CronJob failed with "usage" until 2026-11-14
+    assert trigger.main(["4ga_flow"]) == 2 and trigger.main(["GA4_sync_flow"]) == 2 and trigger.main(["ga4-sync_flow"]) == 2
+
+
+def test_every_cronjob_names_a_flow_the_trigger_accepts() -> None:
+    """Each `python -m app.trigger <flow>` in the cluster manifests passes the trigger's name check and is a flow cron may start."""
+    import re
+    from pathlib import Path
+
+    from app import trigger
+    from app.flows import CRON_FLOWS
+
+    manifests = sorted((Path(__file__).resolve().parents[3] / "kubernetes").glob("seo-agent-*-triggers.yaml"))
+    names = [n for f in manifests for n in re.findall(r'"app\.trigger",\s*"([^"]+)"', f.read_text())]
+    assert len(names) >= 10, names
+    for name in names:
+        assert trigger.NAME.match(name), name
+        assert name in CRON_FLOWS, name
