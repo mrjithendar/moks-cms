@@ -339,7 +339,7 @@ export function publicSettings(s: SeoSettings): PublicSeoSettings {
 /** The LLM API key: saved (sealed) key, else the provider's environment variable. Bedrock uses pod credentials. */
 export function seoLlmKey(s: SeoSettings, env: Record<string, string | undefined> = process.env): string | null {
   if (s.llm.provider === "bedrock") return null;
-  // Claude: the key is a secret reference only (Kubernetes Secret → env), never stored in the database.
+  // Claude: the deployment's key, or the one saved in Admin → Advanced settings (written into env by applyEnvOverlay, D-89).
   if (s.llm.provider === "anthropic") return env.ANTHROPIC_API_KEY?.trim() || null;
   if (s.llmKey) return unseal(s.llmKey);
   const v = s.llm.provider === "gemini" ? env.GEMINI_API_KEY : env.OPENAI_API_KEY;

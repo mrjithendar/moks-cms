@@ -171,11 +171,14 @@ class EditorialCrew:
     async def run(self, brief: dict[str, Any], *, feedback: str | None = None, validator_feedback: str | None = None, feedback_untrusted: bool = False, draft_id: str | None = None) -> CrewResult:
         from crewai import Task
 
+        from ..runtime import effective_settings
+
+        settings = await effective_settings(self.settings, self.web)  # admin-saved crew options, if any
         fetched: list[str] = []
-        ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, on_source=lambda u, _t: fetched.append(u), style=str(brief.get("styleGuide") or ""))
+        ctx = ToolContext(self.web, self.retriever, settings.docs_allowlist, on_source=lambda u, _t: fetched.append(u), style=str(brief.get("styleGuide") or ""))
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
+            agents = build_agents(AGENTS, settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
             b = data_block("brief", {k: brief.get(k) for k in BRIEF_KEYS})
             style = data_block("style_guide", brief.get("styleGuide", ""))
             notes = author_notes_block(brief)
@@ -197,9 +200,9 @@ class EditorialCrew:
                 output_pydantic=SeoMetadata,
             )
             tasks = [research, write, review, seo]
-            return make_crew(agents, tasks, self.settings), tasks
+            return make_crew(agents, tasks, settings), tasks
 
-        o = await run_crew("editorial", build, self.settings, ctx)
+        o = await run_crew("editorial", build, settings, ctx)
         draft = self._result(o.output, o.tasks, brief, o.status, o.reason)
         draft = self._check_sources(draft, fetched)
         return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=o.tokens, cost_usd=o.cost_usd, tool_calls=o.tool_calls, fetched_sources=fetched)

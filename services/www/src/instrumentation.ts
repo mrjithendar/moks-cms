@@ -48,6 +48,10 @@ export async function register() {
   const applied = await withSpan("startup.migrate", {}, async () => migrateDb(await getDb()));
   log.info("database ready", { migrationsApplied: applied, ms: Date.now() - started });
 
+  // API keys and options saved in Admin → Advanced settings, for code that reads process.env directly.
+  const { applyEnvOverlay } = await import("./lib/runtime-settings");
+  await applyEnvOverlay();
+
   // Python practice catalog (content/python-practice/catalog.generated.json): new and changed problems.
   const { ensurePracticeSeeded } = await import("./lib/practice/seed");
   await ensurePracticeSeeded().catch((err) => log.warn("practice catalog seed failed", { err }));

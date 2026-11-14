@@ -14,6 +14,9 @@ import { seal, unseal, type Sealed } from "./secrets";
  * empty field falls back to the deployment's value. Secrets are sealed with SETTINGS_ENCRYPTION_KEY and never
  * sent back to the browser. Changes apply on every replica at once (Redis invalidation; Better Auth is rebuilt).
  *
+ * Fields marked `overlay` are also written into process.env (applyEnvOverlay) for code that reads it directly, and
+ * fields marked `agent` are served to the seo-agent service (agentRuntimeEnv).
+ *
  * Deliberately NOT here (the admin cannot run, or could lock itself out, without them): DATABASE_URL,
  * REDIS_URL, BETTER_AUTH_SECRET, SETTINGS_ENCRYPTION_KEY, SITE_URL, ADMIN_BOOTSTRAP_TOKEN, APP_ENV, and
  * process-level options read once at start-up (LOG_LEVEL, ACCESS_LOG, OTEL_*, METRICS_PORT, paths).
@@ -30,6 +33,13 @@ export type Field = {
   min?: number;
   max?: number;
   options?: { value: string; label: string }[];
+  /**
+   * Also written into this process's environment (applyEnvOverlay), for code that reads process.env directly
+   * (Claude drafting, Google APIs, Reddit, the documentation allowlist).
+   */
+  overlay?: boolean;
+  /** Served to the seo-agent service over the internal callback API (agentRuntimeEnv). */
+  agent?: boolean;
 };
 export type Group = { id: string; title: string; description: string; fields: Field[] };
 
@@ -157,6 +167,37 @@ export const GROUPS: Group[] = [
   },
 ];
 
+const HOST_LIST = /^$|^[a-z0-9.-]{3,100}(\s*,\s*[a-z0-9.-]{3,100}){0,99}$/;
+const AGENT_MAP = /^$|^\{\s*("[a-z_]+\.[a-z_]+"\s*:\s*("claude-[a-z0-9-]{3,40}"|\d{1,2})\s*,?\s*){1,20}\}$/;
+
+GROUPS.push(
+  {
+    id: "api-keys",
+    title: "API keys",
+    description:
+      "Keys the site and the SEO agent use to call other services. A key saved here is encrypted, never shown again, and replaces the one in the deployment's Secret within about a minute (the SEO agent re-reads it). Empty: the deployment's key applies.",
+    fields: [
+      { env: "ANTHROPIC_API_KEY", label: "Anthropic (Claude) API key", type: "secret", pattern: /^$|^sk-ant-[A-Za-z0-9_-]{20,300}$/, overlay: true, agent: true, hint: "Drafts, the editorial crews, reports and Ask the Blog." },
+      { env: "OPENAI_API_KEY", label: "OpenAI API key", type: "secret", pattern: /^$|^sk-[A-Za-z0-9_-]{20,300}$/, overlay: true, agent: true, hint: "News desk images, when that provider is selected." },
+      { env: "PAGESPEED_API_KEY", label: "PageSpeed Insights API key", type: "secret", pattern: /^$|^[A-Za-z0-9_-]{20,100}$/, overlay: true },
+      { env: "GOOGLE_SEO_SERVICE_ACCOUNT_JSON", label: "Google service account key (JSON)", type: "secret", pattern: /^$|^[\s\S]{100,12000}$/, overlay: true, hint: "The whole key file, pasted as one value (or its base64). Used for Search Console, GA4 and the Indexing API." },
+      { env: "REDDIT_CLIENT_ID", label: "Reddit app client ID", type: "text", pattern: /^$|^[A-Za-z0-9_-]{10,40}$/, overlay: true },
+      { env: "REDDIT_CLIENT_SECRET", label: "Reddit app client secret", type: "secret", pattern: /^$|^[A-Za-z0-9_-]{20,60}$/, overlay: true },
+    ],
+  },
+  {
+    id: "editorial-crew",
+    title: "Editorial crew (AI drafting)",
+    description: "How the SEO agent's crews run. Empty fields use the deployment's values (minikube/seo-agent-40-seo-agent.yaml). Applied to the next crew run.",
+    fields: [
+      { env: "SEO_CREW_MODELS", label: "Model per agent", type: "text", pattern: AGENT_MAP, agent: true, placeholder: '{"editorial.writer":"claude-opus-5-5"}', hint: 'JSON: "<crew>.<agent>" → Claude model id. Agents not listed use the draft model.' },
+      { env: "SEO_CREW_MAX_ITERS", label: "Turns per agent", type: "text", pattern: AGENT_MAP, agent: true, placeholder: '{"editorial.researcher":10}', hint: 'JSON: "<crew>.<agent>" → 1 to 20. Agents not listed use 4.' },
+      { env: "CREW_MAX_TOKENS_PER_RUN", label: "Token cap per crew run", type: "number", min: 20000, max: 1000000, agent: true, placeholder: "300000" },
+      { env: "SEO_AGENT_DOCS_ALLOWLIST", label: "Research allowlist", type: "textarea", pattern: HOST_LIST, overlay: true, agent: true, hint: "Comma-separated documentation hosts the researcher may read (a host covers its subdomains). Empty: the built-in list of official documentation sites." },
+    ],
+  },
+);
+
 const FIELDS = new Map(GROUPS.flatMap((g) => g.fields.map((f) => [f.env, f] as const)));
 const KEY = "runtime";
 
@@ -164,6 +205,7 @@ type Stored = { values: Record<string, string>; secrets: Record<string, Sealed> 
 let cached: Promise<Stored> | null = null;
 onInvalidate("integrations", () => {
   cached = null;
+  void applyEnvOverlay();
 });
 
 async function readStored(): Promise<Stored> {
@@ -177,6 +219,58 @@ async function readStored(): Promise<Stored> {
     throw err;
   });
   return cached;
+}
+
+/** What the deployment itself set for each overlay field, captured before the first overlay write. */
+const deployment = new Map<string, string | undefined>();
+const deploymentValue = (env: string): string | undefined => (deployment.has(env) ? deployment.get(env) : process.env[env]);
+
+/**
+ * Write the admin-saved values of the `overlay` fields into process.env (and put the deployment's value back when one
+ * is cleared), so code that reads process.env directly sees them. Called at start-up, after a save, and when another
+ * replica saves. Never throws.
+ */
+export async function applyEnvOverlay(): Promise<void> {
+  const stored = await readStored().catch(() => null);
+  if (!stored) return;
+  for (const f of FIELDS.values()) {
+    if (!f.overlay) continue;
+    if (!deployment.has(f.env)) deployment.set(f.env, process.env[f.env]);
+    let v: string | undefined;
+    if (f.type === "secret") {
+      const sealed = stored.secrets[f.env];
+      try {
+        v = sealed ? unseal(sealed) : undefined;
+      } catch {
+        v = undefined; // sealed with another SETTINGS_ENCRYPTION_KEY: the deployment value applies
+      }
+    } else v = stored.values[f.env] || undefined;
+    const next = v ?? deployment.get(f.env);
+    if (next === undefined) delete process.env[f.env];
+    else process.env[f.env] = next;
+  }
+}
+
+/**
+ * The admin-saved values of the `agent` fields, for the seo-agent service (GET /internal/seo-agent/runtime-env, bearer
+ * token, cluster-internal port). Only values saved here are returned: for the rest the agent keeps its own environment.
+ */
+export async function agentRuntimeEnv(): Promise<{ env: Record<string, string> }> {
+  const stored = await readStored();
+  const env: Record<string, string> = {};
+  for (const f of FIELDS.values()) {
+    if (!f.agent) continue;
+    if (f.type === "secret") {
+      const sealed = stored.secrets[f.env];
+      if (!sealed) continue;
+      try {
+        env[f.env] = unseal(sealed);
+      } catch {
+        /* another SETTINGS_ENCRYPTION_KEY: not served */
+      }
+    } else if (stored.values[f.env]) env[f.env] = stored.values[f.env]!;
+  }
+  return { env };
 }
 
 /**
@@ -206,7 +300,7 @@ export async function runtimeSummary(): Promise<Record<string, FieldState>> {
   const stored = await readStored();
   const out: Record<string, FieldState> = {};
   for (const f of FIELDS.values()) {
-    const env = process.env[f.env]?.trim() || null;
+    const env = (f.overlay ? deploymentValue(f.env) : process.env[f.env])?.trim() || null;
     out[f.env] = {
       env: f.env,
       value: f.type === "secret" ? "" : (stored.values[f.env] ?? ""),
@@ -285,6 +379,8 @@ export async function saveRuntimeGroup(actor: Actor, groupId: string, input: Rec
     .values({ key: KEY, value, updatedBy: actor.id })
     .onConflictDoUpdate({ target: schema.setting.key, set: { value, updatedBy: actor.id, updatedAt: new Date() } });
   broadcastInvalidate("integrations");
+  cached = null;
+  await applyEnvOverlay();
   // Names only: values (and certainly secrets) stay out of the audit log.
   await audit(actor, "integrations.runtime", groupId, { changed });
 }
