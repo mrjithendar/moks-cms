@@ -46,7 +46,7 @@ allowlisted tools, the limits and the runner.
 
 ## Tools (read-only allowlist)
 
-`ALLOWED_TOOLS = {read_article, vector_search, gsc_queries_for_topic, gsc_queries_for_page, style_guide, fetch_allowlisted_docs}`.
+`ALLOWED_TOOLS = {read_article, vector_search, gsc_queries_for_topic, gsc_queries_for_page, style_guide, fetch_allowlisted_docs, web_search}` (`web_search` only for the Editorial Crew researcher, and only when switched on; see below).
 `build_tools` refuses anything else; a test asserts the exact sets per agent. No shell, arbitrary HTTP, code execution or
 database write. The one write in the system (create/update a draft) is a flow step, never an agent.
 
@@ -90,13 +90,34 @@ look anyway).
 | SEO editor | Title ≤ 60, meta 120–155, heading plan for the target queries, ≤ 3 internal links to existing paths, **metadata JSON only** (`SeoMetadata`, no body) | gsc_queries_for_topic, vector_search |
 
 Output: `NewArticleDraft` (title, slug_suggestion, meta_description, outline, body_mdx, code_blocks, sources[],
-fact_check_flags[], internal_links[], incomplete, incomplete_reason), **assembled in code** (prompt `seo-crew-v4`):
+fact_check_flags[], internal_links[], incomplete, incomplete_reason), **assembled in code** (prompt `seo-crew-v5`):
 `body_mdx` is the technical reviewer's corrected body (everything before its `NEEDS_FACT_CHECK:` line), `code_blocks`
 are extracted from it, the reviewer's `NEEDS_FACT_CHECK` items join the editor's `fact_check_flags`, and the rest is the
 SEO editor's metadata. The editor never re-emits the body, so a long article cannot be truncated inside its JSON and no
 rewrite can slip in after the technical review (a body it emits anyway is ignored). Without a reviewed body the writer's
 body is kept, flagged "technical review did not finish", and the draft is incomplete. A cited source the crew never
 retrieved during the run is flagged automatically.
+
+**Optional steps (prompt `seo-crew-v5`).** Both are off in code and on in the production manifest; each can be
+switched in Admin → Advanced settings → Editorial crew and applies to the next run.
+
+- **Web search for the researcher** (`SEO_RESEARCH_WEB_SEARCH`, at most `SEO_RESEARCH_WEB_SEARCH_MAX` searches a run,
+  default 5). The researcher gets a seventh tool, `web_search`. Each call is one small model request with Anthropic's
+  server-side web search tool (`web_search_20250305`), so the agent needs no new egress: the search runs on
+  Anthropic's side and comes back as a short report plus the result pages (title, URL), wrapped as untrusted data.
+  - It must be enabled for the organization in the Claude Console. If it is not (or a search fails or times out), the
+    researcher is told search is unavailable, search stays off for that run, and the crew carries on with the
+    documentation.
+  - Queries containing an email address, phone number or secret are refused.
+  - A cited page that search found but the crew did not open itself (it can only open allowlisted documentation) gets
+    a fact-check flag: "found by web search but not opened by the crew". Search results are leads, not verification.
+  - Cost: tokens of the search request plus Anthropic's per-search fee, both booked to the run and the monthly budget.
+- **Critique and rewrite** (`SEO_EDITORIAL_CRITIQUE`). The crew becomes Researcher → Writer → **Developmental editor**
+  → Writer (revision) → Technical reviewer → SEO editor. The editor holds no tools; it lists at most 12 concrete
+  changes (section, problem, fix) against a rubric (substance, accuracy to the notes, completeness, order, code,
+  voice) and ends with `VERDICT: revise` or `VERDICT: ready`. The writer revises once and may not add facts that are
+  in neither the research nor the author's notes. The technical review then checks the revised body. If the review
+  does not finish, the revised body (not the first draft) is kept for the human.
 
 **Brief inputs (v4 prompt).** Besides title, gap, audience, intent, outline, queries, code examples and internal links,
 the crew now reads the item's diagrams, reading time and notes, plus two server-side additions:

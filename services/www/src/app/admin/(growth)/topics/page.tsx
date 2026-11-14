@@ -7,9 +7,12 @@ import { adminActor } from "@/lib/admin";
 import { audit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { PostError } from "@/lib/posts";
+import { GROUPS, runtimeSummary, saveRuntimeGroup } from "@/lib/runtime-settings";
 import { AgentError, kickoff } from "@/lib/seo-agent/client";
 import { orchestrator } from "@/lib/seo-agent/config";
-import { AutomationSettingsError, EDITORIAL_TZ, getAutomationSettings, MODE_LABELS, MODES, PERIODS, saveAutomationSettings, type AutomationSettings } from "@/lib/seo-intel/topics/automation";
+import { budgetState, type BudgetState } from "@/lib/seo-intel/claude";
+import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
+import { AutomationSettingsError, budgetOutlook, draftCost, EDITORIAL_TZ, getAutomationSettings, MODE_LABELS, MODES, PERIODS, saveAutomationSettings, type AutomationSettings, type BudgetOutlook } from "@/lib/seo-intel/topics/automation";
 import { dismissTopic, listTopics, topicToCalendar, type StoredTopic } from "@/lib/seo-intel/topics/discover";
 import { getTopicsSettings, saveTopicsSettings, SOURCE_IDS, SOURCE_LABELS, TopicsSettingsError, type TopicsSettings } from "@/lib/seo-intel/topics/settings";
 
@@ -74,6 +77,20 @@ async function saveAutomation(form: FormData) {
       throw e;
     }
     return "Automatic planning settings saved.";
+  });
+}
+
+/** The monthly AI budget is one field of Advanced settings → Editorial crew; saved here without touching the others. */
+async function saveBudget(form: FormData) {
+  "use server";
+  const actor = await adminActor();
+  await flash(`${BACK}#automation`, async () => {
+    const group = GROUPS.find((g) => g.id === "editorial-crew")!;
+    const cur = await runtimeSummary();
+    const values = Object.fromEntries(group.fields.filter((f) => f.type !== "secret").map((f) => [f.env, cur[f.env]?.value ?? ""]));
+    values.SEO_LLM_MONTHLY_BUDGET_USD = String(form.get("budget") ?? "").trim();
+    await saveRuntimeGroup(actor, "editorial-crew", values);
+    return values.SEO_LLM_MONTHLY_BUDGET_USD ? `Monthly AI budget set to $${values.SEO_LLM_MONTHLY_BUDGET_USD}. The SEO agent picks it up within a minute.` : "Monthly AI budget cleared: the deployment's value applies.";
   });
 }
 
@@ -192,10 +209,40 @@ function Check({ name, label, checked, hint }: { name: string; label: string; ch
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function AutomationSection({ auto }: { auto: AutomationSettings }) {
+const usd = (n: number) => `$${n.toFixed(2)}`;
+
+function BudgetCard({ auto, budget, outlook, runs, savedBudget }: { auto: AutomationSettings; budget: BudgetState; outlook: BudgetOutlook; runs: number; savedBudget: string }) {
   return (
-    <section id="automation" aria-labelledby="automation-title" className="mb-10 scroll-mt-24">
-      <h2 id="automation-title" className="mb-3 text-lg font-semibold text-fg">Automatic planning</h2>
+    <Card>
+      <h3 className="font-semibold text-fg">Monthly AI budget</h3>
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
+        <div className="rounded-lg bg-surface-sunken px-2 py-2"><dt className="text-xs text-fg-subtle">Budget</dt><dd className="font-semibold text-fg">{usd(budget.budgetUsd)}</dd></div>
+        <div className="rounded-lg bg-surface-sunken px-2 py-2"><dt className="text-xs text-fg-subtle">Spent this month</dt><dd className="font-semibold text-fg">{usd(budget.spentUsd)}</dd></div>
+        <div className="rounded-lg bg-surface-sunken px-2 py-2"><dt className="text-xs text-fg-subtle">Left</dt><dd className="font-semibold text-fg">{usd(budget.remainingUsd)}</dd></div>
+      </dl>
+      {budget.paused && <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">The budget is used up: drafting is paused until next month or until you raise it.</p>}
+      <p className="mt-3 text-sm text-fg-muted">
+        The cadence above plans about {outlook.articles} article{outlook.articles === 1 ? "" : "s"} a month.{" "}
+        {outlook.perArticleUsd === null
+          ? "No drafted article has a recorded cost yet, so there is no estimate; it appears after the first Editorial Crew run."
+          : `Drafted articles have cost ${usd(outlook.perArticleUsd)} on average (${runs} run${runs === 1 ? "" : "s"} in the last 90 days), so drafting all of them would cost about ${usd(outlook.projectedUsd ?? 0)} a month${outlook.fits ? ", inside the budget." : ", more than the budget: drafting will pause part-way through the month."}`}
+        {auto.mode !== "schedule_and_draft" && " Drafts are only started automatically in the mode “Schedule and draft”."}
+      </p>
+      <form action={saveBudget} className="mt-4 flex flex-wrap items-end gap-3">
+        <Field label="Monthly budget (USD)" htmlFor="budget" hint="Whole dollars, 1 to 10,000. Empty: the deployment's value. Shared with every other AI draft and report, not only the planner.">
+          <Input id="budget" name="budget" type="number" min={1} max={10000} step={1} defaultValue={savedBudget} placeholder={String(Math.round(budget.budgetUsd))} className="w-40" />
+        </Field>
+        <Button type="submit" variant="secondary">Save budget</Button>
+      </form>
+    </Card>
+  );
+}
+
+function AutomationSection({ auto, budget, outlook, runs, savedBudget }: { auto: AutomationSettings; budget: BudgetState; outlook: BudgetOutlook; runs: number; savedBudget: string }) {
+  return (
+    <section id="automation" aria-labelledby="automation-title" className="mb-10 grid scroll-mt-24 gap-4">
+      <h2 id="automation-title" className="text-lg font-semibold text-fg">Automatic planning</h2>
+      <BudgetCard auto={auto} budget={budget} outlook={outlook} runs={runs} savedBudget={savedBudget} />
       <Card>
         <p className="mb-5 text-sm text-fg-muted">
           Once a day the planner puts the best candidates on the <Link href="/admin/calendar" className="link">editorial calendar</Link> until the cadence below is met, counting items you added yourself. Each item&apos;s notes say why the
@@ -249,7 +296,9 @@ function AutomationSection({ auto }: { auto: AutomationSettings }) {
 
 export default async function TopicsPage({ searchParams }: { searchParams: FlashParams }) {
   const db = await getDb();
-  const [s, auto, topics, sp] = await Promise.all([getTopicsSettings(), getAutomationSettings(), listTopics(db, "new", 60), searchParams]);
+  const [s, auto, topics, sp, seo, cost, saved] = await Promise.all([getTopicsSettings(), getAutomationSettings(), listTopics(db, "new", 60), searchParams, getSeoSettings(), draftCost(db), runtimeSummary()]);
+  const budget = await budgetState(db, claudeConfig(seo));
+  const outlook = budgetOutlook(auto, cost, budget.budgetUsd);
   const xReady = Boolean(process.env.X_BEARER_TOKEN?.trim());
   const dfsReady = Boolean(process.env.DATAFORSEO_LOGIN?.trim() && process.env.DATAFORSEO_PASSWORD?.trim());
   return (
@@ -274,7 +323,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Flash
           <div className="grid gap-4 lg:grid-cols-2">{topics.map((t) => <TopicCard key={t.id} t={t} />)}</div>
         )}
       </section>
-      <AutomationSection auto={auto} />
+      <AutomationSection auto={auto} budget={budget} outlook={outlook} runs={cost.runs} savedBudget={saved.SEO_LLM_MONTHLY_BUDGET_USD?.value ?? ""} />
       <section id="settings" aria-labelledby="settings-title" className="scroll-mt-24">
         <h2 id="settings-title" className="mb-3 text-lg font-semibold text-fg">Settings</h2>
         <Card>

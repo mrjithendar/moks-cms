@@ -10,6 +10,14 @@ retrieved during the run is flagged for the reviewer.
 v4 prompt (seo-crew-v4): the writer also gets the author's first-hand notes (brief.authorNotes, the only facts allowed
 without a research source), up to two published articles as examples of voice and depth (brief.examples, form only),
 and an explicit depth target; the brief block now carries diagrams, reading time and the item's notes.
+
+v5 prompt (seo-crew-v5), two optional steps (Settings, also Admin → Advanced settings → Editorial crew):
+- research_web_search: the researcher also holds `web_search` (Anthropic's server-side web search through the model
+  API, at most research_web_search_max searches a run). A cited page that search found but the crew never opened is
+  flagged for the human reviewer.
+- editorial_critique: Researcher → Writer → Developmental editor (critique) → Writer (revision) → Technical reviewer →
+  SEO editor. The editor lists concrete problems against a rubric; the writer revises once; the technical review then
+  checks the revised body.
 """
 
 from __future__ import annotations
@@ -23,12 +31,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import Settings
-from ..llm import Llm
+from ..llm import CallSpec, Llm
 from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArticleDraft, Source
 from ..tools import ToolContext, data_block
-from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
+from .common import UNTRUSTED, AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
 
-PROMPT_VERSION = "seo-crew-v4"
+PROMPT_VERSION = "seo-crew-v5"
 
 AGENTS = [
     AgentDef("researcher", "Researcher", "Collect the facts, related site articles and official documentation the article needs, with sources, in enough detail that the writer never has to guess.", "You research for a one-person technical publication. You only report what the sources say, you copy commands, flags, versions and defaults exactly, and you list every source URL you used.", ["vector_search", "read_article", "fetch_allowlisted_docs"]),
@@ -37,6 +45,15 @@ AGENTS = [
     AgentDef("seo_editor", "SEO editor", "Produce the final title, meta description, heading plan and up to three internal links, as the required JSON. You never rewrite the body.", "You edit for search intent without clickbait: titles ≤ 60 characters, meta 120–155 characters, internal links only to existing site paths.", ["gsc_queries_for_topic", "vector_search"]),
 ]
 ROLES = {a.key: {"role": a.role, "tools": a.tools} for a in AGENTS}
+# Optional fifth agent (settings.editorial_critique): reads the draft like a demanding editor, holds no tools.
+CRITIC = AgentDef("critic", "Developmental editor", "Find what would make an experienced engineer stop reading or distrust the article, and say exactly what to change.", "You edit technical articles for a one-person engineering publication. You are specific and blunt: every point names the section, the problem and the fix. You never rewrite the article yourself and you never ask for padding.", [])
+
+
+def agents_for(settings: Settings) -> list[AgentDef]:
+    """The crew for this run: the four base agents, the researcher with web_search and the critic when switched on."""
+    out = [AgentDef(a.key, a.role, a.goal, a.backstory, [*a.tools, "web_search"], a.max_tokens) if a.key == "researcher" and settings.research_web_search else a for a in AGENTS]
+    return [*out, CRITIC] if settings.editorial_critique else out
+
 
 BRIEF_KEYS = ("title", "gap", "audience", "intent", "outline", "supportingQueries", "codeExamples", "diagrams", "readingTimeMinutes", "internalLinks", "category", "notes")
 AUTHOR_NOTES_CHARS = 6000
@@ -55,6 +72,32 @@ WRITE_TASK = (
     "Opening and ending: open with the concrete problem or result in two or three sentences, with no generic introduction; end with what to check or do next, not a recap.\n"
     "Code: every block declares its language and is complete enough to copy and run; no placeholders that hide the hard part.\n"
     "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences."
+)
+WEB_SEARCH_STEP = (
+    "\n3. web_search: for what the official documentation does not settle (current release and version numbers, recent changes, known issues, how practitioners solved it). Use specific queries, a few searches at most. "
+    "Treat search results as leads: prefer the official page they point to and open it with fetch_allowlisted_docs when its domain allows; say which facts rest only on a search result."
+)
+CRITIQUE_TASK = (
+    "Read the draft as the article's first demanding reader and list what must change. Judge it against:\n"
+    "1. Substance: does every section teach something specific (a command, a configuration, a number, a decision and its reason)? Name each generic or padded passage.\n"
+    "2. Accuracy to the notes: anything stated that is neither in the research notes nor in the author's first-hand notes? Anything in the research that the draft got wrong or left out and the reader needs?\n"
+    "3. Completeness: is every outline heading covered, with the result to expect and the failure mode an engineer would hit?\n"
+    "4. Order and flow: does it open with the concrete problem or result, explain why before how, and end with what to do next?\n"
+    "5. Code: is every block complete enough to copy and run, with its language declared and no placeholder hiding the hard part?\n"
+    "6. Voice: the style guide, first person only where the author did the work, no filler or sales language.\n"
+    "Return a numbered list, most important first, at most 12 points. Each point: the section heading, what is wrong (quote a few words), and the exact change to make. "
+    "Do not rewrite the article and do not ask for length for its own sake. Last line: `VERDICT: revise` or, only if nothing above applies, `VERDICT: ready`."
+)
+REVISE_TASK = (
+    "Revise your draft using the editor's critique. Apply every point that is right; where a point asks for a fact that is in neither the research notes nor the author's first-hand notes, do not invent it: cut the claim or say less. "
+    "Keep what the critique did not fault, keep every code block that is correct, and keep the style guide. If the verdict is `VERDICT: ready`, return the draft unchanged. "
+    "Return the complete revised article body in MDX (no front matter, no H1, no commentary about the changes)."
+)
+SEARCH_SYSTEM = (
+    "You are the web search step of a researcher for a technical publication. Search the web for the query and report only what the results say: "
+    "the facts, each with the URL it came from; commands, flags and version numbers exactly as written; dates of releases and changes. "
+    "Prefer official documentation, release notes and maintainers' posts over forums and aggregators. Say when results disagree or when nothing reliable was found. "
+    "Do not answer from memory and do not add advice. Plain text, at most 300 words."
 )
 REVIEW_TASK = (
     "Check every command, flag and version in the draft against the research sources (fetch_allowlisted_docs when needed). Statements that come from the author's first-hand notes are the author's own experience: keep them and do not flag them unless they contradict a source. "
@@ -175,22 +218,34 @@ class EditorialCrew:
 
         settings = await effective_settings(self.settings, self.web)  # admin-saved crew options, if any
         fetched: list[str] = []
+        found: list[str] = []  # pages web search returned (not opened by the crew)
+        order: list[str] = []  # task keys in run order, for _result
         ctx = ToolContext(self.web, self.retriever, settings.docs_allowlist, on_source=lambda u, _t: fetched.append(u), style=str(brief.get("styleGuide") or ""))
+        search = settings.research_web_search and hasattr(self.llm, "web_search")
+        critique_on = settings.editorial_critique
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
+            if search:
+                ctx.searcher = self._searcher(settings, run, found, draft_id, (brief.get("models") or {}).get("web_search"))
+            agents = build_agents(agents_for(settings), settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
             b = data_block("brief", {k: brief.get(k) for k in BRIEF_KEYS})
             style = data_block("style_guide", brief.get("styleGuide", ""))
             notes = author_notes_block(brief)
             examples = examples_block(brief)
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
-            research = Task(description=f"{RESEARCH_TASK}\n\n{b}{notes}", expected_output="Research notes per outline section with facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
+            research = Task(description=f"{RESEARCH_TASK}{WEB_SEARCH_STEP if search else ''}\n\n{b}{notes}", expected_output="Research notes per outline section with facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
             write = Task(description=f"{WRITE_TASK}\n\n{b}{notes}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
+            draft_task = write
+            extra: list[Any] = []
+            if critique_on:
+                critique = Task(description=f"{CRITIQUE_TASK}\n\n{b}{notes}\n\n{style}", expected_output="A numbered list of at most 12 concrete changes (section, problem, fix), then a VERDICT line.", agent=agents["critic"], context=[research, write])
+                revise = Task(description=f"{REVISE_TASK}\n\n{b}{notes}\n\n{style}", expected_output="The complete revised article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research, write, critique])
+                extra, draft_task = [critique, revise], revise
             review = Task(
                 description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify, as `- claim | reason` (or `- none`).",
                 expected_output=f"The complete corrected MDX body, then {FACT_CHECK_MARKER} and the list.",
                 agent=agents["reviewer"],
-                context=[research, write],
+                context=[research, draft_task],
             )
             seo = Task(
                 description=f"Produce the article's metadata as JSON matching the schema: title (≤ 60 chars), slug_suggestion, meta_description (120–155 chars), outline (the H2s of the reviewed body), sources (only URLs from the research), fact_check_flags (from the review), internal_links (≤ 3, only existing site paths from vector_search). Use gsc_queries_for_topic for the target queries. Do NOT include the article body: it is taken from the technical review unchanged.\n\n{b}{fb}",
@@ -199,21 +254,53 @@ class EditorialCrew:
                 context=[research, review],
                 output_pydantic=SeoMetadata,
             )
-            tasks = [research, write, review, seo]
+            tasks = [research, write, *extra, review, seo]
+            order[:] = ["research", "write", *(["critique", "revise"] if critique_on else []), "review", "seo"]
             return make_crew(agents, tasks, settings), tasks
 
         o = await run_crew("editorial", build, settings, ctx)
-        draft = self._result(o.output, o.tasks, brief, o.status, o.reason)
-        draft = self._check_sources(draft, fetched)
+        draft = self._result(o.output, o.tasks, brief, o.status, o.reason, order)
+        draft = self._check_sources(draft, fetched, found)
         return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=o.tokens, cost_usd=o.cost_usd, tool_calls=o.tool_calls, fetched_sources=fetched)
 
-    def _result(self, output: Any, tasks: list[Any], brief: dict[str, Any], status: str, reason: str | None) -> NewArticleDraft:
-        review_raw = task_raw(tasks[2]) if len(tasks) > 2 else ""
-        body, review_flags = split_review(review_raw)
+    def _searcher(self, settings: Settings, run: CrewRun, found: list[str], draft_id: str | None, model: str | None) -> Any:
+        """The researcher's web_search: one small model call with Anthropic's server-side search per query, counted
+        against the run's token cap and the monthly budget, at most research_web_search_max a run. Any failure (the
+        tool not enabled for the organization, a timeout, the budget) becomes a refusal the researcher can read, and
+        search stays off for the rest of the run: the crew carries on with the documentation."""
+        used = [0]
+        off = [""]
+        limit = settings.research_web_search_max
+
+        async def search(query: str) -> str:
+            if off[0]:
+                return data_block("search_refused", {"reason": off[0]})
+            if used[0] >= limit:
+                return data_block("search_refused", {"reason": f"the limit of {limit} web searches for this run is reached"})
+            run.check()
+            used[0] += 1
+            spec = CallSpec(model=model or settings.crew_models.get("editorial.web_search") or settings.draft_model, purpose="crew", prompt_version=PROMPT_VERSION, cached_system=[UNTRUSTED, SEARCH_SYSTEM], user=f"Search query: {query}", max_tokens=1500, draft_id=draft_id, run_id=run.run_id, agent="researcher")
+            try:
+                r = await asyncio.wait_for(self.llm.web_search(spec, max_uses=2), timeout=50)  # type: ignore[attr-defined]
+            except Exception as e:  # search is optional: report it to the researcher and carry on
+                off[0] = f"web search is not available in this run ({type(e).__name__})"
+                return data_block("search_refused", {"reason": off[0]})
+            run.add(r.usage)
+            for s in r.sources:
+                found.append(s["url"])
+            return data_block("web_search", {"query": query, "report": r.text[:6000], "results": r.sources[:10]})
+
+        return search
+
+    def _result(self, output: Any, tasks: list[Any], brief: dict[str, Any], status: str, reason: str | None, order: list[str] | None = None) -> NewArticleDraft:
+        keys = order or ["research", "write", "review", "seo"]
+        raw = {k: task_raw(t) for k, t in zip(keys, tasks, strict=False)}
+        body, review_flags = split_review(raw.get("review", ""))
         flags = list(review_flags)
         if not body:
-            # No technical review finished: the writer's body is kept for the human, marked unreviewed.
-            body = (task_raw(tasks[1]) if len(tasks) > 1 else "").strip()
+            # No technical review finished: the latest body (revised, else the first draft) is kept for the human,
+            # marked unreviewed.
+            body = (raw.get("revise") or raw.get("write") or "").strip()
             if body:
                 flags.append(FactCheckFlag(claim="whole article", reason="the technical review did not finish; verify every command and version", severity="warning"))
             if status == "completed":
@@ -230,10 +317,16 @@ class EditorialCrew:
         return NewArticleDraft(title=title, slug_suggestion=_slugify(title), meta_description="", outline=list(brief.get("outline") or []), body_mdx=body, code_blocks=code_blocks_of(body), fact_check_flags=flags, incomplete=True, incomplete_reason=reason or "incomplete")
 
     @staticmethod
-    def _check_sources(d: NewArticleDraft, fetched: list[str]) -> NewArticleDraft:
+    def _check_sources(d: NewArticleDraft, fetched: list[str], found: list[str] | None = None) -> NewArticleDraft:
         got = {u.rstrip("/") for u in fetched}
+        searched = {u.rstrip("/") for u in (found or [])}
         flags = list(d.fact_check_flags)
         for s in d.sources:
-            if s.url.rstrip("/") not in got and not s.url.startswith("/"):
+            url = s.url.rstrip("/")
+            if url in got or s.url.startswith("/"):
+                continue
+            if url in searched:
+                flags.append(FactCheckFlag(claim=s.url, reason="found by web search but not opened by the crew; read the page before relying on it", severity="warning"))
+            else:
                 flags.append(FactCheckFlag(claim=s.url, reason="source was not retrieved during research; verify it exists and says this", severity="warning"))
         return d.model_copy(update={"fact_check_flags": flags})

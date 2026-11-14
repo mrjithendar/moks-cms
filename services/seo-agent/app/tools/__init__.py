@@ -1,5 +1,10 @@
 """Agent tools: read-only, allowlisted.
 
+`web_search` (Editorial Crew researcher, when switched on) is the one tool that reaches beyond the site and the
+documentation allowlist: it asks Anthropic's server-side web search through the model API (no egress from this
+service). Its results are untrusted data like every other tool result, and a source it found that the crew did not
+open itself is flagged for the human reviewer.
+
 ALLOWED_TOOLS is the complete list an agent or crew member can ever hold. There is no shell, no arbitrary HTTP, no
 code execution and no database write among them: the one write in the system ("create/update draft") is done by flow
 steps through the web app's draft API, never by an agent. `build_tools` refuses any name outside the allowlist, and a test asserts the
@@ -15,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-ALLOWED_TOOLS = frozenset({"read_article", "vector_search", "gsc_queries_for_topic", "gsc_queries_for_page", "style_guide", "fetch_allowlisted_docs"})
+ALLOWED_TOOLS = frozenset({"read_article", "vector_search", "gsc_queries_for_topic", "gsc_queries_for_page", "style_guide", "fetch_allowlisted_docs", "web_search"})
 # News Desk Crew (app/news/crew.py): read-only too. They are implemented by NewsToolContext (app/news/tools.py); a context
 # without them refuses the name, so an SEO crew can never be handed a news tool by mistake.
 NEWS_TOOLS = frozenset({"read_news_item", "fetch_allowlisted", "vector_search_site", "fact_sheet", "writing_profile", "image_profile"})
@@ -114,6 +119,7 @@ def build_tools(names: list[str], ctx: ToolContext) -> list[ToolSpec]:
         "gsc_queries_for_page": ToolSpec("gsc_queries_for_page", "Search Console queries (28 days, aggregated: clicks, impressions, CTR, position) the article being optimised ranks for. Input: anything (the article is fixed).", ctx.gsc_queries_for_page),
         "style_guide": ToolSpec("style_guide", "The site's writing style guide. Input: anything.", ctx.style_guide),
         "fetch_allowlisted_docs": ToolSpec("fetch_allowlisted_docs", "Fetch an official documentation page (https, allowlisted domains only). Input: the URL.", ctx.fetch_allowlisted_docs),
+        "web_search": ToolSpec("web_search", "Search the public web for current facts (releases, versions, changes, how others solved it). Input: one specific search query. Returns a short report of what the results say and the result pages (title, URL).", ctx.web_search),
     }
     return [registry[n] for n in names]
 
@@ -132,6 +138,17 @@ class ToolContext:
         self.docs_allowlist = docs_allowlist
         self.on_source = on_source
         self.calls: list[tuple[str, str]] = []
+        # Set by the crew that owns the run when web search is on: query → data block. None: the tool refuses.
+        self.searcher: Callable[[str], Awaitable[str]] | None = None
+
+    async def web_search(self, query: str) -> str:
+        q = " ".join(query.split())[:300]
+        self.calls.append(("web_search", q))
+        if self.searcher is None:
+            return data_block("search_refused", {"reason": "web search is switched off"})
+        if not q or not safe_queries([q]):
+            return data_block("search_refused", {"reason": "the query is empty or contains an email address, phone number or secret"})
+        return await self.searcher(q)
 
     async def read_article(self, ref: str) -> str:
         self.calls.append(("read_article", ref))

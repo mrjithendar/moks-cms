@@ -70,6 +70,7 @@ class Usage:
     cache_write_tokens: int = 0
     request_id: str | None = None
     latency_ms: int | None = None
+    extra_usd: float = 0.0  # per-request fees that are not tokens (web searches run by the API's server-side tool)
 
     @property
     def total_tokens(self) -> int:
@@ -83,7 +84,17 @@ class Usage:
             + self.cache_read_tokens * p["cache_read"]
             + self.cache_write_tokens * p["cache_write"]
         ) / 1_000_000
-        return raw / 2 if mode == "batch" else raw
+        return (raw / 2 if mode == "batch" else raw) + self.extra_usd
+
+
+def web_search_fee_usd(searches: int) -> float:
+    """Anthropic bills the server-side web search tool per search, on top of tokens: $10 per 1,000 by default
+    (override with SEO_WEB_SEARCH_USD_PER_1000 if the price changes)."""
+    try:
+        per_1000 = float(os.environ.get("SEO_WEB_SEARCH_USD_PER_1000", "10"))
+    except ValueError:
+        per_1000 = 10.0
+    return max(0, searches) * max(0.0, per_1000) / 1000
 
 
 def estimate_cost_usd(model: str, input_chars: int, max_tokens: int) -> float:
@@ -211,6 +222,9 @@ class BudgetGuard:
     def __init__(self, store: SpendStore, monthly_usd: float, ask_daily_usd: float, clock: Callable[[], datetime] | None = None):
         self.store = store
         self.monthly_usd = monthly_usd
+        self._deployment_monthly_usd = monthly_usd
+        # The admin-saved monthly budget (app/runtime.py), looked up before every check; None keeps the deployment's.
+        self.monthly_provider: Callable[[], Awaitable[float | None]] | None = None
         self.ask_daily_usd = ask_daily_usd
         self.clock = clock or (lambda: datetime.now(UTC))
         self._lock = asyncio.Lock()
@@ -227,6 +241,7 @@ class BudgetGuard:
         scope = self._scope(purpose)
         if scope is None:
             return Reservation(None, 0.0, released=True)
+        await self.refresh_budget()
         async with self._lock:
             now = self.clock()
             if scope == "monthly":
@@ -243,6 +258,17 @@ class BudgetGuard:
                 return Reservation(scope, 0.0, released=True)
             self.pending[scope] += est
             return Reservation(scope, est)
+
+    async def refresh_budget(self) -> None:
+        """Apply the admin-saved monthly budget, or go back to the deployment's when it was cleared. A failed lookup
+        changes nothing: a model call is never blocked on it, and the last known budget keeps applying."""
+        if self.monthly_provider is None:
+            return
+        try:
+            v = await self.monthly_provider()
+        except Exception:
+            return
+        self.monthly_usd = v if v is not None and v > 0 else self._deployment_monthly_usd
 
     async def ensure(self, model: str, input_chars: int, max_tokens: int, purpose: str) -> None:
         """Check only (no reservation): would this call fit under its cap, counting the calls in flight?"""
@@ -265,6 +291,7 @@ class BudgetGuard:
             self.release(r)
 
     async def status(self) -> dict[str, float]:
+        await self.refresh_budget()
         now = self.clock()
         month = await self.store.month_spend(now)
         return {"monthly_budget_usd": self.monthly_usd, "month_spend_usd": month, "ask_day_spend_usd": await self.store.day_spend(now, "ask")}
@@ -338,6 +365,24 @@ class CallSpec:
 
 
 UsageCallback = Callable[[Usage], None]
+
+# Anthropic's server-side web search tool (docs: agents-and-tools/tool-use/web-search-tool). It must be enabled for
+# the organization in the Claude Console; when it is not, the API rejects the request and the caller carries on
+# without search.
+WEB_SEARCH_TOOL = "web_search_20250305"
+
+
+def _field(obj: Any, name: str) -> Any:
+    """A field of an SDK object or of a plain dict (block types the installed SDK does not model arrive as dicts)."""
+    return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+
+
+@dataclass
+class WebSearchResult:
+    text: str
+    sources: list[dict[str, str]]
+    usage: Usage
+    searches: int
 
 
 class Llm(Protocol):
@@ -551,6 +596,44 @@ class AnthropicLlm:
             await self._book(spec, usage, r, started_ns)
             return _text_of(msg), usage
 
+    async def web_search(self, spec: CallSpec, *, max_uses: int = 2) -> WebSearchResult:
+        """One model call with Anthropic's server-side web search tool: the model searches (at most `max_uses` times)
+        and reports what the results say. The searches run on Anthropic's side, so this service needs no other
+        egress. Returns the report, the result pages (title, URL) and the usage, with the per-search fee in
+        usage.extra_usd. A turn the API paused (stop_reason "pause_turn") is continued, at most twice."""
+        await self._refresh_key()
+        # Search results come back as input tokens: hold a generous allowance per search on top of the prompt.
+        async with self.guard.reserve(spec.model, spec.input_chars + 40_000 * max_uses, spec.max_tokens, spec.purpose) as r:
+            started, started_ns = time.monotonic(), time.time_ns()
+            kw = self._kw(spec)
+            tools = [{"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": max_uses}]
+            total = Usage(spec.model)
+            texts: list[str] = []
+            sources: dict[str, str] = {}
+            searches = 0
+            msg: Any = None
+            for _ in range(3):
+                msg = await self._api(spec).create(**kw, tools=tools)
+                u = _usage_from(msg, spec.model, started)
+                total = Usage(u.model, total.input_tokens + u.input_tokens, total.output_tokens + u.output_tokens, total.cache_read_tokens + u.cache_read_tokens, total.cache_write_tokens + u.cache_write_tokens, u.request_id, u.latency_ms)
+                searches += int(_field(_field(_field(msg, "usage"), "server_tool_use"), "web_search_requests") or 0)
+                for block in _field(msg, "content") or []:
+                    kind = _field(block, "type")
+                    if kind == "text":
+                        texts.append(str(_field(block, "text") or ""))
+                    elif kind == "web_search_tool_result" and isinstance(_field(block, "content"), list):  # an error is an object, not a list
+                        for item in _field(block, "content"):
+                            url = str(_field(item, "url") or "")
+                            if url.startswith("https://") and len(url) <= 2000:
+                                sources.setdefault(url, str(_field(item, "title") or "")[:300])
+                if getattr(msg, "stop_reason", None) != "pause_turn":
+                    break
+                kw["messages"] = [*kw["messages"], {"role": "assistant", "content": msg.content}]
+            total.extra_usd = web_search_fee_usd(searches)
+            await self._check(msg, spec, total, r, started_ns)
+            await self._book(spec, total, r, started_ns)
+            return WebSearchResult("".join(texts).strip(), [{"url": u, "title": t} for u, t in sources.items()][:20], total, searches)
+
     async def stream(self, spec: CallSpec, *, on_usage: UsageCallback | None = None) -> AsyncIterator[str]:
         """Yields text deltas. Booked exactly once in every ending: the final message's usage when the stream
         completes; when the consumer stops early (client disconnect → GeneratorExit / cancellation) or the transport
@@ -629,6 +712,20 @@ class FakeLlm:
             out = str(self._next(spec))
             await self.guard.record(usage, spec.purpose, spec.prompt_version, reservation=r, run_id=getattr(spec, "run_id", None), agent=getattr(spec, "agent", None))
             return out, usage
+
+    async def web_search(self, spec: CallSpec, *, max_uses: int = 2) -> WebSearchResult:
+        """Queued under purpose "web_search": a WebSearchResult, a dict {text, sources} or an exception."""
+        async with self.guard.reserve(spec.model, spec.input_chars, spec.max_tokens, spec.purpose) as r:
+            self.calls.append(spec)
+            q = self.answers.get("web_search")
+            if not q:
+                raise AssertionError("FakeLlm: no answer queued for web_search")
+            item = q.popleft()
+            if isinstance(item, Exception):
+                raise item
+            usage = Usage(spec.model, input_tokens=self.tokens[0], output_tokens=self.tokens[1], extra_usd=web_search_fee_usd(1))
+            await self.guard.record(usage, spec.purpose, spec.prompt_version, reservation=r, run_id=getattr(spec, "run_id", None), agent=getattr(spec, "agent", None))
+            return item if isinstance(item, WebSearchResult) else WebSearchResult(str(item.get("text", "")), list(item.get("sources", [])), usage, 1)
 
     async def stream(self, spec: CallSpec, *, on_usage: UsageCallback | None = None) -> AsyncIterator[str]:
         text, usage = await self.text(spec)

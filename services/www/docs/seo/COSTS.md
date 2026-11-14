@@ -23,6 +23,7 @@ row (tokens, cache tokens, cost, model, purpose), so actual numbers appear on Se
 |---|---|---|---|---|
 | `optimize_article_flow` (Optimization Crew) | analyst ~2 (Haiku), editor ~2, reviewer ~2 (Sonnet); +1 crew run on a validation retry (assumed 20 %) | analyst in ~7k / out ~0.6k; editor in ~30k (article + rules + style guide, twice) / out ~2.5k; reviewer in ~15k / out ~2k | **$0.12–0.15** (v3 single call: $0.03–0.04) | ~$0.45 (101k-character article, retry); hard cap 150k tokens per crew run ≈ $0.45 |
 | regenerate (reviewer feedback) | one crew run | as above | $0.10–0.13 | ~$0.30 |
+| `new_article_flow` (Editorial Crew, prompt `seo-crew-v5` with web search and critique on) | adds to the row below: up to 5 searches (a Sonnet request each plus Anthropic's per-search fee, $10 per 1,000 at the time of writing), one Opus critique and one more full-length Opus draft | estimate, not yet measured | **≈ $0.90–1.50 (estimate)** | hard cap 400k tokens per crew run. The real average is shown on Topic discovery → Automatic planning once runs exist |
 | `new_article_flow` (Editorial Crew, prompt `seo-crew-v4`) | researcher ≤ 10 turns and SEO editor on Sonnet; writer and technical reviewer on Opus | estimate, not yet measured: Sonnet in ~105k / out ~5k; Opus in ~65k / out ~13k | **≈ $0.60–1.00 (estimate)**; was $0.25–0.45 on Sonnet with 4 turns | hard cap 300k tokens per crew run; ×2 with a retry. Replace the estimate with `seo_llm_usage` numbers after the first runs |
 | `report_flow` (Report Crew, Haiku) | 1–2 calls | in ~3k, out ~0.4k | **< $0.001** | $0.002 |
 | `weekly_recommendations_flow` (N = 10) | N × optimize | | **$1.20–1.50 per week** | ~$4.50 |
@@ -63,9 +64,9 @@ per draft). v3's graph path had used ~$3–4.5 a month.
    "Paused", every SEO admin page shows the banner, and MCP `kickoff_flow` refuses drafting/report flows.
 2. **Ask the Blog:** `ASK_BLOG_DAILY_BUDGET_USD` (default $1), separate (public spend never pauses drafting). The public
    MCP `ask_blog` counts against it too.
-3. **Per crew run:** `CREW_MAX_TOKENS_PER_RUN` (300k), `CREW_TIMEOUT_SECONDS` (1200), `CREW_MAX_ITER` (4; per agent
+3. **Per crew run:** `CREW_MAX_TOKENS_PER_RUN` (400k), `CREW_TIMEOUT_SECONDS` (1800), `CREW_MAX_ITER` (4; per agent
    `SEO_CREW_MAX_ITERS`), `CREW_MAX_RPM` (20). Hitting one gives a partial result marked incomplete.
-4. **Per flow run:** `SEO_FLOW_TIMEOUT_SECONDS` (2700); one active run per flow + target; weekly fan-out ≤ 2 at once.
+4. **Per flow run:** `SEO_FLOW_TIMEOUT_SECONDS` (3900); one active run per flow + target; weekly fan-out ≤ 2 at once.
 5. **MCP:** `kickoff_flow` ≤ 10 per hour per client; per-token and per-IP limits; Kong limits.
 6. **Alerts:** `SeoLlmBudget80` (≥ 80 %) and `SeoLlmBudgetReached` (100 %).
 7. **Kill switches:** `SEO_ORCHESTRATOR=legacy`, `ASK_BLOG_ENABLED=false`, `PUBLIC_MCP_ENABLED=false`,
@@ -93,3 +94,16 @@ $0.0008). At this site's volume (a few hundred new queries a month) that is **un
 saves cents, not dollars. It mainly removes a dependency on the API for a routine step. The Models page reports the
 measured share of queries answered without Claude once the classifier is active (`share_confident` on held-out
 queries; `byModel` in the keyword refresh result).
+
+## Changing the monthly budget from the admin
+
+`SEO_LLM_MONTHLY_BUDGET_USD` can be saved in the admin (whole dollars, 1 to 10,000): Admin → Advanced settings →
+Editorial crew, or Topic discovery → Automatic planning, where it sits next to the month's spend and the projected
+cost of the chosen cadence (cadence × the measured average cost of a drafted article over the last 90 days).
+
+- The web app applies it at once (`applyEnvOverlay`); the seo-agent reads it before every budget check, at most a
+  minute stale (`BudgetGuard.monthly_provider`). Clearing it hands the deployment's value back.
+- It is one budget for every Claude call of the SEO platform (drafts, crews, reports), not only the planner. News and
+  Ask the Blog keep their own caps.
+- SEO settings → Drafts → monthly budget can still lower it for the web app; it cannot raise it.
+- If the agent cannot reach the web app it keeps the last budget it saw.

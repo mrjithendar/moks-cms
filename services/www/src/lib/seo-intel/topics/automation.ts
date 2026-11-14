@@ -182,6 +182,42 @@ export async function runPlanner(db: Db, now: Date = new Date()): Promise<PlanRe
   return { status: "succeeded", mode: s.mode, planned, openSlots: slots.length, candidates: candidates.length + planned.length };
 }
 
+// --- Budget and cost (shown next to the cadence) ---------------------------------------------------------------------
+
+/** Articles the cadence plans in an average month (30.4 days), counting only the chosen publishing days. */
+export function articlesPerMonth(s: Pick<AutomationSettings, "cadence" | "days">): number {
+  const { count, period } = s.cadence;
+  const perMonth = period === "month" ? count : period === "week" ? (count * 30.4) / 7 : count * 30.4 * (new Set(s.days).size / 7);
+  return Math.round(perMonth * 10) / 10;
+}
+
+export type DraftCost = { runs: number; averageUsd: number | null; sinceDays: number };
+
+/**
+ * What a drafted article has actually cost: the mean of the Editorial Crew runs (new_article_flow) that finished in
+ * the last 90 days, from the flow run log. null until there is at least one run with a recorded cost.
+ */
+export async function draftCost(db: Db, now: Date = new Date()): Promise<DraftCost> {
+  const sinceDays = 90;
+  const [r] = rowsOf<{ runs: number; avg: number | null }>(
+    await db.execute(sql`
+      select count(*)::int as runs, avg(cost_usd)::float8 as avg from seo_flow_runs
+      where flow_name = 'new_article_flow' and status = 'succeeded' and cost_usd > 0 and started_at >= ${new Date(now.getTime() - sinceDays * 86_400_000).toISOString()}::timestamptz`),
+  );
+  const runs = Number(r?.runs ?? 0);
+  return { runs, averageUsd: runs && r?.avg !== null && r?.avg !== undefined ? Math.round(Number(r.avg) * 100) / 100 : null, sinceDays };
+}
+
+export type BudgetOutlook = { articles: number; perArticleUsd: number | null; projectedUsd: number | null; fits: boolean | null };
+
+/** Would a month of this cadence, drafted at the measured cost, fit in the monthly budget? null when unmeasured. */
+export function budgetOutlook(s: Pick<AutomationSettings, "cadence" | "days">, cost: DraftCost, budgetUsd: number): BudgetOutlook {
+  const articles = articlesPerMonth(s);
+  if (cost.averageUsd === null) return { articles, perArticleUsd: null, projectedUsd: null, fits: null };
+  const projectedUsd = Math.round(articles * cost.averageUsd * 100) / 100;
+  return { articles, perArticleUsd: cost.averageUsd, projectedUsd, fits: projectedUsd <= budgetUsd };
+}
+
 // --- Automatic drafting (mode "schedule_and_draft") -----------------------------------------------------------------
 
 export type AutoDraftDeps = {
