@@ -62,6 +62,9 @@ async function saveAutomation(form: FormData) {
       time: String(form.get("time") ?? cur.time).trim(),
       horizonDays: num(form, "horizonDays", cur.horizonDays),
       minScore: num(form, "autoMinScore", cur.minScore),
+      draftLeadDays: num(form, "draftLeadDays", cur.draftLeadDays),
+      maxDraftsPerRun: num(form, "maxDraftsPerRun", cur.maxDraftsPerRun),
+      notify: { enabled: form.get("notify.enabled") === "true", recipients: String(form.get("notify.recipients") ?? "").split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean) },
     };
     try {
       const { after } = await saveAutomationSettings(next, actor.id);
@@ -224,7 +227,16 @@ function AutomationSection({ auto }: { auto: AutomationSettings }) {
           </fieldset>
           <div className="grid gap-4 sm:grid-cols-4">
             <Field label="Minimum score to plan" htmlFor="autoMinScore"><Input id="autoMinScore" name="autoMinScore" type="number" min={0} max={100} defaultValue={auto.minScore} /></Field>
+            <Field label="Draft this many days ahead" htmlFor="draftLeadDays" hint={'Used in "Schedule and draft".'}><Input id="draftLeadDays" name="draftLeadDays" type="number" min={0} max={14} defaultValue={auto.draftLeadDays} /></Field>
+            <Field label="Drafts started per day" htmlFor="maxDraftsPerRun" hint="Each draft is one Editorial Crew run under the monthly LLM budget."><Input id="maxDraftsPerRun" name="maxDraftsPerRun" type="number" min={1} max={5} defaultValue={auto.maxDraftsPerRun} /></Field>
           </div>
+          <fieldset className="grid gap-3">
+            <legend className="mb-1 text-sm font-semibold text-fg">Email when a draft is ready</legend>
+            <Check name="notify.enabled" label="Email me when an automatically planned draft is ready for review" checked={auto.notify.enabled} hint="Needs an email provider (Storage & email). The email says why the article was planned and links to the draft; approving and publishing stay in the admin." />
+            <Field label="Recipients" htmlFor="notify-recipients" hint="Up to 5 addresses, comma-separated. Empty: every admin account.">
+              <Input id="notify-recipients" name="notify.recipients" defaultValue={auto.notify.recipients.join(", ")} autoComplete="off" spellCheck={false} />
+            </Field>
+          </fieldset>
           <div className="flex flex-wrap gap-2">
             <Button type="submit">Save automatic planning</Button>
             <Button type="submit" formAction={planNow} variant="secondary">Plan now</Button>

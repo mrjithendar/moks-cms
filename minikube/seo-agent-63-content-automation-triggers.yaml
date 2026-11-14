@@ -87,3 +87,47 @@ spec:
                 requests: { cpu: 10m, memory: 48Mi }
                 limits: { cpu: 200m, memory: 128Mi }
               securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+---
+# Daily automatic drafting (07:00 UTC, after planning): starts the Editorial Crew for planned items whose date is within
+# the lead time. Does nothing unless the planning mode is "Schedule and draft". Each draft is a separate new_article_flow
+# run under the monthly LLM budget; drafts wait for a person.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seo-flow-calendar-autodraft
+  namespace: jithendar
+  labels: { app: seo-agent-trigger, app.kubernetes.io/part-of: jithendar-com }
+spec:
+  schedule: "0 7 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: { app: seo-agent-trigger, app.kubernetes.io/part-of: jithendar-com }
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          imagePullSecrets: [{ name: harbor-pull }]
+          securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+          containers:
+            - name: trigger
+              image: registry.jithendar.com/jithendar/seo-agent:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "app.trigger", "calendar_autodraft_flow"]
+              env:
+                - { name: SEO_AGENT_URL, value: "http://seo-agent.jithendar:8080" }
+                - name: SEO_AGENT_TOKEN
+                  valueFrom: { secretKeyRef: { name: seo-agent-env, key: SEO_AGENT_TOKEN } }
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }

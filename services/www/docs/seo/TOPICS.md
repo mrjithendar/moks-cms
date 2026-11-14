@@ -71,7 +71,7 @@ Topic discovery → **Automatic planning**. Off by default. Once a day (CronJob 
 | Off | nothing |
 | Suggest only | adds the best candidates as **suggested** calendar items without a date; it adds no more while earlier suggestions are still waiting |
 | Schedule | adds them as **approved** items with a date and time |
-| Schedule and draft | the same; the draft is written ahead of the date (auto-draft, a later change) |
+| Schedule and draft | the same; the draft is written ahead of the date and you get an email when it is ready (below) |
 
 - **Cadence:** N articles per day, per week (Monday to Sunday) or per month, on the chosen publishing days, at the
   chosen time (Asia/Kolkata), for the next "plan ahead" days. Limits: 5 a day, 14 a week, 31 a month.
@@ -87,6 +87,26 @@ Topic discovery → **Automatic planning**. Off by default. Once a day (CronJob 
 - **Nothing is published.** A scheduled item is a plan. Drafts still go through review and a person's approval.
 
 Settings: `setting` row `automation`.
+
+## Automatic drafting and the "draft ready" email
+
+Only in the mode **Schedule and draft**. Once a day (CronJob `seo-flow-calendar-autodraft`, 07:00 UTC →
+`calendar_autodraft_flow` → the web app's `calendar_autodraft` job):
+
+1. Automatically planned items that are approved, have no draft yet and whose date is within "Draft this many days
+   ahead" are picked, soonest first, at most "Drafts started per day".
+2. Each goes through the calendar's own "Create draft" path: a CMS **draft** post owned by the first admin account,
+   then `new_article_flow` (the Editorial Crew, the validator, at most one retry). The monthly LLM budget applies as
+   for any draft; items added by hand are never drafted by this job.
+3. When the crew's draft is saved, the admin gets an **email**: title, scheduled date, the planner's "why" note, the
+   number of fact-check notes, and a link to the draft in the admin. Recipients: the addresses in the settings, or
+   every admin account when none is set. It needs an email provider (Admin → Storage & email).
+
+The email contains **no approve link**: mail scanners open links, and a link that publishes would let them publish.
+Reviewing, approving and publishing happen in the admin, by a person. Nothing is published automatically.
+
+Cost: one Editorial Crew run per draft (COSTS.md). With N drafts a day the monthly budget is the limit that stops
+drafting; the planner keeps planning, and drafts resume when the budget allows.
 
 ## Settings and data
 

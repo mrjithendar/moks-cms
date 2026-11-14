@@ -2,6 +2,9 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
+import { siteUrl } from "@/config/site";
+import { log } from "../../log";
+import type { Actor } from "../../posts";
 import { addDays, dateIn, daysBetween } from "../sqlutil";
 import { listTopics, topicToCalendar, type StoredTopic } from "./discover";
 
@@ -40,6 +43,12 @@ export const automationSchema = z
     horizonDays: z.number().int().min(1).max(60),
     /** Only candidates scoring at least this are planned. */
     minScore: z.number().min(0).max(100),
+    /** Schedule and draft: the draft is written this many days before the item's date (0 = on the day). */
+    draftLeadDays: z.number().int().min(0).max(14),
+    /** Schedule and draft: drafts started per daily run (each is one Editorial Crew run; see docs/seo/COSTS.md). */
+    maxDraftsPerRun: z.number().int().min(1).max(5),
+    /** Email when an automatically planned draft is ready. No recipients: every admin account's address. */
+    notify: z.object({ enabled: z.boolean(), recipients: z.array(z.string().trim().toLowerCase().email().max(200)).max(5) }),
   })
   .strict()
   .refine((v) => !(v.cadence.period === "day" && v.cadence.count > 5), "At most 5 articles a day.")
@@ -47,7 +56,7 @@ export const automationSchema = z
 
 export type AutomationSettings = z.infer<typeof automationSchema>;
 
-export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = { mode: "off", cadence: { count: 2, period: "week" }, days: [1, 2, 3, 4, 5], time: "10:00", horizonDays: 14, minScore: 55 };
+export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = { mode: "off", cadence: { count: 2, period: "week" }, days: [1, 2, 3, 4, 5], time: "10:00", horizonDays: 14, minScore: 55, draftLeadDays: 3, maxDraftsPerRun: 2, notify: { enabled: true, recipients: [] } };
 
 export class AutomationSettingsError extends Error {
   constructor(
@@ -61,7 +70,7 @@ export class AutomationSettingsError extends Error {
 export function mergeAutomationSettings(stored: unknown): AutomationSettings {
   const s = (stored && typeof stored === "object" ? stored : {}) as Partial<AutomationSettings>;
   const d = DEFAULT_AUTOMATION_SETTINGS;
-  const parsed = automationSchema.safeParse({ ...d, ...s, cadence: { ...d.cadence, ...(s.cadence ?? {}) } });
+  const parsed = automationSchema.safeParse({ ...d, ...s, cadence: { ...d.cadence, ...(s.cadence ?? {}) }, notify: { ...d.notify, ...(s.notify ?? {}) } });
   return parsed.success ? parsed.data : d;
 }
 
@@ -74,7 +83,7 @@ export async function getAutomationSettings(): Promise<AutomationSettings> {
 export async function saveAutomationSettings(raw: unknown, actorId: string): Promise<{ before: AutomationSettings; after: AutomationSettings }> {
   const parsed = automationSchema.safeParse(raw ?? {});
   if (!parsed.success) throw new AutomationSettingsError("The settings are not valid.", parsed.error.issues.map((i) => `${i.path.join(".") || "settings"}: ${i.message}`));
-  const next = { ...parsed.data, days: [...new Set(parsed.data.days)].sort((a, b) => a - b) };
+  const next = { ...parsed.data, days: [...new Set(parsed.data.days)].sort((a, b) => a - b), notify: { ...parsed.data.notify, recipients: [...new Set(parsed.data.notify.recipients)] } };
   const before = await getAutomationSettings();
   const db = await getDb();
   await db
@@ -171,4 +180,113 @@ export async function runPlanner(db: Db, now: Date = new Date()): Promise<PlanRe
     if (r) planned.push({ calendarId: r.calendarId, title: t.title, date: scheduled ? slot.date : null, score: t.score });
   }
   return { status: "succeeded", mode: s.mode, planned, openSlots: slots.length, candidates: candidates.length + planned.length };
+}
+
+// --- Automatic drafting (mode "schedule_and_draft") -----------------------------------------------------------------
+
+export type AutoDraftDeps = {
+  /** Starts the draft of one calendar item. Default: the same path as the calendar's "Create draft" (Editorial Crew). */
+  draft?: (calendarId: string, actor: Actor) => Promise<unknown>;
+  env?: Record<string, string | undefined>;
+};
+export type AutoDraftResult = { status: "succeeded" | "partial" | "failed" | "skipped"; started: { calendarId: string; title: string; date: string }[]; failed: { calendarId: string; title: string; error: string }[]; reason?: string };
+
+/** Automatically planned, approved items without a draft whose date is within the lead time, soonest first. */
+export async function dueForDraft(db: Db, s: AutomationSettings, today: string): Promise<{ id: string; title: string; date: string }[]> {
+  return rowsOf<{ id: string; title: string; date: string }>(
+    await db.execute(sql`
+      select id, title, to_char(target_date, 'YYYY-MM-DD') as date from seo_editorial_calendar
+      where status = 'approved' and post_id is null and brief->>'source' = 'auto_planner'
+        and target_date between ${today}::date and ${addDays(today, s.draftLeadDays)}::date
+      order by target_date, priority_score desc limit ${s.maxDraftsPerRun}`),
+  );
+}
+
+/**
+ * Start the drafts that are due. Each goes through the calendar's own path (a CMS draft post, then new_article_flow:
+ * the Editorial Crew writes it, the validator checks it, and it waits for a person). The monthly LLM budget still
+ * applies inside the agent; a draft it refuses is reported on that draft, not here.
+ */
+export async function runAutoDraft(db: Db, now: Date = new Date(), deps: AutoDraftDeps = {}): Promise<AutoDraftResult> {
+  const s = await getAutomationSettings();
+  const none = { started: [], failed: [] };
+  if (s.mode !== "schedule_and_draft") return { status: "skipped", ...none, reason: "Automatic drafting is off (mode is not \"Schedule and draft\")." };
+  const { orchestrator } = await import("../../seo-agent/config");
+  if (orchestrator(deps.env) !== "crewai") return { status: "skipped", ...none, reason: "Drafts are written by the Editorial Crew: set SEO_ORCHESTRATOR=crewai." };
+  const [u] = rowsOf<{ id: string; email: string }>(await db.execute(sql`select id, email from "user" where role = 'admin' order by created_at asc limit 1`));
+  if (!u) return { status: "skipped", ...none, reason: "No admin account to own the draft posts." };
+  const actor: Actor = { id: u.id, role: "admin", label: `auto-planner (${u.email})` };
+  const draft = deps.draft ?? (async (id: string, a: Actor) => (await import("../../seo-agent/orchestrate")).draftNewArticle(id, a, { env: deps.env }));
+  const out: AutoDraftResult = { status: "succeeded", started: [], failed: [] };
+  for (const item of await dueForDraft(db, s, dateIn(EDITORIAL_TZ, now))) {
+    try {
+      await draft(item.id, actor);
+      out.started.push({ calendarId: item.id, title: item.title, date: item.date });
+    } catch (e) {
+      out.failed.push({ calendarId: item.id, title: item.title, error: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
+    }
+  }
+  if (out.failed.length) out.status = out.started.length ? "partial" : "failed";
+  return out;
+}
+
+// --- Email when an automatically planned draft is ready ---------------------------------------------------------------
+
+export type ReadyItem = { title: string; date: string | null; time: string | null; notes: string; postId: string | null; draftId: string; handedOff: boolean; flags: number };
+
+/** Plain-text email: what is ready, when it is scheduled, why it was planned, and where to review it. */
+export function draftReadyEmail(item: ReadyItem, base: string): { subject: string; text: string } {
+  const when = item.date ? `${item.date}${item.time ? ` ${item.time}` : ""} (${EDITORIAL_TZ})` : "no date";
+  const link = item.handedOff && item.postId ? `${base}/admin/posts/${item.postId}` : `${base}/admin/review/${item.draftId}`;
+  const text = [
+    "A draft from the automatic planner is ready for your review.",
+    "",
+    `Title: ${item.title}`,
+    `Scheduled for: ${when}`,
+    item.flags ? `Fact-check notes from the crew: ${item.flags} (shown next to the draft)` : "Fact-check notes from the crew: none",
+    "",
+    item.notes,
+    "",
+    `Review it: ${link}`,
+    `Calendar: ${base}/admin/calendar`,
+    "",
+    "Nothing is published until you publish it yourself.",
+  ].join("\n");
+  return { subject: `Draft ready for review: ${item.title}${item.date ? ` (scheduled ${item.date})` : ""}`.slice(0, 200), text };
+}
+
+type MailDeps = { send?: (to: string, subject: string, text: string) => Promise<boolean>; mailReady?: () => Promise<boolean>; base?: string };
+
+/**
+ * Called when the crew's draft for a calendar item has been saved (seo-agent/callbacks.ts saveDraft). Sends the email
+ * only for automatically planned items, when notifications are on and an email provider is set up. Never throws.
+ */
+export async function notifyDraftReady(db: Db, input: { calendarId: string; draftId: string; handedOff: boolean }, deps: MailDeps = {}): Promise<{ sent: number; reason?: string }> {
+  try {
+    const [c] = rowsOf<{ title: string; date: string | null; time: string | null; brief: unknown; post_id: string | null }>(
+      await db.execute(sql`select title, to_char(target_date, 'YYYY-MM-DD') as date, to_char(target_time, 'HH24:MI') as time, brief, post_id from seo_editorial_calendar where id = ${input.calendarId}`),
+    );
+    const brief = (typeof c?.brief === "string" ? JSON.parse(c.brief) : (c?.brief ?? {})) as { source?: string; notes?: string };
+    if (!c || brief.source !== "auto_planner") return { sent: 0, reason: "not_auto_planned" };
+    const s = await getAutomationSettings();
+    if (!s.notify.enabled) return { sent: 0, reason: "notifications_off" };
+    const mail = await import("../../mail");
+    if (!(await (deps.mailReady ?? mail.mailConfigured)())) return { sent: 0, reason: "mail_not_configured" };
+    const recipients = s.notify.recipients.length ? s.notify.recipients : rowsOf<{ email: string }>(await db.execute(sql`select email from "user" where role = 'admin' order by created_at asc limit 5`)).map((r) => r.email);
+    if (!recipients.length) return { sent: 0, reason: "no_recipient" };
+    const [d] = rowsOf<{ flags: unknown; title: string | null }>(await db.execute(sql`select flags, document->>'title' as title from seo_drafts where id = ${input.draftId}`));
+    const flags = (typeof d?.flags === "string" ? JSON.parse(d.flags) : (d?.flags ?? [])) as unknown[];
+    const { subject, text } = draftReadyEmail(
+      { title: (d?.title || c.title).slice(0, 150), date: c.date, time: c.time, notes: String(brief.notes ?? ""), postId: c.post_id, draftId: input.draftId, handedOff: input.handedOff, flags: Array.isArray(flags) ? flags.length : 0 },
+      deps.base ?? siteUrl(),
+    );
+    const send = deps.send ?? mail.sendMail;
+    let sent = 0;
+    for (const to of recipients) if (await send(to, subject, text)) sent++;
+    log.info("auto-planned draft notification", { operation: "seo_auto_draft_notify", outcome: sent ? "sent" : "failed", count: sent });
+    return { sent };
+  } catch (err) {
+    log.warn("auto-planned draft notification failed", { err, operation: "seo_auto_draft_notify" });
+    return { sent: 0, reason: "error" };
+  }
 }
