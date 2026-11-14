@@ -16,5 +16,11 @@
     "youtube": "",
     "mastodon": ""
   },
-  "adsenseClientId": "ca-pub-2479369059565142"
+  "adsenseClientId": "ca-pub-2479369059565142",
+  "deploy": {
+    "namespace": "jithendar",
+    "deployment": "jithendar-com",
+    "contentImage": "registry.jithendar.com/jithendar/moks-cms-content",
+    "apiKeySecret": "JITHENDAR_API_KEY"
+  }
 }
