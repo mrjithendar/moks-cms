@@ -1,5 +1,16 @@
 # Progress log — jithendar.com
 
+## Admin MCP tools and agent skills for AI visibility, rankings and backlinks (2026-11-14, owner request)
+
+Fourth part of "add what is worth taking from open-seo": its MCP tools and agent skills, on this site's admin MCP.
+
+- `/mcp/admin` (seo:read, read-only): `get_ai_visibility`, `get_ai_prompt_answers(prompt_id)`, `get_tracked_keywords`,
+  `get_backlinks`; prompt `ai_visibility_review`. Prompts, AI answers and source titles are returned as
+  `untrusted_content`. Web side: data views `ai-visibility`, `ai-prompt`, `tracked-keywords`, `backlinks`
+  (`callbacks-v4.ts`). No new write path; the approval boundary test still covers every tool.
+- Agent skills in `.claude/skills/`: `seo-weekly-review`, `ai-visibility-review`, `keyword-research`,
+  `backlink-review` (read and suggest; ask before any flow).
+
 ## AI visibility: are ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews citing the site? (2026-11-14, owner request)
 
 Third part of "add what is worth taking from open-seo". Details: [seo/AI_VISIBILITY.md](seo/AI_VISIBILITY.md).

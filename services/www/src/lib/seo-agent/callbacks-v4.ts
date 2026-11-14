@@ -223,6 +223,51 @@ export async function data(name: string, q: URLSearchParams) {
       );
       return { period: q.get("period") ?? "month", rows: rows.map((r) => ({ purpose: String(r.purpose), model: String(r.model), calls: Number(r.calls), tokens: Number(r.tokens), costUsd: Number(Number(r.cost_usd).toFixed(4)) })) };
     }
+    case "ai-visibility": {
+      const { aiVisibilityOverview } = await import("../seo-intel/ai-visibility");
+      const o = await aiVisibilityOverview();
+      return {
+        source: "AI assistants' API answers with web search (AI visibility), latest answer per prompt and assistant",
+        host: o.host,
+        spentUsdThisMonth: Number(o.spentUsd.toFixed(4)),
+        byProvider: o.byProvider,
+        competitors: o.competitors,
+        prompts: o.prompts.map((p) => ({ id: p.id, prompt: p.prompt, active: p.active, source: p.source, gap: p.gap, answers: Object.fromEntries(Object.entries(p.cells).map(([k, c]) => [k, c ? { runOn: c.run_on, cited: c.cited, citedRank: c.cited_rank, mentioned: c.mentioned, error: c.error } : null])) })),
+      };
+    }
+    case "ai-prompt": {
+      const id = q.get("id") ?? "";
+      if (!/^[0-9a-f-]{36}$/.test(id)) throw new CallbackError("A prompt id is required.", 400, "invalid");
+      const { promptHistory } = await import("../seo-intel/ai-visibility");
+      const h = await promptHistory(id);
+      if (!h) throw new CallbackError("No such prompt.", 404, "not_found");
+      return { prompt: h.prompt, answers: h.answers.slice(0, 20).map((a) => ({ ...a, answer: (a.answer ?? "").slice(0, 4000), sources: a.sources.slice(0, 20) })) };
+    }
+    case "backlinks": {
+      const { backlinkOverview } = await import("../seo-intel/dataforseo");
+      const o = await backlinkOverview();
+      return o ? { source: "DataForSEO Backlinks API (its own link index, not Google's)", ...o, top: o.top.slice(0, 50), gained: o.gained.slice(0, 50), lost: o.lost.slice(0, 50) } : { source: "DataForSEO Backlinks API", note: "No backlink snapshot yet (Backlinks off, or not run yet)." };
+    }
+    case "tracked-keywords": {
+      const { trackedKeywords } = await import("../seo-intel/keywords");
+      const { serpHistory } = await import("../seo-intel/dataforseo");
+      const t = await trackedKeywords();
+      const queries = t.rows.map((r) => r.query);
+      const serp = await serpHistory(queries);
+      const metrics = queries.length
+        ? rowsOf<{ query: string; search_volume: number | null; keyword_difficulty: number | null; cpc: number | null; main_intent: string | null }>(await db.execute(sql`select query, search_volume, keyword_difficulty, cpc, main_intent from seo_keyword_metrics where query = any(${`{${queries.map((x) => `"${x.replace(/["\\]/g, "\\$&")}"`).join(",")}}`}::text[])`))
+        : [];
+      const m = new Map(metrics.map((x) => [x.query, x]));
+      return {
+        source: "Search Console position (7-day, impression-weighted) and, with DataForSEO, live Google position, volume and difficulty",
+        rows: t.rows.map((r) => {
+          const last = [...r.history].reverse().find((v) => Number.isFinite(v));
+          const g = serp.get(r.query)?.latest ?? null;
+          const k = m.get(r.query);
+          return { query: r.query, searchConsolePosition: last === undefined ? null : Number(last.toFixed(1)), google: g ? { position: g.position, aiOverview: g.aiOverview, checkedOn: g.checkedOn, top: g.top } : null, volume: k?.search_volume ?? null, difficulty: k?.keyword_difficulty ?? null, cpc: k?.cpc ?? null, intent: k?.main_intent ?? null };
+        }),
+      };
+    }
     default:
       throw new CallbackError("Unknown data view.", 404, "not_found");
   }
