@@ -1,0 +1,20 @@
+{
+  "host": "moksit.com",
+  "name": "Moksit.com",
+  "publicationName": "Moksit.com",
+  "tagline": "MOKS AI/ML Powered SRE Agent.",
+  "description": "MOKS AI/ML Powered SRE Agent.",
+  "language": "en",
+  "locale": "en_US",
+  "timeZone": "Asia/Kolkata",
+  "primaryAuthor": "jithendar-dharmapuri",
+  "editorBio": "write about MOKS AI/ML Powered SRE Agent.",
+  "social": {
+    "github": "https://github.com/mrjithendar",
+    "x": "https://x.com/imjithendar",
+    "linkedin": "https://www.linkedin.com/in/jithendardharmapuri",
+    "youtube": "",
+    "mastodon": ""
+  },
+  "adsenseClientId": "ca-pub-2479369059565142"
+}
