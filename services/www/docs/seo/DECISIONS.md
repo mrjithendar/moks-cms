@@ -115,7 +115,7 @@ is inside a trace (`job seo` span); the run's `correlation_id` and `traceId` are
 which links the dashboard's Sync history to Loki/Jaeger.
 
 ## D-20 Grafana dashboard
-`services/grafana/jithendar-com-seo.json` (uid `jithendar-com-seo`) is added to the existing folder synced by the shared
+`sites/jithendar.com/grafana/jithendar-com-seo.json` (uid `jithendar-com-seo`) is added to the existing folder synced by the shared
 `grafana` Argo CD app. It only reads metrics/logs this site already exports. Like the other dashboards, it is loaded
 after merge and an Argo CD sync of the `grafana` app (a person does that).
 

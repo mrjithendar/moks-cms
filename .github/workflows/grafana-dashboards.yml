@@ -1,17 +1,19 @@
 name: grafana dashboards
 
-# check → pull requests touching grafana/ (and manual runs; there is no `push` trigger): the dashboards are valid JSON, listed in
-#         services/grafana/kustomization.yaml, use only provisioned data sources and defined variables
-#         (scripts/check-dashboards.py), and the folder renders as the ConfigMap grafana-dashboards-jithendar.
+# check → pull requests touching a site's dashboards (and manual runs; there is no `push` trigger). Every site has its own
+#         folder, sites/<domain>/grafana/, and its own ConfigMap. The dashboards are valid JSON, listed in their folder's
+#         kustomization.yaml, use only provisioned data sources and defined variables, and uids and ConfigMap names are
+#         unique across sites (scripts/check-dashboards.py); each folder renders as exactly one ConfigMap.
 #
-# No deploy job: Argo CD's `grafana` Application (tools repo) reads services/grafana/ from master and is synced by a person.
+# No deploy job: one Argo CD Application per site (tools repo; jithendar.com's is `grafana`) reads
+# sites/<domain>/grafana/ from master and is synced by a person.
 # This workflow has no cluster access.
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'services/grafana/**'
+      - 'sites/*/grafana/**'
       - 'scripts/check-dashboards.py'
       - '.github/workflows/grafana-dashboards.yml'
 
@@ -35,9 +37,16 @@ jobs:
           python-version: '3.13'
       - name: Check dashboards
         run: python scripts/check-dashboards.py
-      - name: Render the ConfigMap
+      - name: Render each site's ConfigMap
         run: |
           set -euo pipefail
-          kubectl kustomize services/grafana > "$RUNNER_TEMP/dashboards.yaml"
-          grep -q '^  name: grafana-dashboards-jithendar$' "$RUNNER_TEMP/dashboards.yaml"
-          echo "ConfigMap size: $(wc -c < "$RUNNER_TEMP/dashboards.yaml") bytes (limit 1 MiB)"
+          for k in sites/*/grafana/kustomization.yaml; do
+            dir="${k%/kustomization.yaml}"; site="${dir#sites/}"; site="${site%/grafana}"
+            [[ "$site" == _* ]] && continue
+            out="$RUNNER_TEMP/$site.yaml"
+            kubectl kustomize "$dir" > "$out"
+            [[ "$(grep -c '^kind: ConfigMap$' "$out")" -eq 1 ]] || { echo "::error::$dir must render exactly one ConfigMap"; exit 1; }
+            size="$(wc -c < "$out")"
+            echo "$site: $(grep -m1 '^  name: ' "$out" | sed 's/^  name: //'), $size bytes (limit 1 MiB)"
+            [[ "$size" -lt 1048576 ]] || { echo "::error::$site's dashboards exceed the 1 MiB ConfigMap limit"; exit 1; }
+          done
