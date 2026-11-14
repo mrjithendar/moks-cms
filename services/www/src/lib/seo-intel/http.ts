@@ -4,6 +4,7 @@ import { actorOf } from "../admin";
 import { audit } from "../audit";
 import { reportError, routeFields } from "../http-errors";
 import { hit } from "../rate-limit";
+import { readBodyTextOrNull } from "../read-body";
 import { getSessionUser, type SessionUser } from "../session";
 import { isNextControlFlow } from "../trace";
 import type { Actor } from "../posts";
@@ -72,10 +73,10 @@ export function seoRoute<P = Record<string, string>>(name: string, opts: Opts, f
       let body: unknown = undefined;
       if (opts.mutating && req.method !== "DELETE") {
         const type = req.headers.get("content-type") ?? "";
-        const text = await req.text();
+        const text = await readBodyTextOrNull(req, 200_000);
+        if (text === null) return json({ error: "Request too large.", code: "too_large" }, 413);
         if (text) {
           if (!type.includes("application/json")) return json({ error: "Send JSON.", code: "unsupported_media_type" }, 415);
-          if (text.length > 200_000) return json({ error: "Request too large.", code: "too_large" }, 413);
           try {
             body = JSON.parse(text);
           } catch {
