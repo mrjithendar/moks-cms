@@ -12,15 +12,14 @@ Built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes.
 | [`services/grafana/`](services/grafana/README.md) | Grafana dashboards for the site (metrics, logs and traces), loaded by Argo CD's `grafana` app (its path must be `services/grafana`) |
 | `scripts/` | `create-secrets.sh` (first-time Secrets), `set-*-config.sh` (update site settings), `smoke.sh` (post-deploy checks) |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
-| `.github/workflows/` | CI: checks pull requests; on `master`, builds and pushes the image to ECR (`infra.yml` applies `infra/`) |
-| `infra/` | Terraform: ECR repositories and the CI's AWS role ([infra/README.md](infra/README.md)) |
+| `.github/workflows/` | CI: checks pull requests; when one is merged, builds the images, pushes them to Harbor (`registry.jithendar.com`), rolls them out and applies `minikube/` |
 
 ## Release
 
 Merge a pull request into `master`. CI tests, builds, pushes `registry.jithendar.com/jithendar/jithendar-com:pr-<number>`
 and `:latest` (Harbor; the same image) and rolls the site out on `:pr-<number>` (`scripts/ci-rollout.py`). That is
 the whole release. A commit pushed straight to `master` builds and deploys nothing (the workflows have no `push` trigger;
-only `ci-content.yml`, for articles and images, and `infra.yml` still run on push).
+only `ci-content.yml`, for articles and images, still runs on push).
 
 **Content-only changes** (`services/www/content/**`, `services/www/public/images/**`) do not rebuild the site. `ci-content.yml`
 validates the MDX (schema and internal links), packages both folders into the small

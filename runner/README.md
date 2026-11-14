@@ -1,7 +1,7 @@
 # Self-hosted GitHub Actions runners
 
 > **Not used by CI since 2026-10-29.** `.github/workflows/ci-jithendar-com.yml` runs on GitHub-hosted runners
-> (`ubuntu-latest`, `ubuntu-24.04-arm`) and signs in to AWS with a push-only IAM user key (`scripts/setup-ci-ecr-user.sh`; OIDC planned). Builds on
+> (`ubuntu-latest`, `ubuntu-24.04-arm`) and pushes images to Harbor (`registry.jithendar.com`) as a robot account (secrets `HARBOR_USERNAME`, `HARBOR_PASSWORD`). Builds on
 > the mk4 server competed with the cluster for memory and disk and froze the host twice. Do not install these
 > runners on the server that runs the cluster; remove existing ones with `bash runner/setup.sh remove`.
 > If runners must stay on that host, run `scripts/protect-host.sh` there to cap them.
@@ -59,8 +59,8 @@ command line or printed.
 - **ARM64** for the release job (`runs-on: [self-hosted, linux, ARM64]`); the pull-request check runs on any runner.
 - **Docker** usable by the runner user (the release job builds and pushes the image): add the user to the `docker`
   group, then restart the services: `sudo systemctl restart 'actions.runner.*'`.
-- **AWS credentials** on the host (instance role or the runner user's profile) allowed to push to ECR repository
-  `jithendar-com` in `us-east-1`; the workflow logs in with `aws-actions/amazon-ecr-login`.
+- **Registry access**: the release job logs in to Harbor with the repository secrets `HARBOR_USERNAME` and
+  `HARBOR_PASSWORD`; the host needs no cloud credentials. (Images used to go to Amazon ECR.)
 
 ## Troubleshooting
 

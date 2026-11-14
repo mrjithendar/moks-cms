@@ -113,25 +113,6 @@ updates:
           - minor
           - patch
 
-  # AWS provider in infra/ (versions.tf) and infra/bootstrap (main.tf), with their .terraform.lock.hcl files.
-  # Pull requests get fmt + validate from infra.yml; merging one runs infra.yml's apply job on master.
-  - package-ecosystem: terraform
-    directories:
-      - /infra
-      - /infra/bootstrap
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: America/New_York
-    cooldown:
-      default-days: 3
-    commit-message:
-      prefix: "deps(terraform)"
-    labels:
-      - dependencies
-      - terraform
-
   # Base images in services/www/Dockerfile and services/www/Dockerfile.ci
   - package-ecosystem: docker
     directory: /services/www
