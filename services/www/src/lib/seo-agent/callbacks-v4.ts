@@ -43,7 +43,7 @@ const agentActor = (label: string) => ({ id: null, label: `seo-agent (${label.sl
  */
 export async function runJob(body: unknown) {
   await import("../seo-intel/handlers"); // registers the technical_scan (and other) handlers
-  const b = parse(z.object({ type: z.enum(["gsc_sync", "ga4_sync", "technical_scan", "topic_discovery"]), slot: z.string().regex(/^[0-9A-Za-z:_-]{1,40}$/).nullable().optional(), trigger: z.enum(["schedule", "manual"]) }), body);
+  const b = parse(z.object({ type: z.enum(["gsc_sync", "ga4_sync", "technical_scan", "topic_discovery", "calendar_plan"]), slot: z.string().regex(/^[0-9A-Za-z:_-]{1,40}$/).nullable().optional(), trigger: z.enum(["schedule", "manual"]) }), body);
   if (b.trigger === "schedule" && b.slot) {
     const db = await getDb();
     const [seen] = rowsOf<{ id: string; status: string }>(await db.execute(sql`select id, status from seo_sync_jobs where job_type = ${b.type} and trigger = 'schedule' and detail->>'slot' = ${b.slot} order by started_at desc limit 1`));

@@ -59,6 +59,12 @@ registerSeoHandler("topic_discovery", async (ctx) => {
   return { status: r.status, rows: r.candidates, detail: r };
 });
 
+// Automatic editorial planning (docs/seo/TOPICS.md): started by the seo-agent's calendar_plan_flow.
+registerSeoHandler("calendar_plan", async (ctx) => {
+  const r = await (await import("./topics/automation")).runPlanner(ctx.db, ctx.now);
+  return { status: r.status, rows: r.planned.length, detail: r };
+});
+
 registerSeoHandler("keywords_refresh", async (ctx) => {
   const r = await refreshKeywords({ now: ctx.now });
   const alerts = await trackedAlerts(ctx.now);
