@@ -359,10 +359,32 @@ function mcpGroup(): SettingsGroup {
   };
 }
 
+/** Admin → Invoices → Settings (lib/invoices.ts DEFAULT_INVOICE_SETTINGS; labels from app/admin/invoices/settings/page.tsx). */
+const INVOICES: SettingsGroup = {
+  id: "invoices",
+  area: "Invoices",
+  title: "Invoice settings",
+  description: "Who invoices are from and what a new invoice starts with. An invoice that was already sent keeps the details it was sent with.",
+  href: "/admin/invoices/settings",
+  rows: [
+    r("Business name", "Printed at the top of every invoice. Needed before an invoice can be sent.", "empty"),
+    r("Business email", "Shown on the invoice and in the email as the address for questions.", "empty"),
+    r("Business address", "One line per row, as it should appear on the invoice.", "empty"),
+    r("Tax ID label / Tax ID", "Your registration (GSTIN, GST Reg. No., VAT, UEN) and its number, printed under the address.", "empty"),
+    r("Default currency", "INR, USD, SGD, EUR, GBP, AUD, CAD or AED; each invoice can use another. Razorpay needs international payments switched on for anything but INR.", "USD"),
+    r("Payment due (days)", "The due date of a new invoice is this many days after its date.", "14"),
+    r("Default tax label / Default tax rate (%)", "The tax a new invoice starts with (GST, VAT), added on top of the lines. Empty means no tax.", "none"),
+    r("Number prefix", "Invoices are numbered PREFIX-YEAR-0001 in order; the sequence starts again each year and no number is skipped or reused.", "INV"),
+    r("Payment details and terms", "Printed at the end of every invoice: bank account for transfers, late-payment terms.", "empty"),
+    r("Add a Razorpay payment link to every invoice", "The client gets a Pay button and the invoice is marked paid when Razorpay confirms the payment. Off: invoices are paid by bank transfer and marked paid by hand.", "on"),
+  ],
+};
+
 export function settingsReference(): SettingsGroup[] {
   return [
     ...APPEARANCE.map((g) => ({ ...g, area: "Appearance & settings", href: `/admin/appearance?section=${g.id === "appearance-hire-me" ? "hireMe" : g.id.replace("appearance-", "")}` })),
     ...INTEGRATIONS,
+    INVOICES,
     ...seoGroups(),
     mcpGroup(),
     ...advancedGroups(),

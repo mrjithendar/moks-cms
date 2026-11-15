@@ -26,7 +26,8 @@ import { verifyTurnstile } from "./turnstile";
  *    the row paid and returns the booking link with the length and the payer's details filled in.
  * 4. POST /api/razorpay/webhook: the same outcome server to server (payment.captured / order.paid / payment.failed),
  *    so a payment is recorded even if the visitor closes the tab before step 3.
- * The keys live in Admin → Advanced settings → Razorpay payments.
+ * The keys live in Admin → Advanced settings → Razorpay payments. Invoices (lib/invoices.ts) use the same keys and the
+ * same webhook, with Razorpay Payment Links instead of Checkout.
  */
 
 const API = "https://api.razorpay.com/v1";
@@ -55,6 +56,15 @@ export function checkoutSignatureValid(orderId: string, paymentId: string, signa
 export function webhookSignatureValid(rawBody: string, signature: string | null | undefined, secret: string): boolean {
   if (!secret) return false;
   return hexEqual(createHmac("sha256", secret).update(rawBody, "utf8").digest("hex"), signature);
+}
+
+/**
+ * Payment Links: the address Razorpay sends the payer back to carries razorpay_signature, the hex HMAC-SHA256 of
+ * "payment_link_id|payment_link_reference_id|payment_link_status|payment_id" with the key secret.
+ */
+export function paymentLinkSignatureValid(p: { linkId: string; referenceId: string; status: string; paymentId: string }, signature: string | null | undefined, keySecret: string): boolean {
+  if (!keySecret || !p.linkId || !p.status || !p.paymentId) return false;
+  return hexEqual(createHmac("sha256", keySecret).update(`${p.linkId}|${p.referenceId}|${p.status}|${p.paymentId}`, "utf8").digest("hex"), signature);
 }
 
 // --- Quote and order ------------------------------------------------------------------------------------------------
@@ -203,8 +213,9 @@ export type WebhookResult = { status: number; body: string };
 
 /**
  * One webhook delivery. payment.captured and order.paid mark the order paid (after checking the amount and currency
- * match what was charged for); payment.failed records the reason unless it was already paid. Anything else is
- * acknowledged and ignored. Orders not made by this site (other Razorpay products) are ignored too.
+ * match what was charged for); payment.failed records the reason unless it was already paid. payment_link.* events
+ * belong to invoices (lib/invoices.ts). Anything else is acknowledged and ignored. Orders and links not made by this
+ * site (other Razorpay products) are ignored too.
  */
 export async function handleRazorpayWebhook(rawBody: string, signature: string | null, secret: string | undefined): Promise<WebhookResult> {
   if (!secret) return { status: 503, body: "Razorpay webhook secret is not configured." };
@@ -219,7 +230,13 @@ export async function handleRazorpayWebhook(rawBody: string, signature: string |
   } catch {
     return { status: 400, body: "Invalid JSON." };
   }
+  if (typeof event !== "object" || event === null) return { status: 400, body: "Invalid JSON." };
   const name = typeof event.event === "string" ? event.event : "";
+  if (name.startsWith("payment_link.")) {
+    // Loaded here, not at the top: lib/invoices.ts imports this file.
+    const { handlePaymentLinkEvent } = await import("./invoices");
+    return { status: 200, body: await handlePaymentLinkEvent(name, event.payload) };
+  }
   const payment = event.payload?.payment?.entity ?? {};
   const orderId = typeof payment.order_id === "string" ? payment.order_id : typeof event.payload?.order?.entity?.id === "string" ? event.payload.order.entity.id : "";
   const paymentId = typeof payment.id === "string" ? payment.id : "";

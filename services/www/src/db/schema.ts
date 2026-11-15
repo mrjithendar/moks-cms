@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { InvoiceItem, InvoiceSeller } from "../lib/invoice-math";
 
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -401,6 +402,70 @@ export const hirePayment = pgTable(
   },
   (t) => [uniqueIndex("hire_payment_order_key").on(t.orderId), index("hire_payment_status_idx").on(t.status, t.createdAt)],
 );
+
+/**
+ * Invoices sent to clients (lib/invoices.ts, docs/INVOICES.md). Amounts are integers in the currency's smallest unit,
+ * quantities in hundredths and the tax rate in basis points (lib/invoice-math.ts). `number` is set the first time the
+ * invoice is sent and never changes or is reused; `token` is the client's link (/invoice/<token>).
+ */
+export const invoice = pgTable(
+  "invoice",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number"),
+    /** draft | sent | paid | void */
+    status: text("status").notNull().default("draft"),
+    token: text("token").notNull(),
+    clientName: text("client_name").notNull(),
+    clientEmail: text("client_email").notNull(),
+    clientCompany: text("client_company"),
+    clientAddress: text("client_address"),
+    clientTaxId: text("client_tax_id"),
+    currency: text("currency").notNull(),
+    items: jsonb("items").$type<InvoiceItem[]>().notNull().default([]),
+    subtotal: integer("subtotal").notNull().default(0),
+    taxLabel: text("tax_label"),
+    taxRateBp: integer("tax_rate_bp").notNull().default(0),
+    taxAmount: integer("tax_amount").notNull().default(0),
+    total: integer("total").notNull().default(0),
+    notes: text("notes"),
+    /** YYYY-MM-DD */
+    issueDate: text("issue_date"),
+    dueDate: text("due_date"),
+    /** The business details as sent; null until then. */
+    seller: jsonb("seller").$type<InvoiceSeller | null>(),
+    paymentLinkId: text("payment_link_id"),
+    paymentLinkUrl: text("payment_link_url"),
+    /** created | cancelled | expired | paid */
+    paymentLinkStatus: text("payment_link_status"),
+    paymentId: text("payment_id"),
+    /** razorpay | manual */
+    paidVia: text("paid_via"),
+    paymentNote: text("payment_note"),
+    pdfKey: text("pdf_key"),
+    /** The status the stored PDF shows. */
+    pdfStatus: text("pdf_status"),
+    emailedAt: ts("emailed_at"),
+    sentAt: ts("sent_at"),
+    paidAt: ts("paid_at"),
+    voidedAt: ts("voided_at"),
+    createdBy: text("created_by"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("invoice_number_key").on(t.number),
+    uniqueIndex("invoice_token_key").on(t.token),
+    uniqueIndex("invoice_payment_link_key").on(t.paymentLinkId),
+    index("invoice_status_idx").on(t.status, t.createdAt),
+  ],
+);
+
+/** The last number handed out in each series ("INV-2026"). */
+export const invoiceCounter = pgTable("invoice_counter", {
+  series: text("series").primaryKey(),
+  last: integer("last").notNull().default(0),
+});
 
 export const contactMessage = pgTable(
   "contact_message",

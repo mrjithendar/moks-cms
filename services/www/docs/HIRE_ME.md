@@ -88,7 +88,8 @@ Visitors choose a call length, pay **minutes × your per-minute rate**, then boo
   `metadata[razorpayPaymentId]` filled in (read by Cal.com; give the Cal.com event type several lengths matching yours).
 - **Webhook:** `POST /api/razorpay/webhook`, verified against `X-Razorpay-Signature` (HMAC of the raw body). Events
   `payment.captured` / `order.paid` mark the order paid if amount and currency match; `payment.failed` records the
-  reason (never over a paid order). Covers visitors who close the tab before the Checkout callback.
+  reason (never over a paid order). Covers visitors who close the tab before the Checkout callback. The same webhook
+  also receives `payment_link.*` events for invoices (`docs/INVOICES.md`).
 - **Records:** Admin → Payments (paid / failed / started / all, with links to the Razorpay dashboard). Admins get one
   email per paid order. "Remove from list" deletes the record here only, not the payment, and never refunds.
   Migration `0026_hire_payment.sql`, rollback in `src/db/rollback/`.

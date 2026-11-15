@@ -190,5 +190,7 @@ describe("search and access", () => {
     expect(defaultConfig().general.features.publicGuide).toBe(false);
     const { RESERVED_PAGE_SLUGS } = await import("@/lib/site-pages");
     expect(RESERVED_PAGE_SLUGS.has("user-manual")).toBe(true);
+    // A client's invoice link is /invoice/<token>: a page cannot take that address either.
+    expect(RESERVED_PAGE_SLUGS.has("invoice")).toBe(true);
   });
 });

@@ -25,6 +25,7 @@ const SETTINGS_SECTION: Record<string, string> = {
   "Advanced settings": "Site settings",
   "Automation & AI": "SEO agent, AI & ML",
   "MCP access": "SEO agent, AI & ML",
+  Invoices: "Community",
 };
 
 const noSubscribe = () => () => {};

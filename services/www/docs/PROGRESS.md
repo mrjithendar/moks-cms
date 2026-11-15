@@ -1,5 +1,54 @@
 # Progress log — jithendar.com
 
+## Invoices: send to a client, paid through a Razorpay link, PDF stored in R2 (2026-11-15, owner request)
+
+Owner request: "admin can send invoices from admin login to clients and client can pay using razorpay link; all
+invoices are downloadable and stored in R2". Full description in `docs/INVOICES.md`.
+
+- **Admin → Invoices** (new menu item under Community; admins only, hidden from demo accounts): list with counts and
+  amounts owed per currency, filters (drafts, unpaid, overdue, paid, void), New invoice, an invoice page, Settings.
+- **Flow:** draft → Send → sent → paid, or void. Send gives the next number (`INV-2026-0007`, one sequence per prefix
+  and year in `invoice_counter`, never skipped or reused), stores the PDF in R2, creates a Razorpay **payment link**
+  for exactly the total and emails the client `/invoice/<token>`. Nothing holds a database transaction open across a
+  network call; a send that fails before "sent" leaves a draft (keeping its number) and removes what it made in R2 and
+  Razorpay.
+- **Client page** `/invoice/<token>` (no sign-in; 32 random bytes): the invoice, Pay (Razorpay), Download PDF, Print.
+  Never cached, never indexed, the token is kept out of the logs, and the path stays up in maintenance mode.
+- **Paid** is recorded once by the first of: webhook `payment_link.paid` (amount and currency must match), the signed
+  address Razorpay returns the client to, or an admin's "Mark as paid" (bank transfer; the link is cancelled first, and
+  an online payment found at that moment wins). `payment_link.cancelled` / `.expired` take the Pay button away until
+  "Create a payment link".
+- **PDF** written by hand in `src/lib/invoice-pdf.ts` (no PDF dependency added: rule 15): A4, built-in Helvetica,
+  several pages, clickable link. Stored at `jithendar/www/invoices/{year}/{id}/{random}.pdf`, rendered again on paid /
+  void. Admin and client downloads serve the stored object; a missing one is rendered and stored again.
+- Money is integers throughout (`src/lib/invoice-math.ts`); the form's live totals use the same functions as the server.
+- Also: `loggedPath` now covers `/invoice/<token>` and route error lines use it (`http-errors.ts`); "invoice" is a
+  reserved page slug; audit actions `invoice.*` are `notice`; StatusPill has `sent`, `overdue`, `void`.
+- Files: `src/db/migrations/0032_invoices.sql` (+ rollback), `src/db/schema.ts`, `src/lib/invoice-math.ts`,
+  `src/lib/invoice-pdf.ts`, `src/lib/invoices.ts`, `src/lib/razorpay.ts` (webhook branch, return-address signature),
+  `src/app/admin/invoices/**`, `src/app/api/admin/invoices/[id]/pdf/route.ts`, `src/app/invoice/[token]/**`,
+  `src/components/invoice/InvoiceSheet.tsx`, `src/proxy.ts`, `next.config.ts`, `src/lib/request-log.ts`,
+  `src/lib/http-errors.ts`, `src/lib/site-config/maintenance.ts`, `src/lib/site-pages.ts`, `src/lib/audit.ts`,
+  `src/lib/runtime-settings.ts` (Razorpay help text), `src/app/admin/layout.tsx` (menu), `src/components/admin/ui.tsx`,
+  user guide (`src/lib/user-guide.ts`: article and three questions; `src/lib/user-guide-settings.ts`: Invoice settings;
+  `GuideBrowser.tsx`), `docs/INVOICES.md`, `docs/HIRE_ME.md`.
+- Tests: `tests/invoices.test.ts` (drafts, numbering, send and its failures, webhook, return address, mark paid, void,
+  link renewal, client link, PDF storage, audit), `tests/invoice-pdf.test.ts` (arithmetic, encoding, PDF structure,
+  paging); additions to `indexing`, `sign-out`, `tracing-config` and `user-guide` tests.
+- Commands: `tests/invoice-pdf.test.ts` was run locally with Bun's test runner (11 passed), not with vitest, and the
+  sample PDFs were checked with `qpdf --check` and by eye (rendered with `pdftoppm`). **Everything else was not run
+  locally:** the environment has no `node_modules` and cannot install packages, so `npm run lint`, `typecheck`, `test`
+  (including `tests/invoices.test.ts`) and `build` ran only in CI on the pull request; see its checks.
+- **Not verified against the real services:** no Razorpay account or R2 bucket was available. The Payment Links
+  request, the webhook payloads and the return-address signature follow Razorpay's documentation and are tested
+  against a stand-in. Try it with `rzp_test_` keys first (`docs/INVOICES.md`, last section).
+- Manual steps: Invoices → Settings (business name is required to send); on the Razorpay webhook switch on
+  `payment_link.paid`, `payment_link.cancelled`, `payment_link.expired`; mention invoices and Razorpay in the privacy
+  policy and terms if they do not already cover billing.
+- Open: one tax line only (no split CGST/SGST, no tax-inclusive prices), no discounts, credit notes, partial payments
+  or recurring invoices; refunds are made in Razorpay and do not change the invoice; invoices are not in the content
+  backup; the look of the admin and client pages has not been seen in a browser.
+
 ## Restore keeps what hangs off posts and never grants roles from a backup file (2026-11-15, owner request after a repository review)
 
 Two defects in `restoreStoredBackup` (`src/lib/backups.ts`), found in a review of the repository.

@@ -36,6 +36,17 @@ describe("environment indexability", () => {
     expect((await proxy(request("https://jithendar.com/"))).headers.get("x-robots-tag")).toBeNull();
   });
 
+  it("never lets a client's invoice link be indexed or cached, in production too", async () => {
+    vi.stubEnv("APP_ENV", "production");
+    for (const path of ["/invoice/kJ8sQ2xYb7Lr0PzVn4TqWm1Ue9Ac3Df6Gh5Ij8Kl2Mo", "/invoice/kJ8sQ2xYb7Lr0PzVn4TqWm1Ue9Ac3Df6Gh5Ij8Kl2Mo/pdf"]) {
+      const res = await proxy(request(`https://jithendar.com${path}`));
+      expect(res.headers.get("x-robots-tag"), path).toBe("noindex, nofollow");
+      expect(res.headers.get("cache-control"), path).toBe("private, no-store");
+    }
+    // Only that path: the admin's list of invoices and ordinary pages are not affected by this rule.
+    expect((await proxy(request("https://jithendar.com/invoices"))).headers.get("cache-control")).toBeNull();
+  });
+
   it("robots.txt stays crawlable outside production (so the noindex header is seen) and lists both sitemaps in production", async () => {
     expect(robotsTxt(false)).toBe("User-agent: *\nAllow: /\n");
     expect(robotsTxt(false)).not.toContain("Sitemap");

@@ -57,6 +57,7 @@ describe("access log paths", () => {
   it("removes secrets carried in path segments", () => {
     expect(loggedPath("/api/auth/reset-password/AbC123_token-xyz")).toBe("/api/auth/reset-password/:token");
     expect(loggedPath("/preview/abcdefghijklmnopqrstuvwx")).toBe("/preview/:token");
+    expect(loggedPath("/invoice/kJ8sQ2xYb7Lr0PzVn4TqWm1Ue9Ac3Df6Gh5Ij8Kl2Mo/pdf")).toBe("/invoice/:token/pdf");
     expect(loggedPath("/blog/reset-password")).toBe("/blog/reset-password");
     expect(loggedPath("/api/auth/get-session")).toBe("/api/auth/get-session");
   });

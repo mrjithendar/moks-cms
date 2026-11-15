@@ -36,7 +36,15 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Fla
   if (filter === "paid") for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.amount);
   return (
     <>
-      <AdminHeader title="Payments" description="Paid calls from the Hire me page (Razorpay). Refunds and settlements are handled in the Razorpay dashboard." />
+      <AdminHeader
+        title="Payments"
+        description={
+          <>
+            Paid calls from the Hire me page (Razorpay). Refunds and settlements are handled in the Razorpay dashboard. Bills you send to clients are under{" "}
+            <Link href="/admin/invoices" className="link">Invoices</Link>.
+          </>
+        }
+      />
       <Flash ok={sp.ok} error={sp.error} />
       {(!keys.keyId || !keys.keySecret || !keys.webhookSecret) && (
         <Card>
