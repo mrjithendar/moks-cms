@@ -25,6 +25,38 @@ Two defects in `restoreStoredBackup` (`src/lib/backups.ts`), found in a review o
   text). `media` is still deleted and inserted again, so `image_generation.media_id` (ON DELETE SET NULL) loses its
   link on a restore. A plain zip is still accepted while encryption is on (older backups need that).
 
+## Admin menu reorganised: one entry per area, icons, filter, pins, a narrow menu (2026-11-15, owner request)
+
+First step of the admin UI plan the owner approved ("inspire from WordPress … reorganise admin menu"). Described in
+`docs/ADMIN_MENU.md`.
+
+- The sidebar's 8 categories with 43 links are now 14 entries, each with an icon: Dashboard, Posts, Media, Pages,
+  Comments, Inbox, Billing, AI newsroom, SEO & insights (Traffic / Content / Authority & health), Practice,
+  Appearance, Users, Tools, Settings. An entry with one page is a link; the others open and close. **No address
+  changed.** Billing is one more entry than the approved list: it holds Payments, and Invoices from the invoices pull
+  request, which did not exist when the list was agreed.
+- New in the menu: Posts → Add new, Pages → Add new, and the sections of Appearance & settings people look for by name
+  (Menus, Homepage, Typography & colours, Settings → General). The Appearance editor now follows a link to another of
+  its sections while it is open (`AppearanceEditor.tsx`).
+- **Filter menu** (every word typed; Enter opens the first match), **pins** (the star beside a page; listed first),
+  **Collapse menu** (icons only on large screens; an icon opens its pages in a panel beside it). The user manual is
+  **Help** at the foot of the menu.
+- `src/lib/admin-menu.ts` decides where each page sits; `src/app/admin/layout.tsx` still decides who may see it and
+  counts the badges. A page the menu file does not know shows under its old category instead of disappearing.
+- The narrow menu and the pins are kept in a cookie (`admin_nav`, path `/admin`) that the layout reads, so the sidebar
+  does not jump after a page loads; which entries are open stays in `localStorage`.
+- Removed: "Expand all / Collapse all" (the filter replaces it).
+- Files: `src/lib/admin-menu.ts` (new), `src/components/admin/AdminNav.tsx` (rewritten: `AdminSidebar`),
+  `src/components/admin/menu-icons.tsx` (new), `src/app/admin/layout.tsx`, `src/app/admin/appearance/AppearanceEditor.tsx`,
+  `src/lib/user-guide.ts` (tour of the admin; "Where did a page go?"), `tests/admin-nav.test.tsx` (rewritten),
+  `docs/ADMIN_MENU.md`.
+- Commands: **not run locally** (no `node_modules`, packages cannot be installed): `npm run lint`, `typecheck`, `test`
+  and `build` ran only in CI on the pull request; see its checks. The icons were rendered to an image and looked at.
+- **Not seen in a browser.** Spacing, the panel's position beside an icon and the phone layout need a look after
+  deploying; the classes follow what the old sidebar and other admin components already use.
+- Open: the menu's top bar, admin-wide search (Ctrl/Cmd K) and the Help link's final place come with step 3 of the
+  plan; "Widgets" under Appearance with step 6.
+
 ## User manual: in the admin, optionally public, searchable, with draw.io diagrams (2026-11-15, owner request)
 
 Owner request: a user manual for admins and read-only demo users after sign-in, searchable and filterable by category,

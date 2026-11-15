@@ -1,38 +1,78 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NavItem, NavPrefs } from "@/lib/admin-menu";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let pathname = "/admin/keywords";
-vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
+let search = "";
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ usePathname: () => pathname, useSearchParams: () => new URLSearchParams(search), useRouter: () => ({ push }) }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => <a href={href} {...rest}>{children}</a> }));
 
-const { AdminNav, NAV_STORE_KEY, currentOf } = await import("@/components/admin/AdminNav");
-type NavItem = Parameters<typeof AdminNav>[0]["items"][number];
+const { AdminSidebar, NAV_STORE_KEY } = await import("@/components/admin/AdminNav");
+const { arrangeMenu, currentOf, filterMenu, HELP_HREF, MENU_GROUPS, MENU_PLACES, NAV_PREFS_COOKIE, readNavPrefs, writeNavPrefs } = await import("@/lib/admin-menu");
 
+// What the layout would list for an admin (a sample), plus a page the menu has never heard of.
 const ITEMS: NavItem[] = [
   { href: "/admin", label: "Dashboard", section: "Overview" },
+  { href: "/admin/user-manual", label: "User manual", section: "Overview" },
   { href: "/admin/posts", label: "Posts", section: "Content" },
+  { href: "/admin/posts/new", label: "New post", section: "Content" },
+  { href: "/admin/media", label: "Media", section: "Content" },
+  { href: "/admin/categories", label: "Categories", section: "Content" },
   { href: "/admin/review", label: "Review queue", badge: 3, section: "Editorial & AI" },
-  { href: "/admin/news", label: "News desk", section: "Editorial & AI" },
   { href: "/admin/keywords", label: "Keywords", section: "Insights" },
+  { href: "/admin/search", label: "Search performance", section: "Insights" },
+  { href: "/admin/comments", label: "Comments", badge: 4, section: "Community" },
   { href: "/admin/messages", label: "Messages", badge: 2, section: "Community" },
+  { href: "/admin/bookings", label: "Bookings", section: "Community" },
+  { href: "/admin/appearance", label: "Appearance & settings", section: "Site settings" },
+  { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
+  { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
   { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
   { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
+  { href: "/admin/somewhere-new", label: "Brand new page", section: "Operations" },
 ];
 
 let container: HTMLDivElement;
 let root: Root;
-const header = (section: string) => container.querySelector<HTMLButtonElement>(`[data-section="${section}"] > button`)!;
-const list = (section: string) => container.querySelector<HTMLUListElement>(`[data-section="${section}"] > ul`)!;
-const render = () => act(() => root.render(<AdminNav items={ITEMS} />));
+let wideScreen = true;
+const group = (id: string) => container.querySelector<HTMLLIElement>(`[data-group="${id}"]`);
+const header = (id: string) => container.querySelector<HTMLButtonElement>(`[data-group="${id}"] > button`)!;
+const list = (id: string) => container.querySelector<HTMLUListElement>(`[data-group="${id}"] > ul`)!;
+const currentLink = () => container.querySelector('a[aria-current="page"]');
+const button = (name: string) => [...container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === name || b.textContent === name)!;
+const filterBox = () => container.querySelector<HTMLInputElement>('input[type="search"]')!;
+const render = (prefs?: NavPrefs) => act(() => root.render(<AdminSidebar items={ITEMS} role="admin" prefs={prefs} />));
+function type(value: string) {
+  const el = filterBox();
+  act(() => {
+    // React tracks the value it last set; the element's own setter is how a real keystroke changes it.
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    if (set) set.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+// The last cookie the menu wrote (captured, so the test does not depend on the test browser's cookie rules).
+let written = "";
+const cookie = () => readNavPrefs(new RegExp(`^${NAV_PREFS_COOKIE}=([^;]+)`).exec(written)?.[1]);
 
 beforeEach(() => {
   pathname = "/admin/keywords";
+  search = "";
+  wideScreen = true;
+  push.mockClear();
   localStorage.clear();
+  written = "";
+  Object.defineProperty(document, "cookie", { configurable: true, get: () => written, set: (value: string) => void (written = value) });
+  Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: (query: string) => ({ matches: wideScreen, media: query, addEventListener() {}, removeEventListener() {} }) });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -43,87 +83,260 @@ afterEach(() => {
   container.remove();
 });
 
-describe("admin sidebar categories", () => {
-  it("renders every category as a disclosure: Overview and the current page's category open, the rest collapsed", () => {
+describe("how the menu is arranged (lib/admin-menu.ts)", () => {
+  it("puts pages into groups, in order, with their short names, sub-headings and badge totals", () => {
+    const { groups, help } = arrangeMenu(ITEMS);
+    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "media", "comments", "inbox", "newsroom", "insights", "appearance", "settings", "more-operations"]);
+    const by = Object.fromEntries(groups.map((g) => [g.id, g]));
+    expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new", "Categories", "Review queue"]);
+    expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories", "Review queue"]);
+    expect(by.insights!.items.map((i) => [i.title, i.heading])).toEqual([["Search performance", "Traffic"], ["Keywords", "Content"]]);
+    expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
+    expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);
+    expect([by.posts!.badge, by.inbox!.badge, by.comments!.badge, by.media!.badge]).toEqual([3, 2, 4, 0]);
+    // The manual is help, drawn at the foot of the menu.
+    expect(help?.href).toBe(HELP_HREF);
+    expect(groups.flatMap((g) => g.items).some((i) => i.href === HELP_HREF)).toBe(false);
+  });
+
+  it("never loses a page it does not know: it gets a group named after its old category", () => {
+    const more = arrangeMenu(ITEMS).groups.at(-1)!;
+    expect(more).toMatchObject({ id: "more-operations", label: "Operations", icon: "more" });
+    expect(more.items.map((i) => i.title)).toEqual(["Brand new page"]);
+  });
+
+  it("leaves out groups with nothing for this person, and calls Users “Your account” for someone without the Users page", () => {
+    const author = arrangeMenu([
+      { href: "/admin", label: "Dashboard", section: "Overview" },
+      { href: "/admin/posts", label: "Posts", section: "Content" },
+      { href: "/admin/profile", label: "Author profile", section: "Account" },
+      { href: "/admin/api-keys", label: "API keys", section: "Account" },
+    ]);
+    expect(author.groups.map((g) => g.label)).toEqual(["Dashboard", "Posts", "Your account"]);
+    expect(author.groups.at(-1)!.items.map((i) => i.title)).toEqual(["Your profile", "API keys"]);
+    expect(arrangeMenu([...ITEMS, { href: "/admin/users", label: "Users", section: "Site settings" }]).groups.find((g) => g.id === "users")?.label).toBe("Users");
+  });
+
+  it("knows a place for every page the admin layout lists, in a group that exists", () => {
+    const layout = readFileSync(path.resolve(__dirname, "../src/app/admin/layout.tsx"), "utf8");
+    const listed = [...layout.matchAll(/href: "(\/admin[^"]*)"/g)].map((m) => m[1]!);
+    expect(listed.length).toBeGreaterThan(40);
+    const placed = new Set(MENU_PLACES.map(([href]) => href));
+    expect(listed.filter((href) => href !== HELP_HREF && !placed.has(href)), "pages without a place in lib/admin-menu.ts (they would show under their old category)").toEqual([]);
+    const ids = new Set(MENU_GROUPS.map((g) => g.id));
+    expect(MENU_PLACES.filter(([, place]) => !ids.has(place.group)).map(([href]) => href)).toEqual([]);
+    expect(new Set(MENU_PLACES.map(([href]) => href)).size).toBe(MENU_PLACES.length);
+  });
+
+  it("the current page is the longest matching link, and a link with a query only matches that query", () => {
+    expect(currentOf(ITEMS, "/admin/automation/mcp")?.label).toBe("MCP access");
+    expect(currentOf(ITEMS, "/admin/automation")?.label).toBe("Automation & AI");
+    expect(currentOf(ITEMS, "/admin")?.label).toBe("Dashboard");
+    expect(currentOf(ITEMS, "/admin/posts/new")?.label).toBe("New post");
+    expect(currentOf(ITEMS, "/admin/posts/8c1f")?.label).toBe("Posts");
+    expect(currentOf(ITEMS, "/admin/appearance", new URLSearchParams("section=theme"))?.label).toBe("Typography & colours");
+    expect(currentOf(ITEMS, "/admin/appearance", new URLSearchParams("section=footer"))?.label).toBe("Appearance & settings");
+    expect(currentOf(ITEMS, "/admin/appearance")?.label).toBe("Appearance & settings");
+    expect(currentOf(ITEMS, "/admin/nowhere")).toBeUndefined();
+  });
+
+  it("filters by every word typed, across names, short names, sub-headings and groups", () => {
+    const menu = arrangeMenu(ITEMS);
+    const found = (text: string) => filterMenu(menu, text).map((m) => m.entry.label);
+    expect(found("key")).toEqual(["Keywords"]);
+    expect(found("add new")).toEqual(["New post"]);
+    expect(found("traffic")).toEqual(["Search performance"]);
+    expect(found("inbox")).toEqual(["Messages", "Bookings"]);
+    expect(found("HELP")).toEqual(["User manual"]);
+    expect(found("  ")).toEqual([]);
+    expect(found("zzz")).toEqual([]);
+    expect(filterMenu(menu, "key")[0]!.group).toBe("SEO & insights");
+  });
+
+  it("reads the preferences cookie defensively", () => {
+    expect(readNavPrefs(writeNavPrefs({ rail: true, pins: ["/admin/posts", "/admin/appearance?section=theme"] }))).toEqual({ rail: true, pins: ["/admin/posts", "/admin/appearance?section=theme"] });
+    for (const bad of [undefined, null, "", "not json", "%7B", encodeURIComponent("[1,2]"), encodeURIComponent('"x"'), "x".repeat(3000)]) expect(readNavPrefs(bad), String(bad)).toEqual({ rail: false, pins: [] });
+    const messy = encodeURIComponent(JSON.stringify({ rail: "yes", pins: ["/admin/posts", "/admin/posts", "https://evil.example/admin", "/account", 7, "/admin/<script>", ...Array.from({ length: 20 }, (_, i) => `/admin/p${i}`)] }));
+    expect(readNavPrefs(messy)).toEqual({ rail: false, pins: ["/admin/posts", ...Array.from({ length: 7 }, (_, i) => `/admin/p${i}`)] });
+  });
+});
+
+describe("admin sidebar", () => {
+  it("draws a group with several pages as a disclosure and a group with one page as a link; the current page's group is open", () => {
     render();
-    for (const s of ["Overview", "Insights"]) {
-      expect(header(s).getAttribute("aria-expanded")).toBe("true");
-      expect(list(s).hidden).toBe(false);
+    expect(header("insights").getAttribute("aria-expanded")).toBe("true");
+    expect(list("insights").hidden).toBe(false);
+    expect(header("insights").getAttribute("aria-controls")).toBe(list("insights").id);
+    for (const id of ["posts", "inbox", "newsroom", "appearance"]) {
+      expect(header(id).getAttribute("aria-expanded"), id).toBe("false");
+      expect(list(id).hidden, id).toBe(true);
     }
-    for (const s of ["Content", "Editorial & AI", "Community", "Site settings"]) {
-      expect(header(s).getAttribute("aria-expanded")).toBe("false");
-      expect(list(s).hidden).toBe(true);
+    for (const [id, href] of [["dashboard", "/admin"], ["media", "/admin/media"], ["comments", "/admin/comments"], ["settings", "/admin/appearance?section=general"]] as const) {
+      expect(group(id)!.querySelector("button"), id).toBeNull();
+      expect(group(id)!.querySelector("a")!.getAttribute("href"), id).toBe(href);
     }
-    expect(header("Insights").getAttribute("aria-controls")).toBe(list("Insights").id);
-    expect(container.querySelector('a[aria-current="page"]')!.textContent).toBe("Keywords");
+    expect(currentLink()!.textContent).toBe("Keywords");
+    expect(list("insights").textContent).toContain("Traffic");
+    expect(container.querySelector(`a[href="${HELP_HREF}"]`)!.textContent).toBe("Help");
+    expect(group("pinned")).toBeNull();
   });
 
   it("server and first browser render agree (no hydration mismatch)", () => {
-    const html = renderToStaticMarkup(<AdminNav items={ITEMS} />);
-    expect(html).toContain('aria-expanded="true"');
-    expect((html.match(/hidden=""/g) ?? []).length).toBe(4);
+    const html = renderToStaticMarkup(<AdminSidebar items={ITEMS} role="admin" />);
+    expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
+    expect((html.match(/ hidden=""/g) ?? []).length).toBe(4); // posts, inbox, newsroom, appearance
+    expect(html).not.toContain("data-rail");
+    expect(renderToStaticMarkup(<AdminSidebar items={ITEMS} prefs={{ rail: true, pins: ["/admin/posts"] }} />)).toContain("data-rail");
   });
 
-  it("a collapsed category shows the total of its badges, an open one shows them per item", () => {
+  it("a closed group shows the total of its badges, an open one shows them per page", () => {
     render();
-    expect(header("Editorial & AI").textContent).toContain("3");
-    expect(header("Community").textContent).toContain("2");
-    act(() => header("Community").click());
-    expect(header("Community").textContent).not.toContain("2");
-    expect(list("Community").textContent).toContain("2");
+    expect(header("posts").textContent).toContain("3");
+    expect(header("inbox").textContent).toContain("2");
+    expect(group("comments")!.textContent).toContain("4");
+    act(() => header("inbox").click());
+    expect(header("inbox").textContent).not.toContain("2");
+    expect(list("inbox").textContent).toContain("2");
   });
 
-  it("toggling expands and collapses a category and remembers the choice", () => {
+  it("opening and closing a group is remembered in this browser", () => {
     render();
-    act(() => header("Content").click());
-    expect(list("Content").hidden).toBe(false);
-    expect(JSON.parse(localStorage.getItem(NAV_STORE_KEY)!)).toContain("Content");
-    act(() => header("Content").click());
-    expect(list("Content").hidden).toBe(true);
-    expect(JSON.parse(localStorage.getItem(NAV_STORE_KEY)!)).not.toContain("Content");
+    act(() => header("posts").click());
+    expect(list("posts").hidden).toBe(false);
+    expect(JSON.parse(localStorage.getItem(NAV_STORE_KEY)!)).toContain("posts");
+    act(() => header("posts").click());
+    expect(list("posts").hidden).toBe(true);
+    expect(JSON.parse(localStorage.getItem(NAV_STORE_KEY)!)).not.toContain("posts");
   });
 
-  it("applies saved choices after mounting, but always opens the current page's category", () => {
-    localStorage.setItem(NAV_STORE_KEY, JSON.stringify(["Community", "Unknown"]));
+  it("applies saved choices after mounting, but always opens the current page's group", () => {
+    localStorage.setItem(NAV_STORE_KEY, JSON.stringify(["inbox", "no-such-group"]));
     render();
-    expect(list("Community").hidden).toBe(false);
-    expect(list("Overview").hidden).toBe(true); // closed earlier by the reader
-    expect(list("Insights").hidden).toBe(false); // the current page's category
+    expect(list("inbox").hidden).toBe(false);
+    expect(list("posts").hidden).toBe(true);
+    expect(list("insights").hidden).toBe(false);
   });
 
-  it("navigating to another category opens it", () => {
+  it("navigating to a page in another group opens it", () => {
     render();
     pathname = "/admin/automation/mcp";
     render();
-    expect(list("Site settings").hidden).toBe(false);
-    expect(container.querySelector('a[aria-current="page"]')!.textContent).toBe("MCP access");
+    expect(list("newsroom").hidden).toBe(false);
+    expect(currentLink()!.textContent).toBe("MCP access");
   });
 
-  it("Expand all / Collapse all (collapse keeps Overview and the current category)", () => {
+  it("follows the section of a page that holds several menu pages (?section=…)", () => {
+    pathname = "/admin/appearance";
+    search = "section=theme";
     render();
-    const toggleAll = () => [...container.querySelectorAll("button")].find((b) => /all$/.test(b.textContent ?? ""))!;
-    expect(toggleAll().textContent).toBe("Expand all");
-    act(() => toggleAll().click());
-    expect(["Overview", "Content", "Editorial & AI", "Insights", "Community", "Site settings"].every((s) => !list(s).hidden)).toBe(true);
-    expect(toggleAll().textContent).toBe("Collapse all");
-    act(() => toggleAll().click());
-    expect(list("Content").hidden).toBe(true);
-    expect(list("Insights").hidden).toBe(false);
+    expect(currentLink()!.textContent).toBe("Typography & colours");
+    expect(list("appearance").hidden).toBe(false);
+    search = "section=general";
+    render();
+    expect(currentLink()!.getAttribute("href")).toBe("/admin/appearance?section=general");
+    expect(group("settings")!.contains(currentLink())).toBe(true);
+    search = "section=footer";
+    render();
+    expect(currentLink()!.textContent).toBe("Customise");
   });
 
-  it("works when storage is blocked", () => {
+  it("filters the menu by name; Enter opens the first match and Escape clears", () => {
+    render();
+    type("key");
+    expect(container.querySelector("[data-group]")).toBeNull();
+    const results = [...container.querySelectorAll("[data-results] a")];
+    expect(results.map((a) => a.getAttribute("href"))).toEqual(["/admin/keywords"]);
+    expect(results[0]!.textContent).toContain("SEO & insights");
+    act(() => {
+      container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(push).toHaveBeenCalledWith("/admin/keywords");
+
+    type("zzz");
+    expect(container.querySelector("[data-results]")!.textContent).toContain("No page matches");
+    act(() => {
+      filterBox().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(container.querySelector("[data-results]")).toBeNull();
+    expect(group("posts")).not.toBeNull();
+  });
+
+  it("pins pages to the top, by their full name, and remembers them in the cookie", () => {
+    render();
+    act(() => header("posts").click());
+    act(() => button("Pin New post").click());
+    expect(container.querySelector("[data-group]")!.getAttribute("data-group")).toBe("pinned");
+    expect([...list("pinned").querySelectorAll("a")].map((a) => a.textContent)).toEqual(["New post"]);
+    expect(cookie()).toEqual({ rail: false, pins: ["/admin/posts/new"] });
+    // For the admin only, kept for a year, never sent to other sites' requests.
+    expect(written).toMatch(/; path=\/admin; max-age=31536000; samesite=lax/);
+    expect(container.querySelectorAll('button[aria-label="Unpin New post"]')).toHaveLength(2); // under Pinned and under Posts
+
+    act(() => button("Unpin New post").click());
+    expect(group("pinned")).toBeNull();
+    expect(cookie().pins).toEqual([]);
+  });
+
+  it("starts with the pins the server read from the cookie", () => {
+    render({ rail: false, pins: ["/admin/keywords", "/admin/gone", "/admin/messages"] });
+    expect([...list("pinned").querySelectorAll("a")].map((a) => a.textContent)).toEqual(["Keywords", "Messages2 pending"]);
+    expect(list("pinned").hidden).toBe(false);
+  });
+
+  it("collapses to icons on a large screen: a group then opens as a panel beside its icon, one at a time", () => {
+    render({ rail: true, pins: [] });
+    const aside = container.querySelector("aside")!;
+    expect(aside.hasAttribute("data-rail")).toBe(true);
+    expect(aside.className).toContain("lg:w-16");
+    expect(header("posts").getAttribute("title")).toBe("Posts");
+    // The current group is not shown open in the rail: nothing is, until an icon is pressed.
+    expect(header("insights").getAttribute("aria-expanded")).toBe("false");
+
+    act(() => header("posts").click());
+    expect(header("posts").getAttribute("aria-expanded")).toBe("true");
+    expect(list("posts").hidden).toBe(false);
+    expect(list("posts").className).toContain("lg:fixed");
+    expect(list("posts").textContent).toContain("Posts"); // the panel names its group
+    act(() => header("inbox").click());
+    expect(list("posts").hidden).toBe(true);
+    expect(list("inbox").hidden).toBe(false);
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(list("inbox").hidden).toBe(true);
+    act(() => header("inbox").click());
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    expect(list("inbox").hidden).toBe(true);
+
+    act(() => button("Expand menu").click());
+    expect(container.querySelector("aside")!.hasAttribute("data-rail")).toBe(false);
+    expect(container.querySelector("aside")!.className).toContain("lg:w-64");
+    expect(cookie().rail).toBe(false);
+    act(() => button("Collapse menu").click());
+    expect(cookie().rail).toBe(true);
+  });
+
+  it("on a phone the collapsed setting changes nothing: groups open in place behind the Menu button", () => {
+    wideScreen = false;
+    render({ rail: true, pins: [] });
+    expect(header("insights").getAttribute("aria-expanded")).toBe("true");
+    act(() => header("posts").click());
+    expect(list("posts").hidden).toBe(false);
+    expect(list("posts").className).not.toContain("lg:fixed");
+    const menuButton = [...container.querySelectorAll("button")].find((b) => b.getAttribute("aria-controls") === "admin-nav")!;
+    expect(menuButton.textContent).toContain("Menu · Keywords");
+    expect(menuButton.textContent).toContain("9"); // 3 + 4 + 2 waiting
+  });
+
+  it("works when storage and cookies are blocked", () => {
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("blocked");
     });
     render();
-    act(() => header("Content").click());
-    expect(list("Content").hidden).toBe(false);
+    act(() => header("posts").click());
+    expect(list("posts").hidden).toBe(false);
     spy.mockRestore();
-  });
-
-  it("the current item is the longest matching link", () => {
-    expect(currentOf(ITEMS, "/admin/automation/mcp")?.label).toBe("MCP access");
-    expect(currentOf(ITEMS, "/admin/automation")?.label).toBe("Automation & AI");
-    expect(currentOf(ITEMS, "/admin")?.label).toBe("Dashboard");
   });
 });
