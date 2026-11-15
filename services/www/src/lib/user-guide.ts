@@ -1,7 +1,8 @@
 /**
- * The in-app user guide (Admin → User manual): how the CMS works, page by page, plus an FAQ. Plain data so the page can
- * search and filter it in the browser. `adminOnly` entries describe pages that only admins (and read-only demo
- * accounts, which see what an admin sees) can open; authors do not get them.
+ * The in-app user guide (Admin → User manual): how the CMS works, page by page, plus an FAQ. Plain data so the home
+ * page can search and filter it in the browser, and so every entry can be a page of its own (the helpers at the end of
+ * this file: contents, reading order, related entries). `adminOnly` entries describe pages that only admins (and
+ * read-only demo accounts, which see what an admin sees) can open; authors do not get them.
  *
  * Keep entries short and factual, and update them when a page changes: the page descriptions in each admin route are
  * the source these were written from.
@@ -91,10 +92,13 @@ const guides: GuideEntry[] = [
     kind: "guide",
     section: "Getting started",
     title: "Using this manual",
-    summary: "Search, filter by area, and jump to the page an article describes.",
-    keywords: ["search", "filter", "manual", "documentation", "docs", "faq"],
+    summary: "Browse the contents, search, read a guide on its own page and print the manual.",
+    keywords: ["search", "filter", "manual", "documentation", "docs", "faq", "contents", "print", "pdf", "navigation", "breadcrumbs"],
     body: [
-      "Type in the search box to match titles, summaries, text and common synonyms (for example “publish”, “backup” or “password”). Choose an area to narrow the list, or switch between Guides, FAQ and Settings.",
+      "The manual's home lists every guide by category, the FAQ and the settings reference. The contents on the left (under Contents on a phone) list every guide and question; each opens on its own page, which has its own address to bookmark or share.",
+      "A guide's page shows where you are (User manual, the category, the guide), who the page is for, an On this page list, the text and its diagram, where the page is in the admin, the settings of that page with their defaults, related guides, and links to the previous and next page in reading order.",
+      "Print / Save as PDF on a guide prints that guide without the menus. Printable manual on the home opens the whole manual on one page, with a contents list, for printing or saving as a PDF.",
+      "Type in the search box to match titles, summaries, text and common synonyms (for example “publish”, “backup” or “password”); a suggestion opens that guide. Choose an area to narrow the list, or switch between Guides, FAQ and Settings.",
       "Settings lists every setting and option of the CMS with what it does and its default value, from Appearance to the SEO agent, Advanced settings and MCP scopes.",
       "Each article links to the admin page it describes. The address bar keeps your search and filters, so you can bookmark or share a view of the guide.",
     ],
@@ -787,6 +791,56 @@ const faqs: GuideEntry[] = [
 ];
 
 export const GUIDE: GuideEntry[] = [...guides, ...faqs];
+
+/**
+ * Where the manual lives: the staff copy inside the admin and the public copy (Appearance & settings → General →
+ * Public user manual). Every entry has its own page at <base>/<id>; <base>/print is the whole manual on one page.
+ */
+export const GUIDE_ADMIN_BASE = "/admin/user-manual";
+export const GUIDE_PUBLIC_BASE = "/user-manual";
+/** Path segments under the manual that are pages of their own, so no entry may use them as its id. */
+export const GUIDE_RESERVED_IDS: readonly string[] = ["print"];
+
+export const guideArticlePath = (base: string, id: string) => `${base}/${id}`;
+
+const pathOf = (href: string) => href.split(/[?#]/)[0]!;
+
+export type GuideTocSection = { section: GuideSection; guides: GuideEntry[]; faqs: GuideEntry[] };
+
+/** The contents: sections in the order of GUIDE_SECTIONS; inside one, its guides, then its questions. */
+export function guideToc(entries: GuideEntry[]): GuideTocSection[] {
+  return GUIDE_SECTIONS.map((section) => ({
+    section,
+    guides: entries.filter((e) => e.section === section && e.kind === "guide"),
+    faqs: entries.filter((e) => e.section === section && e.kind === "faq"),
+  })).filter((s) => s.guides.length + s.faqs.length > 0);
+}
+
+/** Every entry in reading order, which is the order of the contents. */
+export function guideReadingOrder(entries: GuideEntry[]): GuideEntry[] {
+  return guideToc(entries).flatMap((s) => [...s.guides, ...s.faqs]);
+}
+
+/** The entries before and after `id` in reading order (for the previous / next links). */
+export function guideNeighbours(entries: GuideEntry[], id: string): { previous: GuideEntry | undefined; next: GuideEntry | undefined } {
+  const order = guideReadingOrder(entries);
+  const i = order.findIndex((e) => e.id === id);
+  return i < 0 ? { previous: undefined, next: undefined } : { previous: order[i - 1], next: order[i + 1] };
+}
+
+/** What to read next: entries about the same admin page first, then the rest of the section, in reading order. */
+export function guideRelated(entries: GuideEntry[], entry: GuideEntry, limit = 6): GuideEntry[] {
+  const others = guideReadingOrder(entries).filter((e) => e.id !== entry.id);
+  const page = entry.href ? pathOf(entry.href) : null;
+  const samePage = page ? others.filter((e) => e.href && pathOf(e.href) === page) : [];
+  const sameSection = others.filter((e) => e.section === entry.section && !samePage.includes(e));
+  return [...samePage, ...sameSection].slice(0, limit);
+}
+
+/** Whether a settings group (user-guide-settings.ts) describes the admin page this entry is about. */
+export function sameAdminPage(entry: GuideEntry, href: string): boolean {
+  return Boolean(entry.href) && pathOf(entry.href!) === pathOf(href);
+}
 
 /** The entries a signed-in role may read: authors do not get admin-only pages (demo accounts read as admins). */
 export function guideFor(isAdmin: boolean): GuideEntry[] {

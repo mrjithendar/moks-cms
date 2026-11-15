@@ -29,6 +29,38 @@ the executor, CrewAI), optionally public and indexable, and kept up to date as f
 - Commands: `tsc --noEmit` pass; eslint on changed files pass; `npm test` 97 files / 1179 tests pass (1 skipped);
   `next build` (APP_ENV=production) pass: `/user-manual` static with 5 min revalidation, `/admin/user-manual` dynamic.
 
+## User manual as a documentation site: contents tree, one page per entry, print (2026-11-15, owner request)
+
+Owner request: "improve user manual like enterprise software". Four parts were agreed, as phased pull requests: this
+layout, then task-based articles, reference pages (roles and permissions, glossary, troubleshooting, what's new) and a
+Help link on every admin page. This is the first. Details: [USER_GUIDE.md → Layout](USER_GUIDE.md).
+(This entry sits below the one it continues, not at the top, so that it merges cleanly next to a backup-restore fix
+that adds an entry at the top at the same time.)
+
+- **One page per entry.** `/admin/user-manual/<id>` and, while the manual is public, `/user-manual/<id>`: breadcrumbs,
+  title, who the page is for, "Page n of m", an On this page list, the text and diagram, where the page is in the
+  admin, the settings of that page (the settings-reference groups with the same `href`), related entries, previous and
+  next in reading order.
+- **Contents tree** beside every page of the manual (`GuideSidebar`): categories as `<details>`, no JavaScript, the
+  current page marked and its category open; folds away under Contents below the `lg` breakpoint.
+- **Home page**: guides are cards by category that link to their pages (title and summary only; a search shows one
+  ranked list). The FAQ and the settings reference stay on the home page. A type-ahead suggestion opens the entry's page.
+- **Print**: `Print / Save as PDF` on an entry, and `/…/print`, the whole manual on one page with a contents list. Print
+  hides the site's and the admin's chrome with the rule the SEO report page uses.
+- **Search engines** (public copy): guide pages are indexable, self-canonical and in `sitemap.xml`; question pages are
+  `noindex, follow` (the home page answers them in full, with `FAQPage` data); the print page is `noindex` with the
+  home page as canonical. Guide text is no longer repeated on the home page.
+- Files: `src/lib/user-guide.ts` (bases, `guideToc`, `guideReadingOrder`, `guideNeighbours`, `guideRelated`,
+  `sameAdminPage`; the "Using this manual" entry), `src/components/guide/` (`parts.tsx`, `GuideSidebar.tsx`,
+  `GuideArticle.tsx` new; `GuideBrowser.tsx`), `src/app/admin/user-manual/` (`page.tsx`, `[id]/page.tsx`,
+  `print/page.tsx`), `src/app/user-manual/` (the same three), `src/lib/seo/sitemap.ts`, `tests/user-guide.test.ts`,
+  `tests/user-guide-pages.test.tsx` (new), `tests/sitemap.test.ts`, `docs/USER_GUIDE.md`.
+- Commands: **not run locally.** The environment this was written in has no `node_modules` and cannot install packages
+  (and has Node 22, not ≥ 24), so `npm run lint`, `typecheck`, `test` and `build` ran only in CI on the pull request;
+  see its checks. **Nobody has looked at the pages in a browser yet**: the layout was written against the existing
+  design tokens and component patterns, and the owner checks how it looks.
+- Open: printing in dark mode keeps the dark theme's text colours on the article (the admin shell is forced white).
+
 ## Read-only demo accounts with email invitations (2026-11-14, owner request)
 
 Owner request: demo users who see what an admin sees but cannot edit anything, as many as needed, invited by email.

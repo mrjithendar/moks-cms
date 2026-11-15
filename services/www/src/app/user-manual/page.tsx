@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Container } from "@/components/Container";
+import Link from "next/link";
 import { GuideBrowser } from "@/components/guide/GuideBrowser";
+import { GuideLayout, GuideSidebar } from "@/components/guide/GuideSidebar";
 import { JsonLd } from "@/components/JsonLd";
 import { absoluteUrl, site } from "@/config/site";
 import { shareImages } from "@/lib/seo/metadata";
 import { getSiteConfig } from "@/lib/site-config";
-import { GUIDE } from "@/lib/user-guide";
+import { GUIDE, GUIDE_PUBLIC_BASE } from "@/lib/user-guide";
 import { settingsReference } from "@/lib/user-guide-settings";
 
 // ISR like the other public pages; settings changes (the switch below) clear the page cache on every replica. The
@@ -33,9 +35,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * The public user manual, shown (and listed in the sitemap, crawlable and indexable) only while Appearance & settings →
- * General → Public user manual is on. The same content as Admin → User manual: documentation and defaults only, never
- * this site's data or saved values. Off: not found.
+ * The public user manual's home, shown (and listed in the sitemap, crawlable and indexable) only while Appearance &
+ * settings → General → Public user manual is on: the contents tree, search, every guide by category, the FAQ and the
+ * settings reference. The same content as Admin → User manual: documentation and defaults only, never this site's data
+ * or saved values. Each guide and question has its own page ([id]/page.tsx); print/page.tsx is the whole manual on one
+ * page. Off: not found.
  */
 export default async function PublicUserManualPage() {
   const { config } = await getSiteConfig();
@@ -54,9 +58,14 @@ export default async function PublicUserManualPage() {
       <header className="max-w-3xl">
         <h1 className="text-3xl font-semibold tracking-tight text-fg">{TITLE}</h1>
         <p className="mt-3 text-base text-fg-muted">{DESCRIPTION}</p>
+        <p className="mt-3 text-sm">
+          <Link href={`${GUIDE_PUBLIC_BASE}/print`} className="link font-medium">Printable manual</Link>
+        </p>
       </header>
       <div className="mt-8">
-        <GuideBrowser entries={GUIDE} settings={settingsReference()} initial={{}} readUrlOnMount linkToAdmin={false} />
+        <GuideLayout sidebar={<GuideSidebar entries={GUIDE} base={GUIDE_PUBLIC_BASE} />}>
+          <GuideBrowser entries={GUIDE} settings={settingsReference()} initial={{}} base={GUIDE_PUBLIC_BASE} readUrlOnMount linkToAdmin={false} />
+        </GuideLayout>
       </div>
     </Container>
   );
