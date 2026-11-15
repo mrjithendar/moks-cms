@@ -1,12 +1,14 @@
 import { count, eq, sql } from "drizzle-orm";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { AdminNav, type NavItem } from "@/components/admin/AdminNav";
+import { AdminSidebar } from "@/components/admin/AdminNav";
 import { SessionGuard } from "@/components/SessionGuard";
 import { Alert } from "@/components/ui/form";
 import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
+import { NAV_PREFS_COOKIE, readNavPrefs, type NavItem } from "@/lib/admin-menu";
 import { moderationCounts } from "@/lib/comments";
 import { requireRole } from "@/lib/session";
 import { SignOutButton } from "../account/SignOutButton";
@@ -29,19 +31,24 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const user = await requireRole("admin", "author");
   const db = await getDb();
   const isAdmin = user.role === "admin";
-  const [comments, [unread], review] = await Promise.all([
+  const [comments, [unread], review, jar] = await Promise.all([
     moderationCounts(),
     db.select({ n: count() }).from(schema.contactMessage).where(eq(schema.contactMessage.status, "new")),
     isAdmin ? reviewCount(db) : 0,
+    cookies(),
   ]);
   // One CMS (D-86): search, analytics, the editorial calendar and AI drafting are ordinary admin pages.
-  // Grouped by category; each category expands and collapses in the sidebar (components/admin/AdminNav.tsx).
+  // This list says which pages this person may open and what their badges count. Where each page sits in the menu
+  // (its group, order and short name) is in lib/admin-menu.ts; `section` is only the group of a page that file does
+  // not know yet.
   const items: NavItem[] = [
     { href: "/admin", label: "Dashboard", section: "Overview" },
     { href: "/admin/user-manual", label: "User manual", section: "Overview" },
     // Content: what is published.
     { href: "/admin/posts", label: "Posts", section: "Content" },
+    { href: "/admin/posts/new", label: "New post", section: "Content" },
     { href: "/admin/pages", label: "Pages", section: "Content" },
+    { href: "/admin/pages/new", label: "New page", section: "Content" },
     { href: "/admin/media", label: "Media", section: "Content" },
     { href: "/admin/categories", label: "Categories", section: "Content" },
     { href: "/admin/tags", label: "Tags", section: "Content" },
@@ -87,6 +94,11 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     ...(isAdmin
       ? [
           { href: "/admin/appearance", label: "Appearance & settings", section: "Site settings" },
+          // Sections of Appearance & settings that people look for by name.
+          { href: "/admin/appearance?section=navigation", label: "Menus", section: "Site settings" },
+          { href: "/admin/appearance?section=homepage", label: "Homepage", section: "Site settings" },
+          { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
+          { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
           { href: "/admin/integrations", label: "Integrations", section: "Site settings" },
           { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
           { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
@@ -114,17 +126,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   );
 
   return (
-    <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-header))] bg-surface-muted lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="border-b border-line bg-canvas lg:sticky lg:top-header lg:h-[calc(100dvh-var(--spacing-header))] lg:overflow-y-auto lg:border-b-0 lg:border-r">
-        <div className="flex flex-col gap-3 px-4 py-3 sm:px-6 lg:min-h-full lg:gap-6 lg:px-4 lg:py-6">
-          <Link href="/admin" className="hidden items-center gap-2 px-3 lg:flex">
-            <span className="text-sm font-semibold text-fg">Admin</span>
-            <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium capitalize text-fg-muted">{user.demo ? "demo" : user.role}</span>
-          </Link>
-          <AdminNav items={items} account={<div className="text-sm">{account}</div>} />
-          <div className="mt-auto hidden border-t border-line px-3 pt-4 text-sm lg:block">{account}</div>
-        </div>
-      </aside>
+    <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-header))] bg-surface-muted lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
+      {/* The sidebar is the first column and as wide as it draws itself: full, or icons only (components/admin/AdminNav.tsx). */}
+      <AdminSidebar items={items} role={user.demo ? "demo" : user.role} account={account} prefs={readNavPrefs(jar.get(NAV_PREFS_COOKIE)?.value)} />
       <div className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
         <div className="mx-auto max-w-6xl">
           {user.demo && (

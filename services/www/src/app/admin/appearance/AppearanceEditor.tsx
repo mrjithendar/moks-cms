@@ -2,6 +2,7 @@
 
 import { formatLocal } from "@/components/LocalTime";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@/components/admin/Dialog";
 import { AlertIcon, CheckIcon, ExternalIcon } from "@/components/icons";
@@ -75,6 +76,15 @@ export function AppearanceEditor({
   initialSection?: string;
 }) {
   const [section, setSection] = useState<SectionId>(SECTIONS.some((s) => s.id === initialSection) ? (initialSection as SectionId) : "general");
+  // The admin menu links straight to sections of this page (Menus, Homepage, Typography & colours, General). Such a
+  // link changes the address without loading the editor again, so the section follows the address when it changes
+  // (React's "adjust state when a prop changes"). The effect further down writes the address when the section does.
+  const inAddress = useSearchParams().get("section");
+  const [lastInAddress, setLastInAddress] = useState(inAddress);
+  if (inAddress !== lastInAddress) {
+    setLastInAddress(inAddress);
+    if (inAddress !== section && SECTIONS.some((s) => s.id === inAddress)) setSection(inAddress as SectionId);
+  }
   const [draft, setDraft] = useState<unknown>(initial.config);
   const [state, setState] = useState<SaveState>("saved");
   const [message, setMessage] = useState<{ tone: "success" | "error" | "info"; text: string; list?: string[] } | null>(null);

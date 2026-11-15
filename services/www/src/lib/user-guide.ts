@@ -48,11 +48,20 @@ const guides: GuideEntry[] = [
     title: "A tour of the admin",
     summary: "How the admin is organised and where to find things.",
     href: "/admin",
-    keywords: ["overview", "navigation", "menu", "sidebar", "dashboard", "start", "help", "architecture"],
+    keywords: ["overview", "navigation", "menu", "sidebar", "dashboard", "start", "help", "architecture", "filter", "pin", "favourite", "collapse", "icons"],
     diagram: { name: "cms-architecture", alt: "Readers and staff reach the Moks CMS web app through the edge. The web app stores content in PostgreSQL, sessions in Redis and media in Cloudflare R2, and sends email. The SEO agent syncs Google data, drafts with Claude and writes drafts and metrics to PostgreSQL." },
     body: [
       "Moks CMS runs the whole publication from one admin: writing and publishing, search and audience data, AI drafting, comments and enquiries, site design and operations.",
-      "The sidebar groups pages by category (Overview, Content, Editorial & AI, Insights, Community, Site settings, Operations, Account). Each category expands and collapses, and the browser remembers your choice. A collapsed category still shows the total of its badges (pending reviews, unread messages, comments to moderate), so nothing that needs attention is hidden.",
+      "The menu on the left has one entry for each area of work: Dashboard, Posts, Media, Pages, Comments, Inbox, Billing, AI newsroom, SEO & insights, Practice, Appearance, Users, Tools and Settings. An entry with several pages opens to show them, and the one you are working in is open. The browser remembers which entries you opened. A closed entry still shows the total of its badges (pending reviews, unread messages, comments to moderate), so nothing that needs attention is hidden.",
+      "- Posts: All posts, Add new (the New post page), Categories, Tags, the Editorial calendar and the Review queue.",
+      "- Pages: All pages, Add new (for a New page) and the Hire me page.",
+      "- Inbox: Messages and Bookings. Billing: what clients pay you.",
+      "- AI newsroom: News desk, Promotion, Automation & AI, ML models and MCP access.",
+      "- SEO & insights, in three parts: Traffic (Search performance, Visitor analytics, Page insights, Reports), Content (Keywords, Recommendations, Content audit, Internal linking) and Authority & health (Backlinks, AI visibility, Technical health).",
+      "- Appearance: Customise opens Appearance & settings; Menus, Homepage and Typography & colours open it at that section.",
+      "- Users: All users, Your profile and API keys. Tools: Backups, Database, Data sync, Audit log and System status. Settings: General settings, Integrations, Storage & email and Advanced settings.",
+      "Filter menu, at the top, finds a page by name: type a few letters and press Enter to open the first match.",
+      "The star beside a page pins it: pinned pages are listed first, under Pinned. Collapse menu, at the bottom, narrows the menu to icons; an icon then opens its pages beside it. Help, above it, opens this manual.",
       "The Dashboard greets you with the number of items that need attention across the publication.",
       "On a phone, the Menu button at the top shows the current page and opens the same list.",
     ],
@@ -719,6 +728,17 @@ const faq = (id: string, section: GuideSection, title: string, body: string[], e
 });
 
 const faqs: GuideEntry[] = [
+  faq("faq-menu-moved", "Getting started", "The menu is arranged differently. Where did a page go?", [
+    "Every page is still there, at the same address; only the grouping changed. Type its name in Filter menu at the top of the menu to find it.",
+    "- Categories, Tags, the Editorial calendar and the Review queue are under Posts.",
+    "- Messages and Bookings are under Inbox; Payments is under Billing.",
+    "- News desk, Promotion, Automation & AI, ML models and MCP access are under AI newsroom.",
+    "- Search performance, analytics, keywords, audits, links and reports are under SEO & insights.",
+    "- Appearance & settings is Appearance → Customise; its General section is also Settings → General.",
+    "- Integrations, Storage & email and Advanced settings are under Settings; Backups, Database, Data sync, Audit log and System status are under Tools.",
+    "- Author profile is Users → Your profile, next to API keys. The User manual is Help, at the foot of the menu.",
+    "Pin the pages you use most (the star beside each): they are then listed first.",
+  ], { href: "/admin", keywords: ["menu", "moved", "missing", "where", "find", "sidebar", "navigation", "reorganised"] }),
   faq("faq-demo-save", "Getting started", "I'm a demo user. Why can't I save anything?", [
     "Demo accounts are read-only by design: you see the admin exactly as the owner does, but every save, publish, delete, send, sync and AI action is refused and nothing is stored.",
     "Ask the site owner for an author or admin account if you need to make changes.",
