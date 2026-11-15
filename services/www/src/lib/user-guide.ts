@@ -375,7 +375,27 @@ const guides: GuideEntry[] = [
       "- Messages: contact-form messages and Hire me enquiries. The badge counts unread ones.",
       "- Bookings: meetings booked through Cal.com from the Hire me page. Reschedule or cancel them in Cal.com.",
       "- Payments: paid calls from the Hire me page (Razorpay). Refunds and settlements are handled in the Razorpay dashboard.",
-      "The Hire me page itself is configured under Appearance & settings.",
+      "The Hire me page itself is configured under Appearance & settings. Bills you send to clients are under Invoices.",
+    ],
+  },
+  {
+    id: "invoices",
+    kind: "guide",
+    section: "Community",
+    title: "Invoices",
+    summary: "Bill a client, take payment through a Razorpay link, and keep every invoice as a PDF.",
+    href: "/admin/invoices",
+    adminOnly: true,
+    keywords: ["invoice", "bill", "billing", "client", "razorpay", "payment link", "pay", "pdf", "download", "receipt", "gst", "vat", "tax", "overdue", "void", "bank transfer", "r2"],
+    body: [
+      "Invoices is where you bill a client. Every invoice goes the same way: draft, sent, then paid (or void, if you cancel it).",
+      "Before the first invoice, press Settings on the Invoices page: your business name and address, your tax ID if you have one, the default currency, tax and payment terms, and the payment details printed at the end of every invoice. File storage must be connected (Storage & email), because every invoice is stored there as a PDF.",
+      "- New invoice: enter the client, the lines (description, quantity, unit price) and, if you charge it, a tax label and rate. The totals update as you type. Save draft sends nothing.",
+      "- Send invoice: the invoice gets the next number (for example INV-2026-0007), its PDF is stored, a Razorpay payment link is made for exactly the total, and the client is emailed a private link where they can view, pay and download it. After that the invoice cannot be edited.",
+      "- Paid: when the client pays through the link the invoice is marked paid on its own, the client is thanked by email and you are told. For a bank transfer, press Mark as paid and note the reference; the payment link is cancelled first, so nobody can pay twice.",
+      "- Void: cancels a sent invoice and its payment link. The number stays used and the client's link shows the invoice as cancelled. To correct a sent invoice, void it and send a new one (Copy to a new draft saves the typing).",
+      "- Download PDF: every sent, paid or void invoice can be downloaded, by you on its page and by the client from their link. The PDF is made again when the invoice is paid or voided, so it always shows where the invoice stands.",
+      "Amounts are written with the currency code (USD 1,500.00) on the page, in the email and in the PDF. Numbers run in order within a year and are never skipped or reused. Invoices are not shown to demo accounts.",
     ],
   },
 
@@ -786,6 +806,23 @@ const faqs: GuideEntry[] = [
   faq("faq-agent-down", "SEO agent, AI & ML", "What happens if the seo-agent stops?", [
     "The website keeps working. Background jobs (syncs, drafts, reports, ML) wait until it is back; Data sync and System status show the problem.",
   ], { href: "/admin/system", adminOnly: true, keywords: ["seo-agent", "down", "outage", "jobs"] }),
+  faq("faq-invoice-no-pay-button", "Community", "The client says there is no Pay button on the invoice. Why?", [
+    "The Pay button is shown only while the invoice is sent, unpaid and has a working Razorpay payment link.",
+    "- Razorpay was not connected when the invoice was sent, or online payment is switched off in Invoices → Settings: the invoice went out without a link. Connect Razorpay (Advanced settings → Razorpay payments), open the invoice and press Create a payment link.",
+    "- The link expired or was cancelled in the Razorpay dashboard: open the invoice and press Create a payment link.",
+    "- The invoice is already paid or void: its page says so instead.",
+    "The client does not need a new email: their link stays the same and shows the button as soon as there is a payment link.",
+  ], { href: "/admin/invoices", adminOnly: true, keywords: ["invoice", "pay button", "payment link", "razorpay", "expired", "cannot pay"] }),
+  faq("faq-invoice-not-marked-paid", "Community", "The client paid, but the invoice still says sent. What now?", [
+    "An invoice is marked paid when Razorpay tells the site: through the webhook, or when the client comes back to the invoice page after paying.",
+    "Check that the webhook in the Razorpay dashboard points at this site, has the secret from Advanced settings → Razorpay payments, and includes the events payment_link.paid, payment_link.cancelled and payment_link.expired. Razorpay sends a missed event again for a while.",
+    "If the money arrived another way (a bank transfer), open the invoice and press Mark as paid. If Razorpay shows the payment but the invoice is still open, Mark as paid notices the online payment and records it as such.",
+  ], { href: "/admin/invoices", adminOnly: true, keywords: ["invoice", "paid", "webhook", "razorpay", "still sent", "unpaid", "mark as paid"] }),
+  faq("faq-invoice-change-sent", "Community", "Can I change or delete an invoice after sending it?", [
+    "No. A sent invoice keeps its number, its amounts and the business details it was sent with, so what the client received and what you have always match.",
+    "To correct it: press Copy to a new draft, fix the copy and send it, then Void the wrong one. The voided invoice stays in the list with its number, and the client's old link shows it as cancelled.",
+    "Only a draft that was never sent can be deleted.",
+  ], { href: "/admin/invoices", adminOnly: true, keywords: ["invoice", "edit", "change", "delete", "void", "correct", "mistake", "credit note"] }),
   faq("faq-api", "Account", "Can I manage posts from a script?", [
     "Yes. Create an API key in Admin → API keys; it acts with your permissions.",
   ], { href: "/admin/api-keys", keywords: ["api", "script", "automation", "key"] }),

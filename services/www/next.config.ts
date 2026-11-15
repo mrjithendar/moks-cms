@@ -86,6 +86,8 @@ const nextConfig: NextConfig = {
       { source: "/account/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       { source: "/account", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       { source: "/api/auth/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
+      // A client's invoice link: private to whoever holds it, and never in a search index.
+      { source: "/invoice/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       // Admin pages and APIs and the sign-in page: never stored, so Back after signing out asks the server again.
       { source: "/admin", headers: [{ key: "Cache-Control", value: "private, no-store" }] },
       { source: "/admin/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] },

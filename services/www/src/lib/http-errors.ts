@@ -1,4 +1,5 @@
 import { log } from "./log";
+import { loggedPath } from "./request-log";
 import { currentTraceId, expectedStatus, isNextControlFlow } from "./trace";
 
 /**
@@ -79,5 +80,5 @@ export function handleErrors<F extends Handler>(name: string, fn: F): (...args: 
 /** The request fields every error line carries (path without the query string). */
 export function routeFields(request: Request | undefined): { method?: string; route?: string; requestId?: string } {
   if (!request) return {};
-  return { method: request.method, route: new URL(request.url).pathname, requestId: requestIdOf(request) };
+  return { method: request.method, route: loggedPath(new URL(request.url).pathname), requestId: requestIdOf(request) };
 }

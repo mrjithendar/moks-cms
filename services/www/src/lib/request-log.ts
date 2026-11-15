@@ -21,10 +21,11 @@ const HEALTH = /^\/api\/health(?:$|\?)/;
 
 /**
  * Paths that carry a secret in a segment are logged without it: Better Auth's password-reset link
- * (/api/auth/reset-password/<token>, a bearer credential until used) and draft previews (/preview/<token>).
- * Used by the proxy's access line and onRequestError; the log collector keeps `route` as it is.
+ * (/api/auth/reset-password/<token>, a bearer credential until used), draft previews (/preview/<token>) and a
+ * client's invoice link (/invoice/<token>, which opens the invoice without signing in).
+ * Used by the proxy's access line, onRequestError and route error lines; the log collector keeps `route` as it is.
  */
-const SECRET_SEGMENT = /^(\/api\/auth\/reset-password|\/preview)\/[^/?]+/;
+const SECRET_SEGMENT = /^(\/api\/auth\/reset-password|\/preview|\/invoice)\/[^/?]+/;
 export const loggedPath = (pathname: string) => pathname.replace(SECRET_SEGMENT, "$1/:token");
 
 /** Kubelet probes (/api/health): no trace, no request line, no access line, no request metric. */

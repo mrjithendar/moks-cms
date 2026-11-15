@@ -85,9 +85,9 @@ export const GROUPS: Group[] = [
   },
   {
     id: "razorpay",
-    title: "Razorpay payments (paid calls)",
+    title: "Razorpay payments (paid calls and invoices)",
     description:
-      "Paid calls on /hire-me (Admin → Appearance → Hire me → Paid calls). Razorpay Dashboard → Account & Settings → API keys: Key ID and Key secret (use rzp_test_ keys first). Then Webhooks → Add: URL https://jithendar.com/api/razorpay/webhook, events payment.captured, payment.failed and order.paid, and a secret; paste the same secret here. Payments in USD need International payments enabled on the Razorpay account.",
+      "Paid calls on /hire-me (Admin → Appearance → Hire me → Paid calls) and the payment links on invoices (Admin → Invoices). Razorpay Dashboard → Account & Settings → API keys: Key ID and Key secret (use rzp_test_ keys first). Then Webhooks → Add: URL https://jithendar.com/api/razorpay/webhook, events payment.captured, payment.failed and order.paid for paid calls and payment_link.paid, payment_link.cancelled and payment_link.expired for invoices, and a secret; paste the same secret here. Payments in a currency other than INR need International payments enabled on the Razorpay account.",
     fields: [
       { env: "RAZORPAY_KEY_ID", label: "Key ID", type: "text", pattern: /^$|^rzp_(test|live)_[A-Za-z0-9]{10,30}$/, placeholder: "rzp_live_…", hint: "Public: sent to the visitor's browser to open Checkout." },
       { env: "RAZORPAY_KEY_SECRET", label: "Key secret", type: "secret", pattern: /^$|^[A-Za-z0-9]{10,100}$/ },

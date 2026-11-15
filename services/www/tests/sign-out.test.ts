@@ -81,7 +81,7 @@ describe("caching of private pages", () => {
     const { default: config } = await import("../next.config");
     const rules = await config.headers!();
     const noStore = (source: string) => rules.find((r) => r.source === source)?.headers.some((h) => h.key === "Cache-Control" && h.value.includes("no-store"));
-    for (const source of ["/admin", "/admin/:path*", "/api/admin/:path*", "/api/comments/:path*", "/account", "/account/:path*", "/api/auth/:path*", "/login"]) {
+    for (const source of ["/admin", "/admin/:path*", "/api/admin/:path*", "/api/comments/:path*", "/account", "/account/:path*", "/api/auth/:path*", "/login", "/invoice/:path*"]) {
       expect(noStore(source), source).toBe(true);
     }
   });

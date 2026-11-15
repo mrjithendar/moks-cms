@@ -93,6 +93,12 @@ function route(request: NextRequest, requestId: string): NextResponse {
     response.headers.set("Cache-Control", "private, no-store");
     response.headers.set("X-Robots-Tag", NOINDEX);
   }
+  // A client's invoice (/invoice/<token>): private to whoever holds the link, so never cached and never indexed.
+  // (The site-wide Referrer-Policy in next.config.ts already keeps the path out of the Referer sent to Razorpay.)
+  if (pathname.startsWith("/invoice/")) {
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("X-Robots-Tag", NOINDEX);
+  }
   return response;
 }
 

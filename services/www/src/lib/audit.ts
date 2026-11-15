@@ -29,6 +29,7 @@ const SEVERITY: [string, Severity][] = [
   ["integrations.", "warning"],
   ["storage.", "warning"],
   ["email.", "notice"],
+  ["invoice.", "notice"],
   ["backup.download", "warning"],
   ["backup.", "notice"],
   ["site-config.publish", "notice"],

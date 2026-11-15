@@ -78,6 +78,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/messages", label: "Messages", badge: unread?.n, section: "Community" },
           { href: "/admin/bookings", label: "Bookings", section: "Community" },
           { href: "/admin/payments", label: "Payments", section: "Community" },
+          { href: "/admin/invoices", label: "Invoices", section: "Community" },
           // The /hire-me page is built in (not under Pages); its settings are a section of Appearance.
           { href: "/admin/appearance?section=hireMe", label: "Hire me page", section: "Community" },
         ]

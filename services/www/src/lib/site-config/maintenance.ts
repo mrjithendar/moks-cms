@@ -80,8 +80,11 @@ export function resetMaintenanceCache() {
   refreshing = null;
 }
 
-/** Paths that stay available during maintenance: sign-in, admin, account, APIs, assets, health and crawl files. */
-export const MAINTENANCE_EXEMPT = /^\/(admin|account|login|setup|api|_next|media|images|preview|icon|apple-icon|favicon\.ico|robots\.txt|ads\.txt)(\/|$|\.)/;
+/**
+ * Paths that stay available during maintenance: sign-in, admin, account, APIs, assets, health and crawl files, and a
+ * client's invoice link (an invoice that was emailed must stay payable).
+ */
+export const MAINTENANCE_EXEMPT = /^\/(admin|account|login|setup|api|_next|media|images|preview|invoice|icon|apple-icon|favicon\.ico|robots\.txt|ads\.txt)(\/|$|\.)/;
 
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
