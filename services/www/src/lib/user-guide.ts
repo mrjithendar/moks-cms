@@ -708,6 +708,17 @@ const faq = (id: string, section: GuideSection, title: string, body: string[], e
 });
 
 const faqs: GuideEntry[] = [
+  faq("faq-menu-moved", "Getting started", "The menu is arranged differently. Where did a page go?", [
+    "Every page is still there, at the same address; only the grouping changed. Type its name in Filter menu at the top of the menu to find it.",
+    "- Categories, Tags, the Editorial calendar and the Review queue are under Posts.",
+    "- Messages and Bookings are under Inbox; Payments is under Billing.",
+    "- News desk, Promotion, Automation & AI, ML models and MCP access are under AI newsroom.",
+    "- Search performance, analytics, keywords, audits, links and reports are under SEO & insights.",
+    "- Appearance & settings is Appearance → Customise; its General section is also Settings → General.",
+    "- Integrations, Storage & email and Advanced settings are under Settings; Backups, Database, Data sync, Audit log and System status are under Tools.",
+    "- Author profile is Users → Your profile, next to API keys. The User manual is Help, at the foot of the menu.",
+    "Pin the pages you use most (the star beside each): they are then listed first.",
+  ], { href: "/admin", keywords: ["menu", "moved", "missing", "where", "find", "sidebar", "navigation", "reorganised"] }),
   faq("faq-demo-save", "Getting started", "I'm a demo user. Why can't I save anything?", [
     "Demo accounts are read-only by design: you see the admin exactly as the owner does, but every save, publish, delete, send, sync and AI action is refused and nothing is stored.",
     "Ask the site owner for an author or admin account if you need to make changes.",
@@ -795,17 +806,6 @@ const faqs: GuideEntry[] = [
   faq("faq-agent-down", "SEO agent, AI & ML", "What happens if the seo-agent stops?", [
     "The website keeps working. Background jobs (syncs, drafts, reports, ML) wait until it is back; Data sync and System status show the problem.",
   ], { href: "/admin/system", adminOnly: true, keywords: ["seo-agent", "down", "outage", "jobs"] }),
-  faq("faq-menu-moved", "Getting started", "The menu is arranged differently. Where did a page go?", [
-    "Every page is still there, at the same address; only the grouping changed. Type its name in Filter menu at the top of the menu to find it.",
-    "- Categories, Tags, the Editorial calendar and the Review queue are under Posts.",
-    "- Messages and Bookings are under Inbox; Payments is under Billing.",
-    "- News desk, Promotion, Automation & AI, ML models and MCP access are under AI newsroom.",
-    "- Search performance, analytics, keywords, audits, links and reports are under SEO & insights.",
-    "- Appearance & settings is Appearance → Customise; its General section is also Settings → General.",
-    "- Integrations, Storage & email and Advanced settings are under Settings; Backups, Database, Data sync, Audit log and System status are under Tools.",
-    "- Author profile is Users → Your profile, next to API keys. The User manual is Help, at the foot of the menu.",
-    "Pin the pages you use most (the star beside each): they are then listed first.",
-  ], { href: "/admin", keywords: ["menu", "moved", "missing", "where", "find", "sidebar", "navigation", "reorganised"] }),
   faq("faq-api", "Account", "Can I manage posts from a script?", [
     "Yes. Create an API key in Admin → API keys; it acts with your permissions.",
   ], { href: "/admin/api-keys", keywords: ["api", "script", "automation", "key"] }),
