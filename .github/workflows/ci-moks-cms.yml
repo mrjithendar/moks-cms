@@ -1,19 +1,20 @@
 name: moks-cms
 
-# moks-cms tests its code and builds images. It deploys nothing: each website has its own repository (jithendar.com:
-# mrjithendar/jithendar.com) that builds its app on the image this workflow pushes and rolls it out itself.
+# moks-cms tests its code and pushes the CMS image. It deploys nothing: each website has its own repository (jithendar.com:
+# mrjithendar/jithendar.com) that ships its site.json, config/, articles and images in a content image, and names the
+# CMS image tag it runs in its Kubernetes manifests. The image reads the site's files at run time
+# (services/www/src/config/site-files.ts), so one image serves any site.
 #
 # check   → pull requests (opened, updated) and manual runs: lint, typecheck, test, build, against the test fixture
 #           site (services/www/tests/fixtures/site; scripts/use-site.mjs)
-# image   → pull requests: build the moks-cms-builder image (services/www/Dockerfile.builder), build the fixture site's
-#           app image on it (services/www/Dockerfile.site) and smoke-test that; nothing is pushed
+# image   → pull requests: the production build packaged as the arm64 image (Dockerfile.ci) and smoke-tested; not pushed
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
-#           in the builder (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
-#           same builder and smoke test, then push registry.jithendar.com/jithendar/moks-cms-builder:pr-<number>
+#           in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
+#           same image and smoke test, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
 #           (:manual-<run number> for manual runs) and :latest (the same image). When repository variable
 #           RELEASE_NOTIFY_REPOS lists site repositories (space-separated owner/name) and secret RELEASE_NOTIFY_TOKEN
-#           may write to them, each gets a repository_dispatch "moks-cms-released" {component: builder, tag}; what a
-#           site does with it is up to the site (jithendar.com moves its pin, builds and deploys).
+#           may write to them, each gets a repository_dispatch "moks-cms-released" {component: www, tag}; what a site
+#           does with it is up to the site (jithendar.com puts the tag in its manifests and applies them).
 #           Lint and the tests are skipped in `release` only when `scope` finds that the pull request's head commit
 #           passed `check` and every `test` shard in an earlier run of this workflow. Otherwise (merged while a check
 #           was red, still running or cancelled; or a manual run, which has no pull request) `release` runs them
@@ -33,9 +34,6 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - 'services/www/**'
-      # In the builder too (the practice catalog builder and the runner it imports).
-      - 'services/executor/tools/**'
-      - 'services/executor/sandbox/runner.py'
       - '.github/workflows/ci-moks-cms.yml'
       - 'scripts/image-size.sh'
 
@@ -84,22 +82,29 @@ jobs:
         env:
           APP_ENV: production
 
-  # The builder image and a site built on it, exactly as `release` builds them, without pushing anything.
+  # The release image, built and smoke-tested exactly as `release` does, without pushing it.
   image:
     if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build the builder and the fixture site on it
-        run: scripts/build-site-image.sh moks-cms-builder:ci moks-cms-fixture-site:ci "$GITHUB_SHA"
-      - name: Smoke-test the fixture site
-        run: scripts/smoke-site-image.sh moks-cms-fixture-site:ci "$GITHUB_SHA"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: services/www/.nvmrc
+          cache: npm
+          cache-dependency-path: services/www/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
+      - run: npm run build
+        env:
+          APP_ENV: production
+      - name: Package image
+        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$GITHUB_SHA" -t moks-cms:ci .
+      - name: Smoke-test the image
+        run: ../../scripts/smoke-site-image.sh moks-cms:ci "$GITHUB_SHA"
 
   # The test suite (~1150 tests, ~7 min on one 2-worker runner) split by file across parallel runners.
   test:
@@ -124,8 +129,8 @@ jobs:
       - run: npm run site -- --copy
       - run: npm test -- --shard=${{ matrix.shard }}/3
 
-  # Did the merged pull request change anything that is in the builder? Notes and READMEs are not (docs, *.md), so
-  # merging only those must not build or push a new builder.
+  # Did the merged pull request change anything that is in the image? Notes and READMEs are not (.dockerignore: docs,
+  # *.md), so merging only those must not build or push a new image.
   scope:
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: ubuntu-latest
@@ -155,7 +160,7 @@ jobs:
             case "$f" in
               services/www/docs/*) ;;
               services/www/*.md) ;;
-              services/www/*|services/executor/tools/*|services/executor/sandbox/runner.py|.github/workflows/ci-moks-cms.yml|scripts/image-size.sh|scripts/build-site-image.sh|scripts/smoke-site-image.sh) image=true ;;
+              services/www/*|.github/workflows/ci-moks-cms.yml|scripts/image-size.sh|scripts/smoke-site-image.sh) image=true ;;
             esac
           done < "$RUNNER_TEMP/files.txt"
           echo "image=$image" >> "$GITHUB_OUTPUT"
@@ -223,7 +228,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch))
     # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 20
     permissions:
       contents: read
     # Releases go one at a time, in the order the pull requests were merged.
@@ -231,7 +236,7 @@ jobs:
       group: moks-cms-release
       cancel-in-progress: false
     env:
-      REGISTRY_IMAGE: registry.jithendar.com/jithendar/moks-cms-builder
+      REGISTRY_IMAGE: registry.jithendar.com/jithendar/moks-cms
       # Pull requests: pr-<number>. Manual runs: manual-<run number>.
       PR_TAG: ${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_number) || format('pr-{0}', github.event.pull_request.number) }}
       RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
@@ -242,24 +247,33 @@ jobs:
           # The merge commit on the default branch, not the pull request's test merge (manual runs: the
           # dispatched commit).
           ref: ${{ env.RELEASE_SHA }}
-      # Lint and the tests are skipped only when `scope` verified that the pull request's head commit passed them in
-      # `check`/`test`. A pull request merged without that, and a manual run (no pull request: `scope` is skipped and
-      # its output is empty), runs them here, and a failure stops the release before anything is built or pushed.
-      - if: needs.scope.outputs.verified != 'true'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: services/www/.nvmrc
           cache: npm
           cache-dependency-path: services/www/package-lock.json
-      - if: needs.scope.outputs.verified != 'true'
-        run: npm ci --no-audit --no-fund
-      - if: needs.scope.outputs.verified != 'true'
-        run: npm run site -- --copy
+      - run: npm ci --no-audit --no-fund
+      # site/, content/ and public/images/ as copies of the test fixture site. The image ships them as defaults, so it
+      # starts bare; a site's Deployment mounts its own site/, content/ and public/images/ over them.
+      - run: npm run site -- --copy
+      # Lint and the tests are skipped only when `scope` verified that the pull request's head commit passed them in
+      # `check`/`test`. A pull request merged without that, and a manual run (no pull request: `scope` is skipped and
+      # its output is empty), runs them here, and a failure stops the release before anything is built or pushed.
       - if: needs.scope.outputs.verified != 'true'
         run: npm run lint
       # Tests rely on development fallbacks (e.g. SETTINGS_ENCRYPTION_KEY); only the build is production.
       - if: needs.scope.outputs.verified != 'true'
         run: npm test
+      # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: services/www/.next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
+      # The production build type-checks the whole project, so no separate typecheck is needed here.
+      - run: npm run build
+        env:
+          APP_ENV: production
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
@@ -268,21 +282,18 @@ jobs:
           set -euo pipefail
           [[ -n "$HARBOR_USERNAME" && -n "$HARBOR_PASSWORD" ]] || { echo "::error::Secrets HARBOR_USERNAME and HARBOR_PASSWORD must be set"; exit 1; }
           printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
-      # The builder, and the fixture site built on it the way a site repository builds (Dockerfile.site).
-      - name: Build the builder and the fixture site on it
-        working-directory: .
-        run: scripts/build-site-image.sh "$REGISTRY_IMAGE:$PR_TAG" moks-cms-fixture-site:release "$RELEASE_SHA"
-      # Before the push: a release whose app grew more than 15 % over the stored baseline stops here.
+      - name: Package image
+        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$RELEASE_SHA" -t "$REGISTRY_IMAGE:$PR_TAG" -t "$REGISTRY_IMAGE:latest" .
+      # Before the push: a release whose image grew more than 15 % over the stored baseline stops here.
       - name: Image size (summary; fails above +15 % of the stored baseline)
-        run: ../../scripts/image-size.sh moks-cms-fixture-site:release image-size-baseline.json
-      # Never push a builder whose site cannot start or optimise images.
-      - name: Smoke-test the fixture site
-        working-directory: .
-        run: scripts/smoke-site-image.sh moks-cms-fixture-site:release "$RELEASE_SHA"
+        run: ../../scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
+      # Never push an image that cannot start or optimise images.
+      - name: Smoke-test the image
+        run: ../../scripts/smoke-site-image.sh "$REGISTRY_IMAGE:latest" "$RELEASE_SHA"
       - name: Push
-        # Two tags for one image: pr-<number> is this release's own tag, which sites pin; latest names the newest.
+        # Two tags for one image: pr-<number> is this release's own tag, which sites name in their manifests;
+        # latest names the newest.
         run: |
-          docker tag "$REGISTRY_IMAGE:$PR_TAG" "$REGISTRY_IMAGE:latest"
           docker push --quiet "$REGISTRY_IMAGE:$PR_TAG"
           docker push --quiet "$REGISTRY_IMAGE:latest"
       - name: Tell the site repositories
@@ -290,16 +301,16 @@ jobs:
         env:
           REPOS: ${{ vars.RELEASE_NOTIFY_REPOS }}
           GH_TOKEN: ${{ secrets.RELEASE_NOTIFY_TOKEN }}
-        run: scripts/notify-sites.sh builder "$PR_TAG" "$RELEASE_SHA"
+        run: scripts/notify-sites.sh www "$PR_TAG" "$RELEASE_SHA"
       - name: Record image
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {
-            echo '### moks-cms-builder image'
+            echo '### moks-cms image'
             echo
             if [[ "$PR_TAG" == pr-* ]]; then source="pull request #${PR_TAG#pr-}"; else source="manual run #${PR_TAG#manual-}"; fi
             echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` ($source, commit \`$RELEASE_SHA\`)"
             echo "- Digest: \`$digest\`"
             echo
-            echo "Not deployed: sites build on it from their own repositories (services/www/Dockerfile.site)."
+            echo "Not deployed: sites name this tag in their own manifests."
           } >> "$GITHUB_STEP_SUMMARY"

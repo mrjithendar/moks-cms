@@ -1,6 +1,6 @@
 # Dependabot version updates. Pull requests run the `check` and `image` jobs in ci-moks-cms.yml (lint,
-# typecheck, test, build, builder image). Merging to master pushes a new moks-cms-builder image; sites
-# pick it up from their own repositories (the manifests and their images moved to mrjithendar/jithendar.com).
+# typecheck, test, build, image). Merging to master pushes a new moks-cms image; sites name its tag in
+# their own manifests (jithendar.com's moved to mrjithendar/jithendar.com).
 #
 # Minor and patch updates are grouped to keep the PR count down; majors arrive one PR each.
 # Security updates are not grouped and are not held back by the cooldown.
@@ -113,7 +113,7 @@ updates:
           - minor
           - patch
 
-  # Base images in services/www/Dockerfile, Dockerfile.ci, Dockerfile.builder and Dockerfile.site
+  # Base images in services/www/Dockerfile and services/www/Dockerfile.ci
   - package-ecosystem: docker
     directory: /services/www
     schedule:

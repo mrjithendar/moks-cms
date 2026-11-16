@@ -24,7 +24,8 @@ npm run site -- --copy   # real copies instead of links: before docker build
 | Variable | Purpose |
 |---|---|
 | `APP_ENV` | `production` allows indexing. Any other value makes every page `noindex`. Set it at **build** time (meta tag) and at **run** time (`X-Robots-Tag`, `robots.txt`). |
-| `SITE_DIR` | The site folder to build (`npm run site`): a site repository's checkout, or `/site` in the `moks-cms-builder` image. Compiled in: set it before `build`, not at run time. |
+| `SITE_DIR` | The site folder `npm run site` links or copies from: a site repository's checkout. |
+| `SITE_CONFIG_DIR` | Where the running app reads `site.json` and `config/` (default `site/`; `/app/site` in the image). Read at server start, never compiled in (`src/config/site-files.ts`). |
 | `SITE` | Without `SITE_DIR`: which folder of `sites/` to build. Neither set: `tests/fixtures/site`. |
 | `SITE_URL` | Canonical origin, default `https://` + the site's `host`. |
 | `CONTENT_DIR` | Optional content root; tests use `tests/fixtures/content`. |
@@ -40,11 +41,8 @@ ISR writes to `.next/cache` at runtime. Phase 6 must mount that path as writable
 
 ## Images
 
-CI (`.github/workflows/ci-moks-cms.yml`) deploys nothing. On merge it pushes `moks-cms-builder` (`Dockerfile.builder`:
-this app with its dependencies installed and no site), after building the fixture site on it with `Dockerfile.site`
-and smoke-testing that. A site's repository builds its own app image the same way: `Dockerfile.site` with the site
-folder as the build context and `MOKS_CMS_BUILDER` set to the builder tag it pins (jithendar.com: `moks-cms.json`).
-
-```bash
-../../scripts/build-site-image.sh moks-cms-builder:dev site:dev "$(git rev-parse HEAD)" ../../../jithendar.com
-```
+CI (`.github/workflows/ci-moks-cms.yml`) deploys nothing. On merge it pushes the CMS image
+`registry.jithendar.com/jithendar/moks-cms:pr-<number>` (`Dockerfile.ci`), after a smoke test. The image holds no site
+of its own beyond the test fixture's files as defaults. A site's Deployment mounts its own `site/` (site.json, config/),
+`content/` and `public/images/` over `/app/site`, `/app/content` and `/app/public/images`; jithendar.com ships them in
+its content image. The app reads them at run time, so a site never builds the CMS.

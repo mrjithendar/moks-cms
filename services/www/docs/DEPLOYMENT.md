@@ -1,10 +1,10 @@
 # Deployment — jithendar.com on mk4
 
 > **Moved, 2026-11-16.** jithendar.com is deployed from its own repository, `mrjithendar/jithendar.com`, which now
-> holds the site, `kubernetes/`, the deploy, Secret and config scripts, and the workflows (`release.yml`,
-> `deploy-kubernetes.yml`). moks-cms only tests and pushes images: `moks-cms-builder` (`ci-moks-cms.yml`), `seo-agent`,
-> `practice-executor`. The site's app image is now `registry.jithendar.com/jithendar/jithendar-com:<builder pin>-<commit>`,
-> built on the builder pinned in that repository's `moks-cms.json`, and its content image is `jithendar-com-content`.
+> holds the site, `kubernetes/`, the deploy, Secret and config scripts, and the workflows (`content.yml`,
+> `deploy-kubernetes.yml`). moks-cms only tests and pushes images: `moks-cms` (`ci-moks-cms.yml`), `seo-agent`,
+> `practice-executor`. The site runs `moks-cms:<tag>` as named in its manifests, and its content image
+> `jithendar-com-content` brings the articles, images, `site.json` and `config/`, which the CMS reads at run time.
 > Paths below such as `kubernetes/`, `scripts/` and `.github/workflows/deploy-kubernetes.yml` are in that repository.
 > The rest of this page is the setup as it was, kept for the cluster details (data services, Secrets, routing), which
 > have not changed.

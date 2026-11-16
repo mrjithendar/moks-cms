@@ -1,7 +1,8 @@
 # Sites
 
 moks-cms is the CMS. A website it serves is a folder with this layout, kept in **the site's own repository**: the
-repository builds the site's app on the `moks-cms-builder` image and deploys it. moks-cms itself deploys nothing.
+repository ships these files in its own content image and runs the moks-cms image, which reads them at run time.
+moks-cms itself deploys nothing.
 
 ```
 <site repository>/
@@ -9,7 +10,8 @@ repository builds the site's app on the `moks-cms-builder` image and deploys it.
                    "aiCrawlers" sets robots.txt for AI crawlers: "search" (answer engines that cite pages:
                    OAI-SearchBot, Claude-SearchBot, PerplexityBot…) and "training" (GPTBot, ClaudeBot,
                    Google-Extended, CCBot…), each "allow" or "block" (services/www/src/lib/seo/ai-crawlers.ts)
-  config/          redirects.ts, gone.ts (URLs answered with 410), hire-me-profile.ts (/hire-me)
+  config/          redirects.json ([{"source", "destination"}], 308), gone.json (paths answered with 410),
+                   hire-me-profile.json (/hire-me)
   content/         blog/ news/ projects/ pages/ authors/ (MDX), python-practice/
   public/images/   images the articles use, served as /images/…
   docs/            sources of the articles' figures, and scripts that check the articles (never shipped)
@@ -47,19 +49,16 @@ SITE_DIR=../../../jithendar.com npm run dev          # a site repository checked
 
 2. Fill in `site.json` (`host` without `https://`; `timeZone` one of the zones in Admin → Settings, otherwise UTC) and
    rename `content/authors/your-name.mdx` to the slug in `primaryAuthor`.
-3. Copy `services/www/Dockerfile.site` into it as `Dockerfile` (and its `.dockerignore`), and pin a builder tag:
-   `registry.jithendar.com/jithendar/moks-cms-builder:pr-<number>`.
-4. Check the content with moks-cms's own tests in that builder (the site mounted at `/site`):
-
-   ```bash
-   docker run --rm -v "$PWD:/site:ro" <builder> sh -c 'npm run site -- --copy && npx vitest run tests/content.test.ts tests/links.test.ts'
-   ```
-
-5. Deploy it: a Deployment, Service, route, TLS certificate, Secret and database for the site, with the site's app
-   image and its content image in an init container. `mrjithendar/jithendar.com` is the worked example
-   (`kubernetes/`, `.github/workflows/release.yml`, `deploy-kubernetes.yml` and its README's setup list).
+3. Ship `content/`, `public/images/`, `site.json` and `config/` in a content image (jithendar.com's
+   `Dockerfile.content`) whose init container copies them to `/app/content`, `/app/public/images` and `/app/site`, next
+   to `registry.jithendar.com/jithendar/moks-cms:pr-<number>`. The CMS reads them at server start.
+4. Check the content with the CMS image that will serve it: start it with the folders mounted and an embedded
+   database (`-e APP_ENV=development -e PGLITE_DIR=/tmp/pglite`) and request the pages. An invalid article answers 500
+   (jithendar.com's `scripts/check-content.sh`).
+5. Deploy it: a Deployment, Service, route, TLS certificate, Secret and database for the site. `mrjithendar/jithendar.com`
+   is the worked example (`kubernetes/`, `.github/workflows/content.yml`, `deploy-kubernetes.yml` and its README).
 6. To hear about new moks-cms images, add the repository to moks-cms's variable `RELEASE_NOTIFY_REPOS` and handle
-   the `moks-cms-released` repository_dispatch.
+   the `moks-cms-released` repository_dispatch (jithendar.com puts the tag in its manifests and applies them).
 7. **Dashboards**: copy jithendar.com's `grafana/`, change the `jithendar-com` job, service and namespace names, the
    uids and the titles, name the ConfigMap after the site, and add an Argo CD Application for the folder (tools repo,
    next to jithendar.com's in `deploy/minikube/applications/grafana.yaml`). uids and ConfigMap names must be unique

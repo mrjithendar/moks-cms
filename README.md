@@ -1,8 +1,9 @@
 # moks-cms
 
 A CMS for MDX publications, built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes. This repository holds
-the software only: it tests the code and builds the images, and deploys nothing. Each website lives in its own
-repository, builds its app on the `moks-cms-builder` image and deploys itself. [jithendar.com](https://jithendar.com),
+the software only: it tests the code, builds the CMS image and pushes it to the registry, and deploys nothing. The
+image serves any site: it reads the site's `site.json`, `config/`, articles and images at run time. Each website lives
+in its own repository, ships those files in its own content image and deploys the CMS image with its own manifests. [jithendar.com](https://jithendar.com),
 the first site, is [`mrjithendar/jithendar.com`](https://github.com/mrjithendar/jithendar.com). It lived here as
 `sites/jithendar.com/` until 2026-11-16, and this repository was itself called `jithendar.com` until 2026-11-14.
 
@@ -12,7 +13,7 @@ the first site, is [`mrjithendar/jithendar.com`](https://github.com/mrjithendar/
 | [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
 | `services/seo-agent/` | SEO v4 agent service (Python: CrewAI Flows and Crews as the only job engine, MCP servers, pgvector, Ask the Blog, report PDFs); see [FLOWS.md](services/www/docs/seo/FLOWS.md) and [MCP.md](services/www/docs/seo/MCP.md) |
 | [`sites/`](sites/README.md) | The template for a new site's repository (`_template/`) |
-| `scripts/` | Image builds and checks: `build-site-image.sh`, `smoke-site-image.sh`, `image-size.sh`, `notify-sites.sh`, `check-dashboards.py`, `build-alerts.py` |
+| `scripts/` | Image checks and release: `smoke-site-image.sh`, `image-size.sh`, `notify-sites.sh`, `check-dashboards.py`, `build-alerts.py` |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; when one is merged, tests and pushes the images to Harbor (`registry.jithendar.com/jithendar`) |
 
@@ -22,7 +23,7 @@ Merge a pull request into `master`. CI pushes, each as `:pr-<number>` and `:late
 
 | Image | Workflow | What it is |
 |---|---|---|
-| `moks-cms-builder` | `ci-moks-cms.yml` | The app with its dependencies installed and no site (`services/www/Dockerfile.builder`). A site builds its app image on it with `services/www/Dockerfile.site`. CI proves every builder by building the fixture site on it and smoke-testing that before the push |
+| `moks-cms` | `ci-moks-cms.yml` | The CMS (`services/www/Dockerfile.ci`). It ships the test fixture site's files as defaults, so it starts bare; a site mounts its own over `/app/site`, `/app/content` and `/app/public/images` |
 | `seo-agent` | `ci-seo-agent.yml` | The SEO agent service |
 | `practice-executor`, `practice-sandbox` | `ci-practice-executor.yml` | The Python practice executor and its sandbox |
 
@@ -36,8 +37,10 @@ site does with it is up to the site. jithendar.com moves its pin in `moks-cms.js
 ## A new site
 
 1. Create a repository from [`sites/_template/`](sites/README.md): `site.json`, `config/`, `content/`, `public/images/`.
-2. Copy `services/www/Dockerfile.site` into it as `Dockerfile` and build on a pinned builder tag.
-3. Deploy it the way `mrjithendar/jithendar.com` does (its `kubernetes/`, `release.yml` and `README.md`).
+2. Ship those files in a content image whose init container copies them into the pod, and run
+   `registry.jithendar.com/jithendar/moks-cms:pr-<number>` next to it.
+3. Deploy it the way `mrjithendar/jithendar.com` does (its `Dockerfile.content`, `kubernetes/`, `content.yml`,
+   `deploy-kubernetes.yml` and `README.md`).
 
 ## Local development
 

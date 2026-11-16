@@ -1,9 +1,12 @@
 /**
  * Site identity and environment. Server-only values; never prefix these with NEXT_PUBLIC_.
  *
- * The identity comes from sites/<SITE>/site.json, which `npm run site` links to site/ (scripts/use-site.mjs).
+ * The identity is the site's site.json, read when the server starts (config/site-files.ts: SITE_CONFIG_DIR, default
+ * site/), so one image serves any site. In the browser it comes from the copy the root layout writes into the page.
  */
-import siteJson from "../../site/site.json";
+import { loadSiteFile } from "./site-files";
+
+const siteJson = loadSiteFile();
 
 export const PRODUCTION_HOST: string = siteJson.host;
 
@@ -18,7 +21,7 @@ export const site = {
   primaryAuthor: siteJson.primaryAuthor,
 } as const;
 
-/** The whole site descriptor (sites/<SITE>/site.json): defaults for Admin → Settings and the AdSense ID too. */
+/** The whole site descriptor (site.json): defaults for Admin → Settings and the AdSense ID too. */
 export const siteFile = siteJson;
 
 export function siteUrl(): string {

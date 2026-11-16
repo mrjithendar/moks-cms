@@ -9,7 +9,7 @@ name: practice-executor
 #           "moks-cms-released" {component: practice-executor, tag} (scripts/notify-sites.sh).
 # Nothing here deploys: the manifests (namespaces, RuntimeClass, admission policy, RBAC) and the rollout live in each
 # site's repository (jithendar.com: mrjithendar/jithendar.com, kubernetes/practice-executor-*.yaml). The catalog checked
-# here is the test fixture site's; a site checks its own with the moks-cms-builder image.
+# here is the test fixture site's (build_problems.py; SITE_DIR=<site checkout> checks another).
 #
 # Registry: the release job logs in to Harbor with repository secrets HARBOR_USERNAME and HARBOR_PASSWORD.
 

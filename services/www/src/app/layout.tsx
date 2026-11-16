@@ -5,7 +5,8 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AnnouncementBar, announcementId, announcementScript } from "@/components/AnnouncementBar";
 import { runtimeIntegrations } from "@/lib/runtime-settings";
-import { absoluteUrl, isProductionEnv, site, siteUrl } from "@/config/site";
+import { absoluteUrl, isProductionEnv, site, siteFile, siteUrl } from "@/config/site";
+import { siteFileScript } from "@/config/site-files";
 import { ThirdParty } from "@/components/integrations/ThirdParty";
 import { HideOnAdmin } from "@/components/HideOnAdmin";
 import { AskSitewide } from "@/components/ask/AskBlog";
@@ -67,6 +68,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     // suppressHydrationWarning: the theme script may set data-theme on <html> before React hydrates.
     <html lang={site.language} className={fontVariables} suppressHydrationWarning>
       <head>
+        {/* site.json for browser code (config/site-files.ts); first, before any client module reads it. */}
+        <script dangerouslySetInnerHTML={{ __html: siteFileScript(siteFile) }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript(config.theme.defaultMode) }} />
         {ann.enabled && ann.dismissible && <script dangerouslySetInnerHTML={{ __html: announcementScript(announcementId(ann.text, ann.href)) }} />}
         {/* Generated from validated tokens only (lib/site-config/css.ts). */}

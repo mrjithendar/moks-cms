@@ -549,7 +549,7 @@ export function defaultConfig(): SiteConfig {
       publicationName: siteFile.publicationName,
       tagline: siteFile.tagline,
       description: siteFile.description,
-      // A time zone the settings form offers; sites/<SITE>/site.json may name any other, which falls back to UTC.
+      // A time zone the settings form offers; the site's site.json may name any other, which falls back to UTC.
       timezone: (TIMEZONES as readonly string[]).includes(siteFile.timeZone) ? (siteFile.timeZone as (typeof TIMEZONES)[number]) : "UTC",
       dateFormat: "d-mmm-yyyy",
       contact: { email: "", location: "" },

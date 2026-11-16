@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Start a site's app image without its cluster secrets and check that it answers: /api/health reports <version>, and
+# Start the moks-cms image without a site's cluster secrets and check that it answers: /api/health reports <version>, and
 # the image optimiser turns a JPEG into AVIF or WebP (sharp works in the image). Never push an image that fails this.
 #
 #   scripts/smoke-site-image.sh <image> <version> [<image path>]
 #
-# <image path> is a JPEG under the site's public/images (default /images/roboshop-ai/cart.jpg, which the test fixture
-# site and jithendar.com both have).
+# <image path> is a JPEG under public/images (default /images/roboshop-ai/cart.jpg, which the test fixture site that the
+# image ships with has).
 set -euo pipefail
 IMAGE="${1:?usage: $0 <image> <version> [<image path>]}"
 VERSION="${2:?usage: $0 <image> <version> [<image path>]}"

@@ -4,7 +4,7 @@
  * mrjithendar/jithendar.com, or sites/<domain>/ in this repository):
  *
  *   site.json        identity (host, name, author, social links, AdSense ID)
- *   config/          redirects, gone URLs, the /hire-me profile
+ *   config/          redirects.json, gone.json (410 URLs), hire-me-profile.json
  *   content/         articles, pages, authors, Python practice
  *   public/images/   images the articles use (served as /images/…)
  *   docs/            sources of the articles' figures and checks (never shipped)
@@ -12,15 +12,15 @@
  * Which folder, first match wins:
  *
  *   SITE_DIR=<path>   any folder (absolute, or relative to the current directory): a site repository checked out
- *                     next to this one, or mounted into the moks-cms-builder image (Dockerfile.builder)
+ *                     next to this one
  *   SITE=<domain>     sites/<domain>/ at the root of this repository
  *   (neither)         tests/fixtures/site, the small site the tests and local development run against
  *
- * The app keeps reading site/, content/ and public/images/ in services/www (and /app/content, /app/public/images in
- * the container, where the content image copies them). This script fills those three paths from the chosen folder:
+ * The app reads site/, content/ and public/images/ in services/www at run time (/app/site, /app/content and
+ * /app/public/images in the container, where a site's content image copies them; src/config/site-files.ts). This
+ * script fills those three paths from the chosen folder for development, tests and builds:
  *
- *   site/            always a copy of site.json and config/: they are compiled into the app, and Turbopack only
- *                    compiles files inside services/www
+ *   site/            always a copy of site.json and config/
  *   content/         a symlink for development (edit files in the site folder as usual), or with --copy a real
  *   public/images/   copy, for CI and Docker builds (COPY and output tracing do not follow links out of the folder)
  *
