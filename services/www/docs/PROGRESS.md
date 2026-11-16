@@ -23,8 +23,14 @@ needs a checkout of this repository, Node and a YAML parser: the site repository
 - Tests: `tests/post-files.test.ts` (create, update, unchanged, create-only, live posts, trash, invalid files, keys
   and ownership, the comparison).
 - No new dependency. No migration.
-- Commands: **not run locally** (no `node_modules`, no package installs); `lint`, `typecheck`, `test` and `build` run
-  in CI on the pull request. Checked locally: the new files transpile (Bun).
+- Commands: **not run locally** (no `node_modules`, no package installs); `lint`, `typecheck`, `test` and `build` ran
+  in CI on pull request #119 (`ci-moks-cms.yml` run 43917913695, commit `40d45ac`): `lint` pass, `typecheck` pass,
+  `build` pass, image built and smoke-tested, `test` 1231 passed and 1 skipped over the three shards
+  (`tests/post-files.test.ts`: 9 passed; `tests/push-post.test.ts`: 6 passed). Checked locally: the new files
+  transpile (Bun).
+- Delivery: #119 was stacked on the phase 1 branch and was merged into that branch 42 seconds after #118 had been
+  squash-merged, so it never reached `master`. The same two commits were put on top of `master` and reach it through
+  #120; release `pr-118` holds phase 1 only.
 - Manual steps: none here. Phase 3 needs a `posts:draft` key and an `images:write` key as secrets of the site
   repository.
 
