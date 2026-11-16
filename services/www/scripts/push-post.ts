@@ -72,7 +72,7 @@ export async function pushPosts(files: string[], opts: PushOptions): Promise<Pus
       if (!fs.existsSync(path.join(publicDir, src))) throw new Error(`${file}: ${src} does not exist in public/`);
       const res = await f(`${site}${src}`, { method: "HEAD" });
       if (!res.ok) {
-        throw new Error(`${file}: ${src} is not on ${site} yet (HTTP ${res.status}). Files in public/ ship only with an image build: upload it in Admin → Media and use its /media/… URL, or deploy once.`);
+        throw new Error(`${file}: ${src} is not on ${site} yet (HTTP ${res.status}). Push the file first with PUT /api/v1/images/<path> and an images:write key (docs/SITE_IMAGES.md), or upload it in Admin → Media and use its /media/… URL.`);
       }
     }
   }
