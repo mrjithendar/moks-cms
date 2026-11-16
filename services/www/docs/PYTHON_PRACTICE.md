@@ -66,18 +66,21 @@ User rows cascade: deleting an account deletes its practice data. `GET /api/prac
 
 ## Content
 
-`services/www/content/python-practice/` holds `roles.yaml`, `topics.yaml` and `problems/*.yaml` (100 original problems:
-20 beginner, 25 easy, 30 medium, 17 hard, 8 expert; every role has ≥ 5). Build the catalog after editing:
+The problems live in [`mrjithendar/practice-programming`](https://github.com/mrjithendar/practice-programming),
+`problems/python/`: `roles.yaml`, `topics.yaml` and `problems/*.yaml` (100 original problems: 20 beginner, 25 easy,
+30 medium, 17 hard, 8 expert; every role has ≥ 5). Build the catalog there after editing:
 
 ```sh
-python services/executor/tools/build_problems.py          # needs PyYAML; writes catalog.generated.json
+python executor/tools/build_problems.py                   # needs PyYAML; writes problems/python/catalog.generated.json
 ```
 
 It runs every reference solution through the real sandbox runner to compute expected outputs, checks
 hand-written expectations, requires three hints, ≥ 2 hidden tests and an example, checks that the starter
 code loads but does not pass, and flags near-duplicates. The site seeds the catalog at start-up: new problems
 are inserted, changed seed problems get a new version, and problems edited in the admin are left alone.
-CI (`ci-practice-executor.yml`) fails if the committed catalog is stale.
+That repository's CI fails if the committed catalog is stale, and ships it in the `practice-catalog` image; the CMS
+reads it from `PRACTICE_CATALOG_PATH` (default `content/python-practice/catalog.generated.json`, which is where the
+tests' fixture site keeps a copy).
 
 ### Problem format
 

@@ -68,29 +68,6 @@ updates:
     # under @tailwindcss/typography (6.0.10), minimatch 10 under eslint and typescript-eslint (^10). Drop each
     # override once its parent ships the fix (`npm ls <name>` without the override shows when).
 
-  # Practice executor: services/executor/pyproject.toml (exact pins, including the [test] extra). Its Dockerfiles are not
-  # covered: they use floating python:3.13-slim tags, so the only update would be a Python minor, which is
-  # bumped by hand together with the sandbox's PYTHON_VERSION build-arg in ci-practice-executor.yml.
-  - package-ecosystem: pip
-    directory: /services/executor
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: America/New_York
-    cooldown:
-      default-days: 3
-    commit-message:
-      prefix: "deps(executor)"
-    labels:
-      - dependencies
-      - python
-    groups:
-      executor-minor-patch:
-        update-types:
-          - minor
-          - patch
-
   # SEO v3 agent: services/seo-agent/pyproject.toml + uv.lock (exact pins). The two-week rule: cooldown 14 days here,
   # and tool.uv.exclude-newer = "2 weeks" for transitive dependencies on every re-lock.
   - package-ecosystem: uv

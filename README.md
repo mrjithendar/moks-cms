@@ -10,7 +10,6 @@ the first site, is [`mrjithendar/jithendar.com`](https://github.com/mrjithendar/
 | Path | Contents |
 |---|---|
 | [`services/www/`](services/www/README.md) | The Next.js app: source, tests, the test fixture site (`tests/fixtures/site`), Dockerfiles and [docs](services/www/docs/) |
-| [`services/executor/`](services/executor/README.md) | Python practice executor (sandboxed code runner) |
 | `services/seo-agent/` | SEO v4 agent service (Python: CrewAI Flows and Crews as the only job engine, MCP servers, pgvector, Ask the Blog, report PDFs); see [FLOWS.md](services/www/docs/seo/FLOWS.md) and [MCP.md](services/www/docs/seo/MCP.md) |
 | [`sites/`](sites/README.md) | The template for a new site's repository (`_template/`) |
 | `scripts/` | Image checks and release: `smoke-site-image.sh`, `image-size.sh`, `notify-sites.sh`, `check-dashboards.py`, `build-alerts.py` |
@@ -25,7 +24,6 @@ Merge a pull request into `master`. CI pushes, each as `:pr-<number>` and `:late
 |---|---|---|
 | `moks-cms` | `ci-moks-cms.yml` | The CMS (`services/www/Dockerfile.ci`). It ships the test fixture site's files as defaults, so it starts bare; a site mounts its own over `/app/site`, `/app/content` and `/app/public/images` |
 | `seo-agent` | `ci-seo-agent.yml` | The SEO agent service |
-| `practice-executor`, `practice-sandbox` | `ci-practice-executor.yml` | The Python practice executor and its sandbox |
 
 Lint and the tests run on the pull request; a release skips them only if the pull request's last commit passed them
 there, and runs them itself otherwise. A commit pushed straight to `master` builds nothing (no `push` triggers).

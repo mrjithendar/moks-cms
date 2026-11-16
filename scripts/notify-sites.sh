@@ -5,7 +5,7 @@
 #
 #   REPOS="owner/site-a owner/site-b" GH_TOKEN=… scripts/notify-sites.sh <component> <tag> <revision>
 #
-# component: www (the moks-cms image) | seo-agent | practice-executor. REPOS comes from repository variable RELEASE_NOTIFY_REPOS and
+# component: www (the moks-cms image) | seo-agent. REPOS comes from repository variable RELEASE_NOTIFY_REPOS and
 # GH_TOKEN from secret RELEASE_NOTIFY_TOKEN (a fine-grained token with Contents: read and write on those repositories,
 # which repository_dispatch needs). Nothing set: nothing is sent. A failed dispatch is a warning, never a failed release:
 # the image is pushed, and a site can always change its tag by hand.
