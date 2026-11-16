@@ -34,10 +34,13 @@ push instead of the content image, then remove the init container. Full descript
   JPEG and SVG, refused files, URL clashes, scopes and roles, the list, `resolveImage()`, the social card).
 - No new dependency.
 - Commands: **not run locally.** The environment has no `node_modules` and cannot install packages, so `npm run lint`,
-  `typecheck`, `test` and `build` run in CI on the pull request (`ci-moks-cms.yml`). Checked locally: every new or
-  changed file transpiles (Bun), and the path, SVG, ETag and body-cache logic of `site-images.ts` passes with its
-  imports stubbed (Bun test runner, 3 tests, 26 assertions). The size figures come from converting the site's real
-  PNGs with libwebp (Pillow), not with sharp.
+  `typecheck`, `test` and `build` ran in CI on pull request #118 (`ci-moks-cms.yml` run 43916775375, commit `babbb7a`):
+  `lint` pass, `typecheck` pass, `build` pass, image built and smoke-tested, `test` 1222 passed and 1 skipped over the
+  three shards (`tests/site-images.test.ts`: 20 passed). `schema-contract` (run 43916775067) applied every migration,
+  `0033_site_image.sql` included, to PostgreSQL 18: pass. Checked locally: every new or changed file transpiles (Bun),
+  and the path, SVG, ETag and body-cache logic of `site-images.ts` passes with its imports stubbed (Bun test runner,
+  3 tests, 26 assertions). The size figures come from converting the site's real PNGs with libwebp (Pillow), not with
+  sharp. Not checked anywhere: a real R2 bucket (the tests use the in-memory stand-in, `tests/fake-r2.ts`).
 - Open: no delete through the API (an image removed from the repository stays in R2); the in-memory body cache is per
   pod and has no metric.
 - Manual steps: none for this change. For the site: an `images:write` key (Admin → API keys) and R2 configured
