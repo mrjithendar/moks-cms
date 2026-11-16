@@ -122,6 +122,33 @@ edit those in the editor, or run `push-post` yourself.
 
 Code and design changes still need the image; only articles skip it. Tests: `tests/push-post.test.ts`.
 
+### The same from any HTTP client (`PUT /api/v1/posts/by-path/…`)
+
+`push-post` needs a checkout of this repository and Node. A site's own CI has neither, so the API also takes the file
+itself and does the parsing and validation on the server (`src/lib/post-files.ts`):
+
+```sh
+# scope posts:draft (or posts:write); the body is the MDX file, frontmatter included
+curl -X PUT -H "Authorization: Bearer $KEY" --data-binary @content/blog/my-post.mdx \
+  https://jithendar.com/api/v1/posts/by-path/blog/my-post.mdx
+# → { "data": { "action": "created", "id": "…", "status": "draft", "url": "/blog/my-post", "admin": "/admin/posts/…" } }
+```
+
+| `action` | When |
+|---|---|
+| `created` | The slug was new: a **draft**, whatever the file's `status` and `publishedAt` say; the byline is the key's owner |
+| `updated` | The post was a draft or in review and the file differs; the earlier version stays in Revisions |
+| `unchanged` | The post already holds what the file says: nothing is written, so sending a file twice is harmless |
+| `exists` | `?mode=create` was given and the post exists: never changed |
+| `skipped` | The post is published, scheduled, archived or in the trash (`reason` says which). `?live=1` with a `posts:write` key updates the content of a live post; its status and publication date never change |
+
+- The rules are those of `push-post`, and the checks are the editor's: the frontmatter schema, the slug equal to the
+  file name, images that exist (push them first: [SITE_IMAGES.md](SITE_IMAGES.md)), related posts that exist. A file
+  that names a related post which is pushed in the same run must be sent after it.
+- An author's key creates and updates the author's own posts only; a slug another author holds answers `409`.
+- At most 1 MB a file. Only `content/{blog,news,projects}/`: pages and author profiles are edited in the admin.
+- Tests: `tests/post-files.test.ts`.
+
 ## Dashboards
 
 Posts: status tabs (all, drafts, review, scheduled, published, archived, trash) with counts, search, pagination,

@@ -1,5 +1,33 @@
 # Progress log — jithendar.com
 
+## Posts pushed as MDX files through the API (2026-11-16, owner request, phase 2 of 3)
+
+Second part of the request in the next entry. A site's CI could send a post only with `npm run push-post`, which
+needs a checkout of this repository, Node and a YAML parser: the site repository has none of them since the split on
+2026-11-16. The API now takes the file itself.
+
+- **`PUT /api/v1/posts/by-path/<collection>/<slug>[.mdx]`** (scope `posts:draft` or `posts:write`): the body is the
+  MDX file. The server parses the frontmatter and validates it with the editor's checks (`src/lib/post-files.ts`).
+  A new slug becomes a **draft**; a draft or a post in review is updated; a published, scheduled, archived or trashed
+  post is skipped. `?mode=create` never changes an existing post. `?live=1` with a `posts:write` key updates the
+  content of a live post (never its status or date), as `push-post --update-live` does. Owner decision: CI pushes
+  drafts only, so it holds a `posts:draft` key and does not use `live`.
+- **Idempotent:** a post that already holds what the file says answers `unchanged` and nothing is written (no new
+  revision). The comparison ignores jsonb key order and compares `updatedAt` as an instant.
+- An author's key is kept to the author's own posts (`409` for a slug another author holds).
+- `scripts/push-post.ts`: the hint for an image that is not on the site now names the images API.
+- The "one push command" of the plan is a small script in the **site** repository (phase 3), because that is where
+  it runs: it needs only an HTTP client. Nothing changes in how `push-post` works.
+- Files: `src/lib/post-files.ts` (new), `src/app/api/v1/posts/by-path/[collection]/[slug]/route.ts` (new),
+  `scripts/push-post.ts`, `src/app/admin/api-keys/page.tsx`, user guide (`src/lib/user-guide.ts`), `docs/EDITOR.md`.
+- Tests: `tests/post-files.test.ts` (create, update, unchanged, create-only, live posts, trash, invalid files, keys
+  and ownership, the comparison).
+- No new dependency. No migration.
+- Commands: **not run locally** (no `node_modules`, no package installs); `lint`, `typecheck`, `test` and `build` run
+  in CI on the pull request. Checked locally: the new files transpile (Bun).
+- Manual steps: none here. Phase 3 needs a `posts:draft` key and an `images:write` key as secrets of the site
+  repository.
+
 ## Site images in R2, PNG stored as lossless WebP (2026-11-16, owner request, phase 1 of 3)
 
 Owner request: "add png compression and store images in r2 instead of copy; make push mode to update content; content

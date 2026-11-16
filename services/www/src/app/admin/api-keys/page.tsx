@@ -61,6 +61,10 @@ curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json
 # Delete
 curl -X DELETE -H "Authorization: Bearer $KEY" https://jithendar.com/api/v1/posts/<id>
 
+# Send a post as its MDX file: a new slug becomes a draft, a draft is updated, a published post is left alone
+curl -X PUT -H "Authorization: Bearer $KEY" --data-binary @content/blog/my-post.mdx \\
+  https://jithendar.com/api/v1/posts/by-path/blog/my-post.mdx
+
 # Push a site image (scope images:write): it is then served at /images/my-post/diagram.png
 curl -X PUT -H "Authorization: Bearer $KEY" --data-binary @public/images/my-post/diagram.png \\
   https://jithendar.com/api/v1/images/my-post/diagram.png`}</pre>

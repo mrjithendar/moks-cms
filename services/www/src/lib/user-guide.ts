@@ -848,7 +848,8 @@ const faqs: GuideEntry[] = [
   ], { href: "/admin/invoices", adminOnly: true, keywords: ["invoice", "edit", "change", "delete", "void", "correct", "mistake", "credit note"] }),
   faq("faq-api", "Account", "Can I manage posts from a script?", [
     "Yes. Create an API key in Admin → API keys; it acts with your permissions.",
-  ], { href: "/admin/api-keys", keywords: ["api", "script", "automation", "key"] }),
+    "A script can also send a post as its MDX file. A new post arrives as a draft, a post that is still a draft is updated, and a published post is left alone: you review and publish in Admin → Posts.",
+  ], { href: "/admin/api-keys", keywords: ["api", "script", "automation", "key", "mdx", "file", "push", "ci"] }),
   faq("faq-site-images", "Account", "How do images from the site's repository reach the site?", [
     "Files under public/images/ in the site's repository are pushed to storage (Cloudflare R2) with an API key that has the images:write scope, and are then served at the same /images/… address as before. No build or restart is needed.",
     "A PNG is stored as lossless WebP, about half the size with the same pixels. Keep writing the .png path in your content: pages load the smaller file, and the .png address still answers for social cards and old links.",
