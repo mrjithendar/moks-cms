@@ -5,7 +5,7 @@
 #   bash runner/setup.sh status     # show them
 #   bash runner/setup.sh remove     # stop, unregister and delete them
 #
-# Settings (environment): RUNNER_COUNT (2), RUNNER_REPO (mrjithendar/moks-cms),
+# Settings (environment): RUNNER_COUNT (2), RUNNER_REPO (moks-tech/moks-cms),
 # RUNNER_DIR (~/actions-runners/jithendar-com), RUNNER_NAME (short hostname), RUNNER_LABELS (extra labels).
 #
 # GitHub token, first one found: GH_TOKEN / GITHUB_TOKEN, `gh auth token`, or the AWS Secrets Manager secret
@@ -15,7 +15,7 @@
 set -euo pipefail
 umask 077
 
-REPO=${RUNNER_REPO:-mrjithendar/moks-cms}
+REPO=${RUNNER_REPO:-moks-tech/moks-cms}
 COUNT=${RUNNER_COUNT:-2}
 BASE=${RUNNER_DIR:-$HOME/actions-runners/jithendar-com}
 NAME=${RUNNER_NAME:-$(hostname -s)}

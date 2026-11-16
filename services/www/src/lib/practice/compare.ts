@@ -1,7 +1,7 @@
 import type { Comparator } from "./types";
 
 /**
- * Deterministic output comparison (mirrored by services/executor/tools/build_problems.py). Values are the sandbox's
+ * Deterministic output comparison (mirrored by executor/tools/build_problems.py in moks-tech/practice-programming). Values are the sandbox's
  * normalised JSON (sets as {"__set__": [...]}, big ints as {"__int__": "..."}), so plain JSON equality is
  * lossless. JSON has a single number type: 3 and 3.0 are equal.
  */

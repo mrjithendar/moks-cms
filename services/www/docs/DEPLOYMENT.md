@@ -1,5 +1,14 @@
 # Deployment — jithendar.com on mk4
 
+> **Moved, 2026-11-16.** jithendar.com is deployed from its own repository, `moks-tech/jithendar.com`, which now
+> holds the site, `kubernetes/`, the deploy, Secret and config scripts, and the workflows (`content.yml`,
+> `deploy-kubernetes.yml`). moks-cms only tests and pushes images: `moks-cms` (`ci-moks-cms.yml`) and `seo-agent`. The
+> practice executor, its sandboxes, problems and manifests are in `moks-tech/practice-programming`, which deploys them. The site runs `moks-cms:<tag>` as named in its manifests, and its content image
+> `jithendar-com-content` brings the articles, images, `site.json` and `config/`, which the CMS reads at run time.
+> Paths below such as `kubernetes/`, `scripts/` and `.github/workflows/deploy-kubernetes.yml` are in that repository.
+> The rest of this page is the setup as it was, kept for the cluster details (data services, Secrets, routing), which
+> have not changed.
+
 **When a pull request is merged into `master`, CI builds, pushes `moks-cms:pr-<number>` and `:latest` (one image) and rolls the site out on `:pr-<number>`** (a plain push to `master` builds nothing: the workflows have no `push` trigger); `.github/workflows/deploy-kubernetes.yml` applies manifest changes on the same merge (there is no `deploy.sh` any more, removed 2026-11-14). Argo CD is not used for this site. The site runs the tag of its last release, `:pr-<number>`, with `imagePullPolicy: Always`, never a digest (owner decision 2026-11-14; until then it always ran `:latest`). CI points the Deployment at the new tag after each image build and, from `deploy-kubernetes.yml`, applies `kubernetes/` without changing the image a workload runs (see Release).
 
 | Piece | Where |

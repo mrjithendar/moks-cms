@@ -1,6 +1,7 @@
 .next/
 
-# Links to (or, in CI and Docker, copies of) sites/$SITE: scripts/use-site.mjs. Edit files under sites/<domain>/.
+# Links to (or, in CI and Docker, copies of) the site folder: scripts/use-site.mjs (SITE_DIR, SITE, or tests/fixtures/site).
+# Edit files in the site folder itself.
 /site
 /content
 /public/images

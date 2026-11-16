@@ -28,7 +28,7 @@ export type Integrations = {
 };
 
 /**
- * The site's AdSense publisher ID (adsenseClientId in sites/<SITE>/site.json; matches the account's ads.txt line). Used when ADSENSE_CLIENT_ID is unset,
+ * The site's AdSense publisher ID (adsenseClientId in the site's site.json; matches the account's ads.txt line). Used when ADSENSE_CLIENT_ID is unset,
  * so Auto ads and AdSense site verification work without extra configuration. ADSENSE_CLIENT_ID=off disables ads.
  */
 export const DEFAULT_ADSENSE_CLIENT_ID: string = siteFile.adsenseClientId;

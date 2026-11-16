@@ -181,14 +181,23 @@ def test_cronjob_trigger_posts_one_kickoff_and_stops_the_sidecar(monkeypatch) ->
 
 
 def test_every_cronjob_names_a_flow_the_trigger_accepts() -> None:
-    """Each `python -m app.trigger <flow>` in the cluster manifests passes the trigger's name check and is a flow cron may start."""
+    """Each `python -m app.trigger <flow>` in the cluster manifests passes the trigger's name check and is a flow cron may start.
+
+    The CronJob manifests live in the jithendar.com repository (kubernetes/seo-agent-*-triggers.yaml), not here.
+    Point SEO_AGENT_K8S_DIR at that kubernetes/ directory, or check jithendar.com out next to moks-cms, to run this.
+    """
+    import os
     import re
     from pathlib import Path
 
     from app import trigger
     from app.flows import CRON_FLOWS
 
-    manifests = sorted((Path(__file__).resolve().parents[3] / "kubernetes").glob("seo-agent-*-triggers.yaml"))
+    repo = Path(__file__).resolve().parents[3]
+    candidates = [Path(os.environ["SEO_AGENT_K8S_DIR"])] if os.environ.get("SEO_AGENT_K8S_DIR") else [repo.parent / "jithendar.com" / "kubernetes"]
+    manifests = sorted(f for d in candidates for f in d.glob("seo-agent-*-triggers.yaml"))
+    if not manifests:
+        pytest.skip("CronJob manifests not found: set SEO_AGENT_K8S_DIR to jithendar.com's kubernetes/ directory")
     names = [n for f in manifests for n in re.findall(r'"app\.trigger",\s*"([^"]+)"', f.read_text())]
     assert len(names) >= 10, names
     for name in names:

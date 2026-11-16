@@ -1,0 +1,316 @@
+name: moks-cms
+
+# moks-cms tests its code and pushes the CMS image. It deploys nothing: each website has its own repository (jithendar.com:
+# moks-tech/jithendar.com) that ships its site.json, config/, articles and images in a content image, and names the
+# CMS image tag it runs in its Kubernetes manifests. The image reads the site's files at run time
+# (services/www/src/config/site-files.ts), so one image serves any site.
+#
+# check   → pull requests (opened, updated) and manual runs: lint, typecheck, test, build, against the test fixture
+#           site (services/www/tests/fixtures/site; scripts/use-site.mjs)
+# image   → pull requests: the production build packaged as the arm64 image (Dockerfile.ci) and smoke-tested; not pushed
+# release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
+#           in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
+#           same image and smoke test, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
+#           (:manual-<run number> for manual runs) and :latest (the same image). When repository variable
+#           RELEASE_NOTIFY_REPOS lists site repositories (space-separated owner/name) and secret RELEASE_NOTIFY_TOKEN
+#           may write to them, each gets a repository_dispatch "moks-cms-released" {component: www, tag}; what a site
+#           does with it is up to the site (jithendar.com puts the tag in its manifests and applies them).
+#           Lint and the tests are skipped in `release` only when `scope` finds that the pull request's head commit
+#           passed `check` and every `test` shard in an earlier run of this workflow. Otherwise (merged while a check
+#           was red, still running or cancelled; or a manual run, which has no pull request) `release` runs them
+#           itself and a failure stops the release. The workflow has to check this itself: the repository is private
+#           on GitHub Free, which has no branch protection or required status checks, so nothing else stops a
+#           pull request from being merged before its checks pass.
+#
+# There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds nothing.
+#
+# Image jobs run on GitHub-hosted arm64 runners, never on the mk4 server: builds there competed with the cluster for
+# memory and disk and froze the host (2026-10-29). The release job logs in to Harbor as the robot in repository
+# secrets HARBOR_USERNAME and HARBOR_PASSWORD (push and pull in project jithendar only).
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - 'services/www/**'
+      - '.github/workflows/ci-moks-cms.yml'
+      - 'scripts/image-size.sh'
+
+permissions:
+  contents: read
+
+# Runs for the same pull request go one at a time.
+concurrency:
+  group: moks-cms-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: services/www
+
+jobs:
+  check:
+    # Pull requests from forks never run CI here (nothing in it needs them). Branches of this repository,
+    # including Dependabot's, still run.
+    if: github.event_name != 'pull_request' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    # Measured on 2026-11-14 over 17 runs: 8 to 14.7 minutes, of which the tests took about 11 before they moved to
+    # the sharded `test` job below.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: services/www/.nvmrc
+          cache: npm
+          cache-dependency-path: services/www/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # site/, content/ and public/images/ as copies of the test fixture site (output tracing needs real files)
+      - run: npm run site -- --copy
+      - run: npm run lint
+      - run: npm run typecheck
+      # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: services/www/.next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
+      - run: npm run build
+        env:
+          APP_ENV: production
+
+  # The release image, built and smoke-tested exactly as `release` does, without pushing it.
+  image:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: services/www/.nvmrc
+          cache: npm
+          cache-dependency-path: services/www/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
+      - run: npm run build
+        env:
+          APP_ENV: production
+      - name: Package image
+        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$GITHUB_SHA" -t moks-cms:ci .
+      - name: Smoke-test the image
+        run: ../../scripts/smoke-site-image.sh moks-cms:ci "$GITHUB_SHA"
+
+  # The test suite (~1150 tests, ~7 min on one 2-worker runner) split by file across parallel runners.
+  test:
+    if: github.event_name != 'pull_request' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    name: test (${{ matrix.shard }}/3)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: services/www/.nvmrc
+          cache: npm
+          cache-dependency-path: services/www/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run site -- --copy
+      - run: npm test -- --shard=${{ matrix.shard }}/3
+
+  # Did the merged pull request change anything that is in the image? Notes and READMEs are not (.dockerignore: docs,
+  # *.md), so merging only those must not build or push a new image.
+  scope:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      # The step "Did the pull request's head commit pass check and test?" reads this workflow's runs and their jobs.
+      actions: read
+    outputs:
+      image: ${{ steps.files.outputs.image }}
+      verified: ${{ steps.checks.outputs.verified }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Files changed by the pull request
+        id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/files.txt"
+          image=false
+          while IFS= read -r f; do
+            case "$f" in
+              services/www/docs/*) ;;
+              services/www/*.md) ;;
+              services/www/*|.github/workflows/ci-moks-cms.yml|scripts/image-size.sh|scripts/smoke-site-image.sh) image=true ;;
+            esac
+          done < "$RUNNER_TEMP/files.txt"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Pull request #$PR changes the image: $image" >> "$GITHUB_STEP_SUMMARY"
+      # `release` skips lint and the tests only when this says "true": the pull request's head commit passed `check`
+      # and every `test` shard in an earlier run of this workflow. Nothing else guarantees it (no branch protection
+      # on this plan, see the top of the file): a pull request can be merged while a check is red, still running or
+      # cancelled. Never fails the job: anything unexpected, including an API error, means "not verified", and
+      # `release` then runs lint and the tests itself.
+      - name: Did the pull request's head commit pass check and test?
+        id: checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          THIS_RUN: ${{ github.run_id }}
+          # The number of `test` shards. Keep in step with the matrix of the `test` job.
+          TEST_SHARDS: 3
+        run: |
+          set -uo pipefail
+          verified=false
+          reason="no earlier run of this workflow for the head commit"
+          # Runs of this workflow for the head commit, newest first. This run (the `closed` event) has the same head
+          # commit and skipped `check` and `test`, so it is left out.
+          if ! runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci-moks-cms.yml/runs?head_sha=$HEAD_SHA&per_page=30" \
+                --jq ".workflow_runs[] | select(.id != $THIS_RUN) | .id")"; then
+            runs="" reason="the workflow runs could not be listed"
+          fi
+          newest=""
+          for run in $runs; do
+            jobs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=latest&per_page=100" \
+              --jq '.jobs[] | select(.name == "check" or (.name | startswith("test ("))) | "\(.name)=\(.conclusion)"')" \
+              || { [[ -n "$newest" ]] || newest="run $run: its jobs could not be read"; continue; }
+            check=false tests=0 other=""
+            while IFS= read -r job; do
+              case "$job" in
+                "") ;;
+                "check=success") check=true ;;
+                "test ("*"=success") tests=$((tests + 1)) ;;
+                *) other="${other:+$other, }$job" ;;
+              esac
+            done <<<"$jobs"
+            if [[ "$check" == true && "$tests" -eq "$TEST_SHARDS" && -z "$other" ]]; then
+              verified=true reason="run $run passed check and all $tests test shards"
+              break
+            fi
+            # Reported when no run passed: what the newest run looked like.
+            [[ -n "$newest" ]] || newest="run $run: check passed: $check, test shards passed: $tests of $TEST_SHARDS${other:+, not successful: $other}"
+          done
+          [[ "$verified" == true || -z "$newest" ]] || reason="$newest"
+          echo "verified=$verified" >> "$GITHUB_OUTPUT"
+          if [[ "$verified" == true ]]; then
+            echo "Pull request #$PR, head ${HEAD_SHA:0:7}: $reason. The release skips lint and the tests." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Pull request #$PR was merged without passing checks on its head commit ${HEAD_SHA:0:7} ($reason). The release runs lint and the tests itself."
+            echo "Pull request #$PR, head ${HEAD_SHA:0:7}: checks not verified ($reason). The release runs lint and the tests itself." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  release:
+    needs: scope
+    # scope is skipped on manual runs, so !cancelled() keeps this job from being skipped with it. Manual runs
+    # release only from the default branch.
+    if: >-
+      !cancelled() && (needs.scope.outputs.image == 'true' ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch))
+    # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    # Releases go one at a time, in the order the pull requests were merged.
+    concurrency:
+      group: moks-cms-release
+      cancel-in-progress: false
+    env:
+      REGISTRY_IMAGE: registry.jithendar.com/jithendar/moks-cms
+      # Pull requests: pr-<number>. Manual runs: manual-<run number>.
+      PR_TAG: ${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_number) || format('pr-{0}', github.event.pull_request.number) }}
+      RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The merge commit on the default branch, not the pull request's test merge (manual runs: the
+          # dispatched commit).
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: services/www/.nvmrc
+          cache: npm
+          cache-dependency-path: services/www/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # site/, content/ and public/images/ as copies of the test fixture site. The image ships them as defaults, so it
+      # starts bare; a site's Deployment mounts its own site/, content/ and public/images/ over them.
+      - run: npm run site -- --copy
+      # Lint and the tests are skipped only when `scope` verified that the pull request's head commit passed them in
+      # `check`/`test`. A pull request merged without that, and a manual run (no pull request: `scope` is skipped and
+      # its output is empty), runs them here, and a failure stops the release before anything is built or pushed.
+      - if: needs.scope.outputs.verified != 'true'
+        run: npm run lint
+      # Tests rely on development fallbacks (e.g. SETTINGS_ENCRYPTION_KEY); only the build is production.
+      - if: needs.scope.outputs.verified != 'true'
+        run: npm test
+      # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: services/www/.next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
+      # The production build type-checks the whole project, so no separate typecheck is needed here.
+      - run: npm run build
+        env:
+          APP_ENV: production
+      - name: Log in to Harbor
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [[ -n "$HARBOR_USERNAME" && -n "$HARBOR_PASSWORD" ]] || { echo "::error::Secrets HARBOR_USERNAME and HARBOR_PASSWORD must be set"; exit 1; }
+          printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
+      - name: Package image
+        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$RELEASE_SHA" -t "$REGISTRY_IMAGE:$PR_TAG" -t "$REGISTRY_IMAGE:latest" .
+      # Before the push: a release whose image grew more than 15 % over the stored baseline stops here.
+      - name: Image size (summary; fails above +15 % of the stored baseline)
+        run: ../../scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
+      # Never push an image that cannot start or optimise images.
+      - name: Smoke-test the image
+        run: ../../scripts/smoke-site-image.sh "$REGISTRY_IMAGE:latest" "$RELEASE_SHA"
+      - name: Push
+        # Two tags for one image: pr-<number> is this release's own tag, which sites name in their manifests;
+        # latest names the newest.
+        run: |
+          docker push --quiet "$REGISTRY_IMAGE:$PR_TAG"
+          docker push --quiet "$REGISTRY_IMAGE:latest"
+      - name: Tell the site repositories
+        working-directory: .
+        env:
+          REPOS: ${{ vars.RELEASE_NOTIFY_REPOS }}
+          GH_TOKEN: ${{ secrets.RELEASE_NOTIFY_TOKEN }}
+        run: scripts/notify-sites.sh www "$PR_TAG" "$RELEASE_SHA"
+      - name: Record image
+        run: |
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
+          {
+            echo '### moks-cms image'
+            echo
+            if [[ "$PR_TAG" == pr-* ]]; then source="pull request #${PR_TAG#pr-}"; else source="manual run #${PR_TAG#manual-}"; fi
+            echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` ($source, commit \`$RELEASE_SHA\`)"
+            echo "- Digest: \`$digest\`"
+            echo
+            echo "Not deployed: sites name this tag in their own manifests."
+          } >> "$GITHUB_STEP_SUMMARY"

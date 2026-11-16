@@ -155,8 +155,8 @@ Rotate by running the script again and restarting both Deployments.
     dns_sd_configs: [{ names: [seo-agent-metrics.jithendar.svc.cluster.local], type: A, port: 8080 }]
   ```
 - Alerts: copy group `jithendar-com-seo-agent` from [prometheus-alerts.yml](prometheus-alerts.yml).
-- Dashboard: `sites/jithendar.com/grafana/jithendar-com-seo-agent.json` (Argo CD `grafana` app). **Since the `sites/` move (2026-11-14), the
-  app's path must be `sites/jithendar.com/grafana`** (tools repo, `deploy/minikube/applications/grafana.yaml`).
+- Dashboard: `grafana/jithendar-com-seo-agent.json` in `moks-tech/jithendar.com` (Argo CD `grafana` app). **Since the site
+  moved to its own repository (2026-11-16), the app must read repository `moks-tech/jithendar.com`, path `grafana`** (tools repo, `deploy/minikube/applications/grafana.yaml`).
 
 ## 17. Switch drafting to the agent (superseded by §22)
 
@@ -384,7 +384,7 @@ shows `pagePairs: unsupported` if the property can't provide it.
 
 - Alerts: copy the groups from [alerts-for-minikube-repo.yaml](alerts-for-minikube-repo.yaml) into the miniKube repo
   (OPERATIONS.md "Alerts handoff"). New group: `jithendar-com-seo-ml`.
-- Dashboard: `sites/jithendar.com/grafana/jithendar-com-seo-agent.json` has a new **ML & RAG** row (Argo CD `grafana` app).
+- Dashboard: `grafana/jithendar-com-seo-agent.json` (in `moks-tech/jithendar.com`) has a new **ML & RAG** row (Argo CD `grafana` app).
 
 ## 36. v5 rollback
 

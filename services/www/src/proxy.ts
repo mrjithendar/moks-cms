@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isGone } from "@/config/gone";
+import { redirectFor } from "@/config/redirects";
 import { isIndexableHost } from "@/config/site";
 import { clientIp } from "@/lib/client-ip";
 import { REQUEST_METHOD_HEADER } from "@/lib/demo";
@@ -74,6 +75,13 @@ function route(request: NextRequest, requestId: string): NextResponse {
   }
 
   const { pathname } = request.nextUrl;
+  // The site's permanent redirects (config/redirects.json), in one hop, before the trailing-slash rule.
+  const destination = redirectFor(pathname);
+  if (destination) {
+    const url = new URL(destination, request.url);
+    if (!url.search) url.search = request.nextUrl.search;
+    return NextResponse.redirect(url, 308);
+  }
   if (pathname.length > 1 && pathname.endsWith("/")) {
     // A plain URL: NextURL re-applies the trailing slash when formatted.
     const url = new URL(request.url);

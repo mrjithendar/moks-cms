@@ -1,3 +1,0 @@
-moks-reranker-architecture 620 712
-moks-rerank-sequence 620 790
-moks-reranker-deployment 620 708

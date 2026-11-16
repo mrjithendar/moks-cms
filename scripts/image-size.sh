@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Report an image's size in the GitHub job summary and fail when it grew more than MAX_GROWTH (default 15 %) over the
-# stored baseline. Used by the CI image builds (ci-seo-agent.yml, ci-jithendar-com.yml).
+# stored baseline. Used by the CI image builds (ci-seo-agent.yml, ci-moks-cms.yml).
 #
 #   scripts/image-size.sh <image> <baseline.json>
 #

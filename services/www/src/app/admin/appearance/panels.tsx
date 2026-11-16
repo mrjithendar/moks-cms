@@ -500,7 +500,7 @@ const OFFER_LABELS: Record<(typeof HIRE_OFFERS)[number], string> = { consulting:
 export function HireMePanel() {
   return (
     <>
-      <Panel title="Page and availability" description={<>The public page is <Link href="/hire-me" className="underline">/hire-me</Link>. Résumé facts (experience, skills, certification) are in <code>src/config/hire-me-profile.ts</code>.</>}>
+      <Panel title="Page and availability" description={<>The public page is <Link href="/hire-me" className="underline">/hire-me</Link>. Résumé facts (experience, skills, certification) are in the site&apos;s <code>config/hire-me-profile.json</code>.</>}>
         <Toggle path="hireMe.enabled" label="Show the Hire me page" hint="Off: /hire-me is not found and every call to action is hidden. Add the page to a menu in Navigation." />
         <Choice path="hireMe.availability" label="Availability" options={opts({ available: "Available for new work", limited: "Limited availability", unavailable: "Not taking new work" })}
           hint="“Not taking new work” keeps the page but hides booking buttons and the article call to action." />

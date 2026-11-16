@@ -21,11 +21,10 @@ jithendar-redis.yaml
 
 .DS_Store
 
-# Python (services/executor/)
+# Python (services/seo-agent/)
 __pycache__/
 .pytest_cache/
 .venv/
-services/executor/build/
 *.egg-info/
 *.tfplan
 *.tfstate

@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(base, { recursive: true, force: true }));
 
-const run = (site: string, copy = false) => selectSite({ root, site, copy });
+const run = (site: string, copy = false) => selectSite({ root, site, siteDir: "", copy });
 
 describe("use-site", () => {
   it("copies site/ and links content/ and public/images/ to the chosen site", () => {
@@ -81,5 +81,22 @@ describe("use-site", () => {
   it("refuses unknown sites and names that are not domains", () => {
     expect(() => run("missing.example")).toThrow(/no such site/);
     expect(() => run("../etc")).toThrow(/domain name/);
+  });
+
+  it("serves any folder named by siteDir (SITE_DIR), such as a site's own repository", () => {
+    const repo = path.join(base, "repo");
+    fs.cpSync(path.join(sites, "two.example"), repo, { recursive: true });
+    const { site } = selectSite({ root, siteDir: repo, site: "", copy: true });
+    expect(site).toBe("two.example"); // the host in its site.json
+    expect(read("content/blog/a.mdx")).toBe("two.example");
+    expect(read("content/.site-copy").trim()).toBe("two.example");
+    expect(() => selectSite({ root, siteDir: path.join(base, "nowhere"), site: "" })).toThrow(/no such site/);
+  });
+
+  it("falls back to the test fixture site when neither SITE_DIR nor SITE is set", () => {
+    const fixture = path.join(root, "tests", "fixtures", "site");
+    fs.cpSync(path.join(sites, "one.example"), fixture, { recursive: true });
+    expect(selectSite({ root, site: "", siteDir: "" }).site).toBe("one.example");
+    expect(fs.readlinkSync(path.join(root, "content"))).toBe(path.join("tests", "fixtures", "site", "content"));
   });
 });

@@ -1,6 +1,6 @@
-# Dependabot version updates. Pull requests run the `check` job in ci-jithendar-com.yml (lint,
-# typecheck, test, build, render manifests). Merging to master releases an image and
-# restarts the Deployment on it; deploy-kubernetes.yml applies manifest changes.
+# Dependabot version updates. Pull requests run the `check` and `image` jobs in ci-moks-cms.yml (lint,
+# typecheck, test, build, image). Merging to master pushes a new moks-cms image; sites name its tag in
+# their own manifests (jithendar.com's moved to moks-tech/jithendar.com).
 #
 # Minor and patch updates are grouped to keep the PR count down; majors arrive one PR each.
 # Security updates are not grouped and are not held back by the cooldown.
@@ -68,29 +68,6 @@ updates:
     # under @tailwindcss/typography (6.0.10), minimatch 10 under eslint and typescript-eslint (^10). Drop each
     # override once its parent ships the fix (`npm ls <name>` without the override shows when).
 
-  # Practice executor: services/executor/pyproject.toml (exact pins, including the [test] extra). Its Dockerfiles are not
-  # covered: they use floating python:3.13-slim tags, so the only update would be a Python minor, which is
-  # bumped by hand together with the sandbox's PYTHON_VERSION build-arg in ci-practice-executor.yml.
-  - package-ecosystem: pip
-    directory: /services/executor
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: America/New_York
-    cooldown:
-      default-days: 3
-    commit-message:
-      prefix: "deps(executor)"
-    labels:
-      - dependencies
-      - python
-    groups:
-      executor-minor-patch:
-        update-types:
-          - minor
-          - patch
-
   # SEO v3 agent: services/seo-agent/pyproject.toml + uv.lock (exact pins). The two-week rule: cooldown 14 days here,
   # and tool.uv.exclude-newer = "2 weeks" for transitive dependencies on every re-lock.
   - package-ecosystem: uv
@@ -130,29 +107,6 @@ updates:
       node-images:
         patterns:
           - node
-
-  # Images in the Kubernetes manifests (kubernetes/ is flat, so this covers the site's postgres and redis, the
-  # executor's redis and Adminer)
-  - package-ecosystem: docker
-    directory: /kubernetes
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: America/New_York
-    commit-message:
-      prefix: "deps(kubernetes)"
-    labels:
-      - dependencies
-      - kubernetes
-    ignore:
-      # Major Postgres upgrades need a dump/restore or pg_upgrade of the data volume.
-      - dependency-name: postgres
-        update-types: ["version-update:semver-major"]
-      - dependency-name: redis
-        update-types: ["version-update:semver-major"]
-      # The app image is built by CI (the manifests name :latest), not by Dependabot.
-      - dependency-name: "*/jithendar-com"
 
   # Actions in .github/workflows (pinned by commit SHA; Dependabot updates the SHA and the comment)
   - package-ecosystem: github-actions

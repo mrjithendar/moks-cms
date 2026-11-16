@@ -1,6 +1,5 @@
 import path from "node:path";
 import type { NextConfig } from "next";
-import { redirects } from "./src/config/redirects";
 
 const siteRoot = import.meta.dirname;
 
@@ -31,12 +30,15 @@ const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   reactStrictMode: true,
   // The app lives in services/www/ of the moks-cms repository; keep tracing and Turbopack scoped to it. The site it
-  // serves is copied or linked into site/, content/ and public/images/ from the repository's sites/<domain>/ (scripts/use-site.mjs).
+  // serves is read at run time from site/, content/ and public/images/ (scripts/use-site.mjs fills them for development,
+  // tests and builds; in a cluster the site's content image does).
   outputFileTracingRoot: siteRoot,
   turbopack: { root: siteRoot },
   // Content is read from disk at request time (sitemaps, ISR), so ship it with the server.
   // Content is the one-time import source for /setup; migrations run at server start (instrumentation.ts).
-  outputFileTracingIncludes: { "/**/*": [path.join("content", "**", "*"), path.join("src", "db", "migrations", "**", "*")] },
+  // site/ (site.json, config/) is read at run time too (src/config/site-files.ts): the image ships the copy it was built
+  // with, and a site's Deployment mounts its own over /app/site.
+  outputFileTracingIncludes: { "/**/*": [path.join("content", "**", "*"), path.join("site", "**", "*"), path.join("src", "db", "migrations", "**", "*")] },
   // ISR: public pages are rendered once and served from memory (cache-handler.mjs), re-rendered after their
   // `revalidate` and cleared at once on every replica when content or settings change (src/lib/page-cache.ts).
   // The handler is the only cache layer (cacheMaxMemorySize: 0) and never writes to disk (read-only root filesystem);
@@ -53,9 +55,6 @@ const nextConfig: NextConfig = {
   // PGlite (local dev only) loads its WASM from a file URL that bundling breaks: load it from
   // node_modules instead of bundling.
   serverExternalPackages: ["@electric-sql/pglite"],
-  async redirects() {
-    return redirects.map(({ source, destination }) => ({ source, destination, permanent: true }));
-  },
   async headers() {
     return [
       {

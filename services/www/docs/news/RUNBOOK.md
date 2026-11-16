@@ -4,7 +4,7 @@
 
 - **Run history** (Admin → News desk → Run history) and **run detail**: timeline, live log, candidates with reasons,
   drafts, errors. Every run, including dry runs, image regenerations, training and style reviews.
-- **Grafana** "Jithendar.com · News desk" (`sites/jithendar.com/grafana/jithendar-com-news.json`).
+- **Grafana** "Jithendar.com · News desk" (`grafana/jithendar-com-news.json` in `moks-tech/jithendar.com`).
 - **Loki**: `{app="seo-agent"} | json | operation=~"news_.*"` (log lines carry `operation=news_<step>` and `outcome`;
   the run id is in the database row the UI links to, D-19).
 - **Agent API**: `GET /flows/runs?flow=news_job_flow` (internal).

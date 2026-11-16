@@ -1,4 +1,4 @@
-import siteJson from "../../../site/site.json";
+import { siteFile as siteJson } from "@/config/site";
 
 /**
  * AI crawlers, by what an Allow gives them:
@@ -6,7 +6,7 @@ import siteJson from "../../../site/site.json";
  *   these removes the site from AI answers.
  * - `training`: collect pages for model training. Blocking these does not affect search or AI answers.
  *
- * The policy is per site (`aiCrawlers` in sites/<SITE>/site.json, both default "allow") and is written into robots.txt
+ * The policy is per site (`aiCrawlers` in the site's site.json, both default "allow") and is written into robots.txt
  * as one explicit group per crawler, so the technical audit can verify it and readers of robots.txt see the intent.
  * Tokens are the robots.txt product tokens each vendor documents (Google-Extended and Applebot-Extended are tokens
  * only: no crawler sends them as a User-Agent).
