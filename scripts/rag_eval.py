@@ -26,7 +26,6 @@ faithfulness by an LLM judge (app/rag_eval.py generation_eval). Writes <date>-ge
 from __future__ import annotations
 
 import argparse
-import os
 import asyncio
 import datetime as dt
 import json
@@ -39,10 +38,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.embeddings import HashEmbeddings, OnnxEmbeddings  # noqa: E402
-from app.rag_eval import EVAL_PATH, LocalIndex, evaluate, load_articles, load_eval_set, pct, render_markdown, similar_overlap  # noqa: E402
+from app.rag_eval import BLOG_DIR, EVAL_PATH, LocalIndex, evaluate, load_articles, load_eval_set, pct, render_markdown, similar_overlap  # noqa: E402
 from app.retrieval import RetrievalConfig  # noqa: E402
 
-BLOG = ROOT.parents[1] / "sites" / (os.environ.get("SITE") or "jithendar.com") / "content" / "blog"
+BLOG = BLOG_DIR  # tests/fixtures/rag_corpus, or RAG_EVAL_BLOG_DIR (app/rag_eval.py)
 OUT = ROOT.parent / "www" / "docs" / "seo" / "rag-eval"
 
 CONFIGS: dict[str, tuple[str, RetrievalConfig]] = {
