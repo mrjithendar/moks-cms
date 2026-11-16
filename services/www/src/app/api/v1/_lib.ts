@@ -50,6 +50,31 @@ export async function json(request: Request): Promise<unknown> {
   }
 }
 
+/**
+ * The request body as bytes, at most `maxBytes`: refused up front when Content-Length says it is larger, and the
+ * stream is cancelled as soon as more than that has arrived, so an oversized upload is never held in memory.
+ */
+export async function bodyBytes(request: Request, maxBytes: number): Promise<Buffer> {
+  const tooLarge = () => new PostError(`The file is larger than ${Math.floor(maxBytes / 1024 / 1024)} MB.`, 413);
+  const declared = request.headers.get("content-length");
+  if (declared !== null && /^\d+$/.test(declared.trim()) && Number(declared) > maxBytes) throw tooLarge();
+  if (!request.body) return Buffer.alloc(0);
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
 /** Public representation of a post row (ISO 8601 dates with offset). */
 export function serialize(p: PostRow) {
   const iso = (d: Date | null) => (d ? toIsoOffset(d) : null);

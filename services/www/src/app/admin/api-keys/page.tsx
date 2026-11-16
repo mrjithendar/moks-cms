@@ -24,7 +24,7 @@ export default async function ApiKeysPage({ searchParams }: { searchParams: Flas
   const [keys, sp] = await Promise.all([listApiKeys(me), searchParams]);
   return (
     <>
-      <AdminHeader title="API keys" description="Manage posts from scripts and automations. A key acts with its owner's permissions." />
+      <AdminHeader title="API keys" description="Manage posts and site images from scripts and automations. A key acts with its owner's permissions." />
       <Flash ok={sp.ok} error={sp.error} />
       <Card className="mb-6"><CreateKeyForm /></Card>
       <Table head={<tr><th className={th}>Name</th><th className={th}>Key</th><th className={th}>Scopes</th><th className={th}>Status</th><th className={th}>Last used</th><th className={th} /></tr>}>
@@ -59,7 +59,11 @@ curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json
   https://jithendar.com/api/v1/posts/<id> -d '{"status":"published","publishedAt":"2026-10-27T18:00:00+05:30"}'
 
 # Delete
-curl -X DELETE -H "Authorization: Bearer $KEY" https://jithendar.com/api/v1/posts/<id>`}</pre>
+curl -X DELETE -H "Authorization: Bearer $KEY" https://jithendar.com/api/v1/posts/<id>
+
+# Push a site image (scope images:write): it is then served at /images/my-post/diagram.png
+curl -X PUT -H "Authorization: Bearer $KEY" --data-binary @public/images/my-post/diagram.png \\
+  https://jithendar.com/api/v1/images/my-post/diagram.png`}</pre>
         <p className="mt-3 text-sm text-fg-muted">Limits: 120 requests per minute per key. Errors return JSON: <code>{"{ error: { message, issues } }"}</code>.</p>
       </Card>
     </>

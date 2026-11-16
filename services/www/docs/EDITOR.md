@@ -103,9 +103,10 @@ npm run push-post -- content/blog/my-post.mdx
 - Published, scheduled or archived → skipped (exit 1) unless `--update-live`, which changes the content but never the
   status or publication date; the live page changes at once.
 - Everything is validated before anything is sent (frontmatter schema, slug = file name; then the API's own checks).
-- Images: `/images/…` files ship only with an image build. The script refuses a post whose `/images/` file answers
-  non-2xx on the site; upload it in Admin → Media and use its `/media/…` URL, or deploy once. `/media/…` URLs need no
-  build. Media uploads have no API yet, and the media library rejects SVG.
+- Images: the script refuses a post whose `/images/` file answers non-2xx on the site. Push the file first with
+  `PUT /api/v1/images/<path>` (scope `images:write`; SVG included; see [SITE_IMAGES.md](SITE_IMAGES.md)), or upload it
+  in Admin → Media and use its `/media/…` URL. Neither needs a build. Media library uploads have no API yet, and the
+  media library rejects SVG.
 - `--site=https://…` or `JITHENDAR_SITE_URL` targets another site (default `https://jithendar.com`).
 - `--create-only` creates new drafts and never changes an existing post (reported as `exists`, exit 0).
 

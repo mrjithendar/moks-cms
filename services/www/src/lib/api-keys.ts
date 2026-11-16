@@ -13,9 +13,11 @@ import { getRedis } from "./redis";
  * - posts:draft  create posts as drafts and edit posts that are still a draft or in review. It can never publish,
  *                schedule, archive or delete: that is what automation (CI's `push-post`, drafting tools) should hold.
  * - posts:write  everything the owner can do in the editor, publishing included, and moving a post to the trash.
+ * - images:write push site images (/images/…) to R2 through PUT /api/v1/images/<path>, new ones and replacements, and
+ *                list them. Only an admin can create such a key: a site image can be part of any page.
  * No scope deletes a post permanently: that needs a signed-in admin or author (Admin → Posts → Trash).
  */
-export const SCOPES = ["posts:read", "posts:draft", "posts:write"] as const;
+export const SCOPES = ["posts:read", "posts:draft", "posts:write", "images:write"] as const;
 export type Scope = (typeof SCOPES)[number];
 const RATE_PER_MINUTE = 120;
 
@@ -32,6 +34,7 @@ export async function createApiKey(actor: Actor, raw: unknown): Promise<{ key: s
   if (actor.role !== "admin" && actor.role !== "author") throw new PostError("Not allowed.", 403);
   const parsed = createInput.safeParse(raw);
   if (!parsed.success) throw new PostError("The key settings are not valid.", 400, parsed.error.issues.map((i) => i.message));
+  if (parsed.data.scopes.includes("images:write") && actor.role !== "admin") throw new PostError("Only an admin can create a key with the images:write scope.", 403);
   const key = `jk_${randomBytes(32).toString("base64url")}`;
   const db = await getDb();
   const [row] = await db

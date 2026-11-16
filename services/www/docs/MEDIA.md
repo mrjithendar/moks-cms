@@ -29,6 +29,10 @@ A separate image service was not needed — `next/image` already resizes in the 
 | Editor UI | `src/components/admin/{CoverImagePicker,GenerateImageDialog,MediaPicker,Dialog}.tsx`, `src/app/admin/media/MediaUploader.tsx` |
 | Schema | `src/db/migrations/0004_r2_media.sql` (`media` columns, `image_generation` table) |
 
+A site's own files under `/images/…` (diagrams and covers kept in the site's repository) are not media library
+uploads. They can be stored in R2 as well, under `jithendar/www/site-images/`, and are described in
+[SITE_IMAGES.md](SITE_IMAGES.md).
+
 ## Object keys
 
 `jithendar/www/media/{type}/{yyyy}/{mm}/{unique-id}.{extension}` — a key prefix inside the bucket.
