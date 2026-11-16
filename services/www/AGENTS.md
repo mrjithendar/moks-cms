@@ -14,10 +14,10 @@ Act as a senior engineer covering Next.js, technical SEO, AI workflow automation
 ### Verified state (Phase 1 audit, 2026-10-27)
 
 The site is a **greenfield** Next.js app in `services/www/` of its own repository
-(`github.com/mrjithendar/moks-cms`, formerly `mrjithendar/jithendar.com`, default branch `master`; moved out of the `roboshop-ai`
+(`github.com/moks-tech/moks-cms`, formerly `moks-tech/jithendar.com`, default branch `master`; moved out of the `roboshop-ai`
 monorepo on 2026-10-29). The repository root also holds `scripts/` and `runner/`
 (self-hosted CI runners for this repository). Since 2026-11-16 the site itself (content, `site.json`, `config/`), its
-cluster manifests (`kubernetes/`) and every deploy and cluster script live in `mrjithendar/jithendar.com`: this
+cluster manifests (`kubernetes/`) and every deploy and cluster script live in `moks-tech/jithendar.com`: this
 repository tests the code and pushes images, and deploys nothing. The previous
 self-hosted WordPress (Helm chart `minikube/wordpress`, namespace `jithendar`) was
 hijacked on 2026-10-27 and removed by the owner; **no WordPress data is migrated**.
@@ -26,12 +26,12 @@ See `docs/SEO_AUDIT.md`.
 | Layer | Decided / verified | Notes |
 |---|---|---|
 | Frontend | Next.js 16 App Router, React 19, TypeScript 5.9, Tailwind CSS 4 | Scaffolded in Phase 2; `output: standalone` |
-| Content | Git-based MDX in a site folder (jithendar.com: its own repository, `mrjithendar/jithendar.com`; tests: `tests/fixtures/site`), linked or copied to `content/` here by `npm run site` (`scripts/use-site.mjs`, `SITE_DIR`); Zod-validated | See `docs/CONTENT_MODEL.md` and `../../sites/README.md`; read only through `getPublishedContent()`. Site identity and config (`site.json`, `config/`) live in the same folder: edit them there, never in `site/`. Tests that check site identity expect the fixture's (a snapshot of jithendar.com's) |
+| Content | Git-based MDX in a site folder (jithendar.com: its own repository, `moks-tech/jithendar.com`; tests: `tests/fixtures/site`), linked or copied to `content/` here by `npm run site` (`scripts/use-site.mjs`, `SITE_DIR`); Zod-validated | See `docs/CONTENT_MODEL.md` and `../../sites/README.md`; read only through `getPublishedContent()`. Site identity and config (`site.json`, `config/`) live in the same folder: edit them there, never in `site/`. Tests that check site identity expect the fixture's (a snapshot of jithendar.com's) |
 | Host | Single server `46.224.38.14` running Minikube profile `mk4` | Shared with RoboShop AI, Argo CD, Grafana, Loki, JFrog |
 | Ingress | **Traefik + cert-manager (Let's Encrypt)** — not Cloudflare Tunnel | Owner decision 2026-10-27 |
 | TLS | Wildcard cert on the Istio gateway (miniKube `deploy/minikube/istio/edge`, DNS-01) | Formerly Traefik's `TLSStore default`, and before that the WordPress chart — see AUD-003 |
-| Deploy | **Not from this repository** (owner decision 2026-11-16): `mrjithendar/jithendar.com` ships its files in a content image (`content.yml`: build, push, restart) and deploys the app from its `kubernetes/`, which names the moks-cms image tag (`deploy-kubernetes.yml`). Someone who buys moks-cms creates a site repository the same way. Site identity and config are read at run time (`src/config/site-files.ts`), never compiled in: do not import site files statically | CI here tests and pushes images **only when a pull request is merged** (tags `pr-<number>` + `latest`; no `push` triggers, owner decision 2026-11-12), then optionally tells the site repositories (`RELEASE_NOTIFY_REPOS`, `scripts/notify-sites.sh`). See `docs/DEPLOYMENT.md` |
-| CI | GitHub Actions on GitHub-hosted runners (`ubuntu-latest`, `ubuntu-24.04-arm` for image builds); images in Harbor (`registry.jithendar.com/jithendar`: `moks-cms`, `seo-agent`; the practice executor, its sandboxes and catalog come from `mrjithendar/practice-programming`; jithendar.com's `jithendar-com-content` is pushed from its repository) | `ci-moks-cms.yml`, `ci-seo-agent.yml`. No AWS: the ECR Terraform (`infra/`, `infra.yml`) was removed once nothing used it |
+| Deploy | **Not from this repository** (owner decision 2026-11-16): `moks-tech/jithendar.com` ships its files in a content image (`content.yml`: build, push, restart) and deploys the app from its `kubernetes/`, which names the moks-cms image tag (`deploy-kubernetes.yml`). Someone who buys moks-cms creates a site repository the same way. Site identity and config are read at run time (`src/config/site-files.ts`), never compiled in: do not import site files statically | CI here tests and pushes images **only when a pull request is merged** (tags `pr-<number>` + `latest`; no `push` triggers, owner decision 2026-11-12), then optionally tells the site repositories (`RELEASE_NOTIFY_REPOS`, `scripts/notify-sites.sh`). See `docs/DEPLOYMENT.md` |
+| CI | GitHub Actions on GitHub-hosted runners (`ubuntu-latest`, `ubuntu-24.04-arm` for image builds); images in Harbor (`registry.jithendar.com/jithendar`: `moks-cms`, `seo-agent`; the practice executor, its sandboxes and catalog come from `moks-tech/practice-programming`; jithendar.com's `jithendar-com-content` is pushed from its repository) | `ci-moks-cms.yml`, `ci-seo-agent.yml`. No AWS: the ECR Terraform (`infra/`, `infra.yml`) was removed once nothing used it |
 | Automation / DB / AI | n8n, PostgreSQL, OpenAI API | n8n absent; a RoboShop Postgres exists in `roboshop-ai` ns — do not share it |
 | Observability | Prometheus, Grafana, Loki, OTel collector, Jaeger | Present for RoboShop |
 

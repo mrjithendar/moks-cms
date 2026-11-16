@@ -10,7 +10,7 @@ import type { Difficulty } from "./types";
 
 /**
  * Loads the problem catalog (PRACTICE_CATALOG_PATH, default content/python-practice/catalog.generated.json; built and
- * verified by executor/tools/build_problems.py in mrjithendar/practice-programming, shipped in its practice-catalog image)
+ * verified by executor/tools/build_problems.py in moks-tech/practice-programming, shipped in its practice-catalog image)
  * into the database. Idempotent and safe with several replicas (transaction-scoped advisory lock):
  * - roles and topics are inserted once; admins own them afterwards;
  * - a new problem is inserted as version 1, published;

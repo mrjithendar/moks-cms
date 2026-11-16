@@ -45,7 +45,7 @@ K = 6
 EVAL_PATH = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "rag_eval.yaml"
 # The articles the eval set (tests/fixtures/rag_eval.yaml) is labelled against: a frozen copy of jithendar.com's blog
 # (tests/fixtures/rag_corpus, copied from the site on 2026-11-16 when the site moved to its own repository,
-# mrjithendar/jithendar.com). RAG_EVAL_BLOG_DIR points it at another folder, e.g. that repository's content/blog.
+# moks-tech/jithendar.com). RAG_EVAL_BLOG_DIR points it at another folder, e.g. that repository's content/blog.
 BLOG_DIR = Path(os.environ.get("RAG_EVAL_BLOG_DIR") or Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "rag_corpus")
 TYPES = ("concept", "how-to", "exact-term", "troubleshooting", "no-answer")
 

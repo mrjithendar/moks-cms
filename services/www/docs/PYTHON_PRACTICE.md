@@ -66,7 +66,7 @@ User rows cascade: deleting an account deletes its practice data. `GET /api/prac
 
 ## Content
 
-The problems live in [`mrjithendar/practice-programming`](https://github.com/mrjithendar/practice-programming),
+The problems live in [`moks-tech/practice-programming`](https://github.com/moks-tech/practice-programming),
 `problems/python/`: `roles.yaml`, `topics.yaml` and `problems/*.yaml` (100 original problems: 20 beginner, 25 easy,
 30 medium, 17 hard, 8 expert; every role has ≥ 5). Build the catalog there after editing:
 

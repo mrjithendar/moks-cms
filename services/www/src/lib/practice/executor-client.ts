@@ -3,7 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 import { PracticeError } from "./errors";
 import { executorEnv } from "./settings";
 
-/** HTTP client for the practice executor service (mrjithendar/practice-programming, executor/app/main.py). Mirrors its request/response shapes. */
+/** HTTP client for the practice executor service (moks-tech/practice-programming, executor/app/main.py). Mirrors its request/response shapes. */
 
 export type RunnerTest = {
   id: string;

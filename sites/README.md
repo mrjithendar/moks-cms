@@ -20,7 +20,7 @@ moks-cms itself deploys nothing.
 
 | Site | Repository |
 |---|---|
-| [jithendar.com](https://jithendar.com) | [`mrjithendar/jithendar.com`](https://github.com/mrjithendar/jithendar.com) (here as `sites/jithendar.com/` until 2026-11-16) |
+| [jithendar.com](https://jithendar.com) | [`moks-tech/jithendar.com`](https://github.com/moks-tech/jithendar.com) (here as `sites/jithendar.com/` until 2026-11-16) |
 | moksit.com | [`moksit.com/`](moksit.com/): identity and dashboards only, not built or deployed yet |
 | — | [`_template/`](_template/): the starting point for a new site's repository (folders starting with `_` are never built) |
 
@@ -55,7 +55,7 @@ SITE_DIR=../../../jithendar.com npm run dev          # a site repository checked
 4. Check the content with the CMS image that will serve it: start it with the folders mounted and an embedded
    database (`-e APP_ENV=development -e PGLITE_DIR=/tmp/pglite`) and request the pages. An invalid article answers 500
    (jithendar.com's `scripts/check-content.sh`).
-5. Deploy it: a Deployment, Service, route, TLS certificate, Secret and database for the site. `mrjithendar/jithendar.com`
+5. Deploy it: a Deployment, Service, route, TLS certificate, Secret and database for the site. `moks-tech/jithendar.com`
    is the worked example (`kubernetes/`, `.github/workflows/content.yml`, `deploy-kubernetes.yml` and its README).
 6. To hear about new moks-cms images, add the repository to moks-cms's variable `RELEASE_NOTIFY_REPOS` and handle
    the `moks-cms-released` repository_dispatch (jithendar.com puts the tag in its manifests and applies them).

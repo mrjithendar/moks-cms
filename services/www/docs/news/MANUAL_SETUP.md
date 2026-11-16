@@ -55,7 +55,7 @@ claimed by this work (AGENTS.md rule 9). Confirm the publication name used in th
 ## 7. Alerts and dashboard
 
 - Copy `docs/news/prometheus-alerts.yml` into the miniKube repo's `alerts.yml` (group `jithendar-com-news`).
-- The dashboard `grafana/jithendar-com-news.json` in `mrjithendar/jithendar.com` loads after merge and an Argo CD sync of the `grafana` app.
+- The dashboard `grafana/jithendar-com-news.json` in `moks-tech/jithendar.com` loads after merge and an Argo CD sync of the `grafana` app.
 
 ## 8. Notifications (optional)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Choose which website this app serves. A site is a folder with this layout (a site's own repository, like
- * mrjithendar/jithendar.com, or sites/<domain>/ in this repository):
+ * moks-tech/jithendar.com, or sites/<domain>/ in this repository):
  *
  *   site.json        identity (host, name, author, social links, AdSense ID)
  *   config/          redirects.json, gone.json (410 URLs), hire-me-profile.json

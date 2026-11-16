@@ -1,7 +1,7 @@
 name: moks-cms
 
 # moks-cms tests its code and pushes the CMS image. It deploys nothing: each website has its own repository (jithendar.com:
-# mrjithendar/jithendar.com) that ships its site.json, config/, articles and images in a content image, and names the
+# moks-tech/jithendar.com) that ships its site.json, config/, articles and images in a content image, and names the
 # CMS image tag it runs in its Kubernetes manifests. The image reads the site's files at run time
 # (services/www/src/config/site-files.ts), so one image serves any site.
 #

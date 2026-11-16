@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tell the site repositories that a moks-cms image was pushed: a repository_dispatch "moks-cms-released" with
 # client_payload {component, tag, revision}. moks-cms knows nothing else about its sites; each site decides what to do
-# (mrjithendar/jithendar.com puts the tag in its Kubernetes manifests and applies them).
+# (moks-tech/jithendar.com puts the tag in its Kubernetes manifests and applies them).
 #
 #   REPOS="owner/site-a owner/site-b" GH_TOKEN=… scripts/notify-sites.sh <component> <tag> <revision>
 #

@@ -3,7 +3,7 @@
 Next.js 16 (App Router) + MDX publication site. It serves one site, a folder with `site.json`, `config/`, `content/`
 and `public/images/`: `npm run site` links or copies those into `site/`, `content/` and `public/images/` here, and every
 command below runs it first. Which folder: `SITE_DIR` (any path, e.g. a site's own repository such as
-`mrjithendar/jithendar.com` checked out next to this one), else `SITE` (a folder of [`sites/`](../../sites/README.md)),
+`moks-tech/jithendar.com` checked out next to this one), else `SITE` (a folder of [`sites/`](../../sites/README.md)),
 else the test fixture site `tests/fixtures/site` ([`scripts/use-site.mjs`](scripts/use-site.mjs)).
 Standing rules: [AGENTS.md](AGENTS.md). Content guide: [docs/CONTENT_MODEL.md](docs/CONTENT_MODEL.md).
 

@@ -1,6 +1,6 @@
 # Python practice: code execution sandbox
 
-Moved on 2026-11-16 to [`mrjithendar/practice-programming`](https://github.com/mrjithendar/practice-programming),
+Moved on 2026-11-16 to [`moks-tech/practice-programming`](https://github.com/moks-tech/practice-programming),
 `docs/PYTHON_PRACTICE_EXECUTOR.md`, with the executor (`executor/`), its sandbox images, the problem bank
 (`problems/python/`) and the executor's manifests. That repository's CI builds, pushes and deploys them.
 

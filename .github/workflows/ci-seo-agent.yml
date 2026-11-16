@@ -8,7 +8,7 @@ name: seo-agent
 #           Then, when repository variable RELEASE_NOTIFY_REPOS lists site repositories, each gets a repository_dispatch
 #           "moks-cms-released" {component: seo-agent, tag} (scripts/notify-sites.sh).
 # Nothing here deploys: the manifests and the rollout live in each site's repository (jithendar.com:
-# mrjithendar/jithendar.com, kubernetes/seo-agent-*.yaml and its release workflow).
+# moks-tech/jithendar.com, kubernetes/seo-agent-*.yaml and its release workflow).
 
 on:
   workflow_dispatch:

@@ -5,7 +5,7 @@ name: repository checks
 # - shellcheck of the image and release scripts
 # - the alerts handoff file (scripts/build-alerts.py)
 # The cluster scripts (kube-context guard, rollout, deploy and config scripts) and their tests moved with the site to
-# mrjithendar/jithendar.com on 2026-11-16.
+# moks-tech/jithendar.com on 2026-11-16.
 
 on:
   workflow_dispatch:
