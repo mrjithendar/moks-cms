@@ -565,6 +565,29 @@ export const imageGeneration = pgTable(
   (t) => [index("image_generation_user_created_idx").on(t.userId, t.createdAt), index("image_generation_status_idx").on(t.status, t.createdAt)],
 );
 
+/**
+ * Site images stored in R2 (lib/site-images.ts): the files a site keeps under public/images/ and its content refers
+ * to as /images/..., pushed through PUT /api/v1/images/<path> instead of being copied into the pod.
+ */
+export const siteImage = pgTable("site_image", {
+  /** The path as pushed and as content refers to it, e.g. /images/aws-vpc/01.png. */
+  path: text("path").primaryKey(),
+  /** What pages request: the same path, or its .webp twin when a PNG was stored as lossless WebP. */
+  servedPath: text("served_path").notNull().unique("site_image_served_path_unique"),
+  storageKey: text("storage_key").notNull().unique("site_image_storage_key_unique"),
+  /** Type and size of the stored object. */
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  /** Size and SHA-256 of the pushed file: a push tool skips files whose hash has not changed. */
+  sourceBytes: integer("source_bytes").notNull(),
+  sourceSha256: text("source_sha256").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
 /** content/ post files already turned into posts (lib/bundled-posts.ts): never created twice. */
 export const bundledImport = pgTable("bundled_import", {
   collection: text("collection").notNull(),

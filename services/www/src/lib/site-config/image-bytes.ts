@@ -3,12 +3,13 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { publicRoot } from "../images";
+import { findSiteImage, siteImageBody } from "../site-images";
 import { getObjectBytes } from "../storage";
 
 const MAX = 8 * 1024 * 1024;
 
 /**
- * Bytes of one of our own images (shipped under /images or uploaded to /media), for server-side rendering
+ * Bytes of one of our own images (under /images, on disk or in R2, or uploaded to /media), for server-side rendering
  * such as the social card. Never fetches a URL. Returns null for anything else.
  */
 export async function ownImageBytes(src: string): Promise<{ bytes: Buffer; contentType: string } | null> {
@@ -23,10 +24,16 @@ export async function ownImageBytes(src: string): Promise<{ bytes: Buffer; conte
   const local = /^\/images\/([A-Za-z0-9/_.-]+)$/.exec(src);
   if (local && !local[1]!.includes("..")) {
     const file = path.join(publicRoot(), "images", local[1]!);
-    if (!fs.existsSync(file) || fs.statSync(file).size > MAX) return null;
-    const ext = path.extname(file).toLowerCase();
-    const contentType = ext === ".png" ? "image/png" : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "";
-    return contentType ? { bytes: fs.readFileSync(file), contentType } : null;
+    if (fs.existsSync(file)) {
+      if (fs.statSync(file).size > MAX) return null;
+      const ext = path.extname(file).toLowerCase();
+      const contentType = ext === ".png" ? "image/png" : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "";
+      return contentType ? { bytes: fs.readFileSync(file), contentType } : null;
+    }
+    // Not on disk: a site image in R2. The .png path of an image stored as WebP answers with a PNG, as its URL does.
+    const row = await findSiteImage(src).catch(() => undefined);
+    const body = row && row.contentType !== "image/svg+xml" ? await siteImageBody(row, src).catch(() => null) : null;
+    return body ? { bytes: body.bytes, contentType: body.contentType } : null;
   }
   return null;
 }

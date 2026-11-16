@@ -30,6 +30,9 @@ export function CreateKeyForm() {
           <label className="flex items-center gap-2" title="Everything you can do in the editor, publishing included, and moving posts to the trash.">
             <input type="checkbox" name="scopes" value="posts:write" /> posts:write <span className="text-fg-subtle">(can publish)</span>
           </label>
+          <label className="flex items-center gap-2" title="Push site images (/images/…) to storage: new images and replacements. Admins only: a site image can be part of any page.">
+            <input type="checkbox" name="scopes" value="images:write" /> images:write <span className="text-fg-subtle">(site images, admins)</span>
+          </label>
         </fieldset>
         <Field label="Expires" htmlFor="expiresInDays">
           <Select id="expiresInDays" name="expiresInDays" defaultValue="90">

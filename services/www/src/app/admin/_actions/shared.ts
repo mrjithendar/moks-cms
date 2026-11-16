@@ -13,6 +13,7 @@ import { publicRoot, readLocalImage } from "@/lib/images";
 import { completeUpload, createUploadIntent, mediaSrc, storeUpload, type UploadIntent, type UploadResult } from "@/lib/media";
 import { createPreview, type PreviewKind } from "@/lib/preview";
 import { PostError } from "@/lib/posts";
+import { listSiteImages } from "@/lib/site-images";
 import { storageReady } from "@/lib/storage";
 
 export type MediaItem = { id: string; src: string; alt: string; width: number; height: number; context: string };
@@ -37,6 +38,15 @@ function bundledImages(): MediaItem[] {
   return found;
 }
 
+/**
+ * Site images stored in R2 (lib/site-images.ts), under the path content uses for them: the pushed .png, which
+ * resolveImage turns into the stored .webp on the page and which still answers as a PNG for social cards.
+ */
+async function pushedImages(): Promise<MediaItem[]> {
+  const rows = await listSiteImages().catch(() => []);
+  return rows.filter((r) => /\.(jpe?g|png|webp|avif)$/i.test(r.path)).map((r) => ({ id: `bundled:${r.path}`, src: r.path, alt: "", width: r.width, height: r.height, context: "bundled" }));
+}
+
 /** Image library for pickers: newest first, searchable by alt text or file name, paged. */
 export async function listMedia(opts: { q?: string; page?: number } = {}): Promise<{ items: MediaItem[]; more: boolean }> {
   await staffActor();
@@ -53,8 +63,8 @@ export async function listMedia(opts: { q?: string; page?: number } = {}): Promi
     .limit(size + 1)
     .offset((page - 1) * size);
   const uploads = rows.slice(0, size).map((r) => ({ id: r.id, src: mediaSrc(r), alt: r.alt, width: r.width ?? 0, height: r.height ?? 0, context: r.context }));
-  // Bundled site images are listed on the first page only (they are few and never change).
-  const bundled = page === 1 ? bundledImages().filter((b) => !q || b.src.toLowerCase().includes(q.toLowerCase())) : [];
+  // Site images (on disk and in R2) are listed on the first page only (they are few and rarely change).
+  const bundled = page === 1 ? [...bundledImages(), ...(await pushedImages())].filter((b, i, all) => all.findIndex((o) => o.src === b.src) === i && (!q || b.src.toLowerCase().includes(q.toLowerCase()))) : [];
   return { items: [...uploads, ...bundled], more: rows.length > size };
 }
 

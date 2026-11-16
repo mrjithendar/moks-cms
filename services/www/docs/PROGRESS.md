@@ -1,5 +1,48 @@
 # Progress log — jithendar.com
 
+## Site images in R2, PNG stored as lossless WebP (2026-11-16, owner request, phase 1 of 3)
+
+Owner request: "add png compression and store images in r2 instead of copy; make push mode to update content; content
+should store in db and images should store in r2". Content is already in Postgres (the MDX files in the content image
+are only an import path), so the work is images and the push. Owner decisions on 2026-11-16: PNG → WebP; a push from
+git creates and updates **drafts only** (published posts are edited in the admin); delivered as pull requests.
+Plan: (1) this change, site images in R2; (2) one push command for images and posts; (3) in `moks-tech/jithendar.com`,
+push instead of the content image, then remove the init container. Full description in `docs/SITE_IMAGES.md`.
+
+- **`PUT /api/v1/images/<path>`** stores a site image (`/images/…`) in R2 under `jithendar/www/site-images/` and
+  records it in the new table `site_image`. New API key scope **`images:write`**, which only an admin can create.
+  The type is read from the bytes and must match the file name; 5 MB, 12,000 px a side. SVG is accepted (these files
+  come from the site's repository) unless it holds a `<script>`, an event handler attribute or a `javascript:` link.
+  The same bytes pushed again change nothing. `GET /api/v1/images` lists paths with the SHA-256 of each pushed file.
+- **PNG → lossless WebP** when smaller (sharp, already a dependency): the same pixels, 25.2 MB → 12.9 MB for the 88
+  PNGs of jithendar.com (measured with libwebp). Lossy quality 90 saved only three points more, so it was not used.
+- **URLs and content do not change.** Content keeps the `.png` path; `resolveImage()` gives pages the stored `.webp`;
+  the `.png` URL still answers with a PNG made from the WebP, so `og:image`, the image sitemap, JSON-LD, feeds and old
+  links get a PNG. No post body is rewritten and no redirect is added (the owner had accepted both; neither is needed).
+- **Disk still wins.** `/images/…` files in `public/images/` are served and resolved exactly as before; R2 is used
+  only for a path that is not on disk. So this change alone alters nothing for readers.
+- **Serving** (`src/app/images/[...path]/route.ts`): through the site (no third-party request), `ETag` + `304`, the
+  same `Cache-Control` as files on disk, sandboxing CSP, and up to 32 MB of bodies kept in memory per pod.
+- The editor's image picker lists site images in R2 next to those on disk; the social card reads them too.
+- Files: `src/db/migrations/0033_site_image.sql` (+ rollback), `src/db/schema.ts`, `src/lib/site-images.ts` (new),
+  `src/app/api/v1/images/route.ts`, `src/app/api/v1/images/[...path]/route.ts`, `src/app/images/[...path]/route.ts`
+  (new), `src/app/api/v1/_lib.ts` (`bodyBytes`), `src/lib/api-keys.ts`, `src/lib/media.ts`,
+  `src/lib/site-config/image-bytes.ts`, `src/app/admin/_actions/shared.ts`, `src/app/admin/api-keys/*`, user guide
+  (`src/lib/user-guide.ts`: API keys entry, one question), `docs/SITE_IMAGES.md` (new), `docs/EDITOR.md`,
+  `docs/MEDIA.md`.
+- Tests: `tests/site-images.test.ts` (paths, conversion with identical pixels, both URLs, ETag, replacement,
+  JPEG and SVG, refused files, URL clashes, scopes and roles, the list, `resolveImage()`, the social card).
+- No new dependency.
+- Commands: **not run locally.** The environment has no `node_modules` and cannot install packages, so `npm run lint`,
+  `typecheck`, `test` and `build` run in CI on the pull request (`ci-moks-cms.yml`). Checked locally: every new or
+  changed file transpiles (Bun), and the path, SVG, ETag and body-cache logic of `site-images.ts` passes with its
+  imports stubbed (Bun test runner, 3 tests, 26 assertions). The size figures come from converting the site's real
+  PNGs with libwebp (Pillow), not with sharp.
+- Open: no delete through the API (an image removed from the repository stays in R2); the in-memory body cache is per
+  pod and has no metric.
+- Manual steps: none for this change. For the site: an `images:write` key (Admin → API keys) and R2 configured
+  (Admin → Storage), then phases 2 and 3.
+
 ## Invoices: send to a client, paid through a Razorpay link, PDF stored in R2 (2026-11-15, owner request)
 
 Owner request: "admin can send invoices from admin login to clients and client can pay using razorpay link; all

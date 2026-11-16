@@ -5,6 +5,7 @@ import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { audit } from "./audit";
 import { readLocalImage } from "./images";
+import { findSiteImage } from "./site-images";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
 import { deleteObject, getObject, headObject, IMMUTABLE, mediaObjectKey, normaliseContext, presignPut, putObject, storageReady, type MediaKind } from "./storage";
@@ -260,7 +261,7 @@ export async function purgeStaleUploads(now = Date.now()): Promise<number> {
 
 export type ResolvedImage = { src: string; width: number; height: number; svg: boolean };
 
-/** Resolve a content image src (/images/... file or public /media/... upload) to its intrinsic size. */
+/** Resolve a content image src (/images/... file on disk or in R2, or public /media/... upload) to its intrinsic size. */
 export async function resolveImage(src: string): Promise<ResolvedImage | undefined> {
   const m = MEDIA_SRC.exec(src);
   if (m) {
@@ -272,8 +273,12 @@ export async function resolveImage(src: string): Promise<ResolvedImage | undefin
     if (!row || row.kind !== "images" || row.status !== "ready" || row.visibility !== "public" || !row.width || !row.height) return undefined;
     return { src, width: row.width, height: row.height, svg: false };
   }
+  // A file on disk (public/images/) wins, as it does when it is requested: Next serves public/ before any route.
   const local = readLocalImage(src);
-  return local ? { src: local.src, width: local.width, height: local.height, svg: local.svg } : undefined;
+  if (local) return { src: local.src, width: local.width, height: local.height, svg: local.svg };
+  // Otherwise a site image in R2. Pages request its stored form (the .webp of a pushed .png).
+  const pushed = await findSiteImage(src);
+  return pushed ? { src: pushed.servedPath, width: pushed.width, height: pushed.height, svg: pushed.contentType === "image/svg+xml" } : undefined;
 }
 
 export type ResolvedMedia = { src: string; kind: MediaKind; contentType: string; alt: string };

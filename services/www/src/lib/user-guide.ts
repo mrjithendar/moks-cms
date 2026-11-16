@@ -713,7 +713,10 @@ const guides: GuideEntry[] = [
     summary: "Manage posts from scripts and automations.",
     href: "/admin/api-keys",
     keywords: ["api", "token", "key", "automation", "script", "integration"],
-    body: ["Create API keys to manage posts from scripts and automations. A key acts with its owner's permissions; revoke one you no longer need. Demo accounts cannot create keys."],
+    body: [
+      "Create API keys to manage posts from scripts and automations. A key acts with its owner's permissions; revoke one you no longer need. Demo accounts cannot create keys.",
+      "Scopes decide what a key may do: posts:read lists and reads posts, posts:draft creates and edits drafts only, posts:write can also publish, and images:write pushes site images (the files your content refers to as /images/…) to storage. Only an admin can create a key with images:write, because a site image can be part of any page.",
+    ],
   },
 ];
 
@@ -846,6 +849,11 @@ const faqs: GuideEntry[] = [
   faq("faq-api", "Account", "Can I manage posts from a script?", [
     "Yes. Create an API key in Admin → API keys; it acts with your permissions.",
   ], { href: "/admin/api-keys", keywords: ["api", "script", "automation", "key"] }),
+  faq("faq-site-images", "Account", "How do images from the site's repository reach the site?", [
+    "Files under public/images/ in the site's repository are pushed to storage (Cloudflare R2) with an API key that has the images:write scope, and are then served at the same /images/… address as before. No build or restart is needed.",
+    "A PNG is stored as lossless WebP, about half the size with the same pixels. Keep writing the .png path in your content: pages load the smaller file, and the .png address still answers for social cards and old links.",
+    "Pushing a changed file to the same path replaces the image on every page that uses it.",
+  ], { href: "/admin/api-keys", adminOnly: true, keywords: ["images", "diagram", "svg", "png", "webp", "r2", "storage", "push", "api"] }),
 ];
 
 export const GUIDE: GuideEntry[] = [...guides, ...faqs];
