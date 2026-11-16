@@ -2,10 +2,10 @@ name: repository checks
 
 # Cheap checks that concern the whole repository, on every pull request (and manual runs; there is no `push` trigger):
 # - no cloud-sync conflict copies are tracked ("README 2.md", "ScrollSpy (1).tsx"): scripts/check-conflict-copies.sh
-# - the kube-context guard every cluster script sources (scripts/lib/kube-context.sh), tested with a stub kubectl
-# - the scripts the release and deploy jobs run (scripts/ci-rollout.py, scripts/keep-live-images.py), tested the same
-#   way: those jobs only run after a merge, so this is where a mistake in them is caught first
-# - shellcheck of the guard, its test and the deploy/config scripts
+# - shellcheck of the image and release scripts
+# - the alerts handoff file (scripts/build-alerts.py)
+# The cluster scripts (kube-context guard, rollout, deploy and config scripts) and their tests moved with the site to
+# mrjithendar/jithendar.com on 2026-11-16.
 
 on:
   workflow_dispatch:
@@ -25,15 +25,9 @@ jobs:
           persist-credentials: false
       - name: No cloud-sync conflict copies
         run: scripts/check-conflict-copies.sh
-      - name: Kube-context guard (stub kubectl)
-        run: bash scripts/tests/kube-context.test.sh
-      - name: Release and deploy scripts (stub kubectl)
-        run: |
-          pip install --quiet pyyaml==6.0.3
-          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - name: shellcheck
         # ubuntu-latest ships shellcheck. verify-practice-sandbox.sh is excluded: it builds eval'd check strings on purpose.
-        run: shellcheck -x scripts/lib/kube-context.sh scripts/tests/kube-context.test.sh scripts/check-conflict-copies.sh scripts/image-size.sh scripts/create-*.sh scripts/set-*.sh scripts/setup-ci-applier.sh scripts/setup-ci-deployer.sh
+        run: shellcheck -x scripts/check-conflict-copies.sh scripts/image-size.sh scripts/build-site-image.sh scripts/smoke-site-image.sh scripts/notify-sites.sh
       - name: Alerts handoff file is current and valid
         # Structural checks + staleness (scripts/build-alerts.py --check), then full PromQL validation with promtool
         # from the pinned Prometheus image (the same major version as the cluster's).

@@ -5,16 +5,13 @@ name: practice-executor
 #           committed catalog.generated.json is up to date)
 # release → a merged pull request: build the arm64 images and push them to Harbor as
 #           registry.jithendar.com/jithendar/practice-executor and practice-sandbox, each as :pr-<number> and :latest
-# deploy  → after release, only when repository variable PRACTICE_EXECUTOR_DEPLOY is "true": point the executor
-#           Deployments at practice-executor:pr-<number> and wait for the rollout (scripts/ci-rollout.py). Sandbox
-#           pods keep pulling practice-sandbox:latest (imagePullPolicy Always): that name is in the ConfigMap, which
-#           this job may not change.
-#           It never applies manifests: namespaces, RuntimeClass, admission policy, RBAC and Secrets are applied
-#           once by a person (services/www/docs/PYTHON_PRACTICE_EXECUTOR.md). Set the variable only after
-#           scripts/verify-practice-sandbox.sh passes on mk4; until then the job is skipped.
+#           Then, when repository variable RELEASE_NOTIFY_REPOS lists site repositories, each gets a repository_dispatch
+#           "moks-cms-released" {component: practice-executor, tag} (scripts/notify-sites.sh).
+# Nothing here deploys: the manifests (namespaces, RuntimeClass, admission policy, RBAC) and the rollout live in each
+# site's repository (jithendar.com: mrjithendar/jithendar.com, kubernetes/practice-executor-*.yaml). The catalog checked
+# here is the test fixture site's; a site checks its own with the moks-cms-builder image.
 #
-# Registry: the release job logs in to Harbor with repository secrets HARBOR_USERNAME and HARBOR_PASSWORD. For deploy,
-# the site's cluster credentials MK4_API_SERVER, MK4_CA_DATA and MK4_CI_TOKEN (scripts/setup-ci-deployer.sh).
+# Registry: the release job logs in to Harbor with repository secrets HARBOR_USERNAME and HARBOR_PASSWORD.
 
 on:
   workflow_dispatch:
@@ -22,9 +19,7 @@ on:
     types: [opened, synchronize, reopened, closed]
     paths:
       - 'services/executor/**'
-      - 'sites/*/content/python-practice/**'
-      - 'kubernetes/practice-executor-*.yaml'
-      - 'scripts/manifests.sh'
+      - 'services/www/tests/fixtures/site/content/python-practice/**'
       - '.github/workflows/ci-practice-executor.yml'
 
 permissions:
@@ -57,10 +52,8 @@ jobs:
       - name: Catalog is valid and up to date
         run: |
           python services/executor/tools/build_problems.py
-          git diff --exit-code -- sites/jithendar.com/content/python-practice/catalog.generated.json || {
+          git diff --exit-code -- services/www/tests/fixtures/site/content/python-practice/catalog.generated.json || {
             echo "::error::catalog.generated.json is stale: run python services/executor/tools/build_problems.py and commit it"; exit 1; }
-      - name: Render manifests
-        run: scripts/manifests.sh practice-executor | python scripts/ci-app-manifests.py > /dev/null
 
   release:
     needs: check
@@ -112,47 +105,8 @@ jobs:
             echo "- also tagged $PR_TAG; commit $RELEASE_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Signs in as ServiceAccount jithendar/github-ci-deployer (kubernetes/80-ci-deployer.yaml), the same one that rolls out
-  # the site: it may only patch the two executor Deployments here, cannot read Secrets or create pods, so it cannot
-  # weaken the sandbox.
-  # Roll back: revert the commit on the default branch (CI rebuilds and redeploys), or switch execution off in
-  # Admin → Python practice → Settings (instant).
-  deploy:
-    needs: release
-    if: vars.PRACTICE_EXECUTOR_DEPLOY == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: practice-executor-deploy
-      cancel-in-progress: false
-    env:
-      IMAGE: registry.jithendar.com/jithendar/practice-executor
-      PR_TAG: pr-${{ github.event.pull_request.number }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # A merged pull request is built from its merge commit on the default branch.
-          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
-          sparse-checkout: |
-            .github/jithendar-ci-deployer.yaml
-            scripts/ci-rollout.py
-          sparse-checkout-cone-mode: false
-      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
-      - name: Roll out to mk4
+      - name: Tell the site repositories
         env:
-          MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
-          MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
-          MK4_CI_TOKEN: ${{ secrets.MK4_CI_TOKEN }}
-        run: |
-          set -euo pipefail
-          for v in MK4_API_SERVER MK4_CA_DATA MK4_CI_TOKEN; do
-            [[ -n "${!v}" ]] || { echo "::error::$v is not set (scripts/setup-ci-deployer.sh)"; exit 1; }
-          done
-          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
-          trap 'rm -f "$KUBECONFIG"' EXIT
-          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-          # Both executor Deployments run this release's own tag from here on (a re-run restarts them instead).
-          # Sandbox pods are created by the dispatcher from practice-sandbox:latest with imagePullPolicy Always.
-          python3 scripts/ci-rollout.py "$IMAGE" "$PR_TAG"
-          echo "- sandbox runtime python-3.13 → \`practice-sandbox:latest\` ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+          REPOS: ${{ vars.RELEASE_NOTIFY_REPOS }}
+          GH_TOKEN: ${{ secrets.RELEASE_NOTIFY_TOKEN }}
+        run: scripts/notify-sites.sh practice-executor "$PR_TAG" "$RELEASE_SHA"

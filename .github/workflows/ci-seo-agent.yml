@@ -5,10 +5,10 @@ name: seo-agent
 #           dependencies, and a Docker build of the image (model checksums verified inside the build) with a smoke test
 #           of both ports (internal API 8080, MCP edge 8090).
 # release → a merged pull request: build arm64, push registry.jithendar.com/jithendar/seo-agent:pr-<number> and :latest.
-# deploy  → after release, only when repository variable SEO_AGENT_DEPLOY is "true": point deploy/seo-agent at
-#           :pr-<number> and wait (scripts/ci-rollout.py). The flow-trigger CronJobs keep running :latest.
-#           Manifests, CronJobs, Secrets and the Kong entities are applied by a person (docs/seo/MANUAL_SETUP.md "v4");
-#           CI never applies them.
+#           Then, when repository variable RELEASE_NOTIFY_REPOS lists site repositories, each gets a repository_dispatch
+#           "moks-cms-released" {component: seo-agent, tag} (scripts/notify-sites.sh).
+# Nothing here deploys: the manifests and the rollout live in each site's repository (jithendar.com:
+# mrjithendar/jithendar.com, kubernetes/seo-agent-*.yaml and its release workflow).
 
 on:
   workflow_dispatch:
@@ -17,7 +17,6 @@ on:
     paths:
       - 'services/seo-agent/**'
       - 'services/www/src/lib/seo-agent/internal-server.ts'
-      - 'kubernetes/seo-agent-*.yaml'
       - '.github/workflows/ci-seo-agent.yml'
       - 'scripts/image-size.sh'
 
@@ -103,11 +102,6 @@ jobs:
           docker exec agent python -c "from app.reports_pdf import render; assert render({'type':'weekly','period':{'start':'2026-11-02','end':'2026-11-08'}}).startswith(b'%PDF-')"
           docker exec agent python -c "from app.embeddings import OnnxEmbeddings; import asyncio; e=OnnxEmbeddings('/models/bge-small-en-v1.5'); print(len(asyncio.run(e.embed(['ok']))[0]))" | grep -qx 384
           docker rm -f agent
-      - name: Render manifests
-        working-directory: .
-        run: |
-          pip install --quiet pyyaml==6.0.3
-          scripts/manifests.sh seo-agent | python scripts/ci-app-manifests.py > /dev/null
 
   release:
     needs: check
@@ -146,44 +140,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           # arm64 release image: reported only (the gate runs on the pull request's amd64 build).
           ../../scripts/image-size.sh "$REGISTRY/seo-agent:latest" /dev/null
-
-  deploy:
-    needs: release
-    if: vars.SEO_AGENT_DEPLOY == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: seo-agent-deploy
-      cancel-in-progress: false
-    defaults:
-      run:
+      - name: Tell the site repositories
         working-directory: .
-    env:
-      IMAGE: registry.jithendar.com/jithendar/seo-agent
-      PR_TAG: pr-${{ github.event.pull_request.number }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # A merged pull request is built from its merge commit on the default branch.
-          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
-          sparse-checkout: |
-            .github/jithendar-ci-deployer.yaml
-            scripts/ci-rollout.py
-          sparse-checkout-cone-mode: false
-      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
-      - name: Roll out to mk4
         env:
-          MK4_API_SERVER: ${{ vars.MK4_API_SERVER }}
-          MK4_CA_DATA: ${{ vars.MK4_CA_DATA }}
-          MK4_CI_TOKEN: ${{ secrets.MK4_CI_TOKEN }}
-        run: |
-          set -euo pipefail
-          for v in MK4_API_SERVER MK4_CA_DATA MK4_CI_TOKEN; do
-            [[ -n "${!v}" ]] || { echo "::error::$v is not set (scripts/setup-ci-deployer.sh)"; exit 1; }
-          done
-          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
-          trap 'rm -f "$KUBECONFIG"' EXIT
-          (umask 077; perl -pe 's/\$\{(MK4_[A-Z_]+)\}/$ENV{$1}/g' .github/jithendar-ci-deployer.yaml > "$KUBECONFIG")
-          # The Deployment runs this release's own tag from here on; a re-run restarts it instead.
-          python3 scripts/ci-rollout.py "$IMAGE" "$PR_TAG"
+          REPOS: ${{ vars.RELEASE_NOTIFY_REPOS }}
+          GH_TOKEN: ${{ secrets.RELEASE_NOTIFY_TOKEN }}
+        run: scripts/notify-sites.sh seo-agent "$PR_TAG" "$RELEASE_SHA"

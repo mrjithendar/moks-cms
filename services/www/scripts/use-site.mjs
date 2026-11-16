@@ -1,23 +1,30 @@
 #!/usr/bin/env node
 /**
- * Choose which website this app serves. Everything that belongs to one website lives in sites/<domain>/ at the
- * root of the repository:
+ * Choose which website this app serves. A site is a folder with this layout (a site's own repository, like
+ * mrjithendar/jithendar.com, or sites/<domain>/ in this repository):
  *
- *   sites/<domain>/site.json        identity (host, name, author, social links, AdSense ID)
- *   sites/<domain>/config/          redirects, gone URLs, the /hire-me profile
- *   sites/<domain>/content/         articles, pages, authors, Python practice
- *   sites/<domain>/public/images/   images the articles use (served as /images/…)
- *   sites/<domain>/docs/            sources of the articles' figures and checks (never shipped)
+ *   site.json        identity (host, name, author, social links, AdSense ID)
+ *   config/          redirects, gone URLs, the /hire-me profile
+ *   content/         articles, pages, authors, Python practice
+ *   public/images/   images the articles use (served as /images/…)
+ *   docs/            sources of the articles' figures and checks (never shipped)
+ *
+ * Which folder, first match wins:
+ *
+ *   SITE_DIR=<path>   any folder (absolute, or relative to the current directory): a site repository checked out
+ *                     next to this one, or mounted into the moks-cms-builder image (Dockerfile.builder)
+ *   SITE=<domain>     sites/<domain>/ at the root of this repository
+ *   (neither)         tests/fixtures/site, the small site the tests and local development run against
  *
  * The app keeps reading site/, content/ and public/images/ in services/www (and /app/content, /app/public/images in
- * the container, where the content image copies them). This script fills those three paths from sites/$SITE:
+ * the container, where the content image copies them). This script fills those three paths from the chosen folder:
  *
  *   site/            always a copy of site.json and config/: they are compiled into the app, and Turbopack only
  *                    compiles files inside services/www
- *   content/         a symlink for development (edit files under sites/<domain>/ as usual), or with --copy a real
+ *   content/         a symlink for development (edit files in the site folder as usual), or with --copy a real
  *   public/images/   copy, for CI and Docker builds (COPY and output tracing do not follow links out of the folder)
  *
- *   npm run site                      SITE=example.com npm run site      npm run site -- --copy
+ *   npm run site      SITE_DIR=../../../jithendar.com npm run site      SITE=example.com npm run site -- --copy
  *
  * dev, preview, build, typecheck and test run it first (package.json "pre" scripts). A plain run keeps copies of
  * content/ and public/images/ that are already there for the same site. It never replaces a real folder it did not
@@ -27,7 +34,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const DEFAULT_SITE = "jithendar.com";
+/** The folder used when neither SITE_DIR nor SITE is set, relative to services/www. */
+export const DEFAULT_SITE_DIR = path.join("tests", "fixtures", "site");
 const MARKER = ".site-copy";
 
 /** What this script manages in the app folder, and where it comes from in sites/<domain>/. */
@@ -54,20 +62,27 @@ function copyOf(p) {
 }
 
 /**
- * @param {{ root?: string, sitesDir?: string, site?: string, copy?: boolean, log?: (line: string) => void }} [opts]
- *   root: the app folder (services/www); sitesDir: the sites folder (default: <root>/../../sites)
+ * @param {{ root?: string, sitesDir?: string, site?: string, siteDir?: string, copy?: boolean, log?: (line: string) => void }} [opts]
+ *   root: the app folder (services/www); sitesDir: the sites folder (default: <root>/../../sites);
+ *   siteDir: the site folder itself (default: $SITE_DIR, else <sitesDir>/<site> when a site is named, else the fixture)
  * @returns {{ site: string, actions: string[] }}
  */
 export function selectSite({
   root = process.cwd(),
   sitesDir = path.resolve(root, "..", "..", "sites"),
-  site = process.env.SITE || DEFAULT_SITE,
+  site = process.env.SITE || "",
+  siteDir = process.env.SITE_DIR || "",
   copy = false,
   log = () => {},
 } = {}) {
-  if (!/^[a-z0-9.-]+$/.test(site) || site.startsWith(".")) throw new Error(`SITE must be a domain name, not ${JSON.stringify(site)}`);
-  const siteDir = path.join(sitesDir, site);
+  if (siteDir) siteDir = path.resolve(siteDir);
+  else if (site) {
+    if (!/^[a-z0-9.-]+$/.test(site) || site.startsWith(".")) throw new Error(`SITE must be a domain name, not ${JSON.stringify(site)}`);
+    siteDir = path.join(sitesDir, site);
+  } else siteDir = path.join(root, DEFAULT_SITE_DIR);
   if (!fs.existsSync(path.join(siteDir, "site.json"))) throw new Error(`${siteDir}/site.json not found: no such site`);
+  // The name recorded in the copies' marker: the site's host, so a copy of the same site is kept by a later run.
+  if (!site) site = String(JSON.parse(fs.readFileSync(path.join(siteDir, "site.json"), "utf8")).host || path.basename(siteDir));
   const actions = [];
 
   for (const { at, from, always } of ENTRIES) {
@@ -92,7 +107,7 @@ export function selectSite({
       fs.mkdirSync(dest, { recursive: true });
       for (const [f, to] of parts) if (fs.existsSync(path.join(siteDir, f))) fs.cpSync(path.join(siteDir, f), to, { recursive: true });
       fs.writeFileSync(path.join(dest, MARKER), `${site}\n`);
-      if (always !== "copy") actions.push(`${at}: copy of sites/${site}/${from}`);
+      if (always !== "copy") actions.push(`${at}: copy of ${path.join(siteDir, from)}`);
     } else {
       fs.symlinkSync(target, dest, "dir");
       actions.push(`${at} -> ${target}`);

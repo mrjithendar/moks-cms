@@ -1,6 +1,6 @@
-# Dependabot version updates. Pull requests run the `check` job in ci-jithendar-com.yml (lint,
-# typecheck, test, build, render manifests). Merging to master releases an image and
-# restarts the Deployment on it; deploy-kubernetes.yml applies manifest changes.
+# Dependabot version updates. Pull requests run the `check` and `image` jobs in ci-moks-cms.yml (lint,
+# typecheck, test, build, builder image). Merging to master pushes a new moks-cms-builder image; sites
+# pick it up from their own repositories (the manifests and their images moved to mrjithendar/jithendar.com).
 #
 # Minor and patch updates are grouped to keep the PR count down; majors arrive one PR each.
 # Security updates are not grouped and are not held back by the cooldown.
@@ -113,7 +113,7 @@ updates:
           - minor
           - patch
 
-  # Base images in services/www/Dockerfile and services/www/Dockerfile.ci
+  # Base images in services/www/Dockerfile, Dockerfile.ci, Dockerfile.builder and Dockerfile.site
   - package-ecosystem: docker
     directory: /services/www
     schedule:
@@ -130,29 +130,6 @@ updates:
       node-images:
         patterns:
           - node
-
-  # Images in the Kubernetes manifests (kubernetes/ is flat, so this covers the site's postgres and redis, the
-  # executor's redis and Adminer)
-  - package-ecosystem: docker
-    directory: /kubernetes
-    schedule:
-      interval: weekly
-      day: monday
-      time: "06:00"
-      timezone: America/New_York
-    commit-message:
-      prefix: "deps(kubernetes)"
-    labels:
-      - dependencies
-      - kubernetes
-    ignore:
-      # Major Postgres upgrades need a dump/restore or pg_upgrade of the data volume.
-      - dependency-name: postgres
-        update-types: ["version-update:semver-major"]
-      - dependency-name: redis
-        update-types: ["version-update:semver-major"]
-      # The app image is built by CI (the manifests name :latest), not by Dependabot.
-      - dependency-name: "*/jithendar-com"
 
   # Actions in .github/workflows (pinned by commit SHA; Dependabot updates the SHA and the comment)
   - package-ecosystem: github-actions

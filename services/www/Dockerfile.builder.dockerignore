@@ -1,0 +1,16 @@
+# Build context of Dockerfile.builder: the repository root, reduced to what the builder copies.
+*
+!services/www
+!services/executor/tools
+!services/executor/sandbox/runner.py
+services/www/node_modules
+services/www/.next
+services/www/coverage
+services/www/site
+services/www/content
+services/www/public/images
+services/www/docs
+services/www/.env*
+!services/www/.env.example
+**/__pycache__
+**/.site-copy

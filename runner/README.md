@@ -1,6 +1,6 @@
 # Self-hosted GitHub Actions runners
 
-> **Not used by CI since 2026-10-29.** `.github/workflows/ci-jithendar-com.yml` runs on GitHub-hosted runners
+> **Not used by CI since 2026-10-29.** `.github/workflows/ci-moks-cms.yml` runs on GitHub-hosted runners
 > (`ubuntu-latest`, `ubuntu-24.04-arm`) and pushes images to Harbor (`registry.jithendar.com`) as a robot account (secrets `HARBOR_USERNAME`, `HARBOR_PASSWORD`). Builds on
 > the mk4 server competed with the cluster for memory and disk and froze the host twice. Do not install these
 > runners on the server that runs the cluster; remove existing ones with `bash runner/setup.sh remove`.

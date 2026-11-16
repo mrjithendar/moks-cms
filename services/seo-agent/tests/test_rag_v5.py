@@ -27,13 +27,13 @@ from app.embeddings import (
 from app.index import Hit, MemoryRetriever
 from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
 from app.main import memory_container
+from app.rag_eval import BLOG_DIR as BLOG  # tests/fixtures/rag_corpus
 from app.rag_eval import EVAL_PATH, LocalIndex, evaluate, load_articles, load_eval_set, render_markdown, slug_of
 from app.retrieval import Candidate, RetrievalConfig, diversify, fuse
 from app.schemas import Relevance
 from app.services.ask_pipeline import select_excerpts
 from tests.conftest import FakeWebApp, settings
 
-BLOG = Path(__file__).resolve().parents[3] / "sites" / "jithendar.com" / "content" / "blog"
 MODEL_DIR = os.environ.get("RAG_TEST_MODEL_DIR") or os.environ.get("EMBEDDINGS_MODEL_DIR") or "/models/bge-small-en-v1.5"
 
 

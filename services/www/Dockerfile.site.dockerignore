@@ -1,0 +1,11 @@
+# Build context of Dockerfile.site: a site folder. Only site.json, config/, content/ and public/images/ are used.
+.git
+.github
+docs
+grafana
+kubernetes
+scripts
+node_modules
+**/*.md
+!content/**
+**/.site-copy

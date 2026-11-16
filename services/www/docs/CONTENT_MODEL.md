@@ -1,7 +1,7 @@
 # Content model
 
 Every article is one `.mdx` file under `sites/<domain>/content/<collection>/<slug>.mdx` at the repository root (for this
-site `sites/jithendar.com/content/`; the app reads it as `content/`, see [sites/README.md](../../../sites/README.md)).
+site's repository, `content/` of `mrjithendar/jithendar.com`; the app reads it as `content/`, see [sites/README.md](../../../sites/README.md)).
 The file name must equal `slug`. The build fails on any invalid file, and `npm test` validates `content/` too. One error message lists every problem.
 
 | Collection | Path | Allowed `contentType` |
