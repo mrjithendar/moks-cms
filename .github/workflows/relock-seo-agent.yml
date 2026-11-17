@@ -1,0 +1,114 @@
+name: relock seo-agent (temporary)
+
+# TEMPORARY (owner decision 2026-11-17). Regenerates services/seo-agent/uv.lock on this pull request: its change to
+# pyproject.toml (LanceDB is installed again, D-91) was written where packages cannot be downloaded, and the lockfile
+# cannot be edited by hand (it needs the wheel URLs and hashes from PyPI).
+#
+# This file is deleted again in the same pull request and must not reach master: it would be the only workflow here
+# with `contents: write`.
+#
+# Two jobs, so that nothing downloaded from PyPI runs next to a token that can push:
+# - lock:   no write access, no credentials on disk. Runs `uv lock` and hands over the DIFF of uv.lock only.
+# - commit: write access, runs no third-party code. Applies that diff to services/seo-agent/uv.lock (and refuses a
+#           diff that touches anything else), commits and pushes to the pull request's branch.
+# A push made with the workflow token starts no other workflow, so ci-seo-agent.yml runs on the next ordinary push.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'services/seo-agent/pyproject.toml'
+      - '.github/workflows/relock-seo-agent.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relock-seo-agent-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      changed: ${{ steps.lock.outputs.changed }}
+      patch: ${{ steps.lock.outputs.patch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Install uv (pinned, as in ci-seo-agent.yml)
+        run: pip install --quiet "uv==0.13.5"
+      - name: Regenerate uv.lock
+        id: lock
+        working-directory: services/seo-agent
+        env:
+          UV_PYTHON_DOWNLOADS: never
+        run: |
+          set -euo pipefail
+          if uv lock --check --python python3.13; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "uv.lock already matches pyproject.toml: nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # No --upgrade: every package already in the lock keeps its version.
+          uv lock --python python3.13
+          uv lock --check --python python3.13
+          patch="$(git diff --no-color -- uv.lock | gzip -9 -c | base64 -w0)"
+          # One job output holds at most 1 MB, and it travels on as one environment variable (128 KiB at most).
+          if (( ${#patch} > 120000 )); then
+            echo "::error::the uv.lock diff is too large to hand over (${#patch} characters)"
+            exit 1
+          fi
+          {
+            echo "changed=true"
+            echo "patch=$patch"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### uv.lock regenerated"
+            echo
+            echo '```'
+            git diff --stat -- uv.lock
+            git diff --no-color -U0 -- uv.lock | grep -E '^[+-](name|version) = ' | head -80 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  commit:
+    needs: lock
+    if: needs.lock.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Apply the diff to uv.lock, commit and push
+        env:
+          PATCH: ${{ needs.lock.outputs.patch }}
+          LOCKED_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD)" != "$LOCKED_SHA" ]]; then
+            echo "::error::the branch moved while the lock was computed; the next push runs this again"
+            exit 1
+          fi
+          printf '%s' "$PATCH" | base64 -d | gunzip > "$RUNNER_TEMP/uv.lock.patch"
+          git apply --include='services/seo-agent/uv.lock' "$RUNNER_TEMP/uv.lock.patch"
+          changed="$(git status --porcelain)"
+          if [[ "$changed" != " M services/seo-agent/uv.lock" ]]; then
+            echo "::error::expected a change to services/seo-agent/uv.lock only, got: $changed"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "chore(seo-agent): regenerate uv.lock (LanceDB is installed again, D-91)" -- services/seo-agent/uv.lock
+          git push origin "HEAD:refs/heads/$HEAD_REF"
