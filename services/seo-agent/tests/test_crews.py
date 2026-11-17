@@ -130,10 +130,13 @@ async def test_built_agents_have_the_guardrails(llm: FakeLlm, web: FakeWebApp) -
     assert crew.memory is False and crew.planning is False and crew.max_rpm == s.crew_max_rpm and crew.process.value == "sequential"
 
 
-def test_unused_crewai_memory_store_is_not_installed() -> None:
+def test_lancedb_is_installed_and_other_orchestrators_are_not() -> None:
     import importlib.util
 
-    assert importlib.util.find_spec("lancedb") is None and importlib.util.find_spec("pyarrow") is None
+    # D-91 (replaces D-47): CrewAI's memory and the article index are to live in LanceDB, so it is installed again.
+    # Being installed switches nothing on: crews are still built with memory=False (the test above) and flows still
+    # skip CrewAI's auto-created memory (tests/test_flows.py asserts no .lance file appears).
+    assert importlib.util.find_spec("lancedb") is not None and importlib.util.find_spec("pyarrow") is not None
     assert importlib.util.find_spec("langgraph") is None and importlib.util.find_spec("langchain_core") is None  # v4: CrewAI only
 
 
