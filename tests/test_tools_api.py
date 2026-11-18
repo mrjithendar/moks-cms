@@ -77,6 +77,53 @@ def test_html_to_text_strips_scripts_and_tags() -> None:
     assert html_to_text("<style>x</style><h1>T</h1><p>a &amp; b</p>") == "T a & b"
 
 
+SIDEBAR = "<div class=sidebar>" + "".join(f"<a href=/docs/{i}>Page {i}</a>" for i in range(3000)) + "</div>"
+
+
+def test_html_to_text_reads_the_main_content_not_the_sidebar() -> None:
+    # Kubernetes docs: a language menu and a sidebar of every page come before <main> (490 KB of a 600 KB page).
+    html = f"<html><body>{SIDEBAR}<main class=td-main><h1>Deployments</h1><p>A Deployment manages Pods.</p></main><aside>Page 7</aside></body></html>"
+    assert html_to_text(html) == "Deployments A Deployment manages Pods."
+    assert html_to_text(html.replace("</main>", "")).startswith("Deployments A Deployment")  # cut before </main>
+    assert html_to_text("<article><p>Only this</p></article><p>not this</p>") == "Only this"
+    assert html_to_text("<main-nav>x</main-nav><p>whole page</p>") == "x whole page"  # <main-nav> is not <main>
+
+
+def long_page() -> str:
+    para = "<p>" + "word " * 400 + "</p>"
+    return f"<main><h2 id=intro>Intro</h2>{para}<h2 id='range-vector-selectors'>Range Vector Selectors</h2><p>http_requests_total[5m]</p>{para}<h3 id=offset>Offset modifier</h3><p>offset 5m</p></main>"
+
+
+def test_a_cut_page_lists_the_anchors_of_its_later_sections() -> None:
+    out = html_to_text(long_page(), limit=1000, list_sections=True)
+    assert out.startswith("Intro\n\nword word") and "http_requests_total" not in out
+    assert out.endswith("(fetch the page URL with one of these anchors to read from it): #range-vector-selectors, #offset]")
+    assert "\ue000" not in out
+    assert "[Cut at" not in html_to_text(long_page(), limit=1000)  # the news tool: no section list
+
+
+def test_a_fragment_reads_from_its_section() -> None:
+    out = html_to_text(long_page(), section="range-vector-selectors", list_sections=True)
+    assert out.startswith("Range Vector Selectors\n\nhttp_requests_total[5m]") and "Intro" not in out and "offset 5m" in out
+    assert html_to_text(long_page(), section="no-such-id").startswith("Intro")  # unknown anchor: the page from the top
+
+
+def test_a_short_page_lists_its_links() -> None:
+    moved = "<main><h1>Moved: Generative AI semantic conventions</h1><p>They have moved to the <a href=https://github.com/open-telemetry/semantic-conventions-genai class=x>GenAI semantic conventions repository</a>.</p><a href=/docs/>Docs</a></main>"
+    out = html_to_text(moved, list_sections=True)
+    assert out.endswith("[Links on this page]\n- GenAI semantic conventions repository: https://github.com/open-telemetry/semantic-conventions-genai")
+    assert "[Links" not in html_to_text(moved)
+
+
+async def test_fetch_tool_reads_the_section_of_a_fragment_url_without_sending_the_fragment(web: FakeWebApp, retriever) -> None:
+    web.docs["https://prometheus.io/docs/querying/basics/"] = long_page()
+    seen: list[str] = []
+    ctx = ToolContext(web, retriever, (*ALLOW, "prometheus.io"), on_source=lambda u, _t: seen.append(u))
+    out = await ctx.fetch_allowlisted_docs("https://prometheus.io/docs/querying/basics/#offset")
+    assert ("fetch_docs", "https://prometheus.io/docs/querying/basics/") in web.calls and seen == ["https://prometheus.io/docs/querying/basics/"]
+    assert '"url": "https://prometheus.io/docs/querying/basics/#offset"' in out and '"text": "Offset modifier\\n\\noffset 5m"' in out
+
+
 async def test_gsc_tool_filters_personal_queries(web: FakeWebApp, retriever) -> None:
     out = await ToolContext(web, retriever, ALLOW).gsc_queries_for_topic("ingress")
     assert "kubernetes ingress tls" in out and "bob@example.com" not in out

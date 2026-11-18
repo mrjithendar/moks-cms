@@ -24,12 +24,22 @@ review preview and would have been published. The writer and reviewer now list s
 `extract_editor_notes` moves any that are still in the body (MDX or HTML comments, <Todo>; never inside code) into
 fact-check flags, which the review page lists. It also takes `{ /* … */ }`, a comment that never closes (to the end of
 its paragraph), and a line or [bracket] that starts with TODO(…): or FIXME:.
+
+v7 prompt (seo-crew-v7, 2026-11-18): an article on Prometheus, Kubernetes and OpenTelemetry stopped at the 300,000-token
+cap inside the SEO editor step, with 19 notes, many of them "the fetch returned no content" or "navigation only". The
+fetch tool now reads a page's <main> content, and a cut page ends with the anchors of its later sections; the
+researcher is told to fetch `url#anchor` instead of trying other pages. When the crew stops after the technical review
+(a limit in the SEO editor step, or an editor answer that does not match the schema), one short call without tools
+writes the title and meta description (`fallback_metadata`): the outline is the reviewed body's H2s and the sources are
+the pages retrieved during the run. The draft stays incomplete (no internal links, no SEO editor review), but it is no
+longer saved with an empty meta description. A cited source matches a retrieved page without its #fragment.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -37,13 +47,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import Settings
-from ..llm import Llm
+from ..llm import CallSpec, InvalidOutput, Llm, Usage
+from ..runs import CURRENT_RUN_ID
 from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArticleDraft, Source
 from ..tools import ToolContext, data_block
-from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
+from .common import UNTRUSTED, AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
 from .skills import editorial_tags
 
-PROMPT_VERSION = "seo-crew-v6"
+PROMPT_VERSION = "seo-crew-v7"
+
+log = logging.getLogger("seo_agent.crews")
 
 AGENTS = [
     AgentDef("researcher", "Researcher", "Collect the facts, related site articles and official documentation the article needs, with sources, in enough detail that the writer never has to guess.", "You research for a one-person technical publication. You only report what the sources say, you copy commands, flags, versions and defaults exactly, and you list every source URL you used.", ["vector_search", "read_article", "fetch_allowlisted_docs"], max_tokens=8192),  # detailed notes: 4,096 cut them off
@@ -60,7 +73,7 @@ EXAMPLE_CHARS = 12_000  # per example article; the web app sends at most two
 RESEARCH_TASK = (
     "Research the article in this brief so the writer can write it without guessing.\n"
     "1. vector_search and read_article: what this site has already published on the topic (to link to and not repeat).\n"
-    "2. fetch_allowlisted_docs: the official documentation for every tool, command and feature in the outline. Open the specific pages (install, configuration reference, CLI reference, release notes), not only the landing page; a refused or failed fetch is a reason to try the next most specific official page.\n"
+    "2. fetch_allowlisted_docs: the official documentation for every tool, command and feature in the outline. Open the specific pages (install, configuration reference, CLI reference, release notes), not only the landing page; a refused or failed fetch is a reason to try the next most specific official page. A long page is cut and ends with the anchors of its later sections: fetch the same URL with the anchor you need (url#anchor) rather than another page.\n"
     "Report, per outline section, as short bullets: the facts the writer needs with their source URL, the exact commands, flags, defaults and current version numbers as written in the source, and the known limits and common failure modes. Say plainly which outline sections you found no source for. End with the list of every source URL you retrieved.\n"
     "Keep the notes compact, about 1,500 words in total and never more than 3,000: they are notes for the writer, not a copy of the documentation. Quote a command or config snippet only when the article will use it, and only the lines that matter; summarise everything else in one line with its URL. Stop fetching once each outline section has a source."
 )
@@ -112,6 +125,30 @@ class SeoMetadata(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     fact_check_flags: list[FactCheckFlag] = Field(default_factory=list)
     internal_links: list[InternalLinkSuggestion] = Field(default_factory=list)
+
+
+class FallbackMetadata(BaseModel):
+    """The fallback call's answer when the SEO editor did not finish (see EditorialCrew.fallback_metadata)."""
+
+    model_config = ConfigDict(extra="ignore")
+    title: str
+    meta_description: str
+
+
+FALLBACK_BODY_CHARS = 6000  # the opening of the reviewed body: enough for the topic, small next to the 300k crew cap
+FALLBACK_MAX_TOKENS = 1024
+FALLBACK_TASK = (
+    "The SEO editor did not finish on this article. Write its search metadata as JSON: title (at most 60 characters, "
+    "the article's subject and the reader's goal, no clickbait) and meta_description (120 to 155 characters: what the "
+    "reader learns or can do, specific to this article). Use only the brief, the article's headings and its opening."
+)
+_H2_RE = re.compile(r"^##[ \t]+(.+?)[ \t#]*$", re.M)
+
+
+def h2_outline(body: str) -> list[str]:
+    """The body's H2 headings outside code blocks (what the SEO editor's outline is)."""
+    prose = re.sub(r"^```[\s\S]*?^```", "", body, flags=re.M)
+    return [h.strip() for h in _H2_RE.findall(prose)][:30]
 
 
 def _slugify(s: str) -> str:
@@ -335,7 +372,13 @@ class EditorialCrew:
         from crewai import Task
 
         fetched: list[str] = []
-        ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, on_source=lambda u, _t: fetched.append(u), style=str(brief.get("styleGuide") or ""))
+        titles: dict[str, str] = {}
+
+        def on_source(url: str, title: str) -> None:
+            fetched.append(url)
+            titles.setdefault(url, title)
+
+        ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, on_source=on_source, style=str(brief.get("styleGuide") or ""))
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
             agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
@@ -367,8 +410,49 @@ class EditorialCrew:
 
         o = await run_crew("editorial", build, self.settings, ctx, tags=editorial_tags(brief))
         draft = self._result(o.output, o.tasks, brief, o.status, o.reason)
+        tokens, cost = o.tokens, o.cost_usd
+        if draft.incomplete and not draft.meta_description and draft.body_mdx and self._reviewed(o.tasks):
+            draft, usage = await self.fallback_metadata(draft, brief, titles, draft_id=draft_id)
+            if usage is not None:
+                tokens, cost = tokens + usage.total_tokens, round(cost + usage.cost_usd(), 6)
         draft = self._check_sources(draft, fetched)
-        return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=o.tokens, cost_usd=o.cost_usd, tool_calls=o.tool_calls, fetched_sources=fetched)
+        return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=tokens, cost_usd=cost, tool_calls=o.tool_calls, fetched_sources=fetched)
+
+    @staticmethod
+    def _reviewed(tasks: list[Any]) -> bool:
+        """The technical review finished: the draft's body is the reviewed one, only the SEO editor's part is missing."""
+        return len(tasks) > 2 and bool(split_review(task_raw(tasks[2]))[0])
+
+    async def fallback_metadata(self, draft: NewArticleDraft, brief: dict[str, Any], titles: dict[str, str], *, draft_id: str | None) -> tuple[NewArticleDraft, Usage | None]:
+        """The crew stopped after the technical review (a limit in the SEO editor step, or an editor answer that did
+        not match the schema). One call without tools, outside the crew's token cap (at most ~2,500 tokens in,
+        FALLBACK_MAX_TOKENS out), writes the title and meta description; the outline is the body's H2s and the
+        sources are the pages retrieved during the run. The draft stays incomplete: no internal links were suggested
+        and no SEO editor checked it. Any error (budget, invalid answer) keeps the draft as it was."""
+        model = (brief.get("models") or {}).get("seo_editor") or self.settings.crew_models.get("editorial.seo_editor") or self.settings.draft_model
+        facts = {k: brief.get(k) for k in ("title", "gap", "audience", "intent", "supportingQueries")}
+        user = f"{FALLBACK_TASK}\n\n{data_block('brief', facts)}\n\n{data_block('article_headings', h2_outline(draft.body_mdx))}\n\n{data_block('article_opening', draft.body_mdx[:FALLBACK_BODY_CHARS])}"
+        spec = CallSpec(model=model, purpose="crew", prompt_version=f"{PROMPT_VERSION}-meta", cached_system=[UNTRUSTED], user=user, max_tokens=FALLBACK_MAX_TOKENS, draft_id=draft_id, run_id=CURRENT_RUN_ID.get(), agent="seo_editor")
+        try:
+            meta, usage = await self.llm.structured(spec, FallbackMetadata)
+        except InvalidOutput as e:
+            log.warning("fallback metadata rejected", extra={"event": "crew_meta_fallback", "status": "invalid", "error": str(e)[:200]})
+            return draft, e.usage
+        except Exception as e:  # BudgetExceeded included: the reviewed draft is still saved, without metadata
+            log.warning("fallback metadata failed", extra={"event": "crew_meta_fallback", "status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
+            return draft, None
+        title = meta.title.strip()[:110] or draft.title
+        reason = f"{draft.incomplete_reason or 'the crew stopped'} after the technical review: the body is reviewed, but the SEO editor did not finish. The title and meta description come from a short fallback call and no internal links were suggested; check them"
+        update = {
+            "title": title,
+            "slug_suggestion": _slugify(title),
+            "meta_description": " ".join(meta.meta_description.split())[:300],
+            "outline": h2_outline(draft.body_mdx) or draft.outline,
+            "sources": [Source(url=u, title=t[:200], used_for="retrieved during research") for u, t in titles.items()][:30],
+            "incomplete_reason": reason,
+        }
+        log.info("fallback metadata written", extra={"event": "crew_meta_fallback", "status": "ok", "tokens": usage.total_tokens})
+        return draft.model_copy(update=update), usage
 
     def _result(self, output: Any, tasks: list[Any], brief: dict[str, Any], status: str, reason: str | None) -> NewArticleDraft:
         review_raw = task_raw(tasks[2]) if len(tasks) > 2 else ""
@@ -397,6 +481,9 @@ class EditorialCrew:
 
     @staticmethod
     def _check_sources(d: NewArticleDraft, fetched: list[str]) -> NewArticleDraft:
-        got = {u.rstrip("/") for u in fetched}
-        missing = [FactCheckFlag(claim=s.url, reason="source was not retrieved during research; verify it exists and says this", severity="warning") for s in d.sources if s.url.rstrip("/") not in got and not s.url.startswith("/")]
+        def page(u: str) -> str:  # a cited section (url#anchor) is retrieved when its page was
+            return u.split("#", 1)[0].rstrip("/")
+
+        got = {page(u) for u in fetched}
+        missing = [FactCheckFlag(claim=s.url, reason="source was not retrieved during research; verify it exists and says this", severity="warning") for s in d.sources if page(s.url) not in got and not s.url.startswith("/")]
         return d.model_copy(update={"fact_check_flags": merge_flags(d.fact_check_flags, missing)})

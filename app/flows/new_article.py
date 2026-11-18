@@ -21,7 +21,7 @@ from ..runs import INSTANCE_ONLY
 from ..state import NewArticleState
 from .base import SeoFlow
 
-PROMPT_VERSION = "seo-crew-v6"
+PROMPT_VERSION = "seo-crew-v7"
 MAX_ATTEMPTS = 2
 
 
