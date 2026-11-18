@@ -43,6 +43,18 @@ describe("pages", () => {
   });
 });
 
+describe("media usage", () => {
+  it("counts each post or page that names a file once, in one pass over all files", async () => {
+    const OTHER = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
+    await db.insert(schema.media).values({ id: OTHER, filename: "unused.png", contentType: "image/png", storageKey: `k/${OTHER}.png`, storageBackend: "r2", kind: "images", sizeBytes: 10, width: 1, height: 1, alt: "x" });
+    await savePage(admin, null, { ...page, featuredImage: cover, body: `![The team](${cover.src})\n\nAgain: ![The team](${cover.src})` });
+    const usage = await mediaUsage([ID, OTHER]);
+    expect(usage.get(ID)).toBe(1); // one page, however many times it names the file
+    expect(usage.get(OTHER)).toBe(0);
+    expect((await mediaUsage([])).size).toBe(0);
+  });
+});
+
 describe("attachment details", () => {
   it("require alt text for images and keep title, caption and description", async () => {
     await expect(updateMediaDetails(admin, ID, { alt: " ", title: "Team" })).rejects.toThrow(/alt text/);

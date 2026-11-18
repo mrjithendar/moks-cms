@@ -1,20 +1,17 @@
 # Progress log — jithendar.com
 
-## Review queue: Not reviewed, Rescan for re-review, bulk regenerate, more filters (2026-11-18, owner request)
+## Media: Unused filter, unused notice, select all matching (2026-11-18, owner request)
 
-Owner: "improve review queue: user can rescan all for re-review, and [see what is] not listed in review; add more
-features in review queue".
+Owner: "can filter unused media, select multiple media and delete media items". Bulk select and bulk delete existed
+(page only); what was missing:
 
-- `src/lib/seo-intel/review-scan.ts` (new): `unreviewedArticles` (published blog/project posts with no open draft,
-  never reviewed or last reviewed over 90 days ago, oldest first) and `rescanArticles` (requestDraft for each, at
-  most 25 a request, with two general tasks, freshness and title/meta, so an article with no open recommendation is
-  reviewed too).
-- Routes: `POST /api/admin/seo/review/rescan` ({articleIds} or {all, limit}) and `POST …/review/bulk-regenerate`.
-- Page: a Rescan for re-review card (5/10/25, confirmed: each is a model run); tabs Articles, News, Not reviewed,
-  Published with counts; search, status and kind filters next to type, priority, age and sort; Clear. Not reviewed tab:
-  select up to 25 → Review selected, or Review now per article. Queue: Regenerate selected next to Reject selected.
-- User guide (review queue) updated. Tests: `tests/review-scan.test.ts` (3).
-- No migration, no new dependency.
+- **Usage filter** (Used or not / Unused / In use) on `/admin/media`, over all matching files (usage is computed from
+  posts, pages and site settings, so the other filters run in SQL and usage after, then the page is cut).
+- **Notice** with the number and size of unused files, linking to the filter.
+- **Select all N matching** in bulk mode across pages (up to 200, one `deleteMediaMany`), and Clear selection.
+- `mediaUsage` (`src/lib/media.ts`) is one pass over every post and page text (it scanned all texts once per file,
+  fine for a page of 48, not for every file). Same result: each post or page naming a file counts once.
+- User guide (media) updated. Test: `tests/pages-media.test.ts` (usage counting).
 
 ## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
 
