@@ -3,10 +3,11 @@ name: seo-agent
 # check   → pull requests and pushes touching the agent: ruff, mypy, pytest (with a pgvector PostgreSQL service, so the
 #           flow-run, persistence, advisory-lock and retrieval tests run), pip-audit of the locked production
 #           dependencies, and a Docker build of the image (model checksums verified inside the build) with a smoke test
-#           of both ports (internal API 8080, MCP edge 8090).
-# release → a merged pull request: build arm64, push registry.jithendar.com/jithendar/seo-agent:pr-<number> and :latest.
-#           Then, when repository variable RELEASE_NOTIFY_REPOS lists site repositories, each gets a repository_dispatch
-#           "moks-cms-released" {component: seo-agent, tag} (scripts/notify-sites.sh).
+#           of both ports (internal API 8080, MCP edge 8090; scripts/smoke-seo-agent-image.sh). On a merged pull request
+#           `check` runs only the tests: the image is built once, by `release`.
+# release → a merged pull request: build arm64, smoke-test it, push registry.jithendar.com/jithendar/seo-agent:pr-<number>
+#           and :latest. Then, when repository variable RELEASE_NOTIFY_REPOS lists site repositories, each gets a
+#           repository_dispatch "moks-cms-released" {component: seo-agent, tag} (scripts/notify-sites.sh).
 # Nothing here deploys: the manifests and the rollout live in each site's repository (jithendar.com:
 # moks-tech/jithendar.com, kubernetes/seo-agent-*.yaml and its release workflow).
 
@@ -19,6 +20,7 @@ on:
       - 'services/www/src/lib/seo-agent/internal-server.ts'
       - '.github/workflows/ci-seo-agent.yml'
       - 'scripts/image-size.sh'
+      - 'scripts/smoke-seo-agent-image.sh'
 
 permissions:
   contents: read
@@ -78,30 +80,19 @@ jobs:
           # which this service never starts or connects to (memory=False); it is only imported. Accepted, D-53.
           uvx --from "pip-audit==2.10.1" pip-audit --strict --progress-spinner off -r "$RUNNER_TEMP/requirements.txt" \
             --ignore-vuln PYSEC-2026-311 --ignore-vuln PYSEC-2026-3813 --ignore-vuln PYSEC-2026-3814 --ignore-vuln PYSEC-2026-3815
+      # Image steps: pull requests and manual runs only. A merged pull request's image is built (once) by `release`.
       - name: Build the image (no push)
+        if: github.event.action != 'closed'
         run: |
           docker build --provenance=false -t seo-agent:ci .
       - name: Image size (summary; fails above +15 % of the stored baseline)
+        if: github.event.action != 'closed'
         working-directory: .
         run: scripts/image-size.sh seo-agent:ci services/seo-agent/image-size-baseline.json
       - name: Image smoke test
-        run: |
-          set -euo pipefail
-          docker run -d --name agent -e SEO_AGENT_TOKEN=ci -e DATABASE_URL="postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test" --add-host host.docker.internal:host-gateway -p 8080:8080 -p 8090:8090 seo-agent:ci
-          # A fresh database without the web app's tables: the service must still start and say so on /readyz.
-          for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 2; done
-          curl -sS http://127.0.0.1:8080/readyz | tee /dev/stderr | grep -q '"status"' 
-          curl -fsS http://127.0.0.1:8080/metrics | grep -q seo_flow_runs_total
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/flows/gsc_sync_flow/kickoff -H 'Content-Type: application/json' -d '{}')" = 401
-          # MCP edge: up, and both servers switched off by default (404) until PUBLIC_/ADMIN_MCP_ENABLED.
-          curl -fsS http://127.0.0.1:8090/healthz | grep -q '"public":false'
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8090/mcp/public -H 'Host: jithendar.com' -H 'Content-Type: application/json' -d '{}')" = 404
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8090/mcp/admin -H 'Host: jithendar.com' -H 'Content-Type: application/json' -d '{}')" = 404
-          # The publish path is not reachable by the generic kickoff, even with the service token.
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/flows/publish_flow/kickoff -H 'Authorization: Bearer ci' -H 'Content-Type: application/json' -d '{"inputs":{"draft_id":"00000000-0000-4000-8000-000000000000","approval_id":"x","accepted_change_ids":["c1"]}}')" = 403
-          docker exec agent python -c "from app.reports_pdf import render; assert render({'type':'weekly','period':{'start':'2026-11-02','end':'2026-11-08'}}).startswith(b'%PDF-')"
-          docker exec agent python -c "from app.embeddings import OnnxEmbeddings; import asyncio; e=OnnxEmbeddings('/models/bge-small-en-v1.5'); print(len(asyncio.run(e.embed(['ok']))[0]))" | grep -qx 384
-          docker rm -f agent
+        if: github.event.action != 'closed'
+        working-directory: .
+        run: scripts/smoke-seo-agent-image.sh seo-agent:ci "postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test"
 
   release:
     needs: check
@@ -111,6 +102,15 @@ jobs:
     concurrency:
       group: seo-agent-release
       cancel-in-progress: false
+    # For the smoke test: the image must start against a database without the web app's tables (as in `check`).
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_PASSWORD: ci-only-not-secret
+          POSTGRES_DB: seo_agent_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       REGISTRY: registry.jithendar.com/jithendar
       PR_TAG: pr-${{ github.event.pull_request.number }}
@@ -120,26 +120,32 @@ jobs:
         with:
           persist-credentials: false
           # A merged pull request is built from its merge commit on the default branch.
-          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
+          ref: ${{ env.RELEASE_SHA }}
+      - name: Build the image
+        # Two tags for one image: pr-<number> is this release's own tag and what the Deployment will run; latest
+        # names the newest release (the flow-trigger CronJobs use it).
+        run: docker build --platform linux/arm64 --provenance=false -t "$REGISTRY/seo-agent:$PR_TAG" -t "$REGISTRY/seo-agent:latest" .
+      - name: Image size (summary only; the gate runs on the pull request's amd64 build)
+        working-directory: .
+        run: scripts/image-size.sh "$REGISTRY/seo-agent:latest" /dev/null
+      # Never push an image that cannot start: this is the image that is pushed, not a rebuild of it.
+      - name: Image smoke test
+        working-directory: .
+        run: scripts/smoke-seo-agent-image.sh "$REGISTRY/seo-agent:latest" "postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test"
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
           HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
         run: printf '%s' "$HARBOR_PASSWORD" | docker login registry.jithendar.com --username "$HARBOR_USERNAME" --password-stdin
-      - name: Build and push
+      - name: Push
         run: |
           set -euo pipefail
-          # Two tags for one image: pr-<number> is this release's own tag and what the Deployment will run; latest
-          # names the newest release (the flow-trigger CronJobs use it).
-          docker build --platform linux/arm64 --provenance=false -t "$REGISTRY/seo-agent:$PR_TAG" -t "$REGISTRY/seo-agent:latest" .
           docker push --quiet "$REGISTRY/seo-agent:$PR_TAG"
           docker push --quiet "$REGISTRY/seo-agent:latest"
           {
             echo "- $REGISTRY/seo-agent:$PR_TAG and :latest ($(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/seo-agent:latest"))"
             echo "- commit $RELEASE_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
-          # arm64 release image: reported only (the gate runs on the pull request's amd64 build).
-          ../../scripts/image-size.sh "$REGISTRY/seo-agent:latest" /dev/null
       - name: Tell the site repositories
         working-directory: .
         env:
