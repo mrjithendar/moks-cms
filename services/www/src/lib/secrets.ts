@@ -15,6 +15,14 @@ function key(): Buffer {
   return createHash("sha256").update(raw).digest();
 }
 
+/**
+ * A secret for one purpose, derived from SETTINGS_ENCRYPTION_KEY (so it lives in the Kubernetes Secret, outside the
+ * database). Used where the server needs a stable key nobody has to type or keep, such as backup encryption.
+ */
+export function derivedSecret(purpose: string): string {
+  return createHash("sha256").update(`jithendar:${purpose}\u0000`).update(key()).digest("base64url");
+}
+
 export type Sealed = { v: 1; iv: string; tag: string; data: string };
 
 export function seal(plaintext: string): Sealed {

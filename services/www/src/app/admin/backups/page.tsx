@@ -1,4 +1,3 @@
-import { PasswordInput } from "@/components/ui/PasswordInput";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
@@ -60,12 +59,12 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
     <>
       <AdminHeader
         title="Backups"
-        description="Zip backups of content and configuration, encrypted if you choose. Excludes password hashes, sessions, API-key hashes and stored credentials."
+        description="Zip backups of content and configuration, encrypted in storage with the server's key: no passphrase to keep. Excludes password hashes, sessions, API-key hashes and stored credentials."
         actions={
           <>
             <form action={runNow}><Button type="submit">Back up now</Button></form>
             {/* A demo account never downloads the database (the route refuses it too). */}
-            {!me.demo && <a href="/api/admin/backup" download className="inline-flex items-center rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold">Download backup</a>}
+            {!me.demo && <a href="/api/admin/backup" download title="An unencrypted copy: keep it private" className="inline-flex items-center rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold">Download backup</a>}
           </>
         }
       />
@@ -79,21 +78,15 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
             </Field>
             <Field label="Hour (UTC)" htmlFor="hourUtc" hint="21 UTC = 02:30 IST"><Input id="hourUtc" name="hourUtc" type="number" min={0} max={23} defaultValue={b.hourUtc} /></Field>
             <Field label="Keep last" htmlFor="retention" hint="Older backups are deleted."><Input id="retention" name="retention" type="number" min={1} max={365} defaultValue={b.retention} /></Field>
-            <Field
-              label="Backup passphrase"
-              htmlFor="passphrase"
-              hint={b.hasPassphrase ? "Set. Leave empty to keep it." : "Needed to encrypt, 12+ characters. Store it safely: without it encrypted backups cannot be restored."}
-            >
-              <PasswordInput id="passphrase" name="passphrase" autoComplete="new-password" />
-            </Field>
             <div className="space-y-1 sm:col-span-4">
               <label className="flex items-center gap-2 text-sm font-medium text-fg">
-                <input type="checkbox" name="encrypt" defaultChecked={b.encrypt} /> Encrypt backups with the passphrase (AES-256)
+                <input type="checkbox" name="encrypt" defaultChecked={b.encrypt} /> Encrypt backups stored in R2 (AES-256)
               </label>
               <p className="text-sm text-fg-muted">
-                On: backup.json inside the zip is encrypted; open it with 7-Zip, Keka or WinRAR and the passphrase (macOS Archive Utility cannot). Off: a plain zip anyone
-                with the file can read, so keep the bucket private. Applies to new backups; existing ones keep their format, and older encrypted ones still need the
-                passphrase to restore.
+                There is no passphrase: backups are encrypted with a key derived from the server&apos;s <code className="text-xs">SETTINGS_ENCRYPTION_KEY</code> (the
+                Kubernetes Secret), so they restore here even after the database is lost, as long as that secret is kept. <strong>Download</strong> always gives you an
+                unencrypted copy you can open with any zip tool: keep it private. Off: backups are stored as plain zips, so keep the bucket private.
+                {b.legacyPassphrase ? " A passphrase set before 2026-11-18 is still kept, only to restore the older backups made with it." : ""}
               </p>
             </div>
             <div className="sm:col-span-4"><Button type="submit">Save</Button></div>
@@ -136,9 +129,9 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
                   <td className={`${td} whitespace-nowrap`}>{f.lastModified ? <LocalTime iso={f.lastModified} /> : "—"}</td>
                   <td className={td}>
                     <div className="flex items-center gap-4 whitespace-nowrap">
-                      {!me.demo && <a className="link" href={`/api/admin/backup?file=${encodeURIComponent(f.name)}`} download>Download</a>}
-                      {/* Older .json.gz.enc backups are always encrypted; a zip asks for the passphrase only if it is encrypted. */}
-                      {(b.hasPassphrase || !isLegacyBackup(f.name)) && <RestoreButton name={f.name} created={f.lastModified ?? f.name} action={restore} />}
+                      {!me.demo && <a className="link" href={`/api/admin/backup?file=${encodeURIComponent(f.name)}`} download title="An unencrypted copy: keep it private">Download</a>}
+                      {/* Older .json.gz.enc backups need the passphrase they were made with. */}
+                      {(b.legacyPassphrase || !isLegacyBackup(f.name)) && <RestoreButton name={f.name} created={f.lastModified ?? f.name} action={restore} />}
                     </div>
                   </td>
                 </tr>
