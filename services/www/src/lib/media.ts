@@ -323,7 +323,11 @@ export async function mediaUsage(ids: string[]): Promise<Map<string, number>> {
   // Logos, banners, icons and share images selected in Admin → Appearance (published or draft).
   const { configMediaIds } = await import("./site-config/store");
   const fromConfig = await configMediaIds().catch(() => new Map<string, number>());
-  for (const id of ids) out.set(id, texts.filter((t) => t.includes(`${MEDIA_PREFIX}${id}/`)).length + (fromConfig.get(id) ?? 0));
+  // One pass over every text (the library asks for all files at once): the number of posts/pages naming each id.
+  const inTexts = new Map<string, number>();
+  const ref = new RegExp(`${MEDIA_PREFIX.replace(/\//g, "\\/")}([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\/`, "g");
+  for (const t of texts) for (const id of new Set([...t.matchAll(ref)].map((m) => m[1]!))) inTexts.set(id, (inTexts.get(id) ?? 0) + 1);
+  for (const id of ids) out.set(id, (inTexts.get(id) ?? 0) + (fromConfig.get(id) ?? 0));
   return out;
 }
 

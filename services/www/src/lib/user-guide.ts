@@ -167,11 +167,12 @@ const guides: GuideEntry[] = [
     title: "Media library",
     summary: "Upload images, video, audio and PDFs; see where each file is used.",
     href: "/admin/media",
-    keywords: ["images", "upload", "files", "video", "audio", "pdf", "r2", "storage", "generate image", "ai image"],
+    keywords: ["images", "upload", "files", "video", "audio", "pdf", "r2", "storage", "generate image", "ai image", "unused", "bulk delete", "select"],
     body: [
       "Media keeps every uploaded file. Images are served in modern formats (AVIF/WebP) at the right size for each screen.",
       "Images up to 10 MB upload through the site; video, audio and PDFs up to 200 MB upload directly to storage.",
       "A file shows where it is used, and cannot be deleted while a post still uses it. Removing an image from a post never deletes the file.",
+      "Filter by usage to find Unused files (not named by any post, page or site setting); a notice at the top says how many there are and how much space they take. Press Bulk select, then Select all on page, or Select all matching to take every unused file across pages (up to 200 at a time), and Delete permanently. Files still in use are always kept.",
       "Generate image creates a picture with AI (when it is configured in Integrations); you choose whether to keep it.",
     ],
   },
@@ -236,6 +237,10 @@ const guides: GuideEntry[] = [
     body: [
       "Claude drafts improvements and new articles; they wait here for a person. Nothing goes live until you approve an article.",
       "Approving publishes it and submits it to search engines. The sidebar badge shows how many drafts are ready.",
+      "Tabs: Articles, News, Not reviewed and Published, each with its count. Filter by search, status (ready, being written, failed, scheduled), kind (optimisation or new article), change type, priority and age, and sort by priority, date or number of changes.",
+      "- Not reviewed lists published articles that were never reviewed, or not in the last 90 days, and have no draft in the queue, oldest first, with when they were last reviewed and their open recommendations. Review now (one article) or select up to 25 and press Review selected.",
+      "- Rescan for re-review, at the top, sends the next 5, 10 or 25 articles on that list for an AI review: each gets a fresh check of its facts, versions, links, title and meta description. Each one is a model run with a cost, so you confirm first. The drafts appear under Articles as they finish.",
+      "- Select drafts to Regenerate them (a fresh review replaces their pending changes) or Reject them together. Approving stays one article at a time, from its review page.",
     ],
   },
   {
