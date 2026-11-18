@@ -111,4 +111,31 @@ describe("drafts and related posts", () => {
     expect((await publishPost(admin, post.id, {})).status).toBe("published");
     await expect(updatePost(admin, post.id, { related: [`blog/${valid.slug}`] })).rejects.toMatchObject({ issues: [expect.stringMatching(/cannot be related to itself/)] });
   });
+
+  it("drops a related post that is gone from a published post instead of refusing every later edit", async () => {
+    const { createPost, publishPost, updatePost } = await import("@/lib/posts");
+    const post = await createPost(admin, { ...valid, related: ["blog/github-actions-authenticate-minikube"] });
+    await publishPost(admin, post.id, {});
+    // The related post was deleted or renamed outside this post (the state six live posts were in).
+    await db.update(schema.post).set({ related: ["blog/github-actions-authenticate-minikube", "blog/deleted-long-ago"] }).where(eq(schema.post.id, post.id));
+    const edited = await updatePost(admin, post.id, { title: "A fresh post, edited after its related post was deleted" });
+    expect(edited.related).toEqual(["blog/github-actions-authenticate-minikube"]);
+    expect(edited.warnings).toEqual([expect.stringMatching(/"blog\/deleted-long-ago" no longer exists and was removed/)]);
+    // A new reference to a post that does not exist is still refused.
+    await expect(updatePost(admin, post.id, { related: ["blog/invented-slug"] })).rejects.toMatchObject({ issues: [expect.stringMatching(/"blog\/invented-slug" does not exist/)] });
+  });
+
+  it("keeps related links pointing at a post when it is renamed, and drops them when it is deleted", async () => {
+    const { createPost, deletePostPermanently, publishPost, trashPost, updatePost } = await import("@/lib/posts");
+    const target = await createPost(admin, { ...valid, slug: "target-post" });
+    const other = await createPost(admin, { ...valid, slug: "other-post", related: ["blog/target-post"] });
+    await publishPost(admin, other.id, {});
+    await updatePost(admin, target.id, { slug: "renamed-target" });
+    const [afterRename] = await db.select({ related: schema.post.related }).from(schema.post).where(eq(schema.post.id, other.id));
+    expect(afterRename!.related).toEqual(["blog/renamed-target"]);
+    await trashPost(admin, target.id);
+    await deletePostPermanently(admin, target.id);
+    const [afterDelete] = await db.select({ related: schema.post.related }).from(schema.post).where(eq(schema.post.id, other.id));
+    expect(afterDelete!.related).toEqual([]);
+  });
 });
