@@ -80,12 +80,38 @@ export async function handOffForPost(postId: string): Promise<boolean> {
   }
 }
 
+type Note = { severity: string; message: string };
+
+const words = (s: string) => (s.toLowerCase().match(/[a-z0-9]+/g) ?? []).join(" ");
+
+/**
+ * One note per claim. Drafts made before the seo-agent merged flags by their words list most claims twice: the SEO
+ * editor's copy (backticks dropped, "->" for "→") and the reviewer's. Compared on words, the shorter of two notes that
+ * start the same way is dropped; an error outranks a warning.
+ */
+export function uniqueNotes<T extends Note>(notes: T[]): T[] {
+  const out: { key: string; note: T }[] = [];
+  for (const note of notes) {
+    const key = words(note.message);
+    const i = out.findIndex((o) => o.key === key || o.key.startsWith(`${key} `) || key.startsWith(`${o.key} `));
+    if (i === -1) {
+      out.push({ key, note });
+      continue;
+    }
+    const kept = out[i]!;
+    const longer = key.length > kept.key.length ? { key, note } : kept;
+    const error = note.severity === "error" || kept.note.severity === "error";
+    out[i] = { key: longer.key, note: error ? { ...longer.note, severity: "error" } : longer.note };
+  }
+  return out.map((o) => o.note);
+}
+
 /** The crew's notes for a post's latest calendar draft (shown in the CMS editor). */
-export async function crewNotesForPost(postId: string): Promise<{ flags: { severity: string; message: string }[]; incomplete: string | null } | null> {
+export async function crewNotesForPost(postId: string): Promise<{ flags: Note[]; incomplete: string | null } | null> {
   const db = await getDb();
   const [d] = rowsOf<{ flags: unknown; document: unknown }>(await db.execute(sql`select flags, document from seo_drafts where article_id = ${postId} and kind = 'new_article' and calendar_id is not null order by created_at desc limit 1`));
   if (!d) return null;
-  const flags = (typeof d.flags === "string" ? JSON.parse(d.flags) : d.flags) as { severity: string; message: string; code?: string }[] | null;
+  const flags = (typeof d.flags === "string" ? JSON.parse(d.flags) : d.flags) as (Note & { code?: string })[] | null;
   const doc = asObj(d.document) ?? {};
-  return { flags: (flags ?? []).filter((f) => f.code !== "incomplete"), incomplete: doc.incomplete ? String(doc.incomplete_reason ?? "the crew stopped early") : null };
+  return { flags: uniqueNotes((flags ?? []).filter((f) => f.code !== "incomplete")), incomplete: doc.incomplete ? String(doc.incomplete_reason ?? "the crew stopped early") : null };
 }

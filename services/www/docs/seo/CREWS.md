@@ -64,7 +64,9 @@ official documentation sites in `services/seo-agent/app/config.py` (`DEFAULT_DOC
 `services/www/src/lib/seo-agent/config.ts`; a test keeps the two equal. It covers the tools the site writes about
 (Kubernetes, Helm, Docker, Istio, Kong, Argo CD, Karpenter, KEDA, Velero, Cilium, Linkerd, Prometheus, Grafana,
 OpenTelemetry, AWS, Google Cloud, Azure, Terraform, Ansible, GitHub, GitLab, Cloudflare, PostgreSQL, Redis, Next.js,
-React, Node.js, Go, Python, FastAPI, Pydantic, CrewAI, LangChain, Claude, MCP). Forums, blogs and code hosts are not on it.
+React, Node.js, Go, Python, FastAPI, Pydantic, CrewAI, LangChain, Claude, MCP) and Linux itself: the man-pages
+project (man7.org), systemd (www.freedesktop.org, systemd.io), the kernel (docs.kernel.org) and GNU manuals such as
+GRUB (www.gnu.org). Forums, blogs and code hosts are not on it.
 
 ## Optimization Crew (existing articles)
 
