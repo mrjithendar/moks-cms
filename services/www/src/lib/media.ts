@@ -278,7 +278,7 @@ export async function resolveImage(src: string): Promise<ResolvedImage | undefin
   if (local) return { src: local.src, width: local.width, height: local.height, svg: local.svg };
   // Otherwise a site image in R2. Pages request its stored form (the .webp of a pushed .png).
   const pushed = await findSiteImage(src);
-  return pushed ? { src: pushed.servedPath, width: pushed.width, height: pushed.height, svg: pushed.contentType === "image/svg+xml" } : undefined;
+  return pushed && pushed.contentType.startsWith("image/") ? { src: pushed.servedPath, width: pushed.width, height: pushed.height, svg: pushed.contentType === "image/svg+xml" } : undefined;
 }
 
 export type ResolvedMedia = { src: string; kind: MediaKind; contentType: string; alt: string };

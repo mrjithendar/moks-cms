@@ -1,13 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, ne, or } from "drizzle-orm";
 import { imageSize } from "image-size";
 import { getDb, schema } from "@/db";
 import { audit } from "./audit";
-import { IMAGE_PREFIX, MAX_IMAGE_BYTES } from "./images";
+import { IMAGE_PREFIX } from "./images";
 import { log } from "./log";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
-import { deleteObject, getObjectBytes, putObject, storageReady } from "./storage";
+import { copyObject, deleteObject, getObject, getObjectBytes, headObject, IMMUTABLE, presignPut, putObject, storageReady, TMP_ROOT } from "./storage";
 
 /**
  * Site images in R2: the files a site keeps under public/images/ and its content refers to as /images/...
@@ -25,9 +25,29 @@ import { deleteObject, getObjectBytes, putObject, storageReady } from "./storage
  * The row then has two paths: `path`, as pushed and as content refers to it (/images/a/b.png), and `servedPath`, what
  * pages request (/images/a/b.webp). The .png URL keeps answering, with a PNG made from the stored WebP, so social
  * cards, feeds and old links that name the .png get a PNG.
+ *
+ * Besides images, a site keeps documents and media there too: PDF, MP4, WebM and MP3 (FILE_TYPES). They are never
+ * converted or measured (width and height 0) and are streamed with Range support, or redirected to R2's public domain
+ * when one is configured. A file up to SITE_FILE_DIRECT_MAX_BYTES can be sent in one PUT; a larger one (a video)
+ * goes straight to R2 with startSiteFileUpload (a presigned PUT to a staging key) and completeSiteFileUpload (size,
+ * SHA-256 and type checked, then copied into place), so a failed or wrong upload never replaces the live file.
  */
 export const SITE_IMAGE_ROOT = "jithendar/www/site-images";
-export const SITE_IMAGE_MAX_BYTES = MAX_IMAGE_BYTES;
+const MB = 1024 * 1024;
+/** Raster images: read whole (converted, measured, kept in memory). */
+export const SITE_IMAGE_MAX_BYTES = 20 * MB;
+/** The most one PUT may carry (under Cloudflare's 100 MB request limit, and read into memory). */
+export const SITE_FILE_DIRECT_MAX_BYTES = 20 * MB;
+/** Documents and media: never read whole on serving. Larger than SITE_FILE_DIRECT_MAX_BYTES → direct upload. */
+export const FILE_TYPES: Record<string, { contentType: string; maxBytes: number }> = {
+  pdf: { contentType: "application/pdf", maxBytes: 100 * MB },
+  mp4: { contentType: "video/mp4", maxBytes: 500 * MB },
+  webm: { contentType: "video/webm", maxBytes: 500 * MB },
+  mp3: { contentType: "audio/mpeg", maxBytes: 100 * MB },
+};
+const UPLOAD_TTL_SECONDS = 600;
+const UPLOAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
 /** Same as next.config.ts sends for /images/ files on disk: a day, then revalidate in the background for a week. */
 export const SITE_IMAGE_CACHE = "public, max-age=86400, stale-while-revalidate=604800";
 const SVG_MAX_BYTES = 2 * 1024 * 1024;
@@ -45,6 +65,12 @@ const EXT_TYPES: Record<string, string> = {
   gif: "image/gif",
   svg: SVG,
 };
+
+/** Every extension a site file may have: images (EXT_TYPES) and documents and media (FILE_TYPES). */
+const ALL_TYPES: Record<string, string> = { ...EXT_TYPES, ...Object.fromEntries(Object.entries(FILE_TYPES).map(([ext, t]) => [ext, t.contentType])) };
+
+/** True for a stored image (served whole, from memory); false for a document or media file (streamed). */
+export const isImageType = (contentType: string) => contentType.startsWith("image/");
 
 /** One path segment: letters, digits, dot, underscore, hyphen; starts with a letter or digit (no dot files). */
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -99,7 +125,7 @@ export function siteImagePath(segments: readonly string[]): string {
   }
   const path = `${IMAGE_PREFIX}${segments.join("/")}`;
   if (path.length > MAX_PATH) throw bad(`longer than ${MAX_PATH} characters`);
-  if (!(extOf(path) in EXT_TYPES) || !segments.at(-1)!.includes(".")) throw bad(`the file name must end in ${Object.keys(EXT_TYPES).map((e) => `.${e}`).join(", ")}`);
+  if (!(extOf(path) in ALL_TYPES) || !segments.at(-1)!.includes(".")) throw bad(`the file name must end in ${Object.keys(ALL_TYPES).map((e) => `.${e}`).join(", ")}`);
   return path;
 }
 
@@ -136,11 +162,36 @@ export function svgProblem(bytes: Buffer): string | null {
   return null;
 }
 
+/** The type of a document or media file, from its first bytes; null for anything else. */
+export function sniffFile(b: Buffer): string | null {
+  if (b.length < 12) return null;
+  const head = b.subarray(0, 12).toString("latin1");
+  if (head.startsWith("%PDF-")) return "application/pdf";
+  if (head.slice(4, 8) === "ftyp" && !["avif", "avis"].includes(head.slice(8, 12))) return "video/mp4";
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
+  if (head.startsWith("ID3") || (b[0] === 0xff && (b[1]! & 0xe0) === 0xe0)) return "audio/mpeg";
+  return null;
+}
+
+/** Why a document or media file of this name, size and first bytes is refused, or null. */
+function fileProblem(path: string, size: number, head: Buffer): string | null {
+  const rule = FILE_TYPES[extOf(path)]!;
+  if (size > rule.maxBytes) return `.${extOf(path)} files must be ${rule.maxBytes / MB} MB or smaller`;
+  const found = sniffFile(head);
+  if (found !== rule.contentType) return `the file is ${found ?? "not a supported file"}, but its name says ${rule.contentType}`;
+  return null;
+}
+
 type Inspected = { contentType: string; width: number; height: number };
 
 /** Validate a pushed file by its content: the type its name says, readable, sane size. */
 function inspect(path: string, bytes: Buffer): Inspected {
   if (bytes.length === 0) throw new PostError("The file is empty.", 400);
+  if (extOf(path) in FILE_TYPES) {
+    const problem = fileProblem(path, bytes.length, bytes);
+    if (problem) throw new PostError(`${path}: ${problem}.`, problem.includes("MB or smaller") ? 413 : 400);
+    return { contentType: FILE_TYPES[extOf(path)]!.contentType, width: 0, height: 0 };
+  }
   if (bytes.length > SITE_IMAGE_MAX_BYTES) throw new PostError(`Site images must be ${SITE_IMAGE_MAX_BYTES / 1024 / 1024} MB or smaller.`, 413);
   const expected = EXT_TYPES[extOf(path)]!;
   if (expected === SVG) {
@@ -276,10 +327,14 @@ export type PutSiteImageResult = SiteImageInfo & { created: boolean; unchanged: 
  * tool can send every file each time. Only an admin (or an API key an admin owns) may do this: a site image can be
  * part of any page, not only of the caller's own posts.
  */
-export async function putSiteImage(actor: Actor, path: string, bytes: Buffer): Promise<PutSiteImageResult> {
+async function assertCanPush(actor: Actor, path: string) {
   if (actor.role !== "admin") throw new PostError("Only an admin (or an API key that belongs to an admin) can push site images.", 403);
-  if (!SRC.test(path) || !(extOf(path) in EXT_TYPES)) throw new PostError("Not a valid image path.", 400);
+  if (!SRC.test(path) || !(extOf(path) in ALL_TYPES)) throw new PostError("Not a valid image path.", 400);
   if (!(await storageReady())) throw new PostError("Media storage (Cloudflare R2) is not configured. An admin must set it up under Admin → Storage first.", 409);
+}
+
+export async function putSiteImage(actor: Actor, path: string, bytes: Buffer): Promise<PutSiteImageResult> {
+  await assertCanPush(actor, path);
   const checked = inspect(path, bytes);
   const sourceSha256 = sha256(bytes);
   const db = await getDb();
@@ -316,5 +371,90 @@ export async function putSiteImage(actor: Actor, path: string, bytes: Buffer): P
   if (existing && existing.storageKey !== storageKey) await deleteObject(existing.storageKey).catch((err) => log.warn("old site image object not deleted", { event: "site_image_cleanup_failed", err }));
   for (const key of new Set([path, servedPath, existing?.servedPath ?? path])) forget(key);
   await audit(actor, existing ? "site_image.replace" : "site_image.create", path, { servedPath, bytes: stored.length, sourceBytes: bytes.length });
+  return { ...info(row!), created: !existing, unchanged: false };
+}
+
+// --- Direct upload of a large document or media file ----------------------------------------------
+
+export type SiteFileUpload = { upload: string; uploadUrl: string; headers: Record<string, string>; expiresInSeconds: number };
+
+const stagingKey = (path: string, upload: string) => `${TMP_ROOT}/site-files/${upload}.${extOf(path)}`;
+
+function declared(input: { size?: unknown; sha256?: unknown }): { size: number; sha256: string } {
+  const { size, sha256: hash } = input;
+  if (typeof size !== "number" || !Number.isInteger(size) || size <= 0) throw new PostError("size must be the file's length in bytes.", 400);
+  if (typeof hash !== "string" || !SHA256.test(hash)) throw new PostError("sha256 must be the file's SHA-256 (64 lowercase hex digits).", 400);
+  return { size, sha256: hash };
+}
+
+/**
+ * Step 1 of a large upload: a presigned PUT (10 minutes) for exactly this type and size, to a staging key. Only for
+ * documents and media (FILE_TYPES); images go in one PUT (putSiteImage).
+ */
+export async function startSiteFileUpload(actor: Actor, path: string, input: { size?: unknown; sha256?: unknown }): Promise<SiteFileUpload> {
+  await assertCanPush(actor, path);
+  const rule = FILE_TYPES[extOf(path)];
+  if (!rule) throw new PostError(`${path}: images are sent in one PUT (at most ${SITE_IMAGE_MAX_BYTES / MB} MB); a direct upload is for ${Object.keys(FILE_TYPES).map((e) => `.${e}`).join(", ")} files.`, 400);
+  const { size } = declared(input);
+  if (size > rule.maxBytes) throw new PostError(`${path}: .${extOf(path)} files must be ${rule.maxBytes / MB} MB or smaller.`, 413);
+  const upload = randomUUID();
+  const uploadUrl = await presignPut(stagingKey(path, upload), rule.contentType, size, UPLOAD_TTL_SECONDS);
+  return { upload, uploadUrl, headers: { "Content-Type": rule.contentType, "Cache-Control": IMMUTABLE }, expiresInSeconds: UPLOAD_TTL_SECONDS };
+}
+
+/**
+ * Step 2: check what reached the staging key (size, SHA-256, real type) and copy it into place. Anything wrong is
+ * deleted and the live file stays as it was.
+ */
+export async function completeSiteFileUpload(actor: Actor, path: string, input: { upload?: unknown; size?: unknown; sha256?: unknown }): Promise<PutSiteImageResult> {
+  await assertCanPush(actor, path);
+  const rule = FILE_TYPES[extOf(path)];
+  if (!rule) throw new PostError(`${path}: not a document or media file.`, 400);
+  if (typeof input.upload !== "string" || !UPLOAD_ID.test(input.upload)) throw new PostError("upload must be the id that starting the upload returned.", 400);
+  const { size, sha256: sourceSha256 } = declared(input);
+  const staged = stagingKey(path, input.upload);
+  const reject = async (why: string, status = 400): Promise<never> => {
+    await deleteObject(staged).catch(() => undefined);
+    throw new PostError(`${path}: ${why}.`, status);
+  };
+
+  const head = await headObject(staged);
+  if (!head) throw new PostError(`${path}: the file did not arrive (or the upload expired). Start the upload again.`, 409);
+  if (head.size !== size) await reject(`${head.size} bytes arrived, but ${size} were declared`);
+  const res = await getObject(staged);
+  if (!res?.Body) await reject("the uploaded file could not be read back", 503);
+  const hash = createHash("sha256");
+  let first = Buffer.alloc(0);
+  for await (const chunk of res!.Body as AsyncIterable<Uint8Array>) {
+    hash.update(chunk);
+    if (first.length < 32) first = Buffer.concat([first, Buffer.from(chunk)]);
+  }
+  if (hash.digest("hex") !== sourceSha256) await reject("the file was corrupted in transit (checksum mismatch). Send it again");
+  const problem = fileProblem(path, size, first);
+  if (problem) await reject(problem, problem.includes("MB or smaller") ? 413 : 400);
+
+  const db = await getDb();
+  const [existing] = await db.select().from(schema.siteImage).where(eq(schema.siteImage.path, path));
+  if (existing && existing.sourceSha256 === sourceSha256) {
+    await deleteObject(staged).catch(() => undefined);
+    return { ...info(existing), created: false, unchanged: true };
+  }
+  const [clash] = await db
+    .select({ path: schema.siteImage.path })
+    .from(schema.siteImage)
+    .where(and(ne(schema.siteImage.path, path), eq(schema.siteImage.servedPath, path)));
+  if (clash) await reject(`would share a URL with ${clash.path}, which is already stored. Rename one of the two files`, 409);
+
+  const storageKey = siteImageKey(path);
+  await copyObject(staged, storageKey, { contentType: rule.contentType, cacheControl: SITE_IMAGE_CACHE });
+  await deleteObject(staged).catch((err) => log.warn("staged site file not deleted", { event: "site_file_cleanup_failed", err }));
+  const values = { servedPath: path, storageKey, contentType: rule.contentType, sizeBytes: size, sourceBytes: size, sourceSha256, width: 0, height: 0, uploadedBy: actor.id, updatedAt: new Date() };
+  const [row] = await db
+    .insert(schema.siteImage)
+    .values({ path, ...values })
+    .onConflictDoUpdate({ target: schema.siteImage.path, set: values })
+    .returning();
+  forget(path);
+  await audit(actor, existing ? "site_image.replace" : "site_image.create", path, { servedPath: path, bytes: size, sourceBytes: size, direct: true });
   return { ...info(row!), created: !existing, unchanged: false };
 }
