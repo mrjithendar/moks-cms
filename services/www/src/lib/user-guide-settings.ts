@@ -317,13 +317,15 @@ const INTEGRATIONS: SettingsGroup[] = [
   {
     id: "storage-r2",
     area: "Storage",
-    title: "Media storage (Cloudflare R2)",
+    title: "Media storage (Cloudflare R2 or Amazon S3)",
     href: "/admin/storage",
     rows: [
-      r("Account ID", "Cloudflare dashboard → R2 → Account details (32 characters)."),
-      r("Bucket / Access key ID / Secret access key", "An R2 API token scoped to this bucket (Object Read & Write). Leave the secret empty to keep it."),
-      r("Public media URL (optional)", "A custom domain connected to the bucket; empty serves everything through the site."),
-      r("API endpoint override (optional)", "Only for an EU/FedRAMP jurisdiction bucket."),
+      r("Storage provider", "Cloudflare R2 (no egress fees) or Amazon S3 (any AWS region). Settings saved before 2026-11-18 are R2."),
+      r("Account ID", "R2 only: Cloudflare dashboard → R2 → Account details (32 characters)."),
+      r("Region", "S3 only: the bucket's AWS region, such as us-east-1 or ap-south-1."),
+      r("Bucket / Access key ID / Secret access key", "R2: an API token scoped to this bucket (Object Read & Write). S3: an IAM user's key limited to this bucket. Leave the secret empty to keep it."),
+      r("Public media URL (optional)", "A custom domain (R2) or a CloudFront distribution (S3) in front of the bucket; empty serves everything through the site."),
+      r("API endpoint override (optional)", "Only for an R2 EU/FedRAMP jurisdiction bucket, or an S3-compatible service such as MinIO."),
     ],
   },
   {

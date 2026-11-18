@@ -129,7 +129,7 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
         title="Media library"
         description={
           <>
-            {totals?.files ?? 0} file(s) · {size(Number(totals?.bytes ?? 0))} in Cloudflare R2. Links (<code className="text-xs">/media/…</code>) never change, even if the storage does.
+            {totals?.files ?? 0} file(s) · {size(Number(totals?.bytes ?? 0))} in media storage. Links (<code className="text-xs">/media/…</code>) never change, even if the storage does.
           </>
         }
       />
@@ -141,7 +141,7 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
       ) : (
         <div className="mb-6">
           <Alert tone="info">
-            Uploads are disabled until media storage is configured. <Link href="/admin/storage" className="font-semibold underline">Configure Cloudflare R2</Link>.
+            Uploads are disabled until media storage is configured. <Link href="/admin/storage" className="font-semibold underline">Configure Cloudflare R2 or Amazon S3</Link>.
           </Alert>
         </div>
       )}

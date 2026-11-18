@@ -457,5 +457,7 @@ export async function lancedbStorage() {
     return { configured: false };
   }
   if (!c) return { configured: false };
-  return { configured: true, uri: `s3://${c.bucket}/${LANCEDB_PREFIX}`, endpoint: c.endpoint, accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey(), region: "auto" };
+  // Amazon S3 without a custom endpoint: the agent's object store finds AWS from the region (an empty value is dropped).
+  const endpoint = c.provider === "s3" && !c.customEndpoint ? "" : c.endpoint;
+  return { configured: true, uri: `s3://${c.bucket}/${LANCEDB_PREFIX}`, endpoint, accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey(), region: c.region };
 }

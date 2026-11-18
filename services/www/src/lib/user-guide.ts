@@ -614,13 +614,15 @@ const guides: GuideEntry[] = [
     kind: "guide",
     section: "Site settings",
     title: "Storage",
-    summary: "Where media, invoices, backups and the SEO agent's data are stored (Cloudflare R2).",
+    summary: "Where media, invoices, backups and the SEO agent's data are stored: Cloudflare R2 or Amazon S3.",
     href: "/admin/storage",
     adminOnly: true,
-    keywords: ["r2", "s3", "storage", "bucket", "media", "uploads"],
+    keywords: ["r2", "s3", "amazon", "aws", "cloudflare", "storage", "bucket", "media", "uploads", "region"],
     body: [
       "Keys are encrypted at rest and never shown again; leave a secret field empty to keep the stored value.",
-      "- Media storage (Cloudflare R2): account ID, bucket, an access key ID and secret scoped to that bucket, an optional public media URL (a custom domain for large files) and an optional API endpoint for EU/FedRAMP buckets. A one-time tool moves existing media from S3 to R2.",
+      "- Choose the provider: Cloudflare R2 (account ID) or Amazon S3 (region). Then the bucket, an access key ID and secret scoped to that bucket, an optional public media URL (a custom domain or CloudFront, for large files) and an optional API endpoint (an R2 jurisdiction, or an S3-compatible service). Save and test connection checks it before uploads are enabled.",
+      "- With Amazon S3, large uploads go from the browser straight to the bucket: its CORS configuration must allow PUT from this site with the Content-Type and Cache-Control headers.",
+      "- From the deployment instead: R2_* variables, or S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (S3_ENDPOINT and S3_PUBLIC_BASE_URL optional). A one-time tool moves media kept in the old S3 bucket of 2026-10 to the configured storage.",
     ],
   },
   {

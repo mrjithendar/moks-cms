@@ -150,7 +150,7 @@ describe("settings reference", () => {
   it("mentions every field label of the Appearance, Integrations, Storage and Email forms", async () => {
     const { settingsReference } = await import("@/lib/user-guide-settings");
     const text = norm(settingsReference().map((g) => `${g.title} ${g.description ?? ""} ${g.rows.map((r) => `${r.name} ${r.help ?? ""}`).join(" ")}`).join(" "));
-    const files = ["src/app/admin/appearance/panels.tsx", "src/app/admin/integrations/page.tsx", "src/app/admin/storage/page.tsx", "src/app/admin/email/EmailSettings.tsx"];
+    const files = ["src/app/admin/appearance/panels.tsx", "src/app/admin/integrations/page.tsx", "src/app/admin/storage/page.tsx", "src/app/admin/storage/StorageForm.tsx", "src/app/admin/email/EmailSettings.tsx"];
     const missing: string[] = [];
     for (const f of files) {
       for (const m of read(f).matchAll(/\blabel="([^"]{3,})"/g)) {

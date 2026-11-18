@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
-import { Alert, Button, Field, Input } from "@/components/ui/form";
+import { Alert, Button } from "@/components/ui/form";
 import { adminActor, actorOf } from "@/lib/admin";
 import { flash } from "@/lib/flash";
 import { migrateBatch, migrationStatus, rollbackMigration } from "@/lib/media-migration";
 import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
-import { MEDIA_ROOT, saveStorageConfig, storageSummary } from "@/lib/storage";
+import { MEDIA_ROOT, PROVIDER_LABEL, saveStorageConfig, storageSummary } from "@/lib/storage";
+import { StorageForm } from "./StorageForm";
 
 export const metadata = { title: "Storage" };
 
@@ -16,8 +16,10 @@ async function saveStorage(form: FormData) {
   "use server";
   const actor = await adminActor();
   await flash("/admin/storage", async () => {
+    const provider = form.get("provider") === "s3" ? "s3" : "r2";
     const r = await saveStorageConfig(actor, {
-      accountId: String(form.get("accountId") ?? ""),
+      provider,
+      ...(provider === "s3" ? { region: String(form.get("region") ?? "") } : { accountId: String(form.get("accountId") ?? "") }),
       endpoint: String(form.get("endpoint") ?? ""),
       bucket: String(form.get("bucket") ?? ""),
       publicBaseUrl: String(form.get("publicBaseUrl") ?? ""),
@@ -25,7 +27,7 @@ async function saveStorage(form: FormData) {
       secretAccessKey: String(form.get("secretAccessKey") ?? ""),
     });
     if (!r.verified) throw new PostError(`Saved, but the connection test failed, so uploads stay disabled: ${r.error}`);
-    return "Cloudflare R2 connected. Uploads are enabled.";
+    return `${PROVIDER_LABEL[provider]} connected. Uploads are enabled.`;
   });
 }
 
@@ -55,12 +57,12 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
   const plan = sp.plan === "1" && migration.legacy > 0 && s?.verifiedAt && migration.sourceConfigured ? await migrateBatch(actorOf(me), { dryRun: true, limit: 25 }) : null;
   return (
     <>
-      <AdminHeader title="Storage" description="Where media, invoices, backups and the SEO agent's data are stored (Cloudflare R2). Keys are encrypted at rest and never shown again. Outgoing email is under Settings → Email." />
+      <AdminHeader title="Storage" description="Where media, invoices, backups and the SEO agent's data are stored: Cloudflare R2 or Amazon S3. Keys are encrypted at rest and never shown again. Outgoing email is under Settings → Email." />
       <Flash ok={sp.ok} error={sp.error} />
       <div className="space-y-6">
         <Card>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold text-fg">Media storage (Cloudflare R2)</h2>
+            <h2 className="font-semibold text-fg">Media storage{s ? ` (${PROVIDER_LABEL[s.provider]})` : ""}</h2>
             <StatusPill status={s?.verifiedAt ? "ok" : s ? "degraded" : "not configured"} />
           </div>
           <p className="mb-4 text-sm text-fg-muted">
@@ -69,25 +71,23 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
           </p>
           {fromEnv ? (
             <Alert tone="info">
-              Configured by the Kubernetes Secret (R2_* environment variables): bucket <strong>{s.bucket}</strong>, endpoint <span className="break-all">{s.endpoint}</span>
+              Configured by the Kubernetes Secret ({s.provider === "s3" ? "S3_*" : "R2_*"} environment variables): {PROVIDER_LABEL[s.provider]} bucket <strong>{s.bucket}</strong>{s.provider === "s3" ? ` in ${s.region}` : ""}, endpoint <span className="break-all">{s.endpoint}</span>
               {s.publicBaseUrl ? <>, public URL <span className="break-all">{s.publicBaseUrl}</span></> : ", no public URL (served through the site)"}. Change it in the Secret and redeploy.
             </Alert>
           ) : (
-            <form action={saveStorage} className="grid gap-4 sm:grid-cols-2">
-              <Field label="Account ID" htmlFor="accountId" hint="Cloudflare dashboard → R2 → Account details (32 characters).">
-                <Input id="accountId" name="accountId" defaultValue={s?.accountId ?? ""} required autoComplete="off" />
-              </Field>
-              <Field label="Bucket" htmlFor="bucket"><Input id="bucket" name="bucket" defaultValue={s?.bucket ?? ""} required /></Field>
-              <Field label="Access key ID" htmlFor="accessKeyId" hint="An R2 API token scoped to this bucket (Object Read & Write)."><Input id="accessKeyId" name="accessKeyId" defaultValue={s?.accessKeyId ?? ""} required autoComplete="off" /></Field>
-              <Field label="Secret access key" htmlFor="secretAccessKey" hint={s ? "Leave empty to keep the stored key." : undefined}><PasswordInput id="secretAccessKey" name="secretAccessKey" autoComplete="off" required={!s} /></Field>
-              <Field label="Public media URL (optional)" htmlFor="publicBaseUrl" hint="A custom domain connected to the bucket, e.g. https://media.jithendar.com. Leave empty to serve everything through the site.">
-                <Input id="publicBaseUrl" name="publicBaseUrl" type="url" defaultValue={s?.publicBaseUrl ?? ""} placeholder="https://media.example.com" />
-              </Field>
-              <Field label="API endpoint override (optional)" htmlFor="endpoint" hint="Only for an EU/FedRAMP jurisdiction bucket. Default: https://<account>.r2.cloudflarestorage.com">
-                <Input id="endpoint" name="endpoint" type="url" defaultValue={s?.endpoint && !s.endpoint.endsWith(`${s.accountId}.r2.cloudflarestorage.com`) ? s.endpoint : ""} />
-              </Field>
-              <div className="sm:col-span-2"><Button type="submit" className="w-full sm:w-auto">Save and test connection</Button></div>
-            </form>
+            <StorageForm
+              action={saveStorage}
+              initial={{
+                provider: s?.provider ?? "r2",
+                region: s?.region ?? "",
+                accountId: s?.accountId ?? "",
+                bucket: s?.bucket ?? "",
+                accessKeyId: s?.accessKeyId ?? "",
+                publicBaseUrl: s?.publicBaseUrl ?? "",
+                endpoint: s?.customEndpoint ? s.endpoint : "",
+                saved: Boolean(s),
+              }}
+            />
           )}
         </Card>
 
