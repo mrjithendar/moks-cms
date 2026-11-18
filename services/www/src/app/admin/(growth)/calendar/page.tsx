@@ -14,7 +14,7 @@ import { addDays } from "@/lib/seo-intel/sqlutil";
 
 export const metadata = { title: "Editorial calendar" };
 
-const SOURCE_LABEL: Record<CalendarItem["source"], string> = { measured: "Search Console", ml: "ML & analytics", editorial: "Editorial idea", manual: "Added by hand" };
+const SOURCE_LABEL: Record<CalendarItem["source"], string> = { measured: "Search Console", ml: "ML query clusters", analytics: "Google Analytics", ai: "AI (reader questions, Promotion)", editorial: "Editorial idea", manual: "Added by hand" };
 const SORTS = { date: "Date", priority: "Priority", title: "Title", newest: "Newest" } as const;
 type Sort = keyof typeof SORTS;
 const CHIP: Record<string, string> = {
