@@ -6,7 +6,7 @@ description: Weekly SEO review of a site in sites/ (host from sites/<domain>/sit
 # Weekly SEO review
 
 Needs the site's admin MCP server connected (`https://<host>/mcp/admin`, OAuth, scope `seo:read`; setup in
-`services/www/docs/seo/MCP.md`). Every number comes from a tool. Never estimate one, and quote values exactly as the
+`docs/seo/MCP.md`). Every number comes from a tool. Never estimate one, and quote values exactly as the
 tool returns them.
 
 ## Pick the site

@@ -1,0 +1,19 @@
+# Cache bus alerts (src/lib/cache-bus.ts), in the format of the miniKube repository's
+# deploy/minikube/observability/prometheus/files/alerts.yml. NOT applied from this repository (decision D-12):
+# scripts/build-alerts.py merges this group into docs/seo/alerts-for-minikube-repo.yaml for a person to copy there.
+# cache_bus_connected exists only on pods where CACHE_BUS_REDIS_URL is set, so without the bus the expression has no
+# data and the alert cannot fire. Labels: role (publisher | subscriber) only.
+groups:
+  - name: jithendar-com-cache-bus
+    rules:
+      # No site pod has a connected subscriber: edits reach the other replica only after the cache TTL.
+      # Warning, not critical: every page still works and each pod still clears its own caches at once.
+      - alert: CacheBusDisconnected
+        expr: max(cache_bus_connected{job="jithendar-com", role="subscriber"}) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Cache bus: no site pod is subscribed to Valkey for 15 minutes (caches converge only after their TTL)'
+          description: 'Check Admin → System status (Cache bus), the site logs (event cache_bus_subscriber), Secret jithendar/redis-site-cachebus-credentials, NetworkPolicy jithendar-com-cache-bus (pod port 6380) and the Valkey pods in namespace redis.'
+          runbook_url: 'https://github.com/moks-tech/moks-cms/blob/master/docs/redis-site-cachebus.md#troubleshooting'

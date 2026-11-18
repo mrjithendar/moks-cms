@@ -1,11 +1,22 @@
-# Dependencies, build output and local state (services/www/.gitignore adds Next.js specifics)
+# Dependencies, build output and local state
 node_modules/
 .next/
 out/
 coverage/
 *.tsbuildinfo
+next-env.d.ts
 .data/
 *.log
+
+# Links to (or, in CI and Docker, copies of) the site folder: scripts/use-site.mjs (SITE_DIR, SITE, or tests/fixtures/site).
+# Edit files in the site folder itself.
+/site
+/content
+/public/images
+
+# Playwright (e2e) output
+/test-results/
+/playwright-report/
 
 # Secrets: only the example is committed
 .env
@@ -21,7 +32,7 @@ jithendar-redis.yaml
 
 .DS_Store
 
-# Python (services/seo-agent/)
+# Python (scripts/*.py)
 __pycache__/
 .pytest_cache/
 .venv/

@@ -6,7 +6,7 @@ description: Review whether ChatGPT, Claude, Perplexity, Gemini and Google AI Ov
 # AI visibility review
 
 Needs the site's admin MCP server (`https://<host>/mcp/admin`, scope `seo:read`) and AI visibility switched on in Settings
-(`services/www/docs/seo/AI_VISIBILITY.md`). The data is API answers with web search, collected weekly. Say so when you
+(`docs/seo/AI_VISIBILITY.md`). The data is API answers with web search, collected weekly. Say so when you
 report it: the consumer apps can answer differently.
 
 ## Pick the site
