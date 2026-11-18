@@ -202,6 +202,13 @@ const settingsSchema = z.object({
     providers: z.object({ claude: z.boolean(), chatgpt: z.boolean(), perplexity: z.boolean(), gemini: z.boolean(), google_ai_overview: z.boolean() }),
     models: z.object({ claude: modelId.min(1), chatgpt: modelId, perplexity: modelId, gemini: modelId }),
   }),
+  /** Run history of the SEO agent's flows (CrewAI console, migration 0036): model-call transcripts and retention. */
+  runHistory: z.object({
+    /** Keep each model call's system prompt, prompt and answer (the agent reads this through GET /run-history/settings). */
+    transcripts: z.boolean(),
+    logRetentionDays: num(7, 365),
+    transcriptRetentionDays: num(1, 90),
+  }),
 });
 
 export type SeoSettings = z.infer<typeof settingsSchema> & { llmKey: Sealed | null };
@@ -283,6 +290,7 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     providers: { claude: true, chatgpt: false, perplexity: false, gemini: false, google_ai_overview: false },
     models: { claude: "claude-opus-5-5", chatgpt: "", perplexity: "sonar", gemini: "" },
   },
+  runHistory: { transcripts: true, logRetentionDays: 90, transcriptRetentionDays: 14 },
   llmKey: null,
 };
 
@@ -324,6 +332,7 @@ function merge(stored: Stored | undefined): SeoSettings {
       providers: { ...d.aiVisibility.providers, ...s.aiVisibility?.providers },
       models: { ...d.aiVisibility.models, ...s.aiVisibility?.models },
     },
+    runHistory: { ...d.runHistory, ...s.runHistory },
     llmKey: (s.llmKey as Sealed | null | undefined) ?? null,
   };
 }

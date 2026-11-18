@@ -240,6 +240,35 @@ finished_at, updated_at, triggered_by (cron · manual · approval · flow · mcp
   403 for the used approval. Against a web app without that, a non-transient error after a transient one makes the flow
   read the draft (`GET /drafts/{id}`): `published` by this approval (`publishedApprovalId`) counts as success.
 
+## Run history (CrewAI console)
+
+Admin → AI room → **CrewAI console** (`/admin/crewai`, D-97) shows every run like a GitHub Actions run: a number per
+flow, the steps, a log grouped by step, the model calls with their transcripts, the cost per agent and model, the
+runs it started, and Re-run / Cancel. Web migration 0036:
+
+| Table | Written by | What |
+|---|---|---|
+| `seo_flow_runs.run_number` | a `BEFORE INSERT` trigger (`seo_flow_run_counters`, `SECURITY DEFINER`) | `#N` per flow; a refused second active run takes no number |
+| `seo_flow_run_steps` | `SeoFlow.step()` (moks-seo-agent/app/flows/base.py) | one row per step: running → succeeded · failed · cancelled, seconds, error |
+| `seo_flow_run_logs` | `RunLogHandler` (moks-seo-agent/app/run_history.py) | the agent's own log records that belong to the run, written in batches every 0.5 s |
+| `seo_flow_run_calls` | `RecordingLlm` (same file) | each model call's system prompt, prompt and answer, while Run history → transcripts is on |
+
+- **Which lines:** a record belongs to a run when `CURRENT_RUN_ID` is set or the record carries `run_id` (crew worker
+  threads pass it with `extra=`). Its step is the one it names, else the step running in its task, else the run's open
+  step (worker threads do not inherit context variables). Library INFO lines (httpx, psycopg, anthropic) are kept at
+  debug. At most 20,000 lines a run; the rest stay in Loki only. Lines still go to stderr → Loki as before.
+- **Model calls:** every call of a flow run gets a `llm_call` line (agent, model, tokens, cost, seconds, outcome). The
+  transcript is stored while the setting is on (read through `GET /internal/seo-agent/run-history/settings`, cached
+  60 s; on when it cannot be read). Ask the Blog calls carry no run and are not recorded.
+- **Never breaks a run:** writes are best effort; with the tables missing or not granted (scripts/db-role.sql) nothing
+  is written. A run that ends with a step still open closes it (cancelled, or failed).
+- **Retention:** the daily `retention` job deletes log lines older than `runHistory.logRetentionDays` (90) and
+  transcripts older than `runHistory.transcriptRetentionDays` (14). Runs, steps and cost stay.
+- **Re-run** calls `POST /flows/{flow}/kickoff` (`triggered_by=manual`, the admin as actor) with the run's inputs or
+  edited ones (the agent validates them). Not offered for drafting flows (Regenerate in the review queue), publish_flow
+  (approval only), the news dispatcher (cron) and per-story news runs (the news run page). Cancel calls
+  `POST /flows/runs/{id}/cancel`.
+
 ## Scheduling
 
 One CronJob per scheduled flow (`kubernetes/seo-agent-60-flow-triggers.yaml`): `concurrencyPolicy: Forbid`,
@@ -267,7 +296,8 @@ review UI is unchanged (it reads the latest `seo_flow_runs` row for a draft).
 
 ## Operations
 
-- <a id="failed-runs"></a>**Failed runs:** Sync history and MCP `list_flow_runs(status=failed)` show the error; the
+- <a id="failed-runs"></a>**Failed runs:** the CrewAI console (`/admin/crewai/runs?status=failed`) shows the failed
+  step, its log and the model calls; Sync history and MCP `list_flow_runs(status=failed)` show the error; the
   state is kept in `state_json`. Fix the cause and rerun (the "Run now" button, the CronJob, or for drafts
   "Regenerate"). Alert `SeoFlowRepeatedFailures`.
 - **Stale flows:** `SeoFlowStale` fires when a flow hasn't succeeded within twice its schedule (from

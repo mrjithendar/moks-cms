@@ -226,9 +226,12 @@ describe("migration 0016", () => {
     await clean.execute(sql`insert into seo_flow_runs (run_id, flow_name, target_id, status, triggered_by) values (gen_random_uuid(), 'gsc_sync_flow', 'site', 'running', 'cron')`);
     await expect(clean.execute(sql`insert into seo_flow_runs (run_id, flow_name, target_id, status, triggered_by) values (gen_random_uuid(), 'gsc_sync_flow', 'site', 'queued', 'cron')`)).rejects.toThrow();
     await expect(clean.execute(sql`insert into seo_flow_runs (run_id, flow_name, target_id, status, triggered_by) values (gen_random_uuid(), 'publish_flow', 'x', 'running', 'mcp')`)).resolves.toBeDefined(); // the DB allows it; the agent's policy is what refuses
-    for (const stmt of fs.readFileSync(path.resolve(migrationsDir(), "../rollback/0016_seo_v4.down.sql"), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean)) await clean.execute(sql.raw(stmt));
+    // Rollbacks run newest first: 0036 (run history) hangs off seo_flow_runs.
+    for (const down of ["0036_flow_run_history.down.sql", "0016_seo_v4.down.sql"]) {
+      for (const stmt of fs.readFileSync(path.resolve(migrationsDir(), `../rollback/${down}`), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean)) await clean.execute(sql.raw(stmt));
+    }
     expect(await n()).toBe(0);
-    expect(await migrateDb(clean)).toEqual(["0016_seo_v4.sql"]);
+    expect(await migrateDb(clean)).toEqual(["0016_seo_v4.sql", "0036_flow_run_history.sql"]);
     await pg.close();
   });
 });

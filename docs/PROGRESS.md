@@ -1,5 +1,30 @@
 # Progress log — jithendar.com
 
+## CrewAI console, phase 1: runs and logs like GitHub Actions (2026-11-18, owner request)
+
+Owner: "seo-agent crews and jobs can be managed from jithendar.com/admin/crewai, can see all run logs like github
+actions … inspire from gh actions jenkins jobs". Decision record: docs/seo/DECISIONS.md **D-97**; how it works:
+docs/seo/FLOWS.md "Run history (CrewAI console)". Needs moks-tech/moks-seo-agent's run history change (it writes the
+steps, log and transcripts); without it the console lists runs with numbers, cost and errors only.
+
+- Migration `0036_flow_run_history.sql` (rollback in `src/db/rollback/`): `seo_flow_runs.run_number` + numbering trigger,
+  `seo_flow_run_steps`, `seo_flow_run_logs`, `seo_flow_run_calls`.
+- `src/lib/crewai/` (new): `flows.ts` (names, groups, re-run rules), `format.ts`, `runs.ts` (list, detail, log, transcripts,
+  overview, retention, the agent's settings callback).
+- Pages `/admin/crewai` (overview: last 24 h and 7 days, running now, runs per day, flow health, recent failures),
+  `/admin/crewai/runs` (filters in the URL, search by #N, ID, target, actor, error), `/admin/crewai/runs/[id]` (steps,
+  errors, summary and artifacts, live log grouped by step with search, levels, timestamps, line links, download and
+  transcripts, cost by agent and model, child runs, inputs and outputs, Re-run, Re-run with changed inputs, Cancel).
+  Components in `src/components/crewai/`.
+- API `GET|POST /api/admin/crewai/runs/[id]` (detail; rerun / cancel through the agent, audit-logged),
+  `GET /api/admin/crewai/runs/[id]/logs` (SSE, JSON page, text download), `GET /api/admin/crewai/calls/[id]`; callback
+  `GET /internal/seo-agent/run-history/settings`.
+- Settings: new section **Run history** (transcripts on, logs 90 days, transcripts 14 days); the daily `retention` job
+  deletes old lines and transcripts.
+- Menu: AI room → CrewAI console, Flow runs. User guide entry `crewai-console`.
+- Tests: `tests/crewai-console.test.ts` (15). No new dependency.
+- Manual: if the agent connects with its own role, re-run moks-seo-agent `scripts/db-role.sql` after this migration.
+
 ## Promotion: Strategies (2026-11-18, owner request)
 
 Owner: "improve content promotion, add different strategies to promote content". Details: docs/seo/PROMOTION.md

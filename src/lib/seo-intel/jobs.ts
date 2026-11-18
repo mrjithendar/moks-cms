@@ -267,7 +267,10 @@ async function runRetention(ctx: RunContext): Promise<RunOutcome> {
   }
   // Job history: keep a year.
   await ctx.db.execute(sql`delete from seo_sync_jobs where started_at < now() - interval '365 days'`);
-  return { status: "succeeded", rows, detail: { cutoff } };
+  // SEO agent run history (CrewAI console): log lines and model-call transcripts, per Run history settings.
+  const { purgeRunHistory } = await import("../crewai/runs");
+  const runHistory = await purgeRunHistory(ctx.db, ctx.settings.runHistory, ctx.now);
+  return { status: "succeeded", rows, detail: { cutoff, runHistory } };
 }
 
 // --- Queue + schedules -----------------------------------------------------------------------------------------
