@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdminHeader, Card } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { Badge, type Tone } from "@/components/seo/badges";
+import { CopyText } from "@/components/seo/CopyText";
 import { PromoDraftEditor } from "@/components/seo/PromoDraftEditor";
 import { PromotionSettingsForm } from "@/components/seo/PromotionSettingsForm";
 import { Empty, fmtInt, fmtWhen, Section } from "@/components/seo/ui";
@@ -10,10 +11,12 @@ import { CHANNELS } from "@/lib/seo-intel/promotion/channels";
 import { redditState } from "@/lib/seo-intel/promotion/reddit";
 import { CHANNEL_IDS, getPromotionSettings } from "@/lib/seo-intel/promotion/settings";
 import { listIdeas, listOpportunities, promotionCounts, type Idea, type Opportunity, type PromotedArticle } from "@/lib/seo-intel/promotion/store";
+import { promotionPlan, type Strategy } from "@/lib/seo-intel/promotion/strategies";
 
 export const metadata = { title: "Promotion" };
 
 const TABS = [
+  ["strategies", "Strategies"],
   ["drafts", "Posts to review"],
   ["opportunities", "Opportunities"],
   ["posted", "Posted"],
@@ -64,6 +67,52 @@ function OpportunityCard({ o }: { o: Opportunity }) {
         </>
       )}
     </li>
+  );
+}
+
+/** One strategy: what it is, how to do it, and the articles it applies to now, with the action that carries it out. */
+function StrategyCard({ s, canRun }: { s: Strategy; canRun: boolean }) {
+  const action = (i: Strategy["items"][number]) => {
+    switch (s.id) {
+      case "evergreen":
+        return <ApiButton url="/api/admin/seo/promotion/reshare" body={{ articleId: i.articleId }} label="Reshare" confirm={canRun ? "Reopen this article's channels and draft fresh posts with Claude? Nothing is posted." : "Reopen this article's channels so you can write fresh posts? Nothing is posted."} />;
+      case "refresh":
+        return <ApiButton url="/api/admin/seo/drafts" body={{ articleId: i.articleId, mode: "regenerate", extra: [{ id: "refresh-freshness", category: "freshness", problem: "Search clicks are falling: check that commands, versions, links and facts are current, and fix what is outdated." }, { id: "refresh-title-meta", category: "title_meta", problem: "Search clicks are falling: make the title and meta description match what searchers look for now." }] }} label="Refresh first" confirm="Send this article for an AI review (a model cost)? The draft waits in the review queue." />;
+      case "launch":
+        return canRun ? <ApiButton url="/api/admin/seo/promotion/run" body={{ kind: "opportunities", articleId: i.articleId }} label="Draft posts" confirm="Score channels for this article and draft posts with Claude?" /> : <Link className="link text-sm" href="?tab=drafts">Posts to review</Link>;
+      case "syndicate":
+        return <Link className="link text-sm" href="?tab=opportunities">dev.to / Hashnode drafts</Link>;
+      case "community":
+        return i.url ? <a className="link text-sm" href={i.url} target="_blank" rel="noopener noreferrer">Open thread ↗</a> : null;
+      case "internal":
+        return <Link className="link text-sm" href="/admin/links">Internal linking</Link>;
+      default:
+        return null;
+    }
+  };
+  return (
+    <Card>
+      <h3 className="text-base font-semibold text-fg">{s.title}</h3>
+      <p className="mt-1 text-sm text-fg-muted">{s.summary}</p>
+      <p className="mt-1 text-xs text-fg-subtle">How: {s.how}</p>
+      {s.digest ? (
+        <div className="mt-3"><CopyText text={s.digest} label="Copy the issue" /></div>
+      ) : s.items.length ? (
+        <ul className="mt-3 divide-y divide-line rounded-lg border border-line">
+          {s.items.map((i, n) => (
+            <li key={`${i.articleId}-${n}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              <div className="min-w-0">
+                <Link className="text-sm font-medium text-fg hover:underline [overflow-wrap:anywhere]" href={i.path} target="_blank">{i.title}</Link>
+                <p className="text-xs text-fg-subtle [overflow-wrap:anywhere]">{i.why}</p>
+              </div>
+              {action(i)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-fg-subtle">Nothing to do here right now.</p>
+      )}
+    </Card>
   );
 }
 
@@ -127,14 +176,15 @@ function IdeaCard({ idea }: { idea: Idea }) {
 
 export default async function PromotionPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
-  const tab: Tab = TABS.some(([t]) => t === sp.tab) ? (sp.tab as Tab) : "drafts";
+  const tab: Tab = TABS.some(([t]) => t === sp.tab) ? (sp.tab as Tab) : "strategies";
   const ideaStatus = sp.show === "dismissed" || sp.show === "sent" ? sp.show : undefined;
   const [settings, counts, reddit] = await Promise.all([getPromotionSettings(), promotionCounts(), redditState()]);
   const crewai = orchestrator() === "crewai";
   const canRun = settings.enabled && crewai;
   const articles = tab === "drafts" ? await listOpportunities({ status: "drafted" }) : tab === "opportunities" ? await listOpportunities({ status: sp.status === "dismissed" ? "dismissed" : "open" }) : tab === "posted" ? await listOpportunities({ status: "posted" }) : [];
   const ideas = tab === "ideas" ? await listIdeas({ status: ideaStatus }) : [];
-  const count: Record<Tab, number | null> = { drafts: counts.drafted, opportunities: counts.open, posted: counts.posted, ideas: counts.ideas, settings: null };
+  const plan = tab === "strategies" ? await promotionPlan() : [];
+  const count: Record<Tab, number | null> = { strategies: null, drafts: counts.drafted, opportunities: counts.open, posted: counts.posted, ideas: counts.ideas, settings: null };
   return (
     <>
       <AdminHeader
@@ -157,6 +207,12 @@ export default async function PromotionPage({ searchParams }: { searchParams: Pr
           </Link>
         ))}
       </nav>
+
+      {tab === "strategies" && (
+        <Section title="Strategies" description="Seven ways an article earns readers, each with the articles it applies to right now. Every action ends in drafts or links for you to review; nothing is posted automatically.">
+          <div className="grid gap-4 lg:grid-cols-2">{plan.map((s) => <StrategyCard key={s.id} s={s} canRun={canRun} />)}</div>
+        </Section>
+      )}
 
       {tab === "drafts" && (
         <Section title="Posts to review" description="Drafted by Claude from the article, in each channel's style. Edit, copy, post it yourself, then mark it as posted.">

@@ -1,50 +1,40 @@
 # Progress log — jithendar.com
 
-## Agent skills for every crew, managed on AI room → Skills (2026-11-18, owner request)
+## Promotion: Strategies (2026-11-18, owner request)
 
-Decision record: docs/seo/DECISIONS.md **D-96**; how it works: docs/seo/CREWS.md "Skills".
+Owner: "improve content promotion, add different strategies to promote content". Details: docs/seo/PROMOTION.md
+§ Strategies.
 
-- Web app: migration `0035_agent_skills.sql` (`seo_agent_skills`; rollback in `src/db/rollback/`),
-  `src/lib/seo-agent/skills.ts` (22 default skills covering all 16 crew agents, validation, create/edit/disable/reset/
-  delete with audit, the agent's list), admin API `/api/admin/seo/skills` (+ `[id]`, `[id]/reset`), callback
-  `GET /internal/seo-agent/skills`, page `/admin/automation/skills` (`SkillsManager`), menu entry under AI room, user
-  guide entry. `calendarBrief` fills a missing intent from the ML intent model (`mlIntentFor` in `ml.ts`).
-- seo-agent: `app/crews/skills.py` (fetch, per-agent selection by tags, activated CrewAI skills, run tags per crew),
-  `run_crew`/`build_agents` give each agent its skills in the cached system prompt; the Editorial, Optimization,
-  Report and News crews pass their run's tags. `HttpWebApp.agent_skills`.
-- Tests: `tests/agent-skills.test.ts` (10, including the page render), `tests/admin-nav.test.tsx` (Skills in the AI room), seo-agent
-  `tests/test_skills.py` (10) and the callback contract.
-- No new dependency. The agent's database role is unchanged.
+- `src/lib/seo-intel/promotion/strategies.ts` (new): `promotionPlan` (launch, evergreen reshare, refresh then reshare,
+  syndication, community answers, internal links, newsletter digest) and `reopenForReshare`.
+- `POST /api/admin/seo/promotion/reshare` (new). Refresh uses the existing `POST /api/admin/seo/drafts` with
+  freshness and title/meta tasks.
+- Promotion page: a Strategies tab, first and default, one card per strategy with its articles and action; the digest
+  in a copy box (`CopyText.tsx`).
+- User guide (promotion). Tests: `tests/promotion-strategies.test.ts` (2).
+- No migration, no new dependency. Nothing is posted automatically.
 
-## Storage: Amazon S3 next to Cloudflare R2 (2026-11-18, owner request)
+## System status: every service, grouped, with its settings page; backups without a passphrase (2026-11-18, owner request)
 
-Owner: "make separate storage and email menus and add S3 bucket support" (the menus came in #130).
+Owner: "backups should not have backup phrase. Review system status and add all the required checks, and links to the
+settings page, opened in a new window, to configure."
 
-- `src/lib/storage.ts`: a `provider` (`r2` default, `s3`) and `region` on the stored and env configuration; AWS's
-  regional endpoint (`https://s3.<region>.amazonaws.com`) with virtual-hosted requests, path-style kept for R2 and
-  custom endpoints (S3-compatible services); `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
-  (`S3_ENDPOINT`, `S3_PUBLIC_BASE_URL` optional) from the deployment; `storageInput` is a union per provider. Settings
-  saved before today have no provider and stay R2. Media, presigned uploads, site files, invoices and backups use the
-  same S3 API, so nothing else changes.
-- The SEO agent's LanceDB location (`lancedbStorage`) passes the real region, and no endpoint for plain S3.
-- Admin → Settings → Storage: provider choice (`StorageForm.tsx`), region or account ID, S3 CORS note.
-- User guide and settings reference updated. Tests: `tests/r2-config.test.ts` (S3 env, validation, old rows),
-  `tests/seo-agent-lancedb-storage.test.ts` (S3 handoff).
-- Not changed: the System status check's name ("Media storage (Cloudflare R2)") and the Backups card title, which
-  #136 also edits; its detail line already names the provider.
-
-## Media: Unused filter, unused notice, select all matching (2026-11-18, owner request)
-
-Owner: "can filter unused media, select multiple media and delete media items". Bulk select and bulk delete existed
-(page only); what was missing:
-
-- **Usage filter** (Used or not / Unused / In use) on `/admin/media`, over all matching files (usage is computed from
-  posts, pages and site settings, so the other filters run in SQL and usage after, then the page is cut).
-- **Notice** with the number and size of unused files, linking to the filter.
-- **Select all N matching** in bulk mode across pages (up to 200, one `deleteMediaMany`), and Clear selection.
-- `mediaUsage` (`src/lib/media.ts`) is one pass over every post and page text (it scanned all texts once per file,
-  fine for a page of 48, not for every file). Same result: each post or page naming a file counts once.
-- User guide (media) updated. Test: `tests/pages-media.test.ts` (usage counting).
+- **System status** (`src/lib/health.ts`, `src/app/admin/system/page.tsx`): checks grouped (Core, Publishing, SEO & AI,
+  Integrations, Operations) with counts at the top; each row has Configure ↗ (its admin page, new tab) or the
+  deployment setting that holds it. New checks: SEO agent (live `/readyz` and the flows whose latest run in the last
+  24 h failed, with the error), Claude, Search Console and GA4 syncs, ML models, news desk, editorial calendar (dated
+  items not scheduled yet, past their date), background jobs, social sign-in, Razorpay. `agentReady` in
+  `seo-agent/client.ts`. The Automation page's Connections card uses the same failing-flows rule (it was "degraded"
+  whenever the very last run had failed).
+- **Backups** (`src/lib/backups.ts`, page, `/api/admin/backup`): no passphrase. New backups are encrypted with a key
+  derived from SETTINGS_ENCRYPTION_KEY (`derivedSecret` in `secrets.ts`): kept in the Kubernetes Secret, outside the
+  database, so a backup restores after the database is lost. Downloads are unencrypted copies
+  (`plainCopyOfStoredBackup`, `buildBackup({ plain })`). A passphrase stored before today is kept, sealed and unseen,
+  only to restore the backups made with it (restore tries the server key, then it).
+- User guide (system status, backups). Tests: `tests/health-checks.test.ts` (2), backup tests in
+  `tests/admin-ops.test.ts` and `tests/security-admin.test.ts` updated, plus a stored-encrypted → plain-download test.
+- Manual step: none. Keep SETTINGS_ENCRYPTION_KEY: rotating it makes the new backups (and stored credentials)
+  unreadable, as it always did for credentials.
 
 ## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
 
