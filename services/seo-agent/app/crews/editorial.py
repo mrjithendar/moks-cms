@@ -17,6 +17,12 @@ budget, after ten documentation fetches it tried to copy them into its final ans
 Improve (2026-11-18): when the brief carries `currentDraft` (the item's CMS draft as the editor left it), the writer
 revises that draft instead of writing a new one (REVISE_TASK), and the researcher is told to check its claims. The
 reviewer and SEO editor work as before on the writer's result.
+
+v6 prompt (seo-crew-v6): notes for the editor never go in the body. The site renders bodies as plain Markdown
+(services/www/src/lib/mdx/compile.ts, `format: "md"`), so a `{/* TODO(owner): … */}` the writer added was printed in the
+review preview and would have been published. The writer and reviewer now list such notes under NEEDS_FACT_CHECK, and
+`extract_editor_notes` moves any that are still in the body (MDX or HTML comments, <Todo>; never inside code) into
+fact-check flags, which the review page lists.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
 from .skills import editorial_tags
 
-PROMPT_VERSION = "seo-crew-v5"
+PROMPT_VERSION = "seo-crew-v6"
 
 AGENTS = [
     AgentDef("researcher", "Researcher", "Collect the facts, related site articles and official documentation the article needs, with sources, in enough detail that the writer never has to guess.", "You research for a one-person technical publication. You only report what the sources say, you copy commands, flags, versions and defaults exactly, and you list every source URL you used.", ["vector_search", "read_article", "fetch_allowlisted_docs"], max_tokens=8192),  # detailed notes: 4,096 cut them off
@@ -57,13 +63,19 @@ RESEARCH_TASK = (
     "Report, per outline section, as short bullets: the facts the writer needs with their source URL, the exact commands, flags, defaults and current version numbers as written in the source, and the known limits and common failure modes. Say plainly which outline sections you found no source for. End with the list of every source URL you retrieved.\n"
     "Keep the notes compact, about 1,500 words in total and never more than 3,000: they are notes for the writer, not a copy of the documentation. Quote a command or config snippet only when the article will use it, and only the lines that matter; summarise everything else in one line with its URL. Stop fetching once each outline section has a source."
 )
+FACT_CHECK_MARKER = "NEEDS_FACT_CHECK:"
+NOTES_RULE = (
+    "Notes for the editor never go in the body: the site renders it as plain Markdown, so a comment ({/* */} or <!-- -->), JSX or a TODO line is published as text. "
+    f"Put what the editor must check or add (an unsourced claim, real command output to capture, a link to confirm) after the body: a line `{FACT_CHECK_MARKER}` followed by one `- claim | reason` line each. Move any such note already in a draft there."
+)
 WRITE_TASK = (
     "Write the full article as MDX following the style guide.\n"
     "Facts: use only the research notes and the author's first-hand notes. The author's notes are their own experience (what they built, ran, measured or decided): write those parts in the first person and keep their commands, versions and numbers exactly. Where neither has what a section needs, say less rather than invent.\n"
     "Depth: cover every heading in the brief's outline. Each section explains why before how, shows the command or configuration with the output or result to expect, and names the trade-off, limit or failure mode an engineer would hit. Prefer one worked example carried through the article over several disconnected snippets. Use a table for a comparison, a list for steps, and a mermaid diagram where the brief asks for one. Aim for the brief's reading time (about 220 words a minute); without one, write 1,500 to 2,500 words of prose.\n"
     "Opening and ending: open with the concrete problem or result in two or three sentences, with no generic introduction; end with what to check or do next, not a recap.\n"
     "Code: every block declares its language and is complete enough to copy and run; no placeholders that hide the hard part.\n"
-    "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences."
+    "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences.\n"
+    f"{NOTES_RULE}"
 )
 REVISE_TASK = (
     "Revise the current draft (the current_draft block) into the best version of this article, following the style guide. Do not start over.\n"
@@ -71,15 +83,16 @@ REVISE_TASK = (
     "Fix: commands, flags, versions and facts that the research notes contradict; sections that are missing, thin or vague (cover every heading in the brief's outline, why before how, with the output or result to expect and the trade-off an engineer would hit); code that is incomplete, inconsistent or not runnable.\n"
     "Cut: padding, repetition and generic introductions or recaps.\n"
     "Facts: use only the research notes, the author's first-hand notes and what the current draft already says correctly; where none has what a section needs, say less rather than invent.\n"
-    "Return the complete revised article body in MDX (no front matter, no H1), not a list of changes."
+    "Return the complete revised article body in MDX (no front matter, no H1), not a list of changes.\n"
+    f"{NOTES_RULE}"
 )
 CURRENT_DRAFT_CHARS = 60_000  # the web app sends at most this much
 REVIEW_TASK = (
     "Check every command, flag and version in the draft against the research sources (fetch_allowlisted_docs when needed). Statements that come from the author's first-hand notes are the author's own experience: keep them and do not flag them unless they contradict a source. "
-    "Correct what is wrong; do not shorten, summarise or restyle the article, and keep every section and code block."
+    "Correct what is wrong; do not shorten, summarise or restyle the article, and keep every section and code block. "
+    "Leave no note for the editor in the body (a {/* */} or <!-- --> comment, JSX, a TODO line): the site renders plain Markdown and would publish it as text."
 )
 
-FACT_CHECK_MARKER = "NEEDS_FACT_CHECK:"
 _MARKER_RE = re.compile(r"^\s*(?:\**\s*needs[_ ]fact[_ ]check\s*\**\s*:|#{1,6}\s*needs[_ ]fact[_ ]check\b[^\n]*$)", re.I | re.M)
 _FENCE_RE = re.compile(r"^```(?:mdx|markdown|md)?[ \t]*\n([\s\S]*?)\n```[ \t]*$")
 _OPEN_FENCE_RE = re.compile(r"^```(?:mdx|markdown|md)[ \t]*$", re.I | re.M)
@@ -134,8 +147,8 @@ def split_review(raw: str) -> tuple[str, list[FactCheckFlag]]:
     flags: list[FactCheckFlag] = []
     for line in rest.splitlines():
         item = line.strip().lstrip("-*• ").strip()
-        if not item or item.lower().rstrip(".") in ("none", "n/a", "nothing"):
-            continue
+        if not item or item.lower().rstrip(".") in ("none", "n/a", "nothing") or _MARKER_RE.match(item):
+            continue  # a second marker line: the reviewer copied the writer's list, then wrote its own
         claim, reason = _split_flag(item)
         flags.append(FactCheckFlag(claim=claim[:500], reason=(reason or "the technical reviewer could not verify this against a source")[:500], severity="warning"))
     return body, merge_flags(flags)[:30]
@@ -189,6 +202,66 @@ def merge_flags(*groups: list[FactCheckFlag]) -> list[FactCheckFlag]:
             update["severity"] = "error"
         out[i] = kept.model_copy(update=update) if update else kept
     return out
+
+
+# A note for the editor left in the body: inline code (kept, group 1), an MDX comment, an HTML comment or <Todo>.
+_NOTE_RE = re.compile(r"(`+)[^\n]*?\1|\{/\*([\s\S]*?)\*/\}|<!--([\s\S]*?)-->|<Todo>([\s\S]*?)</Todo>")
+_FENCE_LINE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_NOTE_ITEM_RE = re.compile(r"(?:^|\s)\(\d{1,2}\)\s+")
+_NOTE_PREFIX_RE = re.compile(r"^(?:TODO|NOTE|FIXME)(?:\([^)]*\))?\s*:\s*", re.I)
+_BLANK_RUN_RE = re.compile(r"\n(?:[ \t]*\n){2,}")
+NOTE_CLAIM = "Note left in the draft"
+MAX_NOTE_FLAGS = 10
+
+
+def _note_items(note: str) -> list[str]:
+    """A note → its numbered items ("(1) … (2) …"), or the whole note; a lead-in that ends with ':' is dropped."""
+    text = " ".join(_NOTE_PREFIX_RE.sub("", note.strip()).split())
+    parts = [p.strip() for p in _NOTE_ITEM_RE.split(text)]
+    if len(parts) < 3:
+        return [text] if text else []
+    lead, items = parts[0], [p for p in parts[1:] if p]
+    return items if not lead or lead.endswith(":") else [lead, *items]
+
+
+def extract_editor_notes(body: str) -> tuple[str, list[FactCheckFlag]]:
+    """Body → (the body without notes for the editor, one fact-check flag per note item). The site renders plain
+    Markdown, where an MDX comment and the text inside <Todo> are printed on the page. Code (fenced or inline) is kept."""
+    notes: list[str] = []
+
+    def take(m: re.Match[str]) -> str:
+        if m.group(1) is not None:
+            return m.group(0)
+        notes.append(next(g for g in m.groups()[1:] if g is not None))
+        return ""
+
+    segments: list[tuple[bool, list[str]]] = [(False, [])]
+    fence = ""
+    for line in body.split("\n"):
+        f = _FENCE_LINE_RE.match(line)
+        if not fence and f:
+            fence = f.group(1)
+            segments.append((True, [line]))
+        elif fence and f and f.group(1)[0] == fence[0] and len(f.group(1)) >= len(fence) and not f.group(2).strip():
+            segments[-1][1].append(line)
+            fence = ""
+            segments.append((False, []))
+        else:
+            segments[-1][1].append(line)
+    out = []
+    for code, lines in segments:
+        text = "\n".join(lines)
+        if not code:
+            cleaned = _NOTE_RE.sub(take, text)
+            text = _BLANK_RUN_RE.sub("\n\n", cleaned) if cleaned != text else text
+        out.append(text)
+    if not notes:
+        return body, []
+    items = [i for n in notes for i in _note_items(n)]
+    flags = [FactCheckFlag(claim=NOTE_CLAIM, reason=i[:500], severity="warning") for i in items[:MAX_NOTE_FLAGS]]
+    if len(items) > MAX_NOTE_FLAGS:
+        flags[-1] = FactCheckFlag(claim=NOTE_CLAIM, reason=f"{len(items) - MAX_NOTE_FLAGS + 1} more notes were removed from the body; regenerate or check the whole draft", severity="warning")
+    return "\n".join(out).strip(), flags
 
 
 def current_draft_block(brief: dict[str, Any]) -> str:
@@ -261,7 +334,7 @@ class EditorialCrew:
             task = REVISE_TASK if current else WRITE_TASK
             write = Task(description=f"{task}\n\n{b}{notes}{current}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
             review = Task(
-                description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify, as `- claim | reason` (or `- none`).",
+                description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify and per note for the editor (the writer's list after its body, and any note left in the body), as `- claim | reason` (or `- none`).",
                 expected_output=f"The complete corrected MDX body, then {FACT_CHECK_MARKER} and the list.",
                 agent=agents["reviewer"],
                 context=[research, write],
@@ -286,12 +359,16 @@ class EditorialCrew:
         body, review_flags = split_review(review_raw)
         flags = list(review_flags)
         if not body:
-            # No technical review finished: the writer's body is kept for the human, marked unreviewed.
-            body = (task_raw(tasks[1]) if len(tasks) > 1 else "").strip()
+            # No technical review finished: the writer's body is kept for the human, marked unreviewed, with the
+            # writer's own NEEDS_FACT_CHECK notes split off.
+            body, writer_flags = split_review(task_raw(tasks[1]) if len(tasks) > 1 else "")
+            flags += writer_flags
             if body:
                 flags.append(FactCheckFlag(claim="whole article", reason="the technical review did not finish; verify every command and version", severity="warning"))
             if status == "completed":
                 status, reason = "incomplete", "the technical reviewer returned no body"
+        body, note_flags = extract_editor_notes(body)
+        flags += note_flags
         meta = _parse_meta(output) if status == "completed" else None
         if status == "completed" and meta is None:
             status, reason = "incomplete", "the SEO editor's output did not match the schema"

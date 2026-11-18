@@ -139,6 +139,10 @@ SEO editor's metadata. The editor never re-emits the body, so a long article can
 rewrite can slip in after the technical review (a body it emits anyway is ignored). Without a reviewed body the writer's
 body is kept, flagged "technical review did not finish", and the draft is incomplete. A cited source the crew never
 retrieved during the run is flagged automatically.
+Notes for the editor never stay in the body (prompt `seo-crew-v6`): bodies render as plain Markdown, where a
+`{/* … */}` comment or `<Todo>` text is printed on the page. The writer and reviewer list them under `NEEDS_FACT_CHECK`,
+and `extract_editor_notes` moves any left in the body (MDX/HTML comments, `<Todo>`, never inside code) into
+`fact_check_flags` as "Note left in the draft", one per numbered item, at most 10.
 
 **Brief inputs (v4 prompt).** Besides title, gap, audience, intent, outline, queries, code examples and internal links,
 the crew now reads the item's diagrams, reading time and notes, plus two server-side additions:
