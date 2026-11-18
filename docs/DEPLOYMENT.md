@@ -89,11 +89,14 @@ access log's `ip` field shows the decision: after a deploy, check that it is you
 
 Merge a pull request into `master`. CI's `release` job builds `linux/arm64` with `GIT_SHA` baked in, pushes `moks-cms:pr-<number>` and `:latest`, sets `deploy/jithendar-com` (and any other Deployment that runs this image) to `:pr-<number>` and waits for the rollout. Nothing else to do. `kubectl -n jithendar get deploy -o wide` shows which release is live. A pod that restarts later gets the same image again, whatever has been pushed since.
 
-**Lint and tests on a release.** They run on the pull request (`check`, and `test` in three shards). The release skips
+**Lint and tests on a release.** They run on the pull request (`check`, and `test` in four shards). The release skips
 them only when job `scope` finds, through the Actions API, that the pull request's head commit passed `check` and all
-three `test` shards in an earlier run of the workflow. A pull request merged while they were failing, still running or
-cancelled is linted and tested by the `release` job itself, as a manual run is, and a failure stops the release before
-anything is pushed (the job summary and a warning say which case applied). The workflow checks this itself because
+four `test` shards in an earlier run of the workflow. For a pull request merged while they were failing, still running
+or cancelled (and for a manual run), `check` and the `test` shards run again on the merge commit at the same time as
+`release` builds and smoke-tests the image; `release` waits for them right before it pushes
+(`scripts/wait-for-jobs.sh`), and a failure pushes nothing (the job summary and a warning say which case applied).
+A merge then takes about as long as the slowest test shard plus the push, not the whole suite on one runner plus the
+build. The workflow checks this itself because
 nothing else does: the repository is private on GitHub Free, where branch protection and required status checks are
 not available (the API answers "Upgrade to GitHub Pro or make this repository public"), so GitHub lets a pull request
 be merged at any time. Not covered: the tests ran on the pull request merged with `master` as it was then; commits that

@@ -75,7 +75,8 @@ image holds no site of its own beyond the test fixture's files as defaults. A si
 reads them at run time, so a site never builds the CMS. The `seo-agent` image is built by `moks-tech/moks-seo-agent`.
 
 Lint and the tests run on the pull request. A release skips them only if the pull request's last commit passed them
-there, and runs them itself otherwise. A commit pushed straight to `master` builds nothing (no `push` triggers).
+there. Otherwise they run again on the merge commit while the image builds, and nothing is pushed until they pass. A
+commit pushed straight to `master` builds nothing (no `push` triggers).
 
 CI only pushes the image. It doesn't tell any site about it: each site decides when to pull and restart.
 
