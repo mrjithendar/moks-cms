@@ -97,7 +97,7 @@ database write. The one write in the system (create/update a draft) is a flow st
 | `gsc_queries_for_topic` | 28-day aggregated queries containing the topic words | web callback `/gsc/queries`, personal-data-looking queries removed |
 | `gsc_queries_for_page` | the same for the article being optimised (bound per run; an agent cannot ask about another page) | web callback |
 | `style_guide` | the site's style guide | sent with the article context or brief |
-| `fetch_allowlisted_docs` | official documentation | checked in Python (https, default port, no credentials, no IP literal, allowlisted host), then fetched by the web app's SSRF-safe fetcher (DNS resolved inside the socket, private ranges refused, redirects re-checked) |
+| `fetch_allowlisted_docs` | official documentation | checked in Python (https, default port, no credentials, no IP literal, allowlisted host), then fetched by the web app's SSRF-safe fetcher (DNS resolved inside the socket, private ranges refused, redirects re-checked). The web app sends 300,000 characters from the page's `<main>` (else `<article>`) element, so a long sidebar cannot push the content out; the agent returns that element's text, at most 12,000 characters. A cut page ends with the anchors of its later sections, and `url#anchor` reads from that section (the fragment is never sent). A short page (a "moved" notice) ends with its links |
 
 Docs allowlist (`SEO_AGENT_DOCS_ALLOWLIST`, read by both services; a host or its subdomains): the default is the list of
 official documentation sites in `moks-seo-agent/app/config.py` (`DEFAULT_DOCS_ALLOWLIST`), mirrored in
@@ -138,7 +138,13 @@ are extracted from it, the reviewer's `NEEDS_FACT_CHECK` items join the editor's
 SEO editor's metadata. The editor never re-emits the body, so a long article cannot be truncated inside its JSON and no
 rewrite can slip in after the technical review (a body it emits anyway is ignored). Without a reviewed body the writer's
 body is kept, flagged "technical review did not finish", and the draft is incomplete. A cited source the crew never
-retrieved during the run is flagged automatically.
+retrieved during the run is flagged automatically (a cited `url#section` counts as its retrieved page).
+When the crew stops after the technical review (a limit in the SEO editor step, or an editor answer that does not
+match the schema; prompt `seo-crew-v7`), one call without tools writes the title and meta description from the brief
+and the body's headings and opening; the outline is the body's H2s and the sources are the pages retrieved during the
+run. That call is outside `CREW_MAX_TOKENS_PER_RUN` (about 2,500 tokens in, at most 1,024 out) and counted on the run.
+The draft stays incomplete (no internal links, no SEO editor check), with a reason that says so; if the call fails, the
+draft keeps an empty meta description as before.
 Notes for the editor never stay in the body (prompt `seo-crew-v6`): bodies render as plain Markdown, where a
 `{/* … */}` comment or `<Todo>` text is printed on the page. The writer and reviewer list them under `NEEDS_FACT_CHECK`,
 and `extract_editor_notes` moves any left in the body (MDX/HTML comments, `<Todo>`, never inside code) into

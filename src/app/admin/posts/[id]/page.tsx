@@ -44,7 +44,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
         <details open className="mb-4 rounded-lg border border-amber-600/30 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-400/10 dark:text-amber-100">
           <summary className="cursor-pointer font-medium">AI draft notes: check these before publishing ({notes.flags.length + (notes.incomplete ? 1 : 0)})</summary>
           <ul className="mt-2 list-disc space-y-1 pl-5">
-            {notes.incomplete && <li><strong>Incomplete:</strong> {notes.incomplete}. Finish the missing sections here.</li>}
+            {notes.incomplete && <li><strong>Incomplete:</strong> {notes.incomplete}. Check it and finish what is missing here.</li>}
             {notes.flags.map((f, i) => <li key={i}>{f.severity === "error" ? <strong>Must fix: </strong> : null}{f.message}</li>)}
           </ul>
         </details>
