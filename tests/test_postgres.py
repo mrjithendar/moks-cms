@@ -185,6 +185,29 @@ async def test_pgvector_index_reindexes_incrementally_and_retrieves_the_right_ar
     assert all(h.path != "/blog/terraform-state" for h in await idx.search("terraform state locking dynamodb", k=5))
 
 
+async def test_lancedb_copy_of_the_index_has_every_published_chunk(pool, tmp_path) -> None:
+    """D-93: app/lance_index.py's query against the real schema, written to an embedded LanceDB."""
+    if os.environ.get("SEO_AGENT_TEST_NO_VECTOR"):
+        pytest.skip("pgvector is not installed on this PostgreSQL (CI runs pgvector/pgvector:0.8.1-pg18)")
+    from app.embeddings import HashEmbeddings
+    from app.index import PgVectorIndex
+    from app.lance_admin import LanceAdmin
+    from app.lance_index import TABLE, ArticleMirror, fetch_from
+
+    a1, a2 = str(uuid.uuid4()), str(uuid.uuid4())
+    async with pool.connection() as c:
+        await c.execute("insert into post values (%s, 'blog', 'ingress-tls', 'Ingress and TLS', 'published', null, 'kubernetes'), (%s, 'blog', 'draft', 'A draft', 'draft', null, '')", (a1, a2))
+    idx = PgVectorIndex(pool, HashEmbeddings())
+    await idx.ensure_schema()
+    await idx.reindex([{"id": a1, "title": "Ingress and TLS", "body": "## Issuers\n\ncert-manager renews.\n\n## Controller\n\nIt terminates TLS."}, {"id": a2, "title": "A draft", "body": "Not yet."}], force=True)
+    admin = LanceAdmin(str(tmp_path))
+    out = await ArticleMirror(admin, fetch_from(pool)).sync()
+    assert out["synced"] and out["rows"] == 2 and out["articles"] == 1  # the draft's chunk is not copied
+    rows = admin._conn().open_table(TABLE).to_arrow().to_pylist()
+    assert {r["id"] for r in rows} == {f"{a1}:0", f"{a1}:1"}
+    assert rows[0]["path"] == "/blog/ingress-tls" and rows[0]["category"] == "kubernetes" and len(rows[0]["vector"]) == HashEmbeddings().dim
+
+
 async def test_reindex_refuses_an_empty_article_list_unless_forced(pool) -> None:
     if os.environ.get("SEO_AGENT_TEST_NO_VECTOR"):
         pytest.skip("pgvector is not installed on this PostgreSQL (CI runs pgvector/pgvector:0.8.1-pg18)")
