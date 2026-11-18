@@ -7,10 +7,11 @@ import { holdScheduledPost } from "../seo-intel/calendar-schedule";
 import { DraftError, getDraft, loadBase, openDraft, queueDraft, rejectDraft, reserveDraft, type ExtraTask } from "../seo-intel/drafts";
 import { recordApproval } from "../seo-intel/publish";
 import { AgentError, decide, kickoff, type AgentDeps, type Decision } from "./client";
-import { orchestrator } from "./config";
+import { orchestrator } from "./endpoint";
 
 /**
- * The switch between v2 and v4 for every human/scheduled action (SEO_ORCHESTRATOR). Routes call these; in legacy mode
+ * The switch between v2 and v4 for every human/scheduled action (endpoint.ts orchestrator(): crewai when the seo-agent
+ * is found, legacy when it is disabled). Routes call these; in legacy mode
  * they do exactly what v2 did. In crewai mode a draft owned by the agent (thread_id = draft id) is driven through the
  * seo-agent's CrewAI flows with the split-flow approval pattern (D-56): drafting flows end at ready_for_review; the
  * admin's approval (recorded here, in the authenticated review UI) starts publish_flow. Drafts created by the legacy
@@ -19,7 +20,7 @@ import { orchestrator } from "./config";
 
 /** "Draft with Claude" / "Fix with Claude" / regenerate from the article panel. */
 export async function requestDraft(articleId: string, opts: { mode?: "auto" | "regenerate"; recommendationIds?: string[]; extra?: ExtraTask[]; trigger?: "manual" | "fix"; actor?: string }, deps: AgentDeps = {}) {
-  if (orchestrator(deps.env) === "legacy") return { queued: await queueDraft(articleId, opts), orchestrator: "legacy" as const };
+  if ((await orchestrator(deps)) === "legacy") return { queued: await queueDraft(articleId, opts), orchestrator: "legacy" as const };
   const db = await getDb();
   const base = await loadBase(db, articleId);
   if (base.status !== "published") return { queued: false, orchestrator: "crewai" as const, reason: "Only published articles get optimisation drafts." };
@@ -85,7 +86,7 @@ export async function resumeScheduled(draftId: string, now = new Date(), deps: A
  */
 export async function draftNewArticle(calendarId: string, actor: Actor, deps: AgentDeps = {}) {
   const created = await createDraftFromItem(calendarId, actor);
-  if (orchestrator(deps.env) === "legacy") return { ...created, orchestrator: "legacy" as const };
+  if ((await orchestrator(deps)) === "legacy") return { ...created, orchestrator: "legacy" as const };
   return { ...created, ...(await runEditorialCrew(calendarId, created.postId, actor, { trigger: "calendar" }, deps)) };
 }
 
@@ -99,7 +100,7 @@ export const IMPROVE_FEEDBACK =
  * scheduled post goes back to draft first: the person reviews the improved text and schedules it again.
  */
 export async function improveCalendarDraft(calendarId: string, actor: Actor, instructions: string | null, deps: AgentDeps = {}) {
-  if (orchestrator(deps.env) === "legacy") throw new CalendarError("Improve needs the SEO agent (SEO_ORCHESTRATOR=crewai).", 409);
+  if ((await orchestrator(deps)) === "legacy") throw new CalendarError("Improve needs the SEO agent, and it is disabled (Automation & AI → SEO agent).", 409);
   const item = await getItem(calendarId);
   if (!item) throw new CalendarError("Calendar item not found.", 404);
   if (item.draft === "published") throw new CalendarError("This item is already published. Improve published articles from the review queue.", 409);
@@ -141,13 +142,13 @@ async function runEditorialCrew(calendarId: string, postId: string, actor: Actor
 export async function draftIfScheduled(calendarId: string, actor: Actor, deps: AgentDeps = {}) {
   const item = await getItem(calendarId);
   if (!item || !item.targetDate || !["none", "outline"].includes(item.draft)) return null;
-  if (item.draft === "outline" && orchestrator(deps.env) === "legacy") return null;
+  if (item.draft === "outline" && (await orchestrator(deps)) === "legacy") return null;
   return draftNewArticle(calendarId, actor, deps);
 }
 
 /** "Run now" for the weekly drafts (crewai mode; the CronJob runs it on schedule). legacy → null (v2 batch). */
 export async function weekly(actor?: string, deps: AgentDeps = {}) {
-  if (orchestrator(deps.env) === "legacy") return null;
+  if ((await orchestrator(deps)) === "legacy") return null;
   return kickoff("weekly_recommendations_flow", {}, { actor }, deps);
 }
 

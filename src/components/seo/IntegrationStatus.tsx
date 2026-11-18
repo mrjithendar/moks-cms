@@ -5,14 +5,15 @@ import { ApiButton } from "@/components/seo/ApiButton";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { failingFlows } from "@/lib/health";
-import { agentToken, orchestrator } from "@/lib/seo-agent/config";
+import { agentToken } from "@/lib/seo-agent/config";
+import { agentStatus } from "@/lib/seo-agent/endpoint";
 import { integrationsView } from "@/lib/seo-intel/queries";
 import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
 
 /**
  * Settings → "Connections": one line per integration with its state, read from configuration and the last recorded
- * results (seo_integrations, sync history, seo_flow_runs). Nothing here calls an external service while rendering;
- * "Test Google connection" runs the live check on demand. No secret value is ever shown, only whether it is set.
+ * results (seo_integrations, sync history, seo_flow_runs). Nothing here calls an external service while rendering,
+ * except the SEO agent's status (its cached /healthz check); "Test Google connection" runs the live check on demand. No secret value is ever shown, only whether it is set.
  */
 export type ConnectionRow = { key: string; name: string; status: "ok" | "degraded" | "down" | "not configured" | "configured"; detail: string; href?: string };
 
@@ -45,9 +46,10 @@ export async function loadConnections(env: Record<string, string | undefined> = 
     status: cfg.apiKey ? "ok" : "not configured",
     detail: cfg.apiKey ? `Key set (ANTHROPIC_API_KEY); budget $${cfg.monthlyBudgetUsd} a month (${cfg.budgetSource === "env" ? "SEO_LLM_MONTHLY_BUDGET_USD" : cfg.budgetSource}).` : "ANTHROPIC_API_KEY is not set: drafting and intent labelling use rules only.",
   });
-  const orch = orchestrator(env);
-  let agent: ConnectionRow = { key: "agent", name: "SEO agent (CrewAI flows)", status: "not configured", detail: "SEO_ORCHESTRATOR=legacy: the web worker runs every job." };
-  if (orch === "crewai") {
+  // The only line that may probe the network: the agent's status (cached per process; endpoint.ts).
+  const st = await agentStatus(env === process.env ? {} : { env });
+  let agent: ConnectionRow = { key: "agent", name: "SEO agent (CrewAI flows)", status: "not configured", detail: `${st.reason} The web worker runs every job.`, href: "#seo-agent" };
+  if (st.enabled) {
     let last: { flow_name: string; status: string; finished_at: string | null } | undefined;
     let failing: { flow: string; at: string; error: string }[] = [];
     try {
@@ -62,9 +64,10 @@ export async function loadConnections(env: Record<string, string | undefined> = 
     agent = {
       key: "agent",
       name: "SEO agent (CrewAI flows)",
+      href: "#seo-agent",
       status: !tokenOk ? "down" : !last ? "degraded" : failing.length ? "degraded" : "ok",
       detail: !tokenOk
-        ? "SEO_ORCHESTRATOR=crewai but SEO_AGENT_TOKEN is not set."
+        ? st.reason
         : failing.length
           ? `Latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} at ${f.at} UTC (${f.error})`).join("; ")}.`
           : last

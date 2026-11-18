@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { decide } from "./actions";
 import { denyUrl, parseAuthorize, SCOPES } from "@/lib/mcp-oauth/oauth";
-import { adminMcpEnabled } from "@/lib/seo-agent/config";
+import { mcpEnabled } from "@/lib/seo-agent/endpoint";
 import { getSessionUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   const self = `/mcp-oauth/authorize?${new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => typeof e[1] === "string"))}`;
   const user = await getSessionUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(self)}`);
-  if (!adminMcpEnabled()) return <Message title="Not available">The admin MCP server is switched off (ADMIN_MCP_ENABLED).</Message>;
+  if (!(await mcpEnabled("admin"))) return <Message title="Not available">The admin MCP server is switched off (ADMIN_MCP_ENABLED, or the SEO agent is disabled).</Message>;
   if (user.role !== "admin") return <Message title="Admins only">Only the site admin can connect an AI assistant to the SEO tools.</Message>;
   const r = await parseAuthorize(q);
   if ("show" in r) return <Message title="Cannot connect">{r.show}</Message>;

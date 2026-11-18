@@ -6,7 +6,8 @@ is applied by CI.
 ## 1. Prerequisites
 
 The SEO v4 setup is complete (docs/seo/MANUAL_SETUP.md): seo-agent deployed with Secret `seo-agent-env`,
-`SEO_ORCHESTRATOR=crewai` on the web app (the callback listener only runs then), media storage (R2) configured if you
+the web app finding it (Admin → Automation & AI → SEO agent shows it on) and `SEO_AGENT_CALLBACK_TOKEN` set (the
+callback listener needs it), media storage (R2) configured if you
 want covers stored. pgvector is optional (novelty vs the site is skipped without it).
 
 ## 2. Deploy

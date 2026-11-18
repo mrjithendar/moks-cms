@@ -1,9 +1,12 @@
 import "server-only";
-import { agentToken, agentUrl } from "./config";
+import { agentToken } from "./config";
+import { agentBaseUrl } from "./endpoint";
 
 /**
- * Web app → seo-agent (ClusterIP, bearer SEO_AGENT_TOKEN). Used by the admin SEO routes (flow kickoffs, review
- * decisions, run status/cancel) and the public /api/ask proxy. Errors surface as AgentError with the agent's status, never its internals.
+ * Web app → seo-agent (ClusterIP, bearer SEO_AGENT_TOKEN), at the endpoint endpoint.ts resolves (SEO_AGENT_URL, the
+ * admin's endpoint, or the one discovered). Used by the admin SEO routes (flow kickoffs, review decisions, run
+ * status/cancel) and the public /api/ask proxy. Errors surface as AgentError with the agent's status, never its
+ * internals; a disabled agent is a 503.
  */
 export class AgentError extends Error {
   constructor(
@@ -43,12 +46,16 @@ export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "
 /** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
 export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
 
+export const DISABLED_MESSAGE = "The SEO agent is disabled: none was found. Add its endpoint under Admin → Automation & AI → SEO agent.";
+
 async function call<T>(method: string, path: string, body: unknown, deps: AgentDeps = {}, timeoutMs = 15_000): Promise<T> {
   const token = agentToken(deps.env);
   if (!token) throw new AgentError("The SEO agent is not configured (SEO_AGENT_TOKEN).", 503);
+  const base = await agentBaseUrl(deps);
+  if (!base) throw new AgentError(DISABLED_MESSAGE, 503);
   let res: Response;
   try {
-    res = await (deps.fetchImpl ?? fetch)(`${agentUrl(deps.env)}${path}`, {
+    res = await (deps.fetchImpl ?? fetch)(`${base}${path}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -92,10 +99,12 @@ export type AskExtras = { history?: AskTurn[]; contextSlug?: string | null };
 export async function askStream(question: string, ipHash: string | null, deps: AgentDeps = {}, extras: AskExtras = {}): Promise<Response> {
   const token = agentToken(deps.env);
   if (!token) throw new AgentError("not configured", 503);
+  const base = await agentBaseUrl(deps);
+  if (!base) throw new AgentError("disabled", 503);
   const body: Record<string, unknown> = { question, ip_hash: ipHash, stream: true };
   if (extras.history?.length) body.history = extras.history;
   if (extras.contextSlug) body.context_slug = extras.contextSlug;
-  const res = await (deps.fetchImpl ?? fetch)(`${agentUrl(deps.env)}/ask`, {
+  const res = await (deps.fetchImpl ?? fetch)(`${base}/ask`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify(body),

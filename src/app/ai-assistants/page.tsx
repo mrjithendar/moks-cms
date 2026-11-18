@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { publicMcpEnabled } from "@/lib/seo-agent/config";
+import { mcpEnabled } from "@/lib/seo-agent/endpoint";
 import { siteOrigin } from "@/lib/seo-intel/urls";
 
 // ISR (lib/page-cache.ts): rendered once, served from the page cache, re-rendered after 300 s (PAGE_REVALIDATE_SECONDS)
@@ -12,9 +12,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/ai-assistants" },
 };
 
-/** Shown only while the public MCP server is on (PUBLIC_MCP_ENABLED); otherwise 404 and no footer link. */
-export default function AiAssistantsPage() {
-  if (!publicMcpEnabled()) notFound();
+/** Shown only while the public MCP server is on (PUBLIC_MCP_ENABLED and the SEO agent on); otherwise 404 and no footer link. */
+export default async function AiAssistantsPage() {
+  if (!(await mcpEnabled("public"))) notFound();
   const url = `${siteOrigin().origin}/mcp/public`;
   const code = "rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[0.85em]";
   return (

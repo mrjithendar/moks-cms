@@ -228,9 +228,9 @@ needed. Status of each item: PROGRESS.md "v4".
    kubectl -n jithendar rollout status deploy/seo-agent
    kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode()); print(u.urlopen('http://127.0.0.1:8090/healthz').read().decode())"
    ```
-   The CronJobs (`seo-flow-*`) are created by this apply. They only call the agent; until §22 the agent's callbacks are
-   off (the web app's callback listener starts only with `SEO_ORCHESTRATOR=crewai`), so a trigger before the switch
-   fails harmlessly. To keep them quiet until then, suspend them:
+   The CronJobs (`seo-flow-*`) are created by this apply. They only call the agent. The web app switches to the flows
+   by itself as soon as it finds the agent (§22), unless `SEO_ORCHESTRATOR=legacy` holds it off. To keep the CronJobs
+   quiet until you are ready, suspend them:
    ```bash
    for c in $(kubectl -n jithendar get cronjob -l app=seo-agent-trigger -o name); do
      kubectl -n jithendar patch "$c" -p '{"spec":{"suspend":true}}'
@@ -243,8 +243,11 @@ admin MCP's OAuth tokens are opaque and stored as SHA-256 hashes in Postgres, so
 create or rotate. R2 credentials are the site's existing ones (Admin → Storage, or `R2_*` in `jithendar-com-env`).
 
 ## 22. Switch to the CrewAI flows
+The web app finds the agent by itself ([FLOWS.md](FLOWS.md#finding-the-seo-agent)): `http://seo-agent:8080` in its own
+namespace, `SEO_AGENT_URL`, or the endpoint saved in Admin → Automation & AI → SEO agent. Nothing to switch: check
+that card says **On** (press **Check again**). If `SEO_ORCHESTRATOR=legacy` was set to hold it off, remove it:
 ```bash
-kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"SEO_ORCHESTRATOR":"crewai"}}'
+kubectl -n jithendar patch configmap jithendar-com-public --type json -p '[{"op":"remove","path":"/data/SEO_ORCHESTRATOR"}]'
 kubectl -n jithendar rollout restart deploy/jithendar-com
 # if the CronJobs were suspended in §20: set "suspend": false again
 ```
@@ -306,7 +309,8 @@ request-size-limiting, no buffering, 5-minute read timeout, `preserve_host`). Th
    the gateway's rate limiting. This was not changed here (existing routes stay untouched); it is a person's decision.
 
 ## 28. Rollback
-1. `SEO_ORCHESTRATOR=legacy` in `jithendar-com-public`, restart the site: v2's scheduler and direct Claude path resume.
+1. `SEO_ORCHESTRATOR=legacy` in `jithendar-com-public`, restart the site: the agent is switched off whatever answers,
+   and v2's scheduler and direct Claude path resume.
 2. Suspend the CronJobs (§20 loop with `"suspend": true`), set `ADMIN_MCP_ENABLED=false` / `PUBLIC_MCP_ENABLED=false`.
 3. Or redeploy the previous image/manifests (`git checkout <previous> -- kubernetes/seo-agent-*.yaml`, apply; restore
    `seo-agent-60-reindex.yaml` from git history if you also go back to v3's agent).

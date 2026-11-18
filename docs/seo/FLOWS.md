@@ -9,6 +9,27 @@ onto the same service functions and the same kickoff, never a second orchestrato
 Related: [CREWS.md](CREWS.md) · [MCP.md](MCP.md) · [RAG.md](RAG.md) · [COSTS.md](COSTS.md) ·
 [MANUAL_SETUP.md](MANUAL_SETUP.md#v4-crewai-flows-mcp-report-pdfs) · [DECISIONS.md](DECISIONS.md) D-54 onward.
 
+## Finding the SEO agent
+
+The agent is optional: it ships as its own image (`moks-tech/moks-seo-agent`). The web app looks for it and uses it only
+when it answers (`src/lib/seo-agent/endpoint.ts`):
+
+1. `SEO_AGENT_URL`, when the deployment sets it; else
+2. the endpoint an admin saved in **Admin → Automation & AI → SEO agent** (setting `seo_agent`, audit-logged); else
+3. discovery: `http://seo-agent:8080` (a Service named `seo-agent` in the web app's namespace, or a compose service),
+   then `http://seo-agent.<namespace>.svc.cluster.local:8080` when the namespace is known (`POD_NAMESPACE`, or the
+   service-account file when it is mounted).
+
+The agent is **on** when that endpoint answers `GET /healthz` as the agent does (`{"status": "ok", "version": …}`) and
+`SEO_AGENT_TOKEN` is set. Then every AI workflow and the flow-owned scheduled jobs go through the flows, and Ask the
+Blog, the MCP servers, Improve and promotion runs can be used. Otherwise it is **disabled**: the web worker runs every
+SEO job itself (the v2 path) and those features are off. Each web process keeps the answer for 60 s (on) or 30 s (off)
+and refreshes it in the background; the card's **Check again** checks at once.
+
+`SEO_ORCHESTRATOR` is an override, not a requirement: `legacy` switches the agent off whatever answers (rollback),
+`crewai` (or `langgraph`) switches it on without probing. Leave it unset to use discovery. The callback listener on the
+web pods (port 9465) runs whenever `SEO_AGENT_CALLBACK_TOKEN` is set, unless `SEO_ORCHESTRATOR=legacy`.
+
 ## Architecture
 
 ```mermaid
@@ -224,7 +245,7 @@ finished_at, updated_at, triggered_by (cron · manual · approval · flow · mcp
 One CronJob per scheduled flow (`kubernetes/seo-agent-60-flow-triggers.yaml`): `concurrencyPolicy: Forbid`,
 `startingDeadlineSeconds: 3600`, `successfulJobsHistoryLimit: 2`, `failedJobsHistoryLimit: 3`, `activeDeadlineSeconds:
 600`. The container runs `python -m app.trigger <flow> [json inputs]`: one authenticated `POST /flows/{flow}/kickoff`
-(`triggered_by=cron`), then `/quitquitquit` so the Istio sidecar exits. With `SEO_ORCHESTRATOR=crewai` the web app's
+(`triggered_by=cron`), then `/quitquitquit` so the Istio sidecar exits. While the agent is on the web app's
 in-process scheduler skips these job types (`FLOW_OWNED_JOBS`): gsc_sync, ga4_sync, technical_scan, recommendations,
 drafts_weekly, drafts_poll, report_weekly, report_monthly. Keywords refresh, retention, outcomes and the digest stay in
 the web worker (they are not AI workflows and the brief lists no flow for them).

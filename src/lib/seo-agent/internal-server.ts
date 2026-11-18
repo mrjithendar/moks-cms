@@ -13,7 +13,7 @@ import { callbackPort, callbackToken } from "./config";
 /**
  * Cluster-internal callback API for the seo-agent service (docs/seo/AGENTS.md "Callback API").
  *
- * A separate listener in the web process (SEO_AGENT_CALLBACK_PORT, default 9465, on only when SEO_ORCHESTRATOR=crewai),
+ * A separate listener in the web process (SEO_AGENT_CALLBACK_PORT, default 9465; on when SEO_AGENT_CALLBACK_TOKEN is set, off with SEO_ORCHESTRATOR=legacy),
  * like the metrics port: the Istio VirtualService routes the public site to port 3000 only, so nothing on the internet
  * can reach this; the NetworkPolicy admits only seo-agent pods; every request needs SEO_AGENT_CALLBACK_TOKEN.
  */
@@ -126,8 +126,10 @@ const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/(reports\
 export async function startCallbackServer(env: Record<string, string | undefined> = process.env): Promise<number | null> {
   const port = callbackPort(env);
   if (!port) return null;
-  if (!callbackToken(env) || callbackToken(env)!.length < 32) {
-    log.warn("seo agent callback listener not started: SEO_AGENT_CALLBACK_TOKEN missing or shorter than 32 characters", { event: "seo_agent_callback_off" });
+  // No token: no agent is set up to call back (it is optional), so there is nothing to warn about.
+  if (!callbackToken(env)) return null;
+  if (callbackToken(env)!.length < 32) {
+    log.warn("seo agent callback listener not started: SEO_AGENT_CALLBACK_TOKEN is shorter than 32 characters", { event: "seo_agent_callback_off" });
     return null;
   }
   const g = globalThis as unknown as { __seoAgentCallback?: boolean };

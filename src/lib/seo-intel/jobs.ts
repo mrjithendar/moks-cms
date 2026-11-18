@@ -333,14 +333,16 @@ export function dueSlots(s: SeoSettings, now: Date): { type: JobType; slot: stri
 
 /**
  * Called from the worker tick: enqueue each due slot once (a slot that already has a run is never re-enqueued).
- * With SEO_ORCHESTRATOR=crewai the job types the CrewAI flows own (FLOW_OWNED_JOBS) are triggered by their Kubernetes
- * CronJobs instead and are skipped here, so every job runs once, through one scheduler (v4 D-63).
+ * While the seo-agent is on (endpoint.ts orchestrator() = crewai) the job types the CrewAI flows own (FLOW_OWNED_JOBS)
+ * are triggered by their Kubernetes CronJobs instead and are skipped here, so every job runs once, through one
+ * scheduler (v4 D-63). When the agent is disabled, this scheduler runs them all.
  */
 export async function seoTick(now = new Date(), env: Record<string, string | undefined> = process.env): Promise<number> {
   const db = await getDb();
   const settings = await getSeoSettings();
-  const { orchestrator, FLOW_OWNED_JOBS } = await import("../seo-agent/config");
-  const owned = new Set<string>(orchestrator(env) === "crewai" ? FLOW_OWNED_JOBS : []);
+  const { FLOW_OWNED_JOBS } = await import("../seo-agent/config");
+  const { orchestrator } = await import("../seo-agent/endpoint");
+  const owned = new Set<string>((await orchestrator({ env })) === "crewai" ? FLOW_OWNED_JOBS : []);
   let queued = 0;
   for (const { type, slot } of dueSlots(settings, now)) {
     if (owned.has(type)) continue;

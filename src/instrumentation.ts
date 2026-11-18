@@ -63,7 +63,7 @@ export async function register() {
   const { startWorker } = await import("./lib/scheduler");
   startWorker();
 
-  // SEO v4: cluster-internal callback API for the seo-agent's CrewAI Flows (only with SEO_ORCHESTRATOR=crewai).
+  // SEO v4: cluster-internal callback API for the seo-agent's CrewAI Flows (when SEO_AGENT_CALLBACK_TOKEN is set; off with SEO_ORCHESTRATOR=legacy).
   const { startCallbackServer } = await import("./lib/seo-agent/internal-server");
   const cbPort = await startCallbackServer().catch((err) => {
     log.warn("seo agent callback listener unavailable", { err });

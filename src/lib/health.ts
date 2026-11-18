@@ -185,9 +185,11 @@ export async function failingFlows(): Promise<{ flow: string; at: string; error:
 function extraChecks(): Promise<Check>[] {
   return [
     timed("SEO agent (CrewAI flows)", { group: "SEO & AI", href: "/admin/automation" }, async () => {
-      const { orchestrator, agentToken } = await import("./seo-agent/config");
-      if (orchestrator() === "legacy") return { status: "not configured", detail: "SEO_ORCHESTRATOR=legacy: the web worker runs the SEO jobs itself" };
-      if (!agentToken()) return { status: "down", detail: "SEO_ORCHESTRATOR=crewai but SEO_AGENT_TOKEN is not set" };
+      const { agentStatus } = await import("./seo-agent/endpoint");
+      const { agentToken } = await import("./seo-agent/config");
+      const s = await agentStatus();
+      if (!s.enabled) return { status: "not configured", detail: `${s.reason} The web worker runs the SEO jobs itself.` };
+      if (!agentToken()) return { status: "down", detail: s.reason };
       const { agentReady } = await import("./seo-agent/client");
       const ready = await agentReady().catch((e: Error) => ({ status: `unreachable: ${e.message}` }));
       if (ready.status !== "ready") return { status: "down", detail: `agent ${ready.status}` };

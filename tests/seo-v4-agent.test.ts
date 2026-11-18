@@ -16,6 +16,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 const drafts = await import("@/lib/seo-intel/drafts");
 const pub = await import("@/lib/seo-intel/publish");
 const orch = await import("@/lib/seo-agent/orchestrate");
+const { clearAgentCache } = await import("@/lib/seo-agent/endpoint");
 const { handleCallback, tokenOk } = await import("@/lib/seo-agent/internal-server");
 const { saveSeoSettings } = await import("@/lib/seo-intel/settings");
 const { docsFetcher } = await import("@/lib/seo-intel/crawler");
@@ -107,12 +108,14 @@ async function agentDraft() {
 }
 
 describe("orchestrator switch", () => {
-  it("legacy (default): drafts go to the v2 job queue and never to the agent", async () => {
+  it("no agent answering (auto): drafts go to the v2 job queue; the agent only gets the health check", async () => {
     delete process.env.SEO_ORCHESTRATOR;
+    clearAgentCache();
     await seedRecommendation(db, articleId, "low_ctr");
     const r = await orch.requestDraft(articleId, {});
     expect(r).toMatchObject({ orchestrator: "legacy", queued: true });
-    expect(agentCalls).toEqual([]);
+    expect(agentCalls.map((c) => c.path)).toEqual(["/healthz"]); // answered 404: not the agent, so it is disabled
+    clearAgentCache();
     expect(rowsOf(await db.execute(sql`select 1 from job where kind = 'seo_draft'`)).length).toBe(1);
   });
 

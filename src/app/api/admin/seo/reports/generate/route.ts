@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AgentError, kickoff } from "@/lib/seo-agent/client";
-import { orchestrator } from "@/lib/seo-agent/config";
+import { orchestrator } from "@/lib/seo-agent/endpoint";
 import { json, parse, SeoApiError, seoRoute } from "@/lib/seo-intel/http";
 import { generateReport } from "@/lib/seo-intel/reports";
 
@@ -10,11 +10,11 @@ const body = z.object({ type: z.enum(["weekly", "monthly"]) });
 
 /**
  * POST /api/admin/seo/reports/generate — { type } builds (or rebuilds) the last full period's report now. With
- * SEO_ORCHESTRATOR=crewai it starts report_flow (numbers → checked narrative → PDF in R2 → email), like the CronJob.
+ * the SEO agent on it starts report_flow (numbers → checked narrative → PDF in R2 → email), like the CronJob.
  */
 export const POST = seoRoute("reports-generate", { mutating: true, rate: { max: 10, windowSeconds: 600 } }, async (_req, ctx) => {
   const { type } = parse(body, ctx.body);
-  if (orchestrator() === "crewai") {
+  if ((await orchestrator()) === "crewai") {
     try {
       const r = await kickoff("report_flow", { period: type }, { actor: ctx.actor.label });
       await ctx.audit("report.generate", undefined, { type, runId: r.run_id, existing: r.existing });
