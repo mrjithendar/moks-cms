@@ -1,5 +1,21 @@
 # Progress log — jithendar.com
 
+## Review queue: Not reviewed, Rescan for re-review, bulk regenerate, more filters (2026-11-18, owner request)
+
+Owner: "improve review queue: user can rescan all for re-review, and [see what is] not listed in review; add more
+features in review queue".
+
+- `src/lib/seo-intel/review-scan.ts` (new): `unreviewedArticles` (published blog/project posts with no open draft,
+  never reviewed or last reviewed over 90 days ago, oldest first) and `rescanArticles` (requestDraft for each, at
+  most 25 a request, with two general tasks, freshness and title/meta, so an article with no open recommendation is
+  reviewed too).
+- Routes: `POST /api/admin/seo/review/rescan` ({articleIds} or {all, limit}) and `POST …/review/bulk-regenerate`.
+- Page: a Rescan for re-review card (5/10/25, confirmed: each is a model run); tabs Articles, News, Not reviewed,
+  Published with counts; search, status and kind filters next to type, priority, age and sort; Clear. Not reviewed tab:
+  select up to 25 → Review selected, or Review now per article. Queue: Regenerate selected next to Reject selected.
+- User guide (review queue) updated. Tests: `tests/review-scan.test.ts` (3).
+- No migration, no new dependency.
+
 ## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
 
 Decision record: docs/seo/DECISIONS.md **D-95**.
