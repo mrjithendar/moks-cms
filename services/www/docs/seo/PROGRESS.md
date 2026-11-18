@@ -764,3 +764,26 @@ on it.
 
 **Manual steps (owner).** None to deploy. Tables appear once something writes to LanceDB (D-91 steps 1 and 3), and
 Admin → Storage must be configured for the agent to reach R2.
+
+## CrewAI logging and tracing (2026-11-18, owner request)
+
+Owner request: "enable logging tracing for crewai and improve grafana dashboards". Found on the live cluster first:
+flow steps hung off the short kickoff span (no root per run), no task or tool spans, the agent's callbacks to the web
+app were separate traces, seo-agent logged almost no events (`flow_failed` only) and none with a trace id, Loki kept
+no seo-agent field, and Prometheus had **no `seo-agent` scrape job**, so the SEO agents and News desk dashboards were
+empty.
+
+**What changed (this repository).** `app/runs.py` (root span `flow.<flow>` with the result, `flow_started` and
+`flow_finished`), `app/flows/base.py` (`flow_step`), `app/crews/common.py` (task and tool spans, crew result on its
+span, `crew_task`, `crew_tool_call`, `crew_finished`), `app/metrics.py` (`seo_crew_duration_seconds`,
+`seo_crew_tokens_total`, `seo_crew_cost_usd_total`, `seo_crew_task_duration_seconds`, `seo_crew_tool_calls_total`,
+`seo_crew_tool_duration_seconds`), `app/logs.py` (`trace_id`, `span_id`, `run_id` on every line), `app/tracing.py`,
+`app/webapp.py` (`traceparent` on callbacks), `services/www/src/lib/seo-agent/internal-server.ts` (callback spans).
+Tests: `services/seo-agent/tests/test_observability.py` (real CrewAI, in-memory spans),
+`services/www/tests/seo-agent-callback-tracing.test.ts`. Reference: OPERATIONS.md "Observability".
+
+**Elsewhere.** kubernetes repository: the `seo-agent` scrape job and the Loki allowlist for the new fields (tools
+repository: the same Alloy pipeline for EKS). jithendar.com repository: dashboard **Jithendar.com · CrewAI**.
+
+**Manual steps (owner).** Apply the kubernetes repository's Terraform for Prometheus and Loki after merging; the
+dashboards fill once seo-agent runs the new image and Prometheus scrapes it.

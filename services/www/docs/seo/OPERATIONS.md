@@ -88,6 +88,41 @@ States on every data view: skeleton while loading, **Disconnected** (no key or p
 never synced), **Stale** (last success older than `sync.staleAfterHours`, default 48 h), **Sync error** (last run failed),
 and an error panel with a reference if a view fails.
 
+## Observability (CrewAI flows, crews, tasks, tools)
+
+The SEO agent exports traces to the cluster's OpenTelemetry collector (`OTEL_EXPORTER_OTLP_ENDPOINT` → Jaeger), logs
+JSON lines on stderr (Alloy → Loki) and serves Prometheus metrics on `:8080/metrics` (job `seo-agent`). Dashboard:
+**Jithendar.com · CrewAI** (`jithendar-com-crewai`, jithendar.com repository `grafana/`).
+
+**Traces.** One trace per flow run, rooted at the span that kicked it off:
+
+| Span | Where | Attributes |
+|---|---|---|
+| `flow.<flow>` | `runs.FlowRunner._drive` | `run_id`, `triggered_by`, `target_id`; at the end `flow.status`, `flow.outcome`, `flow.tokens`, `flow.cost_usd` (error status when failed) |
+| `flow.<flow>.<step>` | `flows/base.step` | `flow`, `step`, `run_id` |
+| `crew.<crew>` | `crews/common.run_crew` | `crew.status`, `crew.reason`, `crew.tokens`, `crew.cost_usd`, `crew.tasks_done`, `crew.tasks`, `crew.tool_calls` |
+| `crew.<crew>.task.<agent>` | `crews/common._TaskWatch` | `task.index`, `task.tokens`, `task.output_chars`; the task a limit or error interrupted is marked failed |
+| `crew.<crew>.<agent>` | the crew LLM adapter | one per model call of that agent, with `llm.call` under it (model, tokens, cost, outcome) |
+| `tool.<tool>` | `crews/common.AllowlistedTool` | `tool.input_chars`, `tool.output_chars`; error status on a failure or the 60 s timeout |
+| `seo-agent.callback <METHOD> <route>` | web app, `internal-server.ts` | the web app's handling of each callback, parented by the agent's `traceparent` |
+
+Crews run in a worker thread; every span there re-attaches the crew span's context, so tasks, model calls and tools
+nest under `crew.<crew>`. Task spans are siblings of the model-call spans: CrewAI has no per-task start hook (its
+event bus is process-wide), so a sequential crew's task is timed from the previous task's end.
+
+**Logs.** Every line carries `trace_id` and `span_id` when a span is active, and `run_id` during a flow run (crew
+threads pass it explicitly). Events: `flow_started`, `flow_step` (`step`, `seconds`, `status`), `flow_finished`
+(`status`, `outcome`, `tokens`, `cost_usd`), `crew_task` (`agent`, `seconds`, `tokens`), `crew_tool_call` (`tool`,
+`status`, `seconds`, `error` = exception type) and `crew_finished` (`status`, `seconds`, `tokens`, `cost_usd`,
+`tasks_done`, `tool_calls`). Loki keeps only allowlisted fields with strict patterns (kubernetes repository,
+`deploy/minikube/observability/loki/config.alloy`): there `status` becomes `result`, `outcome` becomes `flow_outcome`,
+and free text (a crew's `reason`, an error message) is dropped.
+
+**Metrics** (besides `seo_flow_*`, `seo_llm_*`, `seo_crew_runs_total`): `seo_crew_duration_seconds{crew,status}`,
+`seo_crew_tokens_total{crew}`, `seo_crew_cost_usd_total{crew}`, `seo_crew_task_duration_seconds{crew,agent}`,
+`seo_crew_tool_calls_total{crew,tool,status}` and `seo_crew_tool_duration_seconds{crew,tool}`. Labels come from fixed
+sets (`metrics.CREWS`, `AGENT_KEYS`, the tool allowlist), so cardinality stays bounded.
+
 ## Troubleshooting
 
 ### Sync failures
