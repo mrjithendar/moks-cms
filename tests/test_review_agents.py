@@ -241,6 +241,20 @@ def test_editor_notes_never_touch_code() -> None:
     assert clean == "```jsx\n{/* kept */}\n```" and [f.reason for f in flags] == ["verify"]
 
 
+def test_other_note_shapes_leave_the_body() -> None:
+    body = (
+        "Intro.\n\n{ /* TODO(owner): spaced comment */ }\n\nTODO(owner): capture the real output\n\n"
+        "> **TODO:** confirm the link\n\n- FIXME(owner): pin the version\n\nRun it [TODO(owner): add the flag] now.\n\n"
+        "{/* TODO(owner): never closed\nstill the note\n\n## A\n\nText.\n\n<!-- also never closed\n\n{/* closed */}\n\n## B\n\nKept."
+    )
+    clean, flags = extract_editor_notes(body)
+    assert clean == "Intro.\n\nRun it  now.\n\n## A\n\nText.\n\n## B\n\nKept."
+    assert [f.reason for f in flags] == ["spaced comment", "capture the real output", "confirm the link", "pin the version", "add the flag", "never closed still the note", "also never closed", "closed"]
+    # Prose that only mentions a TODO, and TODO lines inside code, stay.
+    kept = "Leave a TODO: marker for later.\n\n```python\n# TODO(owner): kept\n```\n\nSee `TODO(owner):` above."
+    assert extract_editor_notes(kept) == (kept, [])
+
+
 def test_many_editor_notes_are_capped() -> None:
     clean, flags = extract_editor_notes("\n\n".join(f"<!-- note {i} -->" for i in range(14)) + "\n\nText.")
     assert clean == "Text." and len(flags) == 10 and flags[-1].reason.startswith("5 more notes")
