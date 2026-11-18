@@ -84,6 +84,49 @@ async def test_token_cap_returns_a_partial_draft_marked_incomplete(web: FakeWebA
     assert len(llm.calls) == 2  # stopped, not looping
 
 
+META = {"title": "Rotate cert-manager certificates", "meta_description": "How cert-manager renews certificates, how to force a rotation and how to check that your ingress serves the new certificate."}
+
+
+async def test_a_crew_stopped_in_the_seo_editor_step_gets_fallback_metadata(web: FakeWebApp) -> None:
+    web.docs[DOC_URL] = "<title>Ingress</title><p>An Ingress exposes HTTP routes.</p>"
+    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))  # 2,000 tokens per call
+    llm.queue("crew", *scripted(final_json([]), with_tool=True)[:-1], META)  # the SEO editor's turn never comes
+    r = await crew_with(llm, web, crew_max_tokens_per_run=8000).run(BRIEF)
+    d = r.draft
+    assert r.status == "incomplete" and d.incomplete and d.body_mdx.startswith("## Why rotate")
+    assert d.title == META["title"] and d.slug_suggestion == "rotate-cert-manager-certificates" and d.meta_description == META["meta_description"]
+    assert d.outline == ["Why rotate"] and [s.url for s in d.sources] == [DOC_URL] and d.internal_links == []
+    assert "token cap 8000" in (d.incomplete_reason or "") and "fallback call" in (d.incomplete_reason or "")
+    fallback = llm.calls[-1]
+    assert (fallback.agent, fallback.prompt_version, fallback.max_tokens) == ("seo_editor", "seo-crew-v7-meta", 1024)
+    assert "article_opening" in fallback.user and "Certificates expire." in fallback.user
+    assert len(llm.calls) == 5 and r.tokens == 10_000  # 4 crew calls + the fallback, which is counted on the run
+
+
+async def test_a_failed_fallback_keeps_the_reviewed_draft(web: FakeWebApp) -> None:
+    from app.llm import InvalidOutput
+
+    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))
+    llm.queue("crew", *scripted(final_json([]))[:-1], InvalidOutput("no structured output"))
+    r = await crew_with(llm, web, crew_max_tokens_per_run=6000).run(BRIEF)
+    assert r.draft.incomplete and r.draft.meta_description == "" and r.draft.body_mdx.startswith("## Why rotate")
+    assert r.draft.incomplete_reason == "crew token cap 6000 reached"
+
+
+async def test_no_fallback_before_the_technical_review(web: FakeWebApp) -> None:
+    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))
+    llm.queue("crew", *scripted(final_json([])))
+    r = await crew_with(llm, web, crew_max_tokens_per_run=4000).run(BRIEF)  # stops before the reviewer
+    assert r.draft.incomplete and r.draft.meta_description == "" and len(llm.calls) == 2
+
+
+async def test_a_cited_section_of_a_retrieved_page_is_not_flagged(llm: FakeLlm, web: FakeWebApp) -> None:
+    web.docs[DOC_URL] = "<main><h2 id=tls>TLS</h2><p>Secure an Ingress with a Secret.</p></main>"
+    llm.queue("crew", *scripted(final_json([f"{DOC_URL}#tls"]), with_tool=True))
+    r = await crew_with(llm, web).run(BRIEF)
+    assert r.status == "completed" and r.draft.fact_check_flags == []
+
+
 async def test_wall_clock_timeout_returns_incomplete(web: FakeWebApp) -> None:
     llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1))
     llm.queue("crew", *scripted(final_json([])))
