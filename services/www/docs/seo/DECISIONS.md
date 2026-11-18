@@ -724,3 +724,29 @@ database: the existing PostgreSQL holds the vectors, no vector database" (v3 gro
   processes writing the same table, so the agent stays at one replica and every write goes through it. Every recall
   reads from R2, which is slower than local disk. Memory carries text from one run into later prompts, including text
   derived from fetched pages, so the dashboard has to show where each record came from.
+
+## D-92 A LanceDB browser in the admin, and the R2 connection from Admin → Storage (owner request 2026-11-18)
+
+"Enable feature that can browse lancedb data, can be viewed and modified from jithendar.com/admin." This delivers the
+R2 connection of D-91 step 1 and a generic form of step 2 (see, edit, delete), before anything writes to LanceDB.
+
+- **Where the data is.** The agent asks the web app for the R2 connection on first use (`GET
+  /internal/seo-agent/storage/lancedb`, callback port and token only): `s3://<media bucket>/jithendar/seo-agent/lancedb`
+  with the endpoint and keys from Admin → Storage or the `R2_*` Secret. Until storage is set up the answer is
+  `{configured: false}`, and the agent asks again at most once a minute. `LANCEDB_URI` on the agent overrides this with
+  a folder, for local development only. There are no `LANCEDB_S3_*` variables: the keys come from Admin → Storage, as D-91
+  decided.
+- **Who reaches it.** Only seo-agent opens LanceDB (D-91: one writer, one replica). `/admin/lancedb` (admin role)
+  calls the agent's internal API: `GET /lancedb`, `GET /lancedb/tables/{name}`, `POST /lancedb/tables/{name}/row`,
+  `/update` and `/delete`, all behind `SEO_AGENT_TOKEN` (`app/lance_admin.py`).
+- **What may change.** One row per request, picked by a scalar key column whose value must match exactly one row (409
+  otherwise). Only text, number, boolean and timestamp columns can be edited; vectors and nested values are shown
+  abridged and are read-only. Table and column names must be plain identifiers that exist, and values become filter
+  literals only through one quoting function (tests cover quotes and injection attempts). No table can be created or
+  dropped from the browser.
+- **Record.** Every write is a new LanceDB table version, an `info` log line on the agent (`lancedb_update`,
+  `lancedb_delete`, with the admin), and an audit log entry on the web app (`lancedb.update`, `lancedb.delete` at
+  `warning`).
+- **Not in this change.** Nothing writes to LanceDB yet, so the browser shows no tables until D-91 step 1 (CrewAI
+  memory) or step 3 (the article index) lands. A memory-specific view that shows where each record came from (D-91's
+  known limit) belongs to step 1.

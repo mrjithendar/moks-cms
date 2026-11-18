@@ -110,6 +110,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/models", label: "ML models", section: "Operations" },
           { href: "/admin/backups", label: "Backups", section: "Operations" },
           { href: "/admin/database", label: "Database", section: "Operations" },
+          { href: "/admin/lancedb", label: "LanceDB", section: "Operations" },
           { href: "/admin/audit", label: "Audit log", section: "Operations" },
         ]
       : []),

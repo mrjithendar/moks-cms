@@ -683,6 +683,20 @@ const guides: GuideEntry[] = [
     body: ["See the database connection, table sizes and maintenance tasks, and browse tables read-only. Passwords, tokens and secret settings are always redacted."],
   },
   {
+    id: "lancedb",
+    kind: "guide",
+    section: "Operations",
+    title: "LanceDB browser",
+    summary: "Browse the SEO agent's LanceDB tables and edit or delete single rows.",
+    href: "/admin/lancedb",
+    adminOnly: true,
+    keywords: ["lancedb", "vectors", "embeddings", "memory", "crewai", "tables", "browse", "edit"],
+    body: [
+      "LanceDB is the vector store the SEO agent keeps on Cloudflare R2 (CrewAI memory and the article index). Pick a table to page through its rows; long text and vectors are shortened in the list.",
+      "Open a row to edit its text, number, true/false or date columns, or to delete it. Each change touches exactly one row, chosen by a key column whose value must be unique; vectors are read-only. Every change is a new table version and is recorded in the audit log.",
+    ],
+  },
+  {
     id: "audit",
     kind: "guide",
     section: "Operations",
