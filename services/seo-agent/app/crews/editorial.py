@@ -10,6 +10,9 @@ retrieved during the run is flagged for the reviewer.
 v4 prompt (seo-crew-v4): the writer also gets the author's first-hand notes (brief.authorNotes, the only facts allowed
 without a research source), up to two published articles as examples of voice and depth (brief.examples, form only),
 and an explicit depth target; the brief block now carries diagrams, reading time and the item's notes.
+
+v5 prompt (seo-crew-v5): the researcher's notes have a length budget (about 1,500 words, at most 3,000). With no
+budget, after ten documentation fetches it tried to copy them into its final answer and ran past its 8,192-token cap.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArtic
 from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
 
-PROMPT_VERSION = "seo-crew-v4"
+PROMPT_VERSION = "seo-crew-v5"
 
 AGENTS = [
     AgentDef("researcher", "Researcher", "Collect the facts, related site articles and official documentation the article needs, with sources, in enough detail that the writer never has to guess.", "You research for a one-person technical publication. You only report what the sources say, you copy commands, flags, versions and defaults exactly, and you list every source URL you used.", ["vector_search", "read_article", "fetch_allowlisted_docs"], max_tokens=8192),  # detailed notes: 4,096 cut them off
@@ -46,7 +49,8 @@ RESEARCH_TASK = (
     "Research the article in this brief so the writer can write it without guessing.\n"
     "1. vector_search and read_article: what this site has already published on the topic (to link to and not repeat).\n"
     "2. fetch_allowlisted_docs: the official documentation for every tool, command and feature in the outline. Open the specific pages (install, configuration reference, CLI reference, release notes), not only the landing page; a refused or failed fetch is a reason to try the next most specific official page.\n"
-    "Report, per outline section: the facts with their source URL, exact commands, flags, defaults and current version numbers as written in the source, known limits and common failure modes. Say plainly which outline sections you found no source for. End with the list of every source URL you retrieved."
+    "Report, per outline section, as short bullets: the facts the writer needs with their source URL, the exact commands, flags, defaults and current version numbers as written in the source, and the known limits and common failure modes. Say plainly which outline sections you found no source for. End with the list of every source URL you retrieved.\n"
+    "Keep the notes compact, about 1,500 words in total and never more than 3,000: they are notes for the writer, not a copy of the documentation. Quote a command or config snippet only when the article will use it, and only the lines that matter; summarise everything else in one line with its URL. Stop fetching once each outline section has a source."
 )
 WRITE_TASK = (
     "Write the full article as MDX following the style guide.\n"
@@ -181,7 +185,7 @@ class EditorialCrew:
             notes = author_notes_block(brief)
             examples = examples_block(brief)
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
-            research = Task(description=f"{RESEARCH_TASK}\n\n{b}{notes}", expected_output="Research notes per outline section with facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
+            research = Task(description=f"{RESEARCH_TASK}\n\n{b}{notes}", expected_output="Compact research notes (about 1,500 words, at most 3,000), as bullets per outline section: facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
             write = Task(description=f"{WRITE_TASK}\n\n{b}{notes}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
             review = Task(
                 description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify, as `- claim | reason` (or `- none`).",
