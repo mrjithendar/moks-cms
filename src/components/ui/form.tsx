@@ -70,8 +70,9 @@ const sizes = {
 
 export type ButtonVariant = keyof typeof variants;
 
+/** On a phone a long label wraps inside the button (never wider than its container); from `sm` up it stays on one line. */
 export function buttonClass(variant: ButtonVariant = "primary", size: keyof typeof sizes = "md") {
-  return `inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-semibold whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-55 aria-disabled:pointer-events-none aria-disabled:opacity-55 ${variants[variant]} ${sizes[size]}`;
+  return `inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-semibold max-w-full py-1.5 text-center whitespace-normal sm:whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-55 aria-disabled:pointer-events-none aria-disabled:opacity-55 ${variants[variant]} ${sizes[size]}`;
 }
 
 export function Button({
