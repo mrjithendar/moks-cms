@@ -81,8 +81,10 @@ After a push, CI sends a `moks-cms-released` repository_dispatch (`{component, t
 variable `RELEASE_NOTIFY_REPOS` (space-separated, secret `RELEASE_NOTIFY_TOKEN`; `scripts/notify-sites.sh`). What a
 site does with it is up to the site. jithendar.com applies its manifests and restarts the component.
 
-`agent-contract.yml` runs the seo-agent's tests against a pull request that changes a migration or another file the
-agent's contract tests read. It checks the agent out with secret `CROSS_REPO_READ_TOKEN`.
+The seo-agent's contract tests read files here: the migrations, `src/lib/seo-agent/internal-server.ts` and the
+constants both sides keep equal. No CI job runs them across the two repositories (no cross-repository credentials, by
+choice). Before merging a change to one of those files, run the agent's tests with this checkout next to it
+(`cd ../moks-seo-agent && uv run pytest -q`).
 
 ## A new site
 
