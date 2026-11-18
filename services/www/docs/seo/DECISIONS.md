@@ -805,3 +805,21 @@ scheduling should do, the owner chose **auto-publish: scheduling is the approval
 - AGENTS.md rule 10 still holds: the person's Schedule on a draft they could read is the approval; the agent never
   schedules or publishes.
 
+## D-95 Editorial calendar ideas added automatically from the AI, ML, Google Analytics and Search Console (owner request 2026-11-18)
+
+"Content calendar items should add automatically based on the ML/AI/Google Analytics and Search Console data. User can
+add manually also can delete." Search Console content gaps and editorial ideas were already added (editorial.ts);
+`lib/seo-intel/calendar-auto.ts` adds the rest after the same weekly run (recommendations.ts):
+
+- **AI, readers:** Ask-the-Blog question clusters asked at least 2 times that no article answered (`seo_ask_gaps`,
+  through the existing `sendGapToCalendar`).
+- **AI, Promotion:** the Promotion crew's ideas scoring "high" (≥ 70; `seo_content_ideas`, through `updateIdea`).
+- **ML:** `seo_ml_query_clusters` labels with ≥ 100 Search Console impressions in 28 days that no published article's
+  title covers; fingerprinted like a Search Console gap for that query, so a subject is on the calendar once.
+- **Google Analytics:** for the ten articles with the most engaged sessions (≥ 20 in 28 days), the next uncovered topic
+  of their theme, with the article as an internal link; fingerprinted like editorial.ts's idea for that topic.
+- **Limits:** at most 2 per source a run; nothing while 12 automatic items are open (no post, no date). A source that
+  fails is logged and skipped. Items carry `brief.source` (ask, promotion, ml, analytics) for the calendar's Source
+  filter and land unscheduled; a deleted item keeps its fingerprint and is not added again. Nothing is drafted,
+  scheduled or published automatically (D-94).
+
