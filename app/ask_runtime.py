@@ -1,6 +1,6 @@
 """Ask the Blog runtime options: what an admin set in the web app (Admin → Automation & AI → Ask the Blog).
 
-The web app stores one JSON document in the `setting` table (key "ask_blog", services/www/src/lib/seo-agent/ask-settings.ts).
+The web app stores one JSON document in the `setting` table (key "ask_blog", moks-cms/src/lib/seo-agent/ask-settings.ts).
 This service reads the fields it owns from the same row, cached for a short time, so a change applies without a
 restart to both entry points: POST /ask (the site widget) and the public MCP `ask_blog` tool.
 

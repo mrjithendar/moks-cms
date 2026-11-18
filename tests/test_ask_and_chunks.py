@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -16,6 +15,7 @@ from app.main import memory_container
 from app.schemas import Relevance
 from app.services.ask_pipeline import check_input, guard_answer, normalize_question
 from tests.conftest import FakeWebApp, hits, settings
+from tests.moks_cms import www
 
 
 def container(llm: FakeLlm, web: FakeWebApp, **kw):
@@ -197,7 +197,7 @@ def test_content_hash_changes_only_with_content() -> None:
 def test_slugs_match_github_slugger_used_by_the_site() -> None:
     headings = ["Install cert-manager", "What's new in Kubernetes 1.35?", "Step 2: `kubectl apply` & verify", "Ingress (NGINX) vs Gateway API", "Résumé — tips"]
     node = shutil.which("node")
-    slugger = Path(__file__).resolve().parents[2] / "www" / "node_modules" / "github-slugger" / "index.js"
+    slugger = www("node_modules/github-slugger/index.js")
     if not node or not slugger.exists():
         pytest.skip("node or github-slugger not available")
     js = f"import('{slugger.as_uri()}').then(m => {{ const S = m.default; console.log(JSON.stringify({json.dumps(headings)}.map(h => new S().slug(h)))) }})"

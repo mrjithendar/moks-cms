@@ -302,10 +302,10 @@ async def test_a_new_article_gets_no_current_draft_block(llm: FakeLlm, web: Fake
 
 def test_docs_allowlist_default_matches_the_web_app() -> None:
     import re
-    from pathlib import Path
 
     from app.config import DEFAULT_DOCS_ALLOWLIST
+    from tests.moks_cms import www
 
-    ts = (Path(__file__).resolve().parents[2] / "www/src/lib/seo-agent/config.ts").read_text()
+    ts = www("src/lib/seo-agent/config.ts").read_text()
     block = ts[ts.index("export const DEFAULT_DOCS_ALLOWLIST") :]
     assert tuple(re.findall(r'"([a-z0-9.-]+)"', block[: block.index("];")])) == DEFAULT_DOCS_ALLOWLIST

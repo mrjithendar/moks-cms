@@ -1,6 +1,6 @@
 """Pydantic models shared by the flows, the crews and the API.
 
-`ModelChangeSet` mirrors MODEL_OUTPUT_JSON_SCHEMA in services/www/src/lib/seo-intel/changeset.ts exactly: Claude's
+`ModelChangeSet` mirrors MODEL_OUTPUT_JSON_SCHEMA in moks-cms/src/lib/seo-intel/changeset.ts exactly: Claude's
 structured output is converted into v2 `Change` objects and validated by the web app's own validators
 (callback /validate), so there is one definition of what a valid change is.
 """

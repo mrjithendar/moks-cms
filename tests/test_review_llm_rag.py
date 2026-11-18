@@ -18,6 +18,7 @@ from app.index import Hit, IndexSafetyError, MemoryRetriever, PgVectorIndex, sea
 from app.llm import AnthropicLlm, BudgetExceeded, BudgetGuard, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Truncated, Usage, price_of
 from app.schemas import Relevance
 from app.services.ask_pipeline import AskPipeline, StreamGate, check_input, safe_cut
+from tests.moks_cms import www
 
 # --- helpers -----------------------------------------------------------------------------------------------------------
 
@@ -454,7 +455,7 @@ async def test_search_sets_ef_search_inside_a_transaction() -> None:
 
 from tests.test_postgres import pool  # noqa: E402,F401 - the PostgreSQL fixture (skips without a database)
 
-MIGRATION_0022 = (Path(__file__).resolve().parents[2] / "www" / "src" / "db" / "migrations" / "0022_seo_llm_usage_attribution.sql").read_text()
+MIGRATION_0022 = "src/db/migrations/0022_seo_llm_usage_attribution.sql"
 
 
 class _CountingEmbeddings:
@@ -573,7 +574,7 @@ async def test_usage_rows_carry_run_id_and_agent_once_migration_0022_is_applied(
     u = Usage("claude-haiku-5-5", 10, 10)
     before = BudgetGuard(PgSpendStore(pool), 10, 1)
     await before.record(u, "draft", "v", run_id="r1", agent="editor")  # the web app's migration not applied yet: still recorded
-    mig = MIGRATION_0022
+    mig = www(MIGRATION_0022).read_text()
     async with pool.connection() as c:
         for stmt in mig.split("--> statement-breakpoint"):
             body = "\n".join(line for line in stmt.splitlines() if not line.startswith("--")).strip()

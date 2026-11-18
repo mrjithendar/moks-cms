@@ -14,9 +14,11 @@ from collections.abc import AsyncIterator
 
 import pytest
 
+from tests.moks_cms import www
+
 pytestmark = pytest.mark.postgres
 
-# Minimal copies of the web app tables these tests touch (the real DDL is services/www/src/db/migrations/0012, 0016).
+# Minimal copies of the web app tables these tests touch (the real DDL is moks-cms/src/db/migrations/0012, 0016).
 DDL = """
 create extension if not exists vector;
 create table post (id uuid primary key, collection text not null, slug text not null, title text not null, status text not null, deleted_at timestamptz, category text not null default '');
@@ -365,7 +367,7 @@ async def test_rag_eval_smoke_on_postgres(pool) -> None:
 
 # --- v5: the ML store against the real migration 0019 ------------------------------------------------------------------
 
-MIGRATION_0019 = __import__("pathlib").Path(__file__).resolve().parents[2] / "www" / "src" / "db" / "migrations" / "0019_seo_v5_ml.sql"
+MIGRATION_0019 = "src/db/migrations/0019_seo_v5_ml.sql"
 
 
 async def test_ml_store_roundtrip_on_migration_0019(pool) -> None:
@@ -380,7 +382,7 @@ async def test_ml_store_roundtrip_on_migration_0019(pool) -> None:
         await c.execute("create table seo_gsc_daily_totals (date date, search_type text, clicks bigint, impressions bigint, ctr float8, position float8)")
         await c.execute("create table seo_gsc_page_daily (date date, page text, search_type text, device text, country text, clicks bigint, impressions bigint, ctr float8, position float8)")
         await c.execute("create table setting (key text primary key, value jsonb not null)")
-        for stmt in MIGRATION_0019.read_text().split("--> statement-breakpoint"):
+        for stmt in www(MIGRATION_0019).read_text().split("--> statement-breakpoint"):
             if stmt.strip():
                 await c.execute(stmt)
         await c.execute("insert into seo_query_intents (query, intent, source, prompt_version) values ('helm vs kustomize', 'comparison', 'llm', 'seo-intent-v1'), ('old', 'informational', 'llm', 'seo-intent-v0')")

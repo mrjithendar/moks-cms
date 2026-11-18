@@ -1,7 +1,7 @@
 """3.3 Cheap intent classifier, distilled from Claude Haiku's labels (docs/seo/ML.md "Intent").
 
 Training data: `seo_query_intents` rows labelled by Haiku with the CURRENT intent prompt (`INTENT_PROMPT_VERSION`,
-mirrored from services/www/src/lib/seo-intel/keywords.ts; a contract test keeps them equal), plus the owner's
+mirrored from moks-cms/src/lib/seo-intel/keywords.ts; a contract test keeps them equal), plus the owner's
 corrections from the spot-check tasks (human labels win). Features: the query embedding ⊕ simple lexical features
 ("how to", "vs", error words, version patterns, …). Model: multinomial logistic regression (scikit-learn,
 class_weight=balanced), stored as numpy arrays (no pickle), like the news desk's topic classifier.

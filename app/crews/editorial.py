@@ -19,7 +19,7 @@ revises that draft instead of writing a new one (REVISE_TASK), and the researche
 reviewer and SEO editor work as before on the writer's result.
 
 v6 prompt (seo-crew-v6): notes for the editor never go in the body. The site renders bodies as plain Markdown
-(services/www/src/lib/mdx/compile.ts, `format: "md"`), so a `{/* TODO(owner): … */}` the writer added was printed in the
+(moks-cms/src/lib/mdx/compile.ts, `format: "md"`), so a `{/* TODO(owner): … */}` the writer added was printed in the
 review preview and would have been published. The writer and reviewer now list such notes under NEEDS_FACT_CHECK, and
 `extract_editor_notes` moves any that are still in the body (MDX or HTML comments, <Todo>; never inside code) into
 fact-check flags, which the review page lists.

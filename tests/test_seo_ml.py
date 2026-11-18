@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -20,6 +19,7 @@ from app.seo_ml import related as rl
 from app.seo_ml import train as tr
 from app.seo_ml.stl import stl
 from app.seo_ml.store import MemoryMlStore
+from tests.moks_cms import www
 
 END = date(2026, 11, 1)
 IMPS = np.full(400, 1000.0)
@@ -193,7 +193,7 @@ def test_intent_rules_match_the_web_rule() -> None:
 
 
 def test_intent_prompt_version_matches_the_web_app() -> None:
-    src = (Path(__file__).resolve().parents[2] / "www" / "src" / "lib" / "seo-intel" / "keywords.ts").read_text()
+    src = www("src/lib/seo-intel/keywords.ts").read_text()
     assert re.search(r'INTENT_PROMPT_VERSION = "([^"]+)"', src).group(1) == it.INTENT_PROMPT_VERSION  # type: ignore[union-attr]
 
 

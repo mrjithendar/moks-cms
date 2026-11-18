@@ -28,7 +28,7 @@ def normalize(q: str) -> str:
     return " ".join(q.lower().split())
 
 
-# --- the rule: token-set clustering, as in services/www/src/lib/seo-intel/keywords.ts ------------------------------
+# --- the rule: token-set clustering, as in moks-cms/src/lib/seo-intel/keywords.ts ----------------------------------
 
 
 def _stem(t: str) -> str:
