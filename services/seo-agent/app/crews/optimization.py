@@ -23,6 +23,7 @@ from ..llm import Llm
 from ..schemas import FactCheckFlag, ModelChangeSet
 from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew
+from .skills import optimization_tags
 
 PROMPT_VERSION = "seo-optimize-crew-v1"
 
@@ -97,7 +98,7 @@ class OptimizationCrew:
             tasks = [analyse, edit, review]
             return make_crew(agents, tasks, self.settings), tasks
 
-        o = await run_crew("optimization", build, self.settings, ctx)
+        o = await run_crew("optimization", build, self.settings, ctx, tags=optimization_tags(recs))
         result: OptimizationResult | None = None
         status, reason = o.status, o.reason
         if status == "completed":

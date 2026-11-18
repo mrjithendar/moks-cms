@@ -34,6 +34,7 @@ from ..llm import Llm
 from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArticleDraft, Source
 from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
+from .skills import editorial_tags
 
 PROMPT_VERSION = "seo-crew-v5"
 
@@ -275,7 +276,7 @@ class EditorialCrew:
             tasks = [research, write, review, seo]
             return make_crew(agents, tasks, self.settings), tasks
 
-        o = await run_crew("editorial", build, self.settings, ctx)
+        o = await run_crew("editorial", build, self.settings, ctx, tags=editorial_tags(brief))
         draft = self._result(o.output, o.tasks, brief, o.status, o.reason)
         draft = self._check_sources(draft, fetched)
         return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=o.tokens, cost_usd=o.cost_usd, tool_calls=o.tool_calls, fetched_sources=fetched)

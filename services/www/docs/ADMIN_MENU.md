@@ -23,7 +23,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Media | Library |
 | Pages | All pages, Add new, Hire me page |
 | Newsroom | Jobs, Run history, Sources, Topics, Profiles & playground, Analytics, Settings (the news desk) |
-| AI room | Automation & AI (the SEO agent's flows), ML models, LanceDB, MCP access |
+| AI room | Automation & AI (the SEO agent's flows), Skills (the crews' writing and checking guidance, D-96), ML models, LanceDB, MCP access |
 | SEO & insights | **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Content:** Keywords, Recommendations, Content audit, Internal linking. **Authority & health:** Backlinks, AI visibility, Technical health |
 | Community | Comments, Messages, Bookings |
 | Billing | Invoices, Payments |

@@ -37,6 +37,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
   { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
   { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
+  { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
   { href: "/admin/somewhere-new", label: "Brand new page", section: "Operations" },
 ];
 
@@ -91,7 +92,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new", "Categories"]);
     expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories"]);
     expect(by.editorial!.items.map((i) => i.title)).toEqual(["Review queue"]);
-    expect(by.ai!.items.map((i) => i.title)).toEqual(["Automation & AI", "MCP access"]);
+    expect(by.ai!.items.map((i) => i.title)).toEqual(["Automation & AI", "Skills", "MCP access"]);
     expect(by.community!.items.map((i) => i.title)).toEqual(["Comments", "Messages", "Bookings"]);
     expect(by.insights!.items.map((i) => [i.title, i.heading])).toEqual([["Search performance", "Traffic"], ["Keywords", "Content"]]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
@@ -133,6 +134,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
 
   it("the current page is the longest matching link, and a link with a query only matches that query", () => {
     expect(currentOf(ITEMS, "/admin/automation/mcp")?.label).toBe("MCP access");
+    expect(currentOf(ITEMS, "/admin/automation/skills")?.label).toBe("Skills");
     expect(currentOf(ITEMS, "/admin/automation")?.label).toBe("Automation & AI");
     expect(currentOf(ITEMS, "/admin")?.label).toBe("Dashboard");
     expect(currentOf(ITEMS, "/admin/posts/new")?.label).toBe("New post");
