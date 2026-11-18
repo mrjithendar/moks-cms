@@ -18,7 +18,7 @@ from tests.moks_cms import www
 
 pytestmark = pytest.mark.postgres
 
-# Minimal copies of the web app tables these tests touch (the real DDL is moks-cms/src/db/migrations/0012, 0016).
+# Minimal copies of the web app tables these tests touch (the real DDL is moks-cms/src/db/migrations/0012, 0016, 0036).
 DDL = """
 create extension if not exists vector;
 create table post (id uuid primary key, collection text not null, slug text not null, title text not null, status text not null, deleted_at timestamptz, category text not null default '');
@@ -34,6 +34,14 @@ create table seo_flow_runs (run_id uuid primary key, flow_name text not null, ta
   started_at timestamptz not null default now(), finished_at timestamptz, updated_at timestamptz not null default now(),
   triggered_by text not null check (triggered_by in ('cron','manual','approval','flow','mcp')), correlation_id text, actor text);
 create unique index seo_flow_runs_one_active on seo_flow_runs (flow_name, target_id) where status in ('queued','running');
+create table seo_flow_run_steps (id bigserial primary key, run_id uuid not null references seo_flow_runs(run_id) on delete cascade, seq integer not null,
+  step text not null, status text not null default 'running', started_at timestamptz not null default now(), finished_at timestamptz, error text,
+  detail jsonb not null default '{}');
+create table seo_flow_run_logs (id bigserial primary key, run_id uuid not null references seo_flow_runs(run_id) on delete cascade, step text,
+  level text not null default 'info', logger text, event text, message text not null, context jsonb not null default '{}', at timestamptz not null default now());
+create table seo_flow_run_calls (id bigserial primary key, run_id uuid not null references seo_flow_runs(run_id) on delete cascade, step text, agent text,
+  purpose text, model text, outcome text not null default 'ok', input_tokens integer not null default 0, output_tokens integer not null default 0,
+  cost_usd double precision not null default 0, latency_ms integer, system text, prompt text, response text, error text, at timestamptz not null default now());
 create table seo_ask_log (id bigserial primary key, at timestamptz not null default now(), question text not null, normalized text not null, ip_hash text,
   outcome text not null, citations jsonb not null default '[]', cached boolean not null default false, cost_usd double precision not null default 0, index_version text,
   retrieval jsonb, prompt_version text);
@@ -419,3 +427,47 @@ async def test_ml_store_roundtrip_on_migration_0019(pool) -> None:
     await s.record_rag_eval("live", {"recall@3": 0.9})
     assert await s.related_scores("00000000-0000-4000-8000-000000000001") == {}
     assert await s.ga4_pairs() == []
+
+
+async def test_run_history_writes_steps_logs_and_transcripts(pool) -> None:
+    """app/run_history.py on the real tables: rows only for existing runs, open steps closed with the run."""
+    import logging
+
+    from app.llm import CallSpec, Usage
+    from app.run_history import PgHistorySink, RecordingLlm, RunHistory, install, uninstall
+    from app.runs import PgRunStore
+
+    rid = str(uuid.uuid4())
+    await PgRunStore(pool).create({"run_id": rid, "flow_name": "new_article_flow", "target_id": rid, "status": "running", "inputs": {}, "triggered_by": "manual"})
+    h = RunHistory(PgHistorySink(pool))
+    assert await h.sink.available()
+    install(h)
+    root = logging.getLogger()
+    level = root.level
+    root.setLevel(logging.INFO)
+    try:
+        done = await h.step_started(rid, "brief")
+        await h.step_finished(rid, done, "brief", "succeeded", None, 0.25)
+        await h.step_started(rid, "draft")
+        logging.getLogger("seo_agent.crews").info("crew task started: editorial.writer", extra={"event": "crew_task_started", "agent": "writer", "run_id": rid})
+        logging.getLogger("seo_agent.news").info("not a flow run", extra={"run_id": str(uuid.uuid4())})
+
+        class Model:
+            async def text(self, spec: CallSpec) -> tuple[str, Usage]:
+                return "Body.", Usage(model=spec.model, input_tokens=10, output_tokens=5, latency_ms=30)
+
+        spec = CallSpec(model="claude-sonnet-5-5", purpose="crew:editorial", prompt_version="v6", cached_system=["rules"], user="Write.", run_id=rid, agent="writer")
+        await RecordingLlm(Model(), h).text(spec)
+        await h.run_finished(rid, "failed")
+    finally:
+        uninstall()
+        root.setLevel(level)
+    async with pool.connection() as c:
+        steps = await (await c.execute("select step, status, error, detail from seo_flow_run_steps where run_id = %s order by seq", (rid,))).fetchall()
+        logs = await (await c.execute("select step, event, logger, context from seo_flow_run_logs order by id")).fetchall()
+        calls = await (await c.execute("select step, agent, response, input_tokens from seo_flow_run_calls where run_id = %s", (rid,))).fetchall()
+    assert [(s["step"], s["status"]) for s in steps] == [("brief", "succeeded"), ("draft", "failed")]
+    assert steps[0]["detail"] == {"seconds": 0.25} and steps[1]["error"] == "the run ended during this step"
+    assert [(r["step"], r["event"]) for r in logs] == [("draft", "crew_task_started"), ("draft", "llm_call")]  # the news run's line is skipped
+    assert logs[1]["context"]["call_id"] is not None
+    assert [(r["step"], r["agent"], r["response"], r["input_tokens"]) for r in calls] == [("draft", "writer", "Body.", 10)]
