@@ -424,3 +424,24 @@ async function exampleArticles(db: Db, category: string | null) {
 
 /** Exported for tests and the route table. */
 export const _internal = { normalize, blocksOf };
+
+/** Where the SEO agent keeps LanceDB on R2 (D-91, D-92): a prefix of the media bucket, next to jithendar/www/. */
+export const LANCEDB_PREFIX = "jithendar/seo-agent/lancedb";
+
+/**
+ * GET /storage/lancedb: the R2 connection from Admin → Storage (or the R2_* Secret) for the agent's LanceDB. This hands
+ * the agent the media bucket's keys, which the owner accepted in D-91; it is only reachable on the internal callback
+ * port with the callback token. `{configured: false}` until storage is set up.
+ */
+export async function lancedbStorage() {
+  const { readR2Config } = await import("../storage");
+  let c: Awaited<ReturnType<typeof readR2Config>>;
+  try {
+    c = await readR2Config();
+  } catch (err) {
+    log.warn("lancedb storage: R2 configuration unreadable", { event: "lancedb_storage_unreadable", err });
+    return { configured: false };
+  }
+  if (!c) return { configured: false };
+  return { configured: true, uri: `s3://${c.bucket}/${LANCEDB_PREFIX}`, endpoint: c.endpoint, accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey(), region: "auto" };
+}

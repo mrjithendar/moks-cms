@@ -721,8 +721,8 @@ decisions the same day: LanceDB holds **CrewAI's memory and the article index**;
 | Step | Status |
 |---|---|
 | 0 Install LanceDB (dependency, lockfile, guards, image-size baseline) | done (pull request #121) |
-| 1 R2 connection, CrewAI memory behind a switch per crew, API for the dashboard | not started |
-| 2 SEO dashboard → Memory: see, edit, delete | not started |
+| 1 R2 connection, CrewAI memory behind a switch per crew, API for the dashboard | R2 connection and API done (D-92); memory not started |
+| 2 SEO dashboard → Memory: see, edit, delete | generic table browser at /admin/lancedb done (D-92); memory view not started |
 | 3 Article index in LanceDB behind a switch; RAG evaluation on both stores | not started |
 | 4 Cut-over of Ask the Blog; index view in the dashboard | not started |
 
@@ -747,3 +747,20 @@ on it.
 
 **Manual steps (owner).** None for step 0.
 
+
+## LanceDB browser in the admin and the R2 connection (2026-11-18, owner request; D-92)
+
+**What changed.**
+
+- `services/seo-agent/app/lance_admin.py` (new): tables, paged rows, one row in full, one-row update and delete; the R2
+  connection from the web app, retried once a minute until storage exists; `LANCEDB_URI` folder override.
+- `services/seo-agent/app/main.py`: `/lancedb…` routes (bearer token), `LanceError` → JSON, the container's `lance`.
+- `services/seo-agent/app/webapp.py`: `lancedb_storage()` → `GET /storage/lancedb`.
+- `services/www/src/lib/seo-agent/callbacks.ts`, `internal-server.ts`: `GET /internal/seo-agent/storage/lancedb`.
+- `services/www/src/lib/seo-agent/client.ts`: `lanceOverview`, `lanceBrowse`, `lanceRow`, `lanceUpdate`, `lanceDelete`.
+- `services/www/src/app/admin/lancedb/page.tsx` (new): Operations → LanceDB; menu, nav and user guide entries.
+- Tests: `services/seo-agent/tests/test_lance_admin.py` (a real LanceDB in a temporary folder),
+  `services/www/tests/seo-agent-lancedb.test.ts`, `services/www/tests/seo-agent-lancedb-storage.test.ts`.
+
+**Manual steps (owner).** None to deploy. Tables appear once something writes to LanceDB (D-91 steps 1 and 3), and
+Admin → Storage must be configured for the agent to reach R2.

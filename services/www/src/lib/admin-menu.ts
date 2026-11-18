@@ -108,6 +108,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
 
   ["/admin/backups", { group: "tools" }],
   ["/admin/database", { group: "tools" }],
+  ["/admin/lancedb", { group: "tools" }],
   ["/admin/sync", { group: "tools" }],
   ["/admin/audit", { group: "tools" }],
   ["/admin/system", { group: "tools" }],
