@@ -1,5 +1,18 @@
 # Progress log — jithendar.com
 
+## Media: Unused filter, unused notice, select all matching (2026-11-18, owner request)
+
+Owner: "can filter unused media, select multiple media and delete media items". Bulk select and bulk delete existed
+(page only); what was missing:
+
+- **Usage filter** (Used or not / Unused / In use) on `/admin/media`, over all matching files (usage is computed from
+  posts, pages and site settings, so the other filters run in SQL and usage after, then the page is cut).
+- **Notice** with the number and size of unused files, linking to the filter.
+- **Select all N matching** in bulk mode across pages (up to 200, one `deleteMediaMany`), and Clear selection.
+- `mediaUsage` (`src/lib/media.ts`) is one pass over every post and page text (it scanned all texts once per file,
+  fine for a page of 48, not for every file). Same result: each post or page naming a file counts once.
+- User guide (media) updated. Test: `tests/pages-media.test.ts` (usage counting).
+
 ## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
 
 Decision record: docs/seo/DECISIONS.md **D-95**.

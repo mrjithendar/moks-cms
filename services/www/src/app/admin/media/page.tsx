@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ilike, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { AdminHeader, Card } from "@/components/admin/ui";
@@ -15,6 +15,8 @@ import { MediaUploader } from "./MediaUploader";
 export const metadata = { title: "Media" };
 
 const PAGE_SIZE = 48;
+/** "Select all matching" offers at most this many ids: what one bulk delete handles (deleteMediaMany). */
+const SELECT_ALL_MAX = 200;
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const TZ = "Asia/Kolkata";
 
@@ -42,6 +44,8 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
   const month = sp.month && MONTH.test(sp.month) ? sp.month : undefined;
   const q = (sp.q ?? "").trim().slice(0, 100);
   const missingAlt = sp.alt === "missing";
+  // Usage is computed (posts, pages and site settings that name the file), so this filter runs over all matching files.
+  const usageFilter = sp.usage === "unused" || sp.usage === "used" ? sp.usage : undefined;
   const view = sp.view === "list" ? "list" : "grid";
   const page = Math.max(1, Math.floor(Number(sp.page) || 1));
   const m = schema.media;
@@ -56,16 +60,26 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
   );
 
   const db = await getDb();
+  // Every ready file's usage, once: the unused count for the notice, and the Usage filter.
+  const allReady = await db.select({ id: m.id, bytes: m.sizeBytes, createdAt: m.createdAt }).from(m).where(eq(m.status, "ready")).orderBy(desc(m.createdAt));
+  const allUsage = await mediaUsage(allReady.map((r) => r.id));
+  const unused = allReady.filter((r) => (allUsage.get(r.id) ?? 0) === 0);
+  const unusedBytes = unused.reduce((n, r) => n + Number(r.bytes ?? 0), 0);
+  // With the Usage filter: the matching ids (other filters in SQL, usage here), then this page of them.
+  const matching = usageFilter
+    ? (await db.select({ id: m.id }).from(m).where(where).orderBy(desc(m.createdAt))).map((r) => r.id).filter((id) => ((allUsage.get(id) ?? 0) === 0) === (usageFilter === "unused"))
+    : null;
+  const pageIds = matching?.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) ?? null;
   const [rows, [total], ready, months, [totals]] = await Promise.all([
     db
       .select({ media: m, uploader: schema.user.name })
       .from(m)
       .leftJoin(schema.user, eq(schema.user.id, m.uploadedBy))
-      .where(where)
+      .where(pageIds ? (pageIds.length ? inArray(m.id, pageIds) : sql`false`) : where)
       .orderBy(desc(m.createdAt))
       .limit(PAGE_SIZE)
-      .offset((page - 1) * PAGE_SIZE),
-    db.select({ n: count() }).from(m).where(where),
+      .offset(pageIds ? 0 : (page - 1) * PAGE_SIZE),
+    matching ? Promise.resolve([{ n: matching.length }]) : db.select({ n: count() }).from(m).where(where),
     storageReady(),
     db
       .execute(sql`select to_char(created_at at time zone ${TZ}, 'YYYY-MM') as ym, count(*)::int as n from media where status = 'ready' group by 1 order by 1 desc limit 60`)
@@ -80,7 +94,7 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
       .where(eq(m.status, "ready")),
   ]);
   const pages = Math.max(1, Math.ceil((total?.n ?? 0) / PAGE_SIZE));
-  const usage = await mediaUsage(rows.map((r) => r.media.id));
+  const usage = allUsage;
   const items: LibraryItem[] = rows.map(({ media: x, uploader }) => ({
     id: x.id,
     src: mediaSrc(x),
@@ -103,7 +117,7 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
   }));
 
   const params = (over: Record<string, string | undefined>) => {
-    const merged = { kind, month, q: q || undefined, alt: missingAlt ? "missing" : undefined, view: view === "list" ? "list" : undefined, page: undefined, ...over };
+    const merged = { kind, month, q: q || undefined, alt: missingAlt ? "missing" : undefined, usage: usageFilter, view: view === "list" ? "list" : undefined, page: undefined, ...over };
     const qs = new URLSearchParams(Object.entries(merged).filter((e): e is [string, string] => Boolean(e[1]))).toString();
     return qs ? `/admin/media?${qs}` : "/admin/media";
   };
@@ -128,6 +142,15 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
         <div className="mb-6">
           <Alert tone="info">
             Uploads are disabled until media storage is configured. <Link href="/admin/storage" className="font-semibold underline">Configure Cloudflare R2</Link>.
+          </Alert>
+        </div>
+      )}
+
+      {unused.length > 0 && usageFilter !== "unused" && (
+        <div className="mb-6">
+          <Alert tone="info">
+            {unused.length} file(s) ({size(unusedBytes)}) are not used by any post, page or site setting.{" "}
+            <Link href={params({ usage: "unused", alt: undefined })} className="font-semibold underline">Review them</Link>: select the ones you do not need and delete them together.
           </Alert>
         </div>
       )}
@@ -157,6 +180,14 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
             {months.map((x) => <option key={x.ym} value={x.ym}>{monthLabel(x.ym)} ({x.n})</option>)}
           </Select>
         </div>
+        <label className="sr-only" htmlFor="f-usage">Usage</label>
+        <div className="w-full min-[420px]:w-44">
+          <Select id="f-usage" name="usage" defaultValue={usageFilter ?? ""}>
+            <option value="">Used or not</option>
+            <option value="unused">Unused</option>
+            <option value="used">In use</option>
+          </Select>
+        </div>
         <label className="flex min-h-10 items-center gap-2 px-2 text-sm text-fg-muted">
           <input type="checkbox" name="alt" value="missing" defaultChecked={missingAlt} /> Missing alt text
         </label>
@@ -173,7 +204,8 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
         viewHrefs={{ grid: params({ view: undefined, page: page > 1 ? String(page) : undefined }), list: params({ view: "list", page: page > 1 ? String(page) : undefined }) }}
         limits={MEDIA_DETAIL_LIMITS}
         total={total?.n ?? 0}
-        filtered={Boolean(kind || month || q || missingAlt)}
+        filtered={Boolean(kind || month || q || missingAlt || usageFilter)}
+        matchingIds={matching && matching.length > PAGE_SIZE ? matching.slice(0, SELECT_ALL_MAX) : undefined}
         clearHref="/admin/media"
       />
 
