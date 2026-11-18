@@ -848,3 +848,28 @@ can add more skills." Details: CREWS.md "Skills".
   review, ML labelling, the RAG-eval judge, Ask the Blog). They are classifiers, checks or a judge with fixed rules,
   and their prompt versions are measured; guidance there would move those measurements.
 
+## D-97 CrewAI console: run history like GitHub Actions and Jenkins (owner request 2026-11-18)
+
+"seo-agent crews and jobs can be managed from jithendar.com/admin/crewai, can see all run logs like github actions …
+make it like enterprise applications … inspire from gh actions jenkins jobs." The owner accepted a phased plan and four
+choices: built-in flows keep their structure in code and get an editable, versioned configuration (phase 3); schedules
+move from the CronJobs to the database with one dispatcher (phase 2); full prompts and answers are kept, 14 days, with
+a switch; admins edit, authors have no access, a demo account reads. This entry is phase 1: runs and logs.
+Details: FLOWS.md "Run history (CrewAI console)".
+
+- **The agent writes, the web app reads.** Steps, log lines and transcripts go straight into the shared database
+  (migration 0036), like `seo_llm_usage`, so the run page streams them without asking the agent, and history stays
+  readable while the agent is off. Starting and cancelling still go through the agent's API.
+- **The log is the agent's own structured log**, not a second logging system: a root handler copies the records of a
+  run into the table, so every existing `log.info(..., extra={"event": …})` appears in the console with its fields,
+  and Loki keeps getting the same lines. New lines only where the console needed them: a crew task starting, and one
+  line per model call.
+- **Run numbers by a trigger,** so the agent's insert is unchanged and an older agent still gets numbers; a refused
+  second active run takes none (no gaps from the one-active-run rule).
+- **Transcripts on by default, bounded:** each text is cut at 200,000 characters, kept 14 days, and the switch (Automation
+  & AI → settings → Run history) applies to the agent's next call within a minute. Prompts hold the site's own content
+  and tool results, no secrets (the agent never puts a credential in a prompt).
+- **Re-run only where it is safe from a console:** drafting flows keep one open draft per article (Regenerate in the
+  review queue), publish_flow starts only from an approval, and per-story news runs have their own retry.
+- **No new dependency.** Icons are inline SVG; the per-day chart is plain HTML.
+

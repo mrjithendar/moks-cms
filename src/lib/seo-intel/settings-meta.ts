@@ -14,6 +14,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
   { id: "ai", label: "AI & drafts", sections: ["drafts", "llm", "aiVisibility"], description: "Claude drafting (always stops at human review), the optional explanation model, and AI visibility (are AI assistants citing the site?)." },
   { id: "crawler", label: "Crawler", sections: ["crawler"], description: "Limits for the technical SEO crawl of this site." },
   { id: "reports", label: "Reports", sections: ["reports"], description: "Weekly and monthly report e-mail." },
+  { id: "runs", label: "Run history", sections: ["runHistory"], description: "What the CrewAI console keeps of each SEO agent run: model-call transcripts, and how long log lines and transcripts are kept." },
 ];
 
 export const SECTION_LABELS: Record<string, string> = {
@@ -31,6 +32,7 @@ export const SECTION_LABELS: Record<string, string> = {
   keywords: "Keyword opportunities",
   aiVisibility: "AI visibility (weekly prompts to AI assistants with web search; API keys only in the site's Secret)",
   dataforseo: "DataForSEO (pay as you go; credentials DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD in the site's Secret)",
+  runHistory: "Run history (CrewAI console: Admin → AI room → CrewAI console)",
 };
 
 /** One line of help per field that isn't self-explanatory, keyed by its dotted path. */
@@ -43,6 +45,9 @@ export const FIELD_HELP: Record<string, string> = {
   "aiVisibility.models.chatgpt": "OpenAI model id with web search support; required to switch ChatGPT on.",
   "aiVisibility.models.perplexity": "Perplexity Sonar model id (sonar, sonar-pro).",
   "aiVisibility.models.gemini": "Gemini model id with Google Search grounding; required to switch Gemini on.",
+  "runHistory.transcripts": "Keep each model call's system prompt, prompt and answer, so a run's log can show exactly what an agent was asked and said. Off: only tokens, cost and time are kept. Applies from the agent's next call (within a minute).",
+  "runHistory.logRetentionDays": "Run log lines older than this are deleted by the daily retention job. Runs, their steps, cost and outcome are kept.",
+  "runHistory.transcriptRetentionDays": "Model-call transcripts older than this are deleted by the daily retention job.",
   "aiVisibility.providers.google_ai_overview": "The AI Overview on Google's results page, read through DataForSEO (needs its credentials; billed by DataForSEO, counted here).",
   "dataforseo.enabled": "Master switch. Nothing is bought while off or while the credentials are missing.",
   "dataforseo.locationCode": "Market for volume and rankings: 2840 United States, 2356 India, 2826 United Kingdom, 2276 Germany.",

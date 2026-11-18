@@ -106,6 +106,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
           { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
           { href: "/admin/integrations", label: "Integrations", section: "Site settings" },
+          { href: "/admin/crewai", label: "CrewAI console", section: "Site settings" },
+          { href: "/admin/crewai/runs", label: "Flow runs", section: "Site settings" },
           { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
           { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
           { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
