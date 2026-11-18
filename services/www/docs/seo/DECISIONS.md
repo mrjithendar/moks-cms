@@ -774,3 +774,34 @@ the real article index in LanceDB without changing what any search reads.
 - **Next (step 3, second half).** A LanceDB `Retriever` next to `PgVectorIndex`, and `rag-eval.yml` run on both, before
   any cut-over (step 4).
 
+## D-94 Editorial calendar: unscheduled, scheduled, published; Generate, Improve, Schedule publishes (owner request 2026-11-18)
+
+"There is no approved pending, just scheduled unscheduled, published … publish is scheduled, user can schedule on their
+interest … each item should have a Generate draft button … and an Improve button … remove approve, drop." Asked what
+scheduling should do, the owner chose **auto-publish: scheduling is the approval**.
+
+- **Three phases**, computed, not stored: published (the linked post is published), scheduled (the item has a date),
+  unscheduled. The stored `status` keeps its old values (history, the suggestion engine's cap on open ideas); no
+  Approve, Drop or status buttons remain. **Delete** hides the item (`status = 'dropped'`) and keeps its fingerprint, so
+  the suggestion engine does not add it again; its post is kept.
+- **The draft is found before anything is offered.** Each listing first clears links to deleted or trashed posts (an
+  item then shows "No draft" and Generate, instead of a dead "draft" link), links an item without a post to the one
+  live post with the same title (a draft written by hand, or an already published article, which makes the item
+  published), and follows posts to published. Draft states: none, outline (the generated outline only), writing (the
+  agent's run), failed, ready, scheduled, published.
+- **Generate draft** (none, outline or failed): the outline post (an existing outline post is reused) and, with the SEO
+  agent, `new_article_flow` writes it into the post (D-85's handoff).
+- **Improve** (ready or scheduled): `new_article_flow` again, with the post's current body as `currentDraft` in the brief
+  and the editor's optional instructions as feedback; the writer gets REVISE_TASK (keep what is correct, fix, complete,
+  cut) instead of WRITE_TASK. The new run snapshots the post as it is, so the handoff replaces it only if nobody edits it
+  meanwhile. A scheduled post goes back to draft first.
+- **Schedule** (`lib/seo-intel/calendar-schedule.ts`, the only new module allowed to change a post): a person's Schedule
+  calls `publishPost` with that future date in their name, exactly as the editor's Schedule button, and the CMS's own
+  scheduler publishes it then. It schedules only what the person could read: a written draft (not the outline) with no
+  fact-check errors from the agent, valid to publish, at least two minutes ahead (publishing now stays the editor's
+  button). Otherwise the date is kept with a note saying why; a missing draft is generated, and the person reviews it
+  and presses Schedule again. Nothing schedules on its own: no agent, job or tick imports the module (a test enforces
+  the importers and the checks). Unschedule, Delete and Improve put a scheduled post back to draft.
+- AGENTS.md rule 10 still holds: the person's Schedule on a draft they could read is the approval; the agent never
+  schedules or publishes.
+

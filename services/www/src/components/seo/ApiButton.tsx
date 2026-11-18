@@ -10,7 +10,7 @@ import { Button, type ButtonVariant } from "@/components/ui/form";
  */
 export function ApiButton({ url, method = "POST", body, label, confirm, variant = "secondary", size = "sm", onDone }: {
   url: string;
-  method?: "POST" | "PATCH" | "PUT";
+  method?: "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   label: string;
   confirm?: string;

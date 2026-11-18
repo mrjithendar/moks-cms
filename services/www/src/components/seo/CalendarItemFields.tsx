@@ -48,10 +48,10 @@ export function CalendarItemFields({ id, title, cluster, category, ownerId, owne
   return (
     <div className="text-xs" aria-busy={saving}>
       <Line name="Title" value={title} placeholder="Title" onSave={(v) => v.length >= 5 && void patch({ title: v })} className="!text-base font-semibold !text-fg" />
-      <div className="mt-0.5 grid gap-1 sm:grid-cols-3">
-        <label className="flex items-center gap-1"><span className={label}>Cluster</span><Line name="Cluster" value={cluster ?? ""} placeholder="—" onSave={(v) => void patch({ cluster: v || null })} /></label>
-        <label className="flex items-center gap-1"><span className={label}>Category</span><Line name="Category" value={category ?? ""} placeholder="category-slug" onSave={(v) => void patch({ category: v || null })} /></label>
-        <label className="flex items-center gap-1"><span className={label}>Owner</span>
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        <label className="flex items-center gap-2"><span className={label}>Cluster</span><Line name="Cluster" value={cluster ?? ""} placeholder="—" onSave={(v) => void patch({ cluster: v || null })} /></label>
+        <label className="flex items-center gap-2"><span className={label}>Category</span><Line name="Category" value={category ?? ""} placeholder="category-slug" onSave={(v) => void patch({ category: v || null })} /></label>
+        <label className="flex items-center gap-2"><span className={label}>Owner</span>
           <select aria-label="Owner" value={ownerId ?? ""} className={field} onChange={(e) => void patch({ ownerId: e.target.value || null })}>
             <option value="">—</option>
             {owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}

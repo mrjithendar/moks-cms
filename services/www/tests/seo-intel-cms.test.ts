@@ -119,73 +119,178 @@ describe("optimisation proposals → editor working copy", () => {
 });
 
 describe("editorial calendar", () => {
-  it("enforces the status flow, creates drafts (never published) and follows the linked post to published", async () => {
-    const id = await cal.createItem({ title: "Kubernetes Gateway API in practice", targetDate: "2026-11-20" });
-    await expect(cal.updateItem(id, { status: "in_review" })).rejects.toMatchObject({ status: 409 }); // approved → in_review skips drafting
-    expect(cal.patchSchema.safeParse({ status: "published" }).success).toBe(false);
+  const legacy = { env: { SEO_ORCHESTRATOR: "legacy" } };
+  const written = "## Why Gateway API\n\nThe Ingress API stops at host and path routing. I moved mk4 to Gateway API in March.\n\n## Install\n\n```bash\nkubectl apply -f gateway.yaml\n```\n";
+  const item = async (id: string) => (await cal.listCalendar()).all.find((i) => i.id === id);
+  const post = async (id: string) => (await db.select().from(schema.post).where(eq(schema.post.id, id)))[0]!;
+  /** The crew's handoff: the outline post receives the written article and a real description. */
+  const writeDraft = (id: string) => db.update(schema.post).set({ body: written, description: "Moving a Kubernetes cluster from Ingress to Gateway API, with the routes, TLS and the mistakes on the way." }).where(eq(schema.post.id, id));
+
+  it("has three phases and follows the draft from none to outline, ready and published", async () => {
+    const id = await cal.createItem({ title: "Kubernetes Gateway API in practice" });
+    expect(await item(id)).toMatchObject({ phase: "unscheduled", draft: "none", source: "manual", postId: null });
+    expect(cal.patchSchema.safeParse({ status: "approved" }).success).toBe(false); // no approval step any more
     const { postId: draftId } = await cal.createDraftFromItem(id, admin);
-    const [draft] = await db.select().from(schema.post).where(eq(schema.post.id, draftId));
-    expect(draft!.status).toBe("draft");
-    expect(draft!.body).toContain("## ");
-    await cal.updateItem(id, { status: "in_review" });
-    let list = await cal.listCalendar({ from: "2026-11-01", to: "2026-11-30" });
-    expect(list.scheduled.find((i) => i.id === id)).toMatchObject({ status: "in_review", postId: draftId });
-    // A person publishes the post in the editor → the calendar follows.
+    expect((await post(draftId)).status).toBe("draft");
+    expect(cal.isOutline((await post(draftId)).body)).toBe(true);
+    expect(await item(id)).toMatchObject({ draft: "outline", postId: draftId });
+    // Generating again reuses the outline post instead of creating a second one.
+    expect(await cal.createDraftFromItem(id, admin)).toMatchObject({ postId: draftId, reused: true });
+    await writeDraft(draftId);
+    expect(await item(id)).toMatchObject({ draft: "ready" });
+    await expect(cal.createDraftFromItem(id, admin)).rejects.toMatchObject({ status: 409 }); // a real draft: Improve, not Generate
     await db.update(schema.post).set({ status: "published", publishedAt: new Date("2026-11-20T06:00:00Z") }).where(eq(schema.post.id, draftId));
-    list = await cal.listCalendar({ from: "2026-11-01", to: "2026-11-30" });
-    expect(list.scheduled.find((i) => i.id === id)!.status).toBe("published");
-    await expect(cal.updateItem(id, { status: "drafting" })).rejects.toMatchObject({ status: 409 });
-    await expect(cal.createDraftFromItem(id, admin)).rejects.toMatchObject({ status: 409 });
+    expect(await item(id)).toMatchObject({ phase: "published", draft: "published", status: "published" });
   });
 
-  it("links an existing post and validates owners", async () => {
-    const id = await cal.createItem({ title: "Linking an existing article" });
-    await expect(cal.updateItem(id, { postId: "00000000-0000-4000-8000-000000000000" })).rejects.toMatchObject({ status: 400 });
-    await cal.updateItem(id, { postId, ownerId: "admin" });
-    const item = (await cal.listCalendar()).all.find((i) => i.id === id)!;
-    expect(item).toMatchObject({ postId, ownerName: "Admin", status: "published" }); // the linked post is already published
+  it("checks for a draft first, then a published post, and offers Generate when there is neither", async () => {
+    // A linked draft that was trashed: the link is cleared, so the item offers Generate draft instead of a dead link.
+    const gone = await cal.createItem({ title: "LLMOps and MLOps: a practical guide" });
+    const { postId: trashed } = await cal.createDraftFromItem(gone, admin);
+    await db.update(schema.post).set({ deletedAt: new Date() }).where(eq(schema.post.id, trashed));
+    expect(await item(gone)).toMatchObject({ draft: "none", postId: null, phase: "unscheduled" });
+    // A draft written by hand with the item's title is found and linked.
+    const [byHand] = await db.insert(schema.post).values({ collection: "blog", slug: "hand-written", title: "Linking an existing article", description: "d", body: written, category: "kubernetes", tags: [], contentType: "tutorial", status: "draft", authorId: "admin" }).returning();
+    const linked = await cal.createItem({ title: "  linking an existing ARTICLE " });
+    expect(await item(linked)).toMatchObject({ postId: byHand!.id, draft: "ready" });
+    // A published post with the item's title: the item is published.
+    const live = await cal.createItem({ title: "Ingress and TLS on Kubernetes" });
+    expect(await item(live)).toMatchObject({ postId, phase: "published", draft: "published" });
+    // Linking by id still validates.
+    const other = await cal.createItem({ title: "Something else entirely" });
+    await expect(cal.updateItem(other, { postId: "00000000-0000-4000-8000-000000000000" })).rejects.toMatchObject({ status: 400 });
+    await cal.updateItem(other, { ownerId: "admin" });
+    expect(await item(other)).toMatchObject({ ownerName: "Admin" });
   });
 
-  it("creates the draft post by itself once an approved item is scheduled (never published, once only)", async () => {
+  it("schedules the post only when its draft is written, in the future, and in the scheduler's name", async () => {
+    const sched = await import("@/lib/seo-intel/calendar-schedule");
+    const now = new Date("2026-11-18T08:00:00Z");
+    const id = await cal.createItem({ title: "Scheduling a calendar article" });
+    // No draft: the date is kept with a note, nothing is scheduled.
+    let r = await sched.scheduleItem(id, admin, "2026-11-25", "10:30", now);
+    expect(r).toMatchObject({ scheduled: false, publishAt: "2026-11-25T05:00:00.000Z" });
+    expect(r.note).toMatch(/No draft yet/);
+    expect(await item(id)).toMatchObject({ phase: "scheduled", targetDate: "2026-11-25", targetTime: "10:30", draft: "none", scheduleNote: null }); // the page says why from the draft state
+    // Outline only: still not scheduled.
+    const { postId: draftId } = await cal.createDraftFromItem(id, admin);
+    r = await sched.scheduleItem(id, admin, "2026-11-25", "10:30", now);
+    expect(r.note).toMatch(/not written yet/);
+    expect((await post(draftId)).status).toBe("draft");
+    // Written, but the post is not valid to publish (the outline's empty description): the reason is the note.
+    await db.update(schema.post).set({ body: written }).where(eq(schema.post.id, draftId));
+    r = await sched.scheduleItem(id, admin, "2026-11-25", "10:30", now);
+    expect(r).toMatchObject({ scheduled: false, note: expect.stringMatching(/not ready to publish/) });
+    expect((await item(id))!.scheduleNote).toMatch(/not ready to publish/); // a reason about the written draft is kept
+    expect((await post(draftId)).status).toBe("draft");
+    // Fact-check errors from the agent block it too.
+    await writeDraft(draftId);
+    await db.execute(sql`insert into seo_drafts (article_id, collection, status, base_version, base_snapshot, trigger, kind, calendar_id, flags) values (${draftId}, 'blog', 'superseded', 1, '{}'::jsonb, 'calendar', 'new_article', ${id}, ${JSON.stringify([{ code: "fact", severity: "error", message: "unverified version" }])}::jsonb)`);
+    r = await sched.scheduleItem(id, admin, "2026-11-25", "10:30", now);
+    expect(r.note).toMatch(/1 fact-check error/);
+    await db.execute(sql`update seo_drafts set flags = '[]'::jsonb where calendar_id = ${id}`);
+    // Ready: the post is scheduled for that time (IST), and the CMS scheduler publishes it then.
+    await expect(sched.scheduleItem(id, admin, "2026-11-18", "13:31", now)).rejects.toMatchObject({ status: 400 }); // 08:01 UTC: not the future
+    r = await sched.scheduleItem(id, admin, "2026-11-25", null, now);
+    expect(r).toMatchObject({ scheduled: true, note: null, publishAt: "2026-11-25T03:30:00.000Z" }); // 09:00 IST by default
+    expect(await post(draftId)).toMatchObject({ status: "scheduled", publishedAt: new Date("2026-11-25T03:30:00Z") });
+    expect(await item(id)).toMatchObject({ draft: "scheduled", phase: "scheduled", postScheduledFor: "2026-11-25T03:30:00.000Z", scheduleNote: null });
+    const [{ scheduled_by } = { scheduled_by: null }] = rowsOf<{ scheduled_by: string | null }>(await db.execute(sql`select scheduled_by from seo_editorial_calendar where id = ${id}`));
+    expect(scheduled_by).toBe("admin");
+    // Reschedule, then unschedule: the post goes back to draft, never published.
+    await sched.scheduleItem(id, admin, "2026-11-27", "18:00", now);
+    expect((await post(draftId)).publishedAt).toEqual(new Date("2026-11-27T12:30:00Z"));
+    await sched.unscheduleItem(id, admin);
+    expect((await post(draftId)).status).toBe("draft");
+    expect(await item(id)).toMatchObject({ phase: "unscheduled", targetDate: null, targetTime: null, draft: "ready" });
+    await expect(sched.scheduleItem(id, admin, "2026-11-25", "25:00", now)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("deletes an item: hidden, its fingerprint kept, a post it scheduled back to draft", async () => {
+    const sched = await import("@/lib/seo-intel/calendar-schedule");
+    const [s] = rowsOf<{ id: string }>(await db.execute(sql`insert into seo_editorial_calendar (fingerprint, title, status, kind, brief) values ('fp-1', 'A suggested idea to delete', 'suggested', 'measured', '{}'::jsonb) returning id`));
+    const { postId: draftId } = await cal.createDraftFromItem(s!.id, admin);
+    await writeDraft(draftId);
+    await sched.scheduleItem(s!.id, admin, "2027-01-05", "09:00", new Date("2026-11-18T08:00:00Z"));
+    expect((await post(draftId)).status).toBe("scheduled");
+    expect(await sched.holdScheduledPost(s!.id, admin, "Item deleted from the calendar.")).toBe(true);
+    await cal.deleteItem(s!.id);
+    expect((await post(draftId)).status).toBe("draft"); // kept, and no longer scheduled
+    expect(await item(s!.id)).toBeUndefined();
+    const [row] = rowsOf<{ status: string; fingerprint: string }>(await db.execute(sql`select status, fingerprint from seo_editorial_calendar where id = ${s!.id}`));
+    expect(row).toEqual({ status: "dropped", fingerprint: "fp-1" }); // the suggestion engine will not add it again
+    await expect(cal.deleteItem(s!.id)).rejects.toMatchObject({ status: 404 });
+    await expect(cal.updateItem(s!.id, { title: "Edited after delete" })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("a date with no draft starts Generate by itself (legacy: the outline post), once", async () => {
     const { draftIfScheduled } = await import("@/lib/seo-agent/orchestrate");
-    const legacy = { env: { SEO_ORCHESTRATOR: "legacy" } };
-    const unscheduled = await cal.createItem({ title: "Not scheduled yet" });
-    expect(await draftIfScheduled(unscheduled, admin, legacy)).toBeNull();
-    await cal.updateItem(unscheduled, { targetDate: "2026-11-25", targetTime: "10:00" });
-    const r = await draftIfScheduled(unscheduled, admin, legacy);
+    const undated = await cal.createItem({ title: "Not scheduled yet" });
+    expect(await draftIfScheduled(undated, admin, legacy)).toBeNull();
+    const dated = await cal.createItem({ title: "Dated calendar idea", targetDate: "2026-11-25", targetTime: "10:00" });
+    const r = await draftIfScheduled(dated, admin, legacy);
     expect(r).toMatchObject({ orchestrator: "legacy" });
-    const [post] = await db.select().from(schema.post).where(eq(schema.post.id, r!.postId));
-    expect(post!.status).toBe("draft");
-    expect((await cal.listCalendar()).all.find((i) => i.id === unscheduled)).toMatchObject({ status: "drafting", postId: r!.postId });
-    expect(await draftIfScheduled(unscheduled, admin, legacy)).toBeNull(); // already has its post
-    // A suggestion with a date still waits for approval; approving it then drafts it.
+    expect((await post(r!.postId)).status).toBe("draft");
+    expect(await draftIfScheduled(dated, admin, legacy)).toBeNull(); // legacy mode stops at the outline post
+    // A suggestion with a date needs no approval any more.
     const [s] = rowsOf<{ id: string }>(await db.execute(sql`insert into seo_editorial_calendar (title, status, kind, target_date, brief) values ('Suggested and dated', 'suggested', 'measured', '2026-11-26', '{}'::jsonb) returning id`));
-    expect(await draftIfScheduled(s!.id, admin, legacy)).toBeNull();
-    await cal.updateItem(s!.id, { status: "approved" });
     expect(await draftIfScheduled(s!.id, admin, legacy)).not.toBeNull();
   });
 
-  it("edits the details and brief in place, scheduled or not, merging the brief and validating input", async () => {
+  it("Improve sends the current draft to the Editorial Crew, unscheduling a scheduled post first", async () => {
+    const { improveCalendarDraft, draftNewArticle } = await import("@/lib/seo-agent/orchestrate");
+    const { calendarBrief } = await import("@/lib/seo-agent/callbacks");
+    const sched = await import("@/lib/seo-intel/calendar-schedule");
+    const kicked: { path: string; body: { inputs: Record<string, unknown> } }[] = [];
+    const crewai = {
+      env: { SEO_ORCHESTRATOR: "crewai", SEO_AGENT_TOKEN: "t", SEO_AGENT_URL: "http://agent.test" },
+      fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
+        kicked.push({ path: new URL(String(url)).pathname, body: JSON.parse(String(init?.body)) });
+        return Response.json({ run_id: `run-${kicked.length}`, status: "queued", existing: false });
+      }) as typeof fetch,
+    };
+    const id = await cal.createItem({ title: "An article to improve" });
+    await expect(improveCalendarDraft(id, admin, null, legacy)).rejects.toMatchObject({ status: 409 });
+    await expect(improveCalendarDraft(id, admin, null, crewai)).rejects.toMatchObject({ status: 409 }); // nothing to improve yet
+    const g = await draftNewArticle(id, admin, crewai);
+    expect(kicked[0]).toMatchObject({ path: "/flows/new_article_flow/kickoff", body: { inputs: { calendar_id: id, article_id: g.postId } } });
+    expect(kicked[0]!.body.inputs.feedback).toBeUndefined();
+    expect(await item(id)).toMatchObject({ draft: "writing" });
+    expect((await calendarBrief(id)).currentDraft).toBeNull(); // a new article: no draft to revise
+    await expect(improveCalendarDraft(id, admin, null, crewai)).rejects.toMatchObject({ status: 409 }); // still being written
+    // The crew finished and handed the article off; the person scheduled it.
+    await db.execute(sql`update seo_drafts set status = 'superseded' where calendar_id = ${id}`);
+    await writeDraft(g.postId);
+    await sched.scheduleItem(id, admin, "2027-01-05", "09:00", new Date("2026-11-18T08:00:00Z"));
+    expect((await post(g.postId)).status).toBe("scheduled");
+
+    const r = await improveCalendarDraft(id, admin, "Add a troubleshooting section.", crewai);
+    expect(r).toMatchObject({ orchestrator: "crewai", unscheduled: true });
+    expect((await post(g.postId)).status).toBe("draft");
+    expect(await item(id)).toMatchObject({ draft: "writing", scheduleNote: expect.stringMatching(/Unscheduled while the draft is improved/) });
+    const feedback = String(kicked[1]!.body.inputs.feedback);
+    expect(feedback).toContain("Improve the current draft");
+    expect(feedback).toContain("Add a troubleshooting section.");
+    // The crew reads the current draft, and the new run snapshots exactly that text (the handoff writes only over it).
+    expect((await calendarBrief(id)).currentDraft).toBe(written);
+    const [d] = rowsOf<{ base_snapshot: { body: string }; status: string }>(await db.execute(sql`select base_snapshot, status from seo_drafts where id = ${r.draftId}`));
+    expect(d).toMatchObject({ status: "generating", base_snapshot: { body: written } });
+  });
+
+  it("edits the details and brief in place, merging the brief and validating input", async () => {
     for (const targetDate of ["2026-11-20", undefined]) {
       const id = await cal.createItem({ title: "Editable calendar details", targetDate, notes: "first notes" });
       await cal.updateItem(id, cal.patchSchema.parse({ cluster: "gateway api", category: "kubernetes", brief: { audience: "platform engineers", outline: ["Why", "How"], readingTimeMinutes: 9 } }));
       await cal.updateItem(id, cal.patchSchema.parse({ brief: { intent: "how-to" } }));
-      const item = (await cal.listCalendar()).all.find((i) => i.id === id)!;
-      expect(item).toMatchObject({ cluster: "gateway api", category: "kubernetes" });
-      expect(item.brief).toMatchObject({ audience: "platform engineers", outline: ["Why", "How"], readingTimeMinutes: 9, intent: "how-to", notes: "first notes", source: "manual" });
+      const it = await item(id);
+      expect(it).toMatchObject({ cluster: "gateway api", category: "kubernetes" });
+      expect(it!.brief).toMatchObject({ audience: "platform engineers", outline: ["Why", "How"], readingTimeMinutes: 9, intent: "how-to", notes: "first notes", source: "manual" });
       await cal.updateItem(id, cal.patchSchema.parse({ cluster: null, category: null }));
-      expect((await cal.listCalendar()).all.find((i) => i.id === id)).toMatchObject({ cluster: null, category: null });
+      expect(await item(id)).toMatchObject({ cluster: null, category: null });
+      await db.execute(sql`update seo_editorial_calendar set title = ${`Editable calendar details ${targetDate ?? "x"}`} where id = ${id}`);
     }
-    // Time of day (IST) with the date; a time needs a date, and clearing the date clears the time.
-    const timed = await cal.createItem(cal.createSchema.parse({ title: "Timed calendar item", targetDate: "2026-11-21", targetTime: "09:30" }));
-    expect((await cal.listCalendar()).all.find((i) => i.id === timed)).toMatchObject({ targetDate: "2026-11-21", targetTime: "09:30" });
-    await cal.updateItem(timed, cal.patchSchema.parse({ targetTime: "18:05" }));
-    expect((await cal.listCalendar()).all.find((i) => i.id === timed)!.targetTime).toBe("18:05");
-    await cal.updateItem(timed, cal.patchSchema.parse({ targetDate: null }));
-    expect((await cal.listCalendar()).all.find((i) => i.id === timed)).toMatchObject({ targetDate: null, targetTime: null });
-    await expect(cal.updateItem(timed, cal.patchSchema.parse({ targetTime: "10:00" }))).rejects.toMatchObject({ status: 400 });
-    expect(cal.patchSchema.safeParse({ targetTime: "25:00" }).success).toBe(false);
-    expect(cal.patchSchema.safeParse({ targetTime: "9:30" }).success).toBe(false);
+    expect(cal.patchSchema.safeParse({ targetDate: "2026-11-20" }).success).toBe(false); // dates are not details: nothing to change…
+    expect(cal.patchSchema.parse({ targetDate: "2026-11-20", title: "Only the title counts" })).toEqual({ title: "Only the title counts" }); // …dates go through /schedule
     expect(cal.patchSchema.safeParse({ category: "Not A Slug" }).success).toBe(false);
     expect(cal.patchSchema.safeParse({ brief: { source: "forged" } }).success).toBe(false);
     expect(cal.patchSchema.safeParse({ brief: { readingTimeMinutes: 500 } }).success).toBe(false);
@@ -214,9 +319,28 @@ describe("no automatic publishing", () => {
     expect(src).toMatch(/\["draft", "review"\]\.includes\(r\.p_status\)[\s\S]*?p_body\.trim\(\) !== outline\.trim\(\)[\s\S]*?updatePost\(/);
   });
 
+  // Owner decision 2026-11-18 (D-94): a person's Schedule on the editorial calendar schedules the item's written draft
+  // post, in their name, like the editor's Schedule button. calendar-schedule.ts is that one module.
+  const CAL_SCHEDULE = path.resolve(import.meta.dirname, "..", "src/lib/seo-intel/calendar-schedule.ts");
+
+  it("calendar-schedule.ts schedules only a written draft, in the future, from a person's request; unscheduling only returns it to draft", () => {
+    const src = fs.readFileSync(CAL_SCHEDULE, "utf8");
+    expect(src).not.toMatch(/\b(publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost|createPost|createPublishedPost)\b/);
+    expect(src).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);
+    expect([...src.matchAll(/\bpublishPost\(/g)].length).toBe(1);
+    // The one publishPost: inside scheduleItem, after the future-time, outline and fact-check checks, with that time.
+    expect(src).toMatch(/export async function scheduleItem[\s\S]*?MIN_LEAD_MS\) throw[\s\S]*?isOutline\(item\.post_body\)[\s\S]*?agent_errors > 0[\s\S]*?publishPost\(actor, item\.post_id, \{ publishedAt: publishAt \}/);
+    for (const m of src.matchAll(/\bupdatePost\(([^)]*)\)/g)) expect(m[1]).toMatch(/\{ status: "draft" \}/);
+    // Reached only from a person's request (the calendar routes) and Improve; never from the agent, jobs or the scheduler.
+    const importers = files.filter((f) => f !== CAL_SCHEDULE && /seo-intel\/calendar-schedule"/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(path.resolve(import.meta.dirname, ".."), f)).sort();
+    expect(importers).toEqual(["src/app/api/admin/seo/calendar/[id]/route.ts", "src/app/api/admin/seo/calendar/[id]/schedule/route.ts", "src/lib/seo-agent/orchestrate.ts"]);
+    const orch = fs.readFileSync(path.resolve(import.meta.dirname, "..", "src/lib/seo-agent/orchestrate.ts"), "utf8");
+    expect([...orch.matchAll(/import \{([^}]*)\} from "\.\.\/seo-intel\/calendar-schedule"/g)].flatMap((m) => m[1]!.split(",").map((x) => x.trim()))).toEqual(["holdScheduledPost"]);
+  });
+
   it("no SEO module calls the CMS's publish/update/delete functions or writes post status", () => {
     expect(files.length).toBeGreaterThan(20);
-    for (const f of files.filter((x) => x !== PUBLISHER && x !== HANDOFF)) {
+    for (const f of files.filter((x) => x !== PUBLISHER && x !== HANDOFF && x !== CAL_SCHEDULE)) {
       const src = fs.readFileSync(f, "utf8");
       expect(src, f).not.toMatch(/\b(publishPost|updatePost|publishDuePosts|deletePost|trashPost|deletePostPermanently|restorePost)\b/);
       expect(src, f).not.toMatch(/update\s+"?post"?\s+set|\.update\(schema\.post\)|insert\s+into\s+"?post"?\b/i);
