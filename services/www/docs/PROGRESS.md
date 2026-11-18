@@ -1,17 +1,26 @@
 # Progress log — jithendar.com
 
-## Media: Unused filter, unused notice, select all matching (2026-11-18, owner request)
+## System status: every service, grouped, with its settings page; backups without a passphrase (2026-11-18, owner request)
 
-Owner: "can filter unused media, select multiple media and delete media items". Bulk select and bulk delete existed
-(page only); what was missing:
+Owner: "backups should not have backup phrase. Review system status and add all the required checks, and links to the
+settings page, opened in a new window, to configure."
 
-- **Usage filter** (Used or not / Unused / In use) on `/admin/media`, over all matching files (usage is computed from
-  posts, pages and site settings, so the other filters run in SQL and usage after, then the page is cut).
-- **Notice** with the number and size of unused files, linking to the filter.
-- **Select all N matching** in bulk mode across pages (up to 200, one `deleteMediaMany`), and Clear selection.
-- `mediaUsage` (`src/lib/media.ts`) is one pass over every post and page text (it scanned all texts once per file,
-  fine for a page of 48, not for every file). Same result: each post or page naming a file counts once.
-- User guide (media) updated. Test: `tests/pages-media.test.ts` (usage counting).
+- **System status** (`src/lib/health.ts`, `src/app/admin/system/page.tsx`): checks grouped (Core, Publishing, SEO & AI,
+  Integrations, Operations) with counts at the top; each row has Configure ↗ (its admin page, new tab) or the
+  deployment setting that holds it. New checks: SEO agent (live `/readyz` and the flows whose latest run in the last
+  24 h failed, with the error), Claude, Search Console and GA4 syncs, ML models, news desk, editorial calendar (dated
+  items not scheduled yet, past their date), background jobs, social sign-in, Razorpay. `agentReady` in
+  `seo-agent/client.ts`. The Automation page's Connections card uses the same failing-flows rule (it was "degraded"
+  whenever the very last run had failed).
+- **Backups** (`src/lib/backups.ts`, page, `/api/admin/backup`): no passphrase. New backups are encrypted with a key
+  derived from SETTINGS_ENCRYPTION_KEY (`derivedSecret` in `secrets.ts`): kept in the Kubernetes Secret, outside the
+  database, so a backup restores after the database is lost. Downloads are unencrypted copies
+  (`plainCopyOfStoredBackup`, `buildBackup({ plain })`). A passphrase stored before today is kept, sealed and unseen,
+  only to restore the backups made with it (restore tries the server key, then it).
+- User guide (system status, backups). Tests: `tests/health-checks.test.ts` (2), backup tests in
+  `tests/admin-ops.test.ts` and `tests/security-admin.test.ts` updated, plus a stored-encrypted → plain-download test.
+- Manual step: none. Keep SETTINGS_ENCRYPTION_KEY: rotating it makes the new backups (and stored credentials)
+  unreadable, as it always did for credentials.
 
 ## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
 

@@ -3,7 +3,9 @@ import { schema, setDbForTests, type Db } from "@/db";
 import { buildBackup, parseBackup, readBackupConfig, saveGeneral, unzipBackup } from "@/lib/backups";
 import { browseTable, runMaintenance, tableStats } from "@/lib/db-admin";
 import type { Actor } from "@/lib/posts";
-import { seal } from "@/lib/secrets";
+import { derivedSecret, seal, unseal, type Sealed } from "@/lib/secrets";
+
+const unsealOf = (v: Sealed | null) => (v ? unseal(v) : null);
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
@@ -61,11 +63,11 @@ describe("database admin", () => {
 });
 
 describe("backups", () => {
-  it("only admins configure backups; encrypting needs a passphrase, a plain zip does not", async () => {
-    await expect(saveGeneral(author, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "long-enough-phrase", encrypt: "on" })).rejects.toThrow();
-    await expect(saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "", encrypt: "on" })).rejects.toThrow("passphrase");
-    await expect(saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "short", encrypt: "on" })).rejects.toThrow("12 characters");
-    await saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", passphrase: "" });
+  it("only admins configure backups; encrypting needs no passphrase, and none is stored", async () => {
+    await expect(saveGeneral(author, { schedule: "daily", hourUtc: "3", retention: "7", encrypt: "on" })).rejects.toThrow();
+    await saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", encrypt: "on", passphrase: "ignored, not stored" });
+    expect(await readBackupConfig()).toMatchObject({ encrypt: true, passphrase: null, schedule: "daily" });
+    await saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7" });
     expect(await readBackupConfig()).toMatchObject({ encrypt: false, passphrase: null });
   });
 
@@ -74,8 +76,8 @@ describe("backups", () => {
     expect((await readBackupConfig()).encrypt).toBe(true);
   });
 
-  it("produces an AES-256 zip without password hashes, sessions or credentials", async () => {
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "correct horse battery staple", encrypt: "on" });
+  it("produces an AES-256 zip, with no passphrase to set, without password hashes, sessions or credentials", async () => {
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", encrypt: "on" });
     const { filename, data, encrypted } = await buildBackup();
     expect(filename).toMatch(/^jithendar-backup-\d{8}-\d{6}\.zip$/);
     expect(encrypted).toBe(true);
@@ -83,7 +85,8 @@ describe("backups", () => {
     expect(data.toString("latin1")).not.toContain("admin@example.com");
     await expect(unzipBackup(data)).rejects.toThrow("encrypted");
     await expect(unzipBackup(data, "wrong passphrase!!")).rejects.toThrow("could not be decrypted");
-    const payload = parseBackup(await unzipBackup(data, "correct horse battery staple"));
+    // The key is derived from SETTINGS_ENCRYPTION_KEY: the server opens it, and so does anyone holding that secret.
+    const payload = parseBackup(await unzipBackup(data, ["wrong passphrase!!", derivedSecret("backup-zip-v1")]));
     expect(payload.format).toBe("jithendar-backup");
     expect((payload.tables.user ?? []).map((u) => u.email)).toContain("admin@example.com");
     const text = JSON.stringify(payload);
@@ -92,10 +95,17 @@ describe("backups", () => {
     expect(payload.tables.session).toBeUndefined();
   });
 
-  it("with encryption off, produces a plain zip any tool can read, and keeps the stored passphrase", async () => {
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "correct horse battery staple", encrypt: "on" });
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "" });
-    expect((await readBackupConfig()).passphrase).not.toBeNull(); // older encrypted backups still need it
+  it("downloads are unencrypted copies, whatever the setting", async () => {
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", encrypt: "on" });
+    const { data, encrypted } = await buildBackup({ plain: true });
+    expect(encrypted).toBe(false);
+    expect(parseBackup(await unzipBackup(data)).format).toBe("jithendar-backup");
+  });
+
+  it("with encryption off, produces a plain zip any tool can read, and keeps a passphrase stored before 2026-11-18", async () => {
+    await db.insert(schema.setting).values({ key: "backups", value: { encrypt: true, passphrase: seal("correct horse battery staple"), schedule: "off", hourUtc: 3, retention: 7, r2: null } });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "7", passphrase: "a new one is ignored" });
+    expect(unsealOf((await readBackupConfig()).passphrase)).toBe("correct horse battery staple"); // older backups still need it
     const { filename, data, encrypted } = await buildBackup();
     expect(filename).toMatch(/\.zip$/);
     expect(encrypted).toBe(false);

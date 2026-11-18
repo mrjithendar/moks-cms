@@ -197,6 +197,20 @@ describe("restore", () => {
     expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug).sort()).toEqual(["added-later", "kept"]);
   });
 
+  it("stores backups encrypted with the server key and downloads them as plain copies; no passphrase anywhere", async () => {
+    const { listStoredBackups, plainCopyOfStoredBackup, parseBackup, readStoredBackup, runBackup, saveDestination, saveGeneral, unzipBackup } = await import("@/lib/backups");
+    await saveDestination(admin, { enabled: true, bucket: "" });
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", encrypt: "on" });
+    expect(await runBackup("manual", admin)).toMatchObject({ status: "success" });
+    const [stored] = await listStoredBackups();
+    const raw = await readStoredBackup(stored!.name);
+    await expect(unzipBackup(raw)).rejects.toThrow("encrypted");
+    const plain = await plainCopyOfStoredBackup(stored!.name);
+    const payload = parseBackup(await unzipBackup(plain)); // no password: the owner's own readable copy
+    expect(payload.format).toBe("jithendar-backup");
+    expect(JSON.stringify(payload.tables.user ?? [])).toContain("@example.com");
+  });
+
   it("still restores a backup from before the zip format (.json.gz.enc), and a plain zip without any passphrase", async () => {
     const { gzipSync } = await import("node:zlib");
     const { encryptWithPassphrase } = await import("@/lib/secrets");
@@ -213,11 +227,13 @@ describe("restore", () => {
     await restoreStoredBackup(admin, "jithendar-backup-20261001-000000.zip");
     expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug)).toEqual(["from-plain-zip"]);
 
-    // Legacy gzip + AES-GCM: needs the passphrase.
+    // Legacy gzip + AES-GCM: needs the old passphrase, which only a site configured before 2026-11-18 still has.
     const legacy = await encryptWithPassphrase(gzipSync(Buffer.from(payload("from-legacy"))), "correct horse battery staple");
     bucket.set("media/jithendar/backups/jithendar-backup-20261002-000000.json.gz.enc", legacy);
-    await expect(restoreStoredBackup(admin, "jithendar-backup-20261002-000000.json.gz.enc")).rejects.toThrow("passphrase");
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "correct horse battery staple" });
+    await expect(restoreStoredBackup(admin, "jithendar-backup-20261002-000000.json.gz.enc")).rejects.toThrow("old passphrase");
+    const { seal } = await import("@/lib/secrets");
+    const [cfg] = await db.select().from(schema.setting).where(eq(schema.setting.key, "backups"));
+    await db.update(schema.setting).set({ value: { ...(cfg!.value as object), passphrase: seal("correct horse battery staple") } }).where(eq(schema.setting.key, "backups"));
     await new Promise((r) => setTimeout(r, 1100)); // the safety backup gets its own timestamped name
     await restoreStoredBackup(admin, "jithendar-backup-20261002-000000.json.gz.enc");
     expect((await db.select({ slug: schema.post.slug }).from(schema.post)).map((p) => p.slug)).toEqual(["from-legacy"]);

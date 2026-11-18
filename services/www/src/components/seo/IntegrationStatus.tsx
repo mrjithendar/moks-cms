@@ -4,6 +4,7 @@ import { Card, StatusPill } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
+import { failingFlows } from "@/lib/health";
 import { agentToken, orchestrator } from "@/lib/seo-agent/config";
 import { integrationsView } from "@/lib/seo-intel/queries";
 import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
@@ -48,9 +49,12 @@ export async function loadConnections(env: Record<string, string | undefined> = 
   let agent: ConnectionRow = { key: "agent", name: "SEO agent (CrewAI flows)", status: "not configured", detail: "SEO_ORCHESTRATOR=legacy: the web worker runs every job." };
   if (orch === "crewai") {
     let last: { flow_name: string; status: string; finished_at: string | null } | undefined;
+    let failing: { flow: string; at: string; error: string }[] = [];
     try {
       const db = await getDb();
       [last] = rowsOf<{ flow_name: string; status: string; finished_at: string | null }>(await db.execute(sql`select flow_name, status, finished_at::text from seo_flow_runs where finished_at is not null order by finished_at desc limit 1`));
+      // Degraded only while a flow's latest run in the last day failed (one old failure does not mark it for ever).
+      failing = await failingFlows();
     } catch {
       last = undefined; // migration 0016 not applied yet
     }
@@ -58,8 +62,14 @@ export async function loadConnections(env: Record<string, string | undefined> = 
     agent = {
       key: "agent",
       name: "SEO agent (CrewAI flows)",
-      status: !tokenOk ? "down" : !last ? "degraded" : last.status === "failed" ? "degraded" : "ok",
-      detail: !tokenOk ? "SEO_ORCHESTRATOR=crewai but SEO_AGENT_TOKEN is not set." : last ? `Last finished run: ${last.flow_name} (${last.status}) at ${last.finished_at?.slice(0, 16).replace("T", " ")} UTC.` : "No finished flow run recorded yet.",
+      status: !tokenOk ? "down" : !last ? "degraded" : failing.length ? "degraded" : "ok",
+      detail: !tokenOk
+        ? "SEO_ORCHESTRATOR=crewai but SEO_AGENT_TOKEN is not set."
+        : failing.length
+          ? `Latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} at ${f.at} UTC (${f.error})`).join("; ")}.`
+          : last
+            ? `Last finished run: ${last.flow_name} (${last.status}) at ${last.finished_at?.slice(0, 16).replace("T", " ")} UTC; no flow's latest run failed in the last 24 h.`
+            : "No finished flow run recorded yet.",
     };
   }
   rows.push(agent);
