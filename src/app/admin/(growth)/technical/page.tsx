@@ -36,8 +36,8 @@ export default async function TechnicalPage({ searchParams }: { searchParams: Pr
                   <tr key={n}>
                     <td className={td}><StatusPill status={i.severity === "error" ? "critical" : i.severity === "warning" ? "warning" : "info"} /></td>
                     <td className={td}>{i.check.replace(/_/g, " ")}</td>
-                    <td className={`${td} max-w-xs [overflow-wrap:anywhere]`}>{i.url}</td>
-                    <td className={`${td} [overflow-wrap:anywhere]`}>{i.message}</td>
+                    <td className={`${td} max-w-xs min-w-48 [overflow-wrap:anywhere]`}>{i.url}</td>
+                    <td className={`${td} min-w-48 [overflow-wrap:anywhere]`}>{i.message}</td>
                   </tr>
                 ))}
               </Table>

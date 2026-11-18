@@ -40,4 +40,10 @@ describe("phone layout", () => {
     const rows = files.flatMap((f) => (/<div className="flex gap-\d">\n\s*<Button\b[\s\S]{0,600}?\n\s*<Button\b/.test(f.text) ? [f.name] : []));
     expect(rows).toEqual([]);
   });
+
+  it("a table cell that may break inside a word has a minimum width", () => {
+    // `overflow-wrap: anywhere` lets a column shrink to one or two letters per line; with a floor the table scrolls instead.
+    const thin = files.flatMap((f) => [...f.text.matchAll(/<td className=(?:"[^"]*"|\{`[^`]*`\})/g)].filter((m) => m[0].includes("[overflow-wrap:anywhere]") && !m[0].includes("min-w-")).map(() => f.name));
+    expect(thin).toEqual([]);
+  });
 });

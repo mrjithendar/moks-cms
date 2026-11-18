@@ -57,7 +57,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
               <tbody className="divide-y divide-line">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-surface-muted">
-                    <td className="px-4 py-2 [overflow-wrap:anywhere]"><Link className="font-medium text-fg underline" href={`/admin/posts/${r.id}/insights`}>{r.title}</Link><span className="block text-xs text-fg-subtle">{r.path} · {r.category}</span></td>
+                    <td className="px-4 py-2 min-w-56 [overflow-wrap:anywhere]"><Link className="font-medium text-fg underline" href={`/admin/posts/${r.id}/insights`}>{r.title}</Link><span className="block text-xs text-fg-subtle">{r.path} · {r.category}</span></td>
                     {COLS.map(([m]) => <td key={m} className="px-2 py-2 text-right"><MetricCell articleId={r.id} metric={m} value={r.counts[m]} run={r.run} title={r.title} /></td>)}
                     <td className="px-3 py-2 text-right tabular-nums">{fmtInt(r.clicks)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{r.pendingRecommendations}</td>

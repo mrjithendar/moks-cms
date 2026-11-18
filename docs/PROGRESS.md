@@ -23,6 +23,9 @@ were not opened in a browser in this change).
   run actions, log viewer, editor, news settings, backups, database, audit, appearance, media, practice).
 - LanceDB tables list (third screenshot): the Columns cell keeps a readable width and the table scrolls sideways,
   instead of one word per line.
+- Tables no longer squeeze a title or URL to two letters per line (fourth screenshot, Page insights): 16 cells that
+  may break inside a word (`overflow-wrap: anywhere`) now have a minimum width (12rem; 14rem for the page or title
+  column), so on a phone the table scrolls sideways and the text stays readable. Test guard added (5 tests).
 - No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
 - Open: check on a real phone (Skills, ML models, Recommendations, Practice); a Playwright phone-viewport check that
   asserts `scrollWidth <= clientWidth` on every admin page would catch what a static scan cannot.

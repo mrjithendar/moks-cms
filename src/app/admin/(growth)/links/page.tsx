@@ -83,7 +83,7 @@ export default async function LinksPage({ searchParams }: { searchParams: Promis
           <Table head={<tr><th className={th}>Article</th><th className={th}>Inbound</th><th className={th}>Outbound</th><th className={th}>Words</th><th className={th}>Cap</th></tr>}>
             {rows.map((row) => (
               <tr key={row.path}>
-                <td className={`${td} [overflow-wrap:anywhere]`}><Link className="underline" href={`/admin/posts/${row.id}/insights`}>{row.title}</Link><span className="block text-xs text-fg-subtle">{row.path}</span></td>
+                <td className={`${td} min-w-56 [overflow-wrap:anywhere]`}><Link className="underline" href={`/admin/posts/${row.id}/insights`}>{row.title}</Link><span className="block text-xs text-fg-subtle">{row.path}</span></td>
                 <td className={`${td} tabular-nums`}>{row.inbound === 0 ? <Badge t="amber">0 · orphan</Badge> : row.inbound}</td>
                 <td className={`${td} tabular-nums`}>{row.overLinked ? <Badge t="red">{row.outbound} · over cap</Badge> : row.outbound}</td>
                 <td className={`${td} tabular-nums`}>{row.words.toLocaleString("en")}</td>

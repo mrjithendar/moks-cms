@@ -91,7 +91,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               <Table head={<tr><th className={th}>Account tried</th><th className={th}>Failures</th><th className={th}>From IPs</th><th className={th}>Last seen</th></tr>}>
                 {sec.topAccounts.map((a) => (
                   <tr key={a.account}>
-                    <td className={`${td} [overflow-wrap:anywhere]`}><Link href={`/admin/audit?q=${encodeURIComponent(a.account)}&days=1`} className="underline">{a.account}</Link></td>
+                    <td className={`${td} min-w-48 [overflow-wrap:anywhere]`}><Link href={`/admin/audit?q=${encodeURIComponent(a.account)}&days=1`} className="underline">{a.account}</Link></td>
                     <td className={td}>{a.failures}</td>
                     <td className={td}>{a.ips}</td>
                     <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={a.lastSeen} />}</td>

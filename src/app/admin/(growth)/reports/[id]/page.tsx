@@ -42,7 +42,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
       </Section>
       {([["Best articles", r.bestArticles], ["Growing", r.growing], ["Declining", r.declining]] as const).map(([title, rows]) => (
         <Section key={title} title={title}>
-          {rows.length ? <Table head={<tr><th className={th}>Page</th><th className={th}>Clicks</th><th className={th}>Previous</th><th className={th}>Δ</th></tr>}>{rows.map((x) => <tr key={x.page}><td className={`${td} [overflow-wrap:anywhere]`}>{x.title ?? x.page}</td><td className={td}>{fmtInt(x.clicks)}</td><td className={td}>{fmtInt(x.previous)}</td><td className={td}>{x.delta > 0 ? "+" : ""}{fmtInt(x.delta)}</td></tr>)}</Table> : <Empty>None.</Empty>}
+          {rows.length ? <Table head={<tr><th className={th}>Page</th><th className={th}>Clicks</th><th className={th}>Previous</th><th className={th}>Δ</th></tr>}>{rows.map((x) => <tr key={x.page}><td className={`${td} min-w-48 [overflow-wrap:anywhere]`}>{x.title ?? x.page}</td><td className={td}>{fmtInt(x.clicks)}</td><td className={td}>{fmtInt(x.previous)}</td><td className={td}>{x.delta > 0 ? "+" : ""}{fmtInt(x.delta)}</td></tr>)}</Table> : <Empty>None.</Empty>}
         </Section>
       ))}
       {([["New opportunities", r.newOpportunities], ["Decay alerts", r.decayAlerts], ["Next actions", r.nextActions]] as const).map(([title, rows]) => (
@@ -61,7 +61,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
               const b = o.baseline as { clicks?: number } | null;
               const x = o.after28 as { clicks?: number } | null;
               const y = o.after56 as { clicks?: number } | null;
-              return <tr key={o.id}><td className={`${td} [overflow-wrap:anywhere]`}>{o.category.replace(/_/g, " ")}: {o.url}</td><td className={td}>{o.implementedAt?.slice(0, 10)}</td><td className={td}>{fmtInt(b?.clicks ?? null)}</td><td className={td}>{x ? fmtInt(x.clicks ?? null) : "pending"}</td><td className={td}>{y ? fmtInt(y.clicks ?? null) : "pending"}</td></tr>;
+              return <tr key={o.id}><td className={`${td} min-w-48 [overflow-wrap:anywhere]`}>{o.category.replace(/_/g, " ")}: {o.url}</td><td className={td}>{o.implementedAt?.slice(0, 10)}</td><td className={td}>{fmtInt(b?.clicks ?? null)}</td><td className={td}>{x ? fmtInt(x.clicks ?? null) : "pending"}</td><td className={td}>{y ? fmtInt(y.clicks ?? null) : "pending"}</td></tr>;
             })}
           </Table>
         )}

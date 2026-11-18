@@ -74,7 +74,7 @@ export function InvoiceSheet({ doc }: { doc: InvoicePdfInput }) {
           <tbody className="divide-y divide-line border-b border-line">
             {doc.items.map((item, i) => (
               <tr key={i}>
-                <td className="whitespace-pre-line px-3 py-3 align-top [overflow-wrap:anywhere]">{item.description}</td>
+                <td className="whitespace-pre-line px-3 py-3 align-top min-w-48 [overflow-wrap:anywhere]">{item.description}</td>
                 <td className="px-3 py-3 text-right align-top tabular-nums">{item.quantity}</td>
                 <td className="px-3 py-3 text-right align-top tabular-nums">{item.unitPrice}</td>
                 <td className="px-3 py-3 text-right align-top tabular-nums">{item.amount}</td>

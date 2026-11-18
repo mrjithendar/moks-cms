@@ -71,7 +71,7 @@ export default async function RecommendationsPage({ searchParams }: { searchPara
                     <summary className="cursor-pointer text-fg-muted">Evidence ({r.evidence.length}) and score inputs</summary>
                     <div className="overflow-x-auto"><table className="mt-2 w-full text-left text-xs tabular-nums">
                       <thead><tr className="text-fg-subtle"><th className="py-1 pr-3">Metric</th><th className="pr-3">Period</th><th className="pr-3">Value</th><th>Source</th></tr></thead>
-                      <tbody>{r.evidence.map((e, i) => <tr key={i}><td className="py-0.5 pr-3">{e.metric}</td><td className="pr-3">{e.period}</td><td className="pr-3 [overflow-wrap:anywhere]">{e.valueText ?? fmtVal(e.metric, e.value)}</td><td>{e.source}</td></tr>)}</tbody>
+                      <tbody>{r.evidence.map((e, i) => <tr key={i}><td className="py-0.5 pr-3">{e.metric}</td><td className="pr-3">{e.period}</td><td className="pr-3 min-w-48 [overflow-wrap:anywhere]">{e.valueText ?? fmtVal(e.metric, e.value)}</td><td>{e.source}</td></tr>)}</tbody>
                     </table></div>
                     <p className="mt-2 text-xs text-fg-subtle">Inputs used: {si.used?.join(", ") || "none"}{si.missing?.length ? `; missing (excluded, weights renormalised): ${si.missing.join(", ")}` : ""}.</p>
                   </details>

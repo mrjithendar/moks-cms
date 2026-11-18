@@ -86,7 +86,7 @@ export default async function ArticleSeoPage({ params, searchParams }: { params:
             {decided.map((o) => (
               <tr key={o.id}>
                 <td className={td}>{o.field}</td>
-                <td className={`${td} max-w-md [overflow-wrap:anywhere]`}>{o.field === "body" ? "(body change)" : o.proposed}</td>
+                <td className={`${td} max-w-md min-w-48 [overflow-wrap:anywhere]`}>{o.field === "body" ? "(body change)" : o.proposed}</td>
                 <td className={td}><StatusPill status={o.status === "accepted" ? "approved" : o.status === "rejected" ? "rejected" : "draft"} /> <span className="text-xs">{o.status.replace("_", " ")}</span></td>
                 <td className={`${td} text-xs`}>{o.decidedBy}<span className="block">{o.decidedAt?.slice(0, 16).replace("T", " ")}</span></td>
                 <td className={td}>{o.status === "accepted" && <ApiButton url={`/api/admin/seo/optimizations/${o.id}`} method="PATCH" body={{ action: "rollback" }} label="Roll back" confirm="Restore your previous working copy for this field? Saved revisions are not changed." />}</td>
@@ -144,7 +144,7 @@ export default async function ArticleSeoPage({ params, searchParams }: { params:
       <Section title="Ranking queries (GSC, 28 d)" description="Partial coverage: anonymised queries are not included.">
         {p.queries.length ? (
           <Table head={<tr><th className={th}>Query</th><th className={th}>Clicks</th><th className={th}>Impr.</th><th className={th}>CTR</th><th className={th}>Pos.</th></tr>}>
-            {p.queries.map((q) => <tr key={q.query}><td className={`${td} [overflow-wrap:anywhere]`}>{q.query}</td><td className={`${td} tabular-nums`}>{fmtInt(q.clicks)}</td><td className={`${td} tabular-nums`}>{fmtInt(q.impressions)}</td><td className={`${td} tabular-nums`}>{fmtPct(q.ctr)}</td><td className={`${td} tabular-nums`}>{fmtPos(q.position)}</td></tr>)}
+            {p.queries.map((q) => <tr key={q.query}><td className={`${td} min-w-48 [overflow-wrap:anywhere]`}>{q.query}</td><td className={`${td} tabular-nums`}>{fmtInt(q.clicks)}</td><td className={`${td} tabular-nums`}>{fmtInt(q.impressions)}</td><td className={`${td} tabular-nums`}>{fmtPct(q.ctr)}</td><td className={`${td} tabular-nums`}>{fmtPos(q.position)}</td></tr>)}
           </Table>
         ) : <Empty>No query data for this URL yet.</Empty>}
       </Section>
