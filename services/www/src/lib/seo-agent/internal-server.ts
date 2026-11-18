@@ -1,5 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { context, propagation } from "@opentelemetry/api";
 import { log } from "../log";
+import { withSpan } from "../trace";
 import { DraftError } from "../seo-intel/drafts";
 import * as cb from "./callbacks";
 import * as v4 from "./callbacks-v4";
@@ -74,6 +76,11 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
 
 const PREFIX = "/internal/seo-agent";
 
+/** A route pattern as a low-cardinality span name: /drafts/([^/]+)/save → /drafts/:id/save. */
+export function routeName(re: RegExp): string {
+  return re.source.replace(/^\^|\$$/g, "").replace(/\\\//g, "/").replace(/\(\[\^\/\]\+\)/g, ":id");
+}
+
 export function tokenOk(header: string | undefined, token: string | null): boolean {
   if (!token || token.length < 32 || !header?.startsWith("Bearer ")) return false;
   // Hash both sides first so the comparison is constant-time regardless of length.
@@ -92,8 +99,12 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
     const match = re.exec(path);
     if (!match) continue;
     if (m !== method) return { status: 405, body: { error: "method not allowed", code: "method" } };
+    // The agent sends traceparent (seo-agent app/webapp.py): this callback becomes a span of the flow run's trace.
+    const parent = propagation.extract(context.active(), headers);
+    const route = routeName(re);
     try {
-      return { status: 200, body: await fn(match, body, url.searchParams, headers) };
+      const out = await context.with(parent, () => withSpan(`seo-agent.callback ${method} ${route}`, { "http.request.method": method, "http.route": `${PREFIX}${route}` }, () => fn(match, body, url.searchParams, headers)));
+      return { status: 200, body: out };
     } catch (e) {
       if (e instanceof cb.CallbackError) return { status: e.status, body: { error: e.message, code: e.code } };
       if (e instanceof DraftError) return { status: e.status, body: { error: e.message, code: e.status === 403 ? "approval_required" : "draft" } };
