@@ -723,7 +723,7 @@ decisions the same day: LanceDB holds **CrewAI's memory and the article index**;
 | 0 Install LanceDB (dependency, lockfile, guards, image-size baseline) | done (pull request #121) |
 | 1 R2 connection, CrewAI memory behind a switch per crew, API for the dashboard | R2 connection and API done (D-92); memory not started |
 | 2 SEO dashboard → Memory: see, edit, delete | generic table browser at /admin/lancedb done (D-92); memory view not started |
-| 3 Article index in LanceDB behind a switch; RAG evaluation on both stores | not started |
+| 3 Article index in LanceDB behind a switch; RAG evaluation on both stores | copy of the index done (D-93); LanceDB retriever and evaluation not started |
 | 4 Cut-over of Ask the Blog; index view in the dashboard | not started |
 
 **Step 0, what changed.** No behaviour: memory stays off and the index stays on pgvector.
@@ -764,6 +764,22 @@ on it.
 
 **Manual steps (owner).** None to deploy. Tables appear once something writes to LanceDB (D-91 steps 1 and 3), and
 Admin → Storage must be configured for the agent to reach R2.
+
+## The article index in LanceDB (2026-11-18, owner request; D-93)
+
+**What changed.**
+
+- `services/seo-agent/app/lance_index.py` (new): copies the published chunks and their vectors from
+  `seo_article_chunks` into the LanceDB table `article_chunks` on R2; whole rewrite, old versions cleaned up after an
+  hour, an empty result never wipes the copy.
+- `services/seo-agent/app/main.py`: the container's `mirror`; `reindex` syncs after a change (`lancedb_synced` in the
+  result); `initial_mirror` fills a missing table at startup, waiting up to 30 minutes for storage.
+- `services/seo-agent/app/config.py`: `LANCEDB_ARTICLE_INDEX` (default `true`).
+- Tests: `services/seo-agent/tests/test_lance_index.py` (a real LanceDB in a temporary folder), and a Postgres test of
+  the query in `tests/test_postgres.py`.
+
+**Manual steps (owner).** None. After deploy, /admin/lancedb shows `article_chunks` within a minute or two of the agent
+starting (Admin → Storage must be configured).
 
 ## CrewAI logging and tracing (2026-11-18, owner request)
 

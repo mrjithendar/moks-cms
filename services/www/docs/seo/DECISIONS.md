@@ -750,3 +750,27 @@ R2 connection of D-91 step 1 and a generic form of step 2 (see, edit, delete), b
 - **Not in this change.** Nothing writes to LanceDB yet, so the browser shows no tables until D-91 step 1 (CrewAI
   memory) or step 3 (the article index) lands. A memory-specific view that shows where each record came from (D-91's
   known limit) belongs to step 1.
+
+## D-93 The article index copied into LanceDB (owner request 2026-11-18; D-91 step 3, first half)
+
+"Tables and rows are 0 … I want real data", with the owner choosing both D-91 steps, the article index first. This puts
+the real article index in LanceDB without changing what any search reads.
+
+- **A copy, not a second index.** After every reindex that changed something, and once at startup when the table is
+  missing, seo-agent copies the published articles' chunks from pgvector's `seo_article_chunks` into the LanceDB
+  table `article_chunks` (`app/lance_index.py`), with the vectors pgvector already holds: nothing is embedded twice and
+  both stores always hold the same vectors, which is what the RAG evaluation of step 3 needs. Columns: `id`
+  (`<article_id>:<chunk_index>`, the unique key /admin/lancedb edits by), article, title, path, category, heading,
+  anchor, content, hash, model, `updated_at`, `vector` (fixed-size float32).
+- **Whole rewrite, then cleanup.** Each sync writes the whole table as one new version (about 1–2k rows), so the copy
+  cannot drift from Postgres; versions older than one hour are removed, so R2 holds about one copy. An admin edit to
+  `article_chunks` in /admin/lancedb lasts until the next sync, which is stated in the code; edits belong in the
+  article, not in the index.
+- **Never harms the reindex.** Postgres is the source of truth: a failed sync is a warning (`lancedb_index_failed`)
+  and the reindex result gets `lancedb_synced: 0`. An empty query result never replaces a filled table. Syncs run under
+  the reindex lock, so the agent stays the only writer (D-91).
+- **Switch.** `LANCEDB_ARTICLE_INDEX` (default `true`; `false` turns the copy off). On by default because it changes no
+  behaviour: Ask the Blog, related articles and the crews still search pgvector.
+- **Next (step 3, second half).** A LanceDB `Retriever` next to `PgVectorIndex`, and `rag-eval.yml` run on both, before
+  any cut-over (step 4).
+

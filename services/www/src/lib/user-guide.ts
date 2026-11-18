@@ -692,7 +692,8 @@ const guides: GuideEntry[] = [
     adminOnly: true,
     keywords: ["lancedb", "vectors", "embeddings", "memory", "crewai", "tables", "browse", "edit"],
     body: [
-      "LanceDB is the vector store the SEO agent keeps on Cloudflare R2 (CrewAI memory and the article index). Pick a table to page through its rows; long text and vectors are shortened in the list.",
+      "LanceDB is the vector store the SEO agent keeps on Cloudflare R2. Table article_chunks is a copy of the article index (every published article's chunks and their vectors), rewritten after each reindex. Pick a table to page through its rows; long text and vectors are shortened in the list.",
+      "Edits to article_chunks last only until the next reindex rewrites it: change the article instead.",
       "Open a row to edit its text, number, true/false or date columns, or to delete it. Each change touches exactly one row, chosen by a key column whose value must be unique; vectors are read-only. Every change is a new table version and is recorded in the audit log.",
     ],
   },
