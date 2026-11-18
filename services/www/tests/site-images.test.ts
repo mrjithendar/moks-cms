@@ -20,7 +20,7 @@ const { resolveImage } = await import("@/lib/media");
 const { ownImageBytes } = await import("@/lib/site-config/image-bytes");
 const { clearSiteImageCache, putSiteImage, siteImagePath, svgProblem } = await import("@/lib/site-images");
 const { GET: listRoute } = await import("@/app/api/v1/images/route");
-const { PUT: putRoute } = await import("@/app/api/v1/images/[...path]/route");
+const { POST: postRoute, PUT: putRoute } = await import("@/app/api/v1/images/[...path]/route");
 const { GET: imageRoute } = await import("@/app/images/[...path]/route");
 
 const admin: Actor = { id: "admin", role: "admin", label: "admin@example.com" };
@@ -35,6 +35,10 @@ const SVG_OK = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="120" 
 const segments = (path: string) => path.replace(/^\/images\//, "").split("/");
 const put = (key: string | null, path: string, body: Buffer) =>
   putRoute(new Request(`https://jithendar.com/api/v1${path}`, { method: "PUT", headers: key ? { authorization: `Bearer ${key}` } : {}, body: new Uint8Array(body) }), { params: Promise.resolve({ path: segments(path) }) });
+const post = (key: string, path: string, body: unknown) =>
+  postRoute(new Request(`https://jithendar.com/api/v1${path}`, { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify(body) }), { params: Promise.resolve({ path: segments(path) }) });
+const PDF = Buffer.from("%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n");
+const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(200, 7)]);
 const get = (path: string, headers: Record<string, string> = {}) => imageRoute(new Request(`https://jithendar.com${path}`, { headers }), { params: Promise.resolve({ path: segments(path) }) });
 const data = async <T>(res: Response) => ((await res.json()) as { data: T }).data;
 const message = async (res: Response) => ((await res.json()) as { error: { message: string } }).error.message;
@@ -67,6 +71,7 @@ describe("site image paths", () => {
     ["an encoded slash", ["a%2Fb.png"]],
     ["no extension", ["folder", "file"]],
     ["another file type", ["notes.txt"]],
+    ["a script", ["page.html"]],
     ["too deep", ["a", "b", "c", "d", "e", "f", "g.png"]],
     ["too long", ["x".repeat(200) + ".png"]],
   ];
@@ -177,7 +182,7 @@ describe("pushing a site image", () => {
     expect((await put(adminKey, "/images/pushed/page.png", Buffer.from("<!doctype html><script>alert(1)</script>"))).status).toBe(400);
     expect((await put(adminKey, "/images/pushed/empty.png", Buffer.alloc(0))).status).toBe(400);
     expect((await put(adminKey, "/images/pushed/notes.txt", Buffer.from("hello"))).status).toBe(400);
-    expect((await put(adminKey, "/images/pushed/huge.png", Buffer.alloc(5 * 1024 * 1024 + 1))).status).toBe(413);
+    expect((await put(adminKey, "/images/pushed/huge.png", Buffer.alloc(20 * 1024 * 1024 + 1))).status).toBe(413);
 
     expect(svgProblem(SVG_OK)).toBeNull();
     for (const bad of [
@@ -234,5 +239,82 @@ describe("who may push site images", () => {
     expect((await list(reader)).status).toBe(200);
     const drafts = (await createApiKey(author, { name: "drafts", scopes: ["posts:draft"] })).key;
     expect((await list(drafts)).status).toBe(403);
+  });
+});
+
+describe("documents and media", () => {
+  it("accepts a PDF in one PUT and streams it, never as an image", async () => {
+    const res = await put(adminKey, "/images/docs/guide.pdf", PDF);
+    expect(res.status).toBe(200);
+    expect(await data<Pushed>(res)).toMatchObject({ path: "/images/docs/guide.pdf", contentType: "application/pdf", width: 0, height: 0, created: true });
+    const served = await get("/images/docs/guide.pdf");
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("application/pdf");
+    expect(served.headers.get("accept-ranges")).toBe("bytes");
+    expect(served.headers.get("content-disposition")).toBe('inline; filename="guide.pdf"');
+    expect(Buffer.from(await served.arrayBuffer()).equals(PDF)).toBe(true);
+    expect(await resolveImage("/images/docs/guide.pdf")).toBeUndefined();
+  });
+
+  it("refuses a file that is not what its name says", async () => {
+    const res = await put(adminKey, "/images/docs/guide.pdf", JPEG_1x1);
+    expect(res.status).toBe(400);
+    expect(await message(res)).toMatch(/but its name says application\/pdf/);
+  });
+
+  it("uploads a large file straight to R2, checks it, then puts it in place", async () => {
+    const path = "/images/videos/demo.mp4";
+    const start = await post(adminKey, path, { action: "start", size: MP4.length, sha256: sha(MP4) });
+    expect(start.status).toBe(200);
+    const intent = await data<{ upload: string; uploadUrl: string; headers: Record<string, string> }>(start);
+    expect(intent.headers["Content-Type"]).toBe("video/mp4");
+    const staged = `jithendar/www/tmp/site-files/${intent.upload}.mp4`;
+    expect(intent.uploadUrl).toContain(staged);
+    r2.objects.set(staged, { body: MP4, contentType: "video/mp4" }); // what the client's PUT to uploadUrl does
+
+    const done = await post(adminKey, path, { action: "complete", upload: intent.upload, size: MP4.length, sha256: sha(MP4) });
+    expect(done.status).toBe(200);
+    expect(await data<Pushed>(done)).toMatchObject({ path, contentType: "video/mp4", bytes: MP4.length, sha256: sha(MP4), created: true });
+    expect(r2.objects.has(staged)).toBe(false);
+    expect(r2.objects.get(`${KEY}/videos/demo.mp4`)?.body.equals(MP4)).toBe(true);
+    const served = await get(path);
+    expect(served.headers.get("content-type")).toBe("video/mp4");
+    expect(Buffer.from(await served.arrayBuffer()).equals(MP4)).toBe(true);
+  });
+
+  it("leaves the live file alone when an upload is wrong", async () => {
+    const path = "/images/docs/guide.pdf";
+    await put(adminKey, path, PDF);
+    const begin = async () => data<{ upload: string }>(await post(adminKey, path, { action: "start", size: PDF.length, sha256: sha(PDF) }));
+
+    const corrupt = await begin();
+    const staged = `jithendar/www/tmp/site-files/${corrupt.upload}.pdf`;
+    const other = Buffer.from(PDF.toString().replace("Catalog", "Catalof"));
+    r2.objects.set(staged, { body: other, contentType: "application/pdf" });
+    const refused = await post(adminKey, path, { action: "complete", upload: corrupt.upload, size: PDF.length, sha256: sha(PDF) });
+    expect(refused.status).toBe(400);
+    expect(await message(refused)).toMatch(/checksum mismatch/);
+    expect(r2.objects.has(staged)).toBe(false);
+
+    const missing = await begin();
+    expect((await post(adminKey, path, { action: "complete", upload: missing.upload, size: PDF.length, sha256: sha(PDF) })).status).toBe(409);
+
+    const wrongType = await begin();
+    const jpeg = JPEG_1x1;
+    r2.objects.set(`jithendar/www/tmp/site-files/${wrongType.upload}.pdf`, { body: jpeg, contentType: "application/pdf" });
+    expect(await message(await post(adminKey, path, { action: "complete", upload: wrongType.upload, size: jpeg.length, sha256: sha(jpeg) }))).toMatch(/but its name says application\/pdf/);
+
+    expect(r2.objects.get(`${KEY}/docs/guide.pdf`)?.body.equals(PDF)).toBe(true);
+  });
+
+  it("limits each type, and sends images in one PUT", async () => {
+    const tooBig = await post(adminKey, "/images/videos/huge.mp4", { action: "start", size: 501 * 1024 * 1024, sha256: sha(MP4) });
+    expect(tooBig.status).toBe(413);
+    expect(await message(tooBig)).toMatch(/500 MB or smaller/);
+    const image = await post(adminKey, "/images/pushed/diagram.png", { action: "start", size: 10, sha256: sha(MP4) });
+    expect(image.status).toBe(400);
+    expect(await message(image)).toMatch(/images are sent in one PUT/);
+    expect((await post(adminKey, "/images/docs/guide.pdf", { action: "start", size: 10, sha256: "nope" })).status).toBe(400);
+    expect((await post(adminKey, "/images/docs/guide.pdf", { action: "other" })).status).toBe(400);
   });
 });

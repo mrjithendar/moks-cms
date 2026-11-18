@@ -13,6 +13,7 @@ a separate thing and unchanged: see [MEDIA.md](MEDIA.md).
 | Store, validate, convert, look up, serve | `src/lib/site-images.ts` |
 | Table `site_image` | migration `0033_site_image.sql`, rollback in `src/db/rollback/` |
 | Push one file | `PUT /api/v1/images/<path>` (`src/app/api/v1/images/[...path]/route.ts`) |
+| Push a large document or media file | `POST /api/v1/images/<path>` start → PUT to R2 → complete (same route) |
 | List what is stored | `GET /api/v1/images` (`src/app/api/v1/images/route.ts`) |
 | Serve | `GET /images/<path>` (`src/app/images/[...path]/route.ts`) |
 | Size and URL for pages | `resolveImage()` in `src/lib/media.ts` |
@@ -54,8 +55,9 @@ curl -X PUT -H "Authorization: Bearer $KEY" --data-binary @public/images/my-post
   https://jithendar.com/api/v1/images/my-post/diagram.png
 ```
 
-- The body is the file itself. Allowed: PNG, JPEG, WebP, AVIF, GIF and SVG, at most 5 MB (SVG 2 MB) and 12,000 pixels
-  a side. The type is read from the bytes and must match the file name.
+- The body is the file itself, at most 20 MB. Allowed: PNG, JPEG, WebP, AVIF, GIF and SVG (images: at most 20 MB, SVG
+  2 MB, 12,000 pixels a side), and PDF, MP4, WebM and MP3 (documents and media, below). The type is read from the bytes
+  and must match the file name.
 - Paths: one to six segments of letters, digits, `.`, `_` and `-`, each starting with a letter or digit.
 - **SVG** is accepted here, unlike in the media library, because these files come from the site's own repository.
   An SVG with a `<script>` element, an event handler attribute or a `javascript:` link is refused, and every response
@@ -66,6 +68,31 @@ curl -X PUT -H "Authorization: Bearer $KEY" --data-binary @public/images/my-post
 - Pushing different bytes to a stored path **replaces** the image on every page that uses it.
 - The usual API limit applies: 120 requests a minute per key (`429` with `Retry-After: 60`).
 - Every new or replaced image is written to the audit log (`site_image.create`, `site_image.replace`).
+
+### Documents, video and audio; large files
+
+PDF (up to 100 MB), MP4 and WebM (500 MB) and MP3 (100 MB) are kept under the same `/images/…` paths, for links and
+players in articles (`[the guide](/images/my-post/guide.pdf)`). They are never converted or measured (`width` and
+`height` are 0), `resolveImage()` does not treat them as images, and they are not kept in memory: `GET /images/<path>`
+redirects to R2's public domain when one is configured (`R2_PUBLIC_BASE_URL`, Cloudflare serves the bytes and range
+requests), and otherwise streams them from R2 with `Range` support.
+
+A file up to 20 MB can be sent in one PUT. A larger one goes straight to R2, so it never passes through Cloudflare's
+request limit or the pod's memory:
+
+```sh
+# 1. start: a 10-minute presigned PUT for exactly this type and size, to a staging key
+curl -X POST -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"action":"start","size":104857600,"sha256":"<hex>"}' https://jithendar.com/api/v1/images/my-post/demo.mp4
+#    → {"data":{"upload":"<id>","uploadUrl":"https://…r2.cloudflarestorage.com/…","headers":{…},"expiresInSeconds":600}}
+# 2. send the file to uploadUrl with those headers
+curl -X PUT -H 'Content-Type: video/mp4' -H 'Cache-Control: …' --data-binary @demo.mp4 "$uploadUrl"
+# 3. complete: size, SHA-256 and type are checked, then the file is copied into place (the same answer as PUT)
+curl -X POST … -d '{"action":"complete","upload":"<id>","size":104857600,"sha256":"<hex>"}' …/my-post/demo.mp4
+```
+
+A wrong size, checksum or type is refused and the staged object deleted; the file already at that path (if any) stays
+as it was. Images always go in one PUT. `scripts/push-content.py` in a site repository does all three steps.
 
 ### Who may push
 
@@ -86,4 +113,5 @@ Rollback of step 5: copy the files into the pod again. Disk wins as soon as the 
 ## Tests
 
 `tests/site-images.test.ts`: paths; PNG → WebP with identical pixels; both URLs; ETag and `304`; replacement; JPEG and
-SVG kept as they are; refused files; URL clashes; scopes and roles; the list; `resolveImage()` and the social card.
+SVG kept as they are; refused files; URL clashes; scopes and roles; the list; `resolveImage()` and the social card;
+documents and media in one PUT and through the direct upload, and refused uploads leaving the live file alone.

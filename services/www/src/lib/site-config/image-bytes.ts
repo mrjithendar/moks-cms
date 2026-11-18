@@ -32,7 +32,7 @@ export async function ownImageBytes(src: string): Promise<{ bytes: Buffer; conte
     }
     // Not on disk: a site image in R2. The .png path of an image stored as WebP answers with a PNG, as its URL does.
     const row = await findSiteImage(src).catch(() => undefined);
-    const body = row && row.contentType !== "image/svg+xml" ? await siteImageBody(row, src).catch(() => null) : null;
+    const body = row && row.contentType.startsWith("image/") && row.contentType !== "image/svg+xml" ? await siteImageBody(row, src).catch(() => null) : null;
     return body ? { bytes: body.bytes, contentType: body.contentType } : null;
   }
   return null;
