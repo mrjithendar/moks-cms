@@ -27,7 +27,7 @@ export function Readiness({ ready }: { ready: Awaited<ReturnType<typeof invoiceR
   if (!ready.storage) {
     todo.push(
       <>
-        Connect file storage in <Link href="/admin/storage" className="link">Storage &amp; email</Link>: the invoice PDF is stored there, and an invoice cannot be sent without it.
+        Connect file storage in <Link href="/admin/storage" className="link">Storage</Link>: the invoice PDF is stored there, and an invoice cannot be sent without it.
       </>,
     );
   }

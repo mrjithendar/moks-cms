@@ -6,7 +6,7 @@ import { getSeoSettings } from "./settings";
 
 /**
  * Notifications through the site's existing mail service (src/lib/mail.ts). Nothing is sent unless a recipient is
- * configured (Settings → Drafts → digest recipients) and an email provider is set up (Admin → Storage & email).
+ * configured (Settings → Drafts → digest recipients) and an email provider is set up (Admin → Settings → Email).
  */
 type Deps = { send?: (to: string, subject: string, text: string) => Promise<boolean>; mailReady?: () => Promise<boolean> };
 

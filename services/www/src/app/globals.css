@@ -139,6 +139,23 @@ body:has([data-admin-shell]) .site-header-inner {
   }
 }
 
+/* The admin is a working tool, not a page to read: stronger edges than the public theme, so cards, fields, tables and
+   sections stand apart from the background instead of reading as one white sheet. Only inside the admin shell. */
+[data-admin-shell] {
+  --line: var(--color-slate-300);
+  --line-strong: var(--color-slate-400);
+  --surface-muted: var(--color-slate-100);
+  --surface-sunken: var(--color-slate-200);
+}
+@variant dark {
+  [data-admin-shell] {
+    --line: oklch(1 0 0 / 0.16);
+    --line-strong: oklch(1 0 0 / 0.28);
+    --surface-muted: oklch(0.17 0.007 255);
+    --surface-sunken: oklch(0.13 0.006 255);
+  }
+}
+
 /* --- Shared component classes (used where a React component would be overkill) ------------- */
 
 @utility eyebrow {

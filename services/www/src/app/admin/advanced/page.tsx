@@ -85,7 +85,7 @@ export default async function AdvancedSettingsPage({ searchParams }: { searchPar
           <>
             Options that used to need a change to the Kubernetes Secret and a restart. A value saved here overrides the deployment; an empty field uses the deployment&apos;s value.
             Content, look and features are in <Link href="/admin/appearance" className="link">Appearance &amp; settings</Link>; sign-in providers, Gemini and IndexNow in{" "}
-            <Link href="/admin/integrations" className="link">Integrations</Link>; media storage and email in <Link href="/admin/storage" className="link">Storage &amp; email</Link>.
+            <Link href="/admin/integrations" className="link">Integrations</Link>; media storage in <Link href="/admin/storage" className="link">Storage</Link> and email in <Link href="/admin/email" className="link">Email</Link>.
           </>
         }
       />

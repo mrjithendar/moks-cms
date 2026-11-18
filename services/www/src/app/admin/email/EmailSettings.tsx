@@ -10,7 +10,7 @@ import { saveEmailAction, testEmailAction, type EmailFormState } from "./email-a
 const LABELS: Record<Provider, string> = { disabled: "Disabled", smtp: "SMTP", mailgun: "Mailgun", ses: "Amazon SES" };
 
 /**
- * Admin → Storage & email → Email. One provider selector; only the selected provider's fields are shown and
+ * Admin → Settings → Email. One provider selector; only the selected provider's fields are shown and
  * submitted. Stored secrets are never sent to the browser: the page only knows whether one is saved.
  */
 export function EmailSettings({ initial, adminEmail }: { initial: EmailSummary; adminEmail: string }) {

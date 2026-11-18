@@ -58,7 +58,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       ? [
           { href: "/admin/calendar", label: "Editorial calendar", section: "Editorial & AI" },
           { href: "/admin/review", label: "Review queue", badge: review, section: "Editorial & AI" },
-          { href: "/admin/news", label: "News desk", section: "Editorial & AI" },
+          { href: "/admin/news", label: "News jobs", section: "Newsroom" },
+          { href: "/admin/news/runs", label: "News run history", section: "Newsroom" },
+          { href: "/admin/news/sources", label: "News sources", section: "Newsroom" },
+          { href: "/admin/news/topics", label: "News topics", section: "Newsroom" },
+          { href: "/admin/news/profiles", label: "News profiles & playground", section: "Newsroom" },
+          { href: "/admin/news/analytics", label: "News analytics", section: "Newsroom" },
+          { href: "/admin/news/settings", label: "News settings", section: "Newsroom" },
           { href: "/admin/promotion", label: "Promotion", section: "Editorial & AI" },
         ]
       : []),
@@ -103,7 +109,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
           { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
           { href: "/admin/advanced", label: "Advanced settings", section: "Site settings" },
-          { href: "/admin/storage", label: "Storage & email", section: "Site settings" },
+          { href: "/admin/storage", label: "Storage", section: "Site settings" },
+          { href: "/admin/email", label: "Email", section: "Site settings" },
           { href: "/admin/users", label: "Users", section: "Site settings" },
           { href: "/admin/system", label: "System status", section: "Operations" },
           { href: "/admin/sync", label: "Data sync", section: "Operations" },
@@ -127,7 +134,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   );
 
   return (
-    <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-header))] bg-surface-muted lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
+    <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-header))] bg-surface-muted md:grid md:grid-cols-[auto_minmax(0,1fr)]">
       {/* The sidebar is the first column and as wide as it draws itself: full, or icons only (components/admin/AdminNav.tsx). */}
       <AdminSidebar items={items} role={user.demo ? "demo" : user.role} account={account} prefs={readNavPrefs(jar.get(NAV_PREFS_COOKIE)?.value)} />
       <div className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">

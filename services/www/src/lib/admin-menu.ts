@@ -14,12 +14,14 @@ export type NavItem = { href: string; label: string; badge?: number; section: st
 export type MenuIconName =
   | "dashboard"
   | "posts"
+  | "editorial"
   | "media"
   | "pages"
   | "comments"
   | "inbox"
   | "billing"
   | "newsroom"
+  | "ai"
   | "insights"
   | "practice"
   | "appearance"
@@ -32,22 +34,23 @@ export type MenuIconName =
 
 type GroupDef = { id: string; label: string; icon: MenuIconName; /** The group's name for someone who cannot see `unless` (authors have a profile but no Users page). */ alt?: { unless: string; label: string } };
 
-/** Top-level groups, in menu order. */
+/** Top-level groups, in menu order. Every group opens a submenu, even one with a single page. */
 export const MENU_GROUPS: GroupDef[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "posts", label: "Posts", icon: "posts" },
+  { id: "editorial", label: "Editorial", icon: "editorial" },
   { id: "media", label: "Media", icon: "media" },
   { id: "pages", label: "Pages", icon: "pages" },
-  { id: "comments", label: "Comments", icon: "comments" },
-  { id: "inbox", label: "Inbox", icon: "inbox" },
-  { id: "billing", label: "Billing", icon: "billing" },
-  { id: "newsroom", label: "AI newsroom", icon: "newsroom" },
+  { id: "newsroom", label: "Newsroom", icon: "newsroom" },
+  { id: "ai", label: "AI room", icon: "ai" },
   { id: "insights", label: "SEO & insights", icon: "insights" },
+  { id: "community", label: "Community", icon: "comments" },
+  { id: "billing", label: "Billing", icon: "billing" },
   { id: "practice", label: "Practice", icon: "practice" },
   { id: "appearance", label: "Appearance", icon: "appearance" },
   { id: "users", label: "Users", icon: "users", alt: { unless: "/admin/users", label: "Your account" } },
-  { id: "tools", label: "Tools", icon: "tools" },
   { id: "settings", label: "Settings", icon: "settings" },
+  { id: "system", label: "System", icon: "tools" },
 ];
 
 type Place = { group: string; /** Name inside the group, when the page's own label would repeat the group's. */ title?: string; /** Sub-heading above this page and the ones after it. */ heading?: string };
@@ -60,8 +63,11 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/posts/new", { group: "posts", title: "Add new" }],
   ["/admin/categories", { group: "posts" }],
   ["/admin/tags", { group: "posts" }],
-  ["/admin/calendar", { group: "posts" }],
-  ["/admin/review", { group: "posts" }],
+
+  // Planning, drafting and promoting: from an idea to a published, shared article.
+  ["/admin/calendar", { group: "editorial" }],
+  ["/admin/review", { group: "editorial" }],
+  ["/admin/promotion", { group: "editorial" }],
 
   ["/admin/media", { group: "media", title: "Library" }],
 
@@ -69,19 +75,20 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/pages/new", { group: "pages", title: "Add new" }],
   ["/admin/appearance?section=hireMe", { group: "pages" }],
 
-  ["/admin/comments", { group: "comments" }],
+  // The news desk: watched sources turned into news drafts.
+  ["/admin/news", { group: "newsroom", title: "Jobs" }],
+  ["/admin/news/runs", { group: "newsroom" }],
+  ["/admin/news/sources", { group: "newsroom" }],
+  ["/admin/news/topics", { group: "newsroom" }],
+  ["/admin/news/profiles", { group: "newsroom" }],
+  ["/admin/news/analytics", { group: "newsroom" }],
+  ["/admin/news/settings", { group: "newsroom" }],
 
-  ["/admin/messages", { group: "inbox" }],
-  ["/admin/bookings", { group: "inbox" }],
-
-  ["/admin/invoices", { group: "billing" }],
-  ["/admin/payments", { group: "billing" }],
-
-  ["/admin/news", { group: "newsroom" }],
-  ["/admin/promotion", { group: "newsroom" }],
-  ["/admin/automation", { group: "newsroom" }],
-  ["/admin/models", { group: "newsroom" }],
-  ["/admin/automation/mcp", { group: "newsroom" }],
+  // The AI that works on the site: the SEO agent's flows, its models and data, and access for AI clients.
+  ["/admin/automation", { group: "ai" }],
+  ["/admin/models", { group: "ai" }],
+  ["/admin/lancedb", { group: "ai" }],
+  ["/admin/automation/mcp", { group: "ai" }],
 
   ["/admin/search", { group: "insights", heading: "Traffic" }],
   ["/admin/analytics", { group: "insights" }],
@@ -95,6 +102,13 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/ai-visibility", { group: "insights" }],
   ["/admin/technical", { group: "insights" }],
 
+  ["/admin/comments", { group: "community" }],
+  ["/admin/messages", { group: "community" }],
+  ["/admin/bookings", { group: "community" }],
+
+  ["/admin/invoices", { group: "billing" }],
+  ["/admin/payments", { group: "billing" }],
+
   ["/admin/practice", { group: "practice" }],
 
   ["/admin/appearance", { group: "appearance", title: "Customise" }],
@@ -106,17 +120,17 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/profile", { group: "users", title: "Your profile" }],
   ["/admin/api-keys", { group: "users" }],
 
-  ["/admin/backups", { group: "tools" }],
-  ["/admin/database", { group: "tools" }],
-  ["/admin/lancedb", { group: "tools" }],
-  ["/admin/sync", { group: "tools" }],
-  ["/admin/audit", { group: "tools" }],
-  ["/admin/system", { group: "tools" }],
-
   ["/admin/appearance?section=general", { group: "settings", title: "General" }],
   ["/admin/integrations", { group: "settings" }],
   ["/admin/storage", { group: "settings" }],
+  ["/admin/email", { group: "settings" }],
   ["/admin/advanced", { group: "settings" }],
+
+  ["/admin/system", { group: "system" }],
+  ["/admin/backups", { group: "system" }],
+  ["/admin/database", { group: "system" }],
+  ["/admin/sync", { group: "system" }],
+  ["/admin/audit", { group: "system" }],
 ];
 
 /** The manual is help, not a place to work: it is drawn at the foot of the menu, outside the groups. */

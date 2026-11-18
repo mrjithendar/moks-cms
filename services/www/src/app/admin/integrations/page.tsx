@@ -213,7 +213,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             </div>
             {!storage && (
               <div className="mb-4">
-                <Alert tone="info">Media storage (Cloudflare R2) must be configured in Storage & email before generated images can be saved.</Alert>
+                <Alert tone="info">Media storage (Cloudflare R2) must be configured in Settings → Storage before generated images can be saved.</Alert>
               </div>
             )}
             {gemini.lastError && (

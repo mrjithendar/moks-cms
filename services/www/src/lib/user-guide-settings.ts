@@ -220,7 +220,7 @@ const APPEARANCE: Omit<SettingsGroup, "area" | "href">[] = [
       r("Image corners", "Square, small or medium."),
       r("Captions", "Centred or left."),
       r("Gallery columns", "2, 3 or 4."),
-      r("Cloudflare R2 storage", "Status: uploads need storage configured (Storage & email)."),
+      r("Cloudflare R2 storage", "Status: uploads need storage configured (Settings → Storage)."),
     ],
   },
   {
@@ -316,7 +316,7 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "storage-r2",
-    area: "Storage & email",
+    area: "Storage",
     title: "Media storage (Cloudflare R2)",
     href: "/admin/storage",
     rows: [
@@ -328,9 +328,9 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "storage-email",
-    area: "Storage & email",
+    area: "Email",
     title: "Email",
-    href: "/admin/storage",
+    href: "/admin/email",
     rows: [
       r("Email provider", "SMTP, Mailgun or Amazon SES. Only the selected provider sends; the others' settings are kept; no automatic failover."),
       r("Sender name / Sender email / Reply-to address"),

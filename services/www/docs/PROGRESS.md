@@ -1,5 +1,30 @@
 # Progress log — jithendar.com
 
+## Admin menu: a submenu for every area, Newsroom and AI room apart, Storage and Email apart, stronger edges (2026-11-18, owner request)
+
+The owner found the admin hard on the eyes (white on white, fields that looked like text) and the menu's groups
+confusing (an "AI newsroom" holding the SEO agent, a "Storage & email" page).
+
+- **Menu (`src/lib/admin-menu.ts`, `src/components/admin/AdminNav.tsx`):** every group opens a submenu, even one with
+  a single page. Beside the page (from `md`, 768 px: tablets too, was `lg`) a group opens as a panel beside the sidebar
+  on hover (closes 200 ms after the pointer leaves) or click, one at a time; nothing expands inside the sidebar. The
+  group holding the current page is highlighted. Pinned pages stay listed. On a phone groups expand in place, as before.
+- **Groups:** Dashboard, Posts, Editorial (calendar, review queue, promotion), Media, Pages, Newsroom (the news desk's
+  seven pages), AI room (Automation & AI, ML models, LanceDB, MCP access), SEO & insights, Community (comments,
+  messages, bookings), Billing, Practice, Appearance, Users, Settings (General, Integrations, Storage, Email, Advanced),
+  System (System status, Backups, Database, Data sync, Audit log).
+- **Email has its own page** (`/admin/email`; `EmailSettings.tsx` and `email-actions.ts` moved from `storage/`).
+  `/admin/storage` is storage only. Every "Storage & email" mention points to the right one.
+- **Edges:** inside the admin shell, `--line` is slate-300, `--line-strong` slate-400, the canvas slate-100 (dark mode:
+  stronger translucent lines); cards have a light shadow. Editorial calendar fields have visible borders and labels.
+- User guide (`src/lib/user-guide.ts`, `user-guide-settings.ts`, `GuideBrowser.tsx`) describes the new menu and pages.
+- Tests: `tests/admin-nav.test.tsx` (21: panels on tablet/desktop, hover with delayed close, phone accordion, pins,
+  narrow menu), `tests/seo-admin-css.test.ts` (the `md:` overrides), `tests/user-guide.test.ts`.
+- Commands (Node 26): `eslint` on the changed files pass; `tsc --noEmit` pass; `vitest run` 1253 passed, 1 skipped;
+  `next build` pass. Checked in Chrome (Playwright) against a local build with a throwaway PGlite database: desktop
+  hover panel, tablet (820 px) panel, phone accordion, no horizontal scroll at 390 px.
+- No new dependency. No migration.
+
 ## Posts pushed as MDX files through the API (2026-11-16, owner request, phase 2 of 3)
 
 Second part of the request in the next entry. A site's CI could send a post only with `npm run push-post`, which

@@ -103,7 +103,7 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
         <Card>
           <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold text-fg">Cloudflare R2</h2><StatusPill status={b.r2?.enabled ? "ok" : b.r2 ? "read" : "not configured"} /></div>
           <p className="mb-4 text-sm text-fg-muted">
-            Backups use the R2 account and API token from <Link href="/admin/storage" className="link">Storage &amp; email</Link> and are written to{" "}
+            Backups use the R2 account and API token from <Link href="/admin/storage" className="link">Storage</Link> and are written to{" "}
             <code className="text-xs">{BACKUP_ROOT}/</code> in the bucket below. A separate private bucket is recommended: anything in a bucket with a public custom domain can be
             fetched by URL (backups are encrypted, but keep them private anyway). The API token must have Object Read &amp; Write on that bucket.
           </p>

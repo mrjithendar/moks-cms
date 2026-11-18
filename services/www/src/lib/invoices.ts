@@ -685,7 +685,7 @@ export async function sendInvoice(actor: Actor, id: string, fetchImpl: Fetch = f
   const [ctx, env, storage] = await Promise.all([context(), effectiveEnv(), storageReady()]);
   const { settings } = ctx;
   if (!settings.businessName) throw new PostError("Add your business name in Invoices → Settings before sending an invoice.", 409);
-  if (!storage) throw new PostError("Connect file storage first (Admin → Storage & email): the invoice PDF is stored there.", 409);
+  if (!storage) throw new PostError("Connect file storage first (Admin → Settings → Storage): the invoice PDF is stored there.", 409);
   if (draft.items.length === 0 || draft.total <= 0) throw new PostError("An invoice needs a total above zero before it can be sent.", 400);
   const keys = razorpayKeys(env);
   const online = settings.onlinePayment && Boolean(keys.keyId && keys.keySecret);

@@ -117,7 +117,7 @@ export async function saveDestination(actor: Actor, f: { enabled: boolean; bucke
   admin(actor);
   const bucket = f.bucket.trim().toLowerCase();
   if (!BUCKET.test(bucket)) throw new PostError("Bucket names are 3–63 lowercase letters, digits and hyphens.");
-  if (f.enabled && !(await storageReady())) throw new PostError("Configure Cloudflare R2 in Storage & email first.");
+  if (f.enabled && !(await storageReady())) throw new PostError("Configure Cloudflare R2 in Settings → Storage first.");
   const c = await readBackupConfig();
   await writeConfig({ ...c, r2: { enabled: f.enabled, bucket } }, actor.id);
   await audit(actor, "backup.destination", "r2", { enabled: f.enabled, bucket: bucket || "(media bucket)" });
