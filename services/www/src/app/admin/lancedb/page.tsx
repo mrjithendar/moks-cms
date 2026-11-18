@@ -111,7 +111,7 @@ function NotConfigured() {
       <h2 className="mb-2 text-lg font-semibold text-fg">LanceDB has no storage yet</h2>
       <p className="text-sm text-fg-muted">
         The SEO agent keeps LanceDB on Cloudflare R2, under <code>jithendar/seo-agent/lancedb/</code> in the media bucket, with the keys from{" "}
-        <Link className={linkCls} href="/admin/storage">Storage &amp; email</Link>. Set up storage there; the agent picks it up within a minute. For local
+        <Link className={linkCls} href="/admin/storage">Storage</Link>. Set up storage there; the agent picks it up within a minute. For local
         development, <code>LANCEDB_URI</code> on the agent points it at a folder instead.
       </p>
     </Card>

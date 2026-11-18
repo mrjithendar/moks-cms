@@ -108,7 +108,7 @@ export async function inviteDemoUser(actor: Actor, raw: { email: unknown; name?:
   const parsed = inviteInput.safeParse({ email: raw.email, name: typeof raw.name === "string" && raw.name.trim() ? raw.name : undefined });
   if (!parsed.success) throw new PostError(parsed.error.issues[0]?.message ?? "Check the email address.");
   const { email, name } = parsed.data;
-  if (!(await mailConfigured())) throw new PostError("Set up email first (Admin → Storage & email): the invitation is a set-password link sent by email.", 409);
+  if (!(await mailConfigured())) throw new PostError("Set up email first (Admin → Settings → Email): the invitation is a set-password link sent by email.", 409);
   const db = await getDb();
   const [existing] = await db.select().from(schema.user).where(eq(schema.user.email, email));
   let id: string;
@@ -136,7 +136,7 @@ export async function inviteDemoUser(actor: Actor, raw: { email: unknown; name?:
   await ctx.internalAdapter.createVerificationValue({ value: id, identifier: `reset-password:${token}`, expiresAt: new Date(Date.now() + DEMO_INVITE_HOURS * 3_600_000) });
   const url = `${ctx.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent(DEMO_INVITE_REDIRECT)}`;
   if (!(await sendMail(email, DEMO_INVITE_SUBJECT, demoInviteText(url, siteUrl())))) {
-    throw new PostError(`The demo account for ${email} is ready, but the invitation email could not be sent. Check Admin → Storage & email, then press Resend invite.`, 502);
+    throw new PostError(`The demo account for ${email} is ready, but the invitation email could not be sent. Check Admin → Settings → Email, then press Resend invite.`, 502);
   }
   await audit(actor, result === "resent" ? "user.demo_reinvite" : "user.demo_invite", id, { email, from: existing?.role ?? null });
   return result;

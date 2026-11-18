@@ -6,7 +6,7 @@ import { useState } from "react";
 export type CalendarBrief = { gap?: string; audience?: string; intent?: string; supportingQueries?: string[]; outline?: string[]; codeExamples?: string[]; diagrams?: string[]; readingTimeMinutes?: number | null; notes?: string; authorNotes?: string };
 type Owner = { id: string; name: string };
 
-const field = "w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-fg-subtle hover:border-line focus:border-line-strong focus:bg-surface focus:text-fg focus:outline-none";
+const field = "w-full rounded-md border border-line bg-surface px-2 py-1 text-fg placeholder:text-fg-subtle hover:border-line-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
 
 function Line({ name, value, placeholder, onSave, className = "" }: { name: string; value: string; placeholder: string; onSave: (v: string) => void; className?: string }) {
   const [v, setV] = useState(value);
@@ -41,7 +41,7 @@ export function CalendarItemFields({ id, title, cluster, category, ownerId, owne
     if (!res.ok) setErr(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Could not save.");
     else router.refresh();
   };
-  const label = "text-fg-subtle";
+  const label = "shrink-0 font-medium text-fg-muted";
 
   const b = (k: keyof CalendarBrief) => (v: unknown) => void patch({ brief: { [k]: v } });
 
@@ -59,8 +59,8 @@ export function CalendarItemFields({ id, title, cluster, category, ownerId, owne
         </label>
       </div>
       <details className="mt-2 text-sm" open={!compact}>
-        <summary className="cursor-pointer text-fg-muted">Brief</summary>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-1">
+        <summary className="cursor-pointer font-medium text-fg-muted hover:text-fg">Brief</summary>
+        <dl className="mt-3 grid grid-cols-1 items-start gap-x-4 gap-y-2 sm:grid-cols-[9rem_1fr] [&>dt]:pt-1.5">
           <dt className={label}>Gap</dt><dd><Lines name="Gap" value={brief.gap ? [brief.gap] : []} placeholder="Why this article" onSave={(v) => b("gap")(v.join(" "))} /></dd>
           <dt className={label}>Audience</dt><dd><Line name="Audience" value={brief.audience ?? ""} placeholder="Who it's for" onSave={b("audience")} /></dd>
           <dt className={label}>Intent</dt><dd><Line name="Intent" value={brief.intent ?? ""} placeholder="informational, how-to…" onSave={b("intent")} /></dd>

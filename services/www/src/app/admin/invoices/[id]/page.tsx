@@ -72,11 +72,11 @@ async function act(form: FormData) {
       const r = await sendInvoice(actor, id);
       const what = `Invoice ${r.invoice.number}${r.online ? " with a Razorpay payment link" : ""}`;
       // The invoice is out; only the email is missing. Said as an error so it is not overlooked.
-      if (!r.emailed) throw new PostError(`${what} is issued, but the email to ${r.invoice.clientEmail} could not be sent. Check the email settings in Storage & email and press “Email again”, or copy the client link and send it yourself.`);
+      if (!r.emailed) throw new PostError(`${what} is issued, but the email to ${r.invoice.clientEmail} could not be sent. Check Settings → Email and press “Email again”, or copy the client link and send it yourself.`);
       return `${what} was sent to ${r.invoice.clientEmail}.`;
     }
     if (op === "resend") {
-      if (!(await resendInvoice(actor, id))) throw new PostError("The email could not be sent. Check the email settings in Storage & email.");
+      if (!(await resendInvoice(actor, id))) throw new PostError("The email could not be sent. Check Settings → Email.");
       return "Email sent.";
     }
     if (op === "paid") {

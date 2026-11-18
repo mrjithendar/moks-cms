@@ -86,14 +86,17 @@ afterEach(() => {
 describe("how the menu is arranged (lib/admin-menu.ts)", () => {
   it("puts pages into groups, in order, with their short names, sub-headings and badge totals", () => {
     const { groups, help } = arrangeMenu(ITEMS);
-    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "media", "comments", "inbox", "newsroom", "insights", "appearance", "settings", "more-operations"]);
+    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "editorial", "media", "ai", "insights", "community", "appearance", "settings", "more-operations"]);
     const by = Object.fromEntries(groups.map((g) => [g.id, g]));
-    expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new", "Categories", "Review queue"]);
-    expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories", "Review queue"]);
+    expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new", "Categories"]);
+    expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories"]);
+    expect(by.editorial!.items.map((i) => i.title)).toEqual(["Review queue"]);
+    expect(by.ai!.items.map((i) => i.title)).toEqual(["Automation & AI", "MCP access"]);
+    expect(by.community!.items.map((i) => i.title)).toEqual(["Comments", "Messages", "Bookings"]);
     expect(by.insights!.items.map((i) => [i.title, i.heading])).toEqual([["Search performance", "Traffic"], ["Keywords", "Content"]]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
     expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);
-    expect([by.posts!.badge, by.inbox!.badge, by.comments!.badge, by.media!.badge]).toEqual([3, 2, 4, 0]);
+    expect([by.editorial!.badge, by.community!.badge, by.media!.badge]).toEqual([3, 6, 0]);
     // The manual is help, drawn at the foot of the menu.
     expect(help?.href).toBe(HELP_HREF);
     expect(groups.flatMap((g) => g.items).some((i) => i.href === HELP_HREF)).toBe(false);
@@ -146,7 +149,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(found("key")).toEqual(["Keywords"]);
     expect(found("add new")).toEqual(["New post"]);
     expect(found("traffic")).toEqual(["Search performance"]);
-    expect(found("inbox")).toEqual(["Messages", "Bookings"]);
+    expect(found("community")).toEqual(["Comments", "Messages", "Bookings"]);
     expect(found("HELP")).toEqual(["User manual"]);
     expect(found("  ")).toEqual([]);
     expect(found("zzz")).toEqual([]);
@@ -162,70 +165,109 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
 });
 
 describe("admin sidebar", () => {
-  it("draws a group with several pages as a disclosure and a group with one page as a link; the current page's group is open", () => {
+  it("beside the page (tablet and larger), every group opens a submenu panel beside the sidebar; nothing expands in place", () => {
     render();
-    expect(header("insights").getAttribute("aria-expanded")).toBe("true");
-    expect(list("insights").hidden).toBe(false);
-    expect(header("insights").getAttribute("aria-controls")).toBe(list("insights").id);
-    for (const id of ["posts", "inbox", "newsroom", "appearance"]) {
+    // Every group is a button with a submenu, even one with a single page; none is open until it is asked for.
+    for (const id of ["dashboard", "posts", "editorial", "media", "ai", "insights", "community", "appearance", "settings"]) {
+      expect(header(id).getAttribute("aria-controls"), id).toBe(list(id).id);
       expect(header(id).getAttribute("aria-expanded"), id).toBe("false");
       expect(list(id).hidden, id).toBe(true);
     }
-    for (const [id, href] of [["dashboard", "/admin"], ["media", "/admin/media"], ["comments", "/admin/comments"], ["settings", "/admin/appearance?section=general"]] as const) {
-      expect(group(id)!.querySelector("button"), id).toBeNull();
-      expect(group(id)!.querySelector("a")!.getAttribute("href"), id).toBe(href);
-    }
+    expect(list("dashboard").querySelector("a")!.getAttribute("href")).toBe("/admin");
+    // The group holding the current page is marked.
+    expect(header("insights").className).toContain("md:bg-accent-soft");
     expect(currentLink()!.textContent).toBe("Keywords");
-    expect(list("insights").textContent).toContain("Traffic");
+
+    act(() => header("posts").click());
+    expect(header("posts").getAttribute("aria-expanded")).toBe("true");
+    expect(list("posts").hidden).toBe(false);
+    expect(list("posts").className).toContain("md:fixed");
+    expect(list("posts").textContent).toContain("Posts"); // the panel names its group
+    act(() => header("community").click());
+    expect(list("posts").hidden).toBe(true);
+    expect(list("community").hidden).toBe(false);
+    act(() => header("community").click());
+    expect(list("community").hidden).toBe(true);
+    act(() => header("community").click());
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(list("community").hidden).toBe(true);
+    act(() => header("community").click());
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    expect(list("community").hidden).toBe(true);
     expect(container.querySelector(`a[href="${HELP_HREF}"]`)!.textContent).toBe("Help");
     expect(group("pinned")).toBeNull();
+  });
+
+  it("opens a submenu on hover and closes it shortly after the pointer leaves", async () => {
+    render();
+    act(() => {
+      group("appearance")!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(list("appearance").hidden).toBe(false);
+    act(() => {
+      group("appearance")!.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    });
+    expect(list("appearance").hidden).toBe(false); // time to cross the gap to the panel
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 260));
+    });
+    expect(list("appearance").hidden).toBe(true);
   });
 
   it("server and first browser render agree (no hydration mismatch)", () => {
     const html = renderToStaticMarkup(<AdminSidebar items={ITEMS} role="admin" />);
     expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
-    expect((html.match(/ hidden=""/g) ?? []).length).toBe(4); // posts, inbox, newsroom, appearance
+    expect((html.match(/ hidden=""/g) ?? []).length).toBe(9); // every group but the current one (insights)
     expect(html).not.toContain("data-rail");
     expect(renderToStaticMarkup(<AdminSidebar items={ITEMS} prefs={{ rail: true, pins: ["/admin/posts"] }} />)).toContain("data-rail");
   });
 
-  it("a closed group shows the total of its badges, an open one shows them per page", () => {
+  it("a group shows the total of its badges while its pages are not shown", () => {
     render();
-    expect(header("posts").textContent).toContain("3");
-    expect(header("inbox").textContent).toContain("2");
-    expect(group("comments")!.textContent).toContain("4");
-    act(() => header("inbox").click());
-    expect(header("inbox").textContent).not.toContain("2");
-    expect(list("inbox").textContent).toContain("2");
+    expect(header("editorial").textContent).toContain("3");
+    expect(header("community").textContent).toContain("6");
+    act(() => header("community").click());
+    expect(header("community").textContent).not.toContain("6");
+    expect(list("community").textContent).toContain("4");
+    expect(list("community").textContent).toContain("2");
   });
 
-  it("opening and closing a group is remembered in this browser", () => {
+  it("on a phone, opening and closing a group is remembered in this browser", () => {
+    wideScreen = false;
     render();
     act(() => header("posts").click());
     expect(list("posts").hidden).toBe(false);
+    expect(list("posts").className).not.toContain("md:fixed");
     expect(JSON.parse(localStorage.getItem(NAV_STORE_KEY)!)).toContain("posts");
     act(() => header("posts").click());
     expect(list("posts").hidden).toBe(true);
     expect(JSON.parse(localStorage.getItem(NAV_STORE_KEY)!)).not.toContain("posts");
   });
 
-  it("applies saved choices after mounting, but always opens the current page's group", () => {
-    localStorage.setItem(NAV_STORE_KEY, JSON.stringify(["inbox", "no-such-group"]));
+  it("on a phone, applies saved choices after mounting, but always opens the current page's group", () => {
+    wideScreen = false;
+    localStorage.setItem(NAV_STORE_KEY, JSON.stringify(["community", "no-such-group"]));
     render();
-    expect(list("inbox").hidden).toBe(false);
+    expect(list("community").hidden).toBe(false);
     expect(list("posts").hidden).toBe(true);
     expect(list("insights").hidden).toBe(false);
   });
 
-  it("navigating to a page in another group opens it", () => {
+  it("on a phone, navigating to a page in another group opens it", () => {
+    wideScreen = false;
     render();
     pathname = "/admin/automation/mcp";
     render();
-    expect(list("newsroom").hidden).toBe(false);
+    expect(list("ai").hidden).toBe(false);
     expect(currentLink()!.textContent).toBe("MCP access");
   });
 
   it("follows the section of a page that holds several menu pages (?section=…)", () => {
+    wideScreen = false;
     pathname = "/admin/appearance";
     search = "section=theme";
     render();
@@ -261,12 +303,14 @@ describe("admin sidebar", () => {
     expect(group("posts")).not.toBeNull();
   });
 
-  it("pins pages to the top, by their full name, and remembers them in the cookie", () => {
+  it("pins pages to the top, by their full name, listed directly beside the page, and remembers them in the cookie", () => {
     render();
     act(() => header("posts").click());
     act(() => button("Pin New post").click());
     expect(container.querySelector("[data-group]")!.getAttribute("data-group")).toBe("pinned");
     expect([...list("pinned").querySelectorAll("a")].map((a) => a.textContent)).toEqual(["New post"]);
+    expect(list("pinned").hidden).toBe(false);
+    expect(list("pinned").className).not.toContain("md:fixed");
     expect(cookie()).toEqual({ rail: false, pins: ["/admin/posts/new"] });
     // For the admin only, kept for a year, never sent to other sites' requests.
     expect(written).toMatch(/; path=\/admin; max-age=31536000; samesite=lax/);
@@ -283,36 +327,24 @@ describe("admin sidebar", () => {
     expect(list("pinned").hidden).toBe(false);
   });
 
-  it("collapses to icons on a large screen: a group then opens as a panel beside its icon, one at a time", () => {
+  it("collapses to icons: a group then opens as a panel beside the icons, one at a time", () => {
     render({ rail: true, pins: [] });
     const aside = container.querySelector("aside")!;
     expect(aside.hasAttribute("data-rail")).toBe(true);
-    expect(aside.className).toContain("lg:w-16");
+    expect(aside.className).toContain("md:w-16");
     expect(header("posts").getAttribute("title")).toBe("Posts");
-    // The current group is not shown open in the rail: nothing is, until an icon is pressed.
     expect(header("insights").getAttribute("aria-expanded")).toBe("false");
 
     act(() => header("posts").click());
-    expect(header("posts").getAttribute("aria-expanded")).toBe("true");
     expect(list("posts").hidden).toBe(false);
-    expect(list("posts").className).toContain("lg:fixed");
-    expect(list("posts").textContent).toContain("Posts"); // the panel names its group
-    act(() => header("inbox").click());
+    expect(list("posts").className).toContain("md:fixed");
+    act(() => header("community").click());
     expect(list("posts").hidden).toBe(true);
-    expect(list("inbox").hidden).toBe(false);
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-    expect(list("inbox").hidden).toBe(true);
-    act(() => header("inbox").click());
-    act(() => {
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    });
-    expect(list("inbox").hidden).toBe(true);
+    expect(list("community").hidden).toBe(false);
 
     act(() => button("Expand menu").click());
     expect(container.querySelector("aside")!.hasAttribute("data-rail")).toBe(false);
-    expect(container.querySelector("aside")!.className).toContain("lg:w-64");
+    expect(container.querySelector("aside")!.className).toContain("md:w-64");
     expect(cookie().rail).toBe(false);
     act(() => button("Collapse menu").click());
     expect(cookie().rail).toBe(true);
@@ -324,13 +356,18 @@ describe("admin sidebar", () => {
     expect(header("insights").getAttribute("aria-expanded")).toBe("true");
     act(() => header("posts").click());
     expect(list("posts").hidden).toBe(false);
-    expect(list("posts").className).not.toContain("lg:fixed");
+    expect(list("posts").className).not.toContain("md:fixed");
+    act(() => {
+      group("appearance")!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(list("appearance").hidden).toBe(true); // no hover menus on a phone
     const menuButton = [...container.querySelectorAll("button")].find((b) => b.getAttribute("aria-controls") === "admin-nav")!;
     expect(menuButton.textContent).toContain("Menu · Keywords");
     expect(menuButton.textContent).toContain("9"); // 3 + 4 + 2 waiting
   });
 
   it("works when storage and cookies are blocked", () => {
+    wideScreen = false;
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("blocked");
     });

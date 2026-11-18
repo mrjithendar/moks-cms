@@ -21,7 +21,8 @@ const KINDS: { id: GuideKind; label: string }[] = [
 const SETTINGS_SECTION: Record<string, string> = {
   "Appearance & settings": "Site settings",
   Integrations: "Site settings",
-  "Storage & email": "Site settings",
+  "Storage": "Site settings",
+  Email: "Site settings",
   "Advanced settings": "Site settings",
   "Automation & AI": "SEO agent, AI & ML",
   "MCP access": "SEO agent, AI & ML",

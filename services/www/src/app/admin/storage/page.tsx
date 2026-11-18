@@ -5,14 +5,12 @@ import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin
 import { Alert, Button, Field, Input } from "@/components/ui/form";
 import { adminActor, actorOf } from "@/lib/admin";
 import { flash } from "@/lib/flash";
-import { emailSummary } from "@/lib/mail";
-import { EmailSettings } from "./EmailSettings";
 import { migrateBatch, migrationStatus, rollbackMigration } from "@/lib/media-migration";
 import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
 import { MEDIA_ROOT, saveStorageConfig, storageSummary } from "@/lib/storage";
 
-export const metadata = { title: "Storage & email" };
+export const metadata = { title: "Storage" };
 
 async function saveStorage(form: FormData) {
   "use server";
@@ -52,12 +50,12 @@ const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 export default async function StoragePage({ searchParams }: { searchParams: FlashParams }) {
   const me = await requireRole("admin");
-  const [s, e, migration, sp] = await Promise.all([storageSummary(), emailSummary(), migrationStatus(), searchParams]);
+  const [s, migration, sp] = await Promise.all([storageSummary(), migrationStatus(), searchParams]);
   const fromEnv = s?.source === "env";
   const plan = sp.plan === "1" && migration.legacy > 0 && s?.verifiedAt && migration.sourceConfigured ? await migrateBatch(actorOf(me), { dryRun: true, limit: 25 }) : null;
   return (
     <>
-      <AdminHeader title="Storage & email" description="Media storage (Cloudflare R2) and outgoing email (Amazon SES). Keys are encrypted at rest and never shown again." />
+      <AdminHeader title="Storage" description="Where media, invoices, backups and the SEO agent's data are stored (Cloudflare R2). Keys are encrypted at rest and never shown again. Outgoing email is under Settings → Email." />
       <Flash ok={sp.ok} error={sp.error} />
       <div className="space-y-6">
         <Card>
@@ -140,13 +138,6 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
           </Card>
         )}
 
-        <Card>
-          <div className="mb-4">
-            <h2 className="font-semibold text-fg">Email</h2>
-            <p className="mt-1 text-sm text-fg-muted">Sign-up verification, password resets and contact-form notifications. Setup steps per provider: <code>docs/EMAIL.md</code>.</p>
-          </div>
-          <EmailSettings initial={e} adminEmail={me.email} />
-        </Card>
       </div>
     </>
   );

@@ -13,7 +13,7 @@ export function AdminHeader({ title, description, actions }: { title: string; de
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-line bg-surface p-5 sm:p-6 ${className}`}>{children}</div>;
+  return <div className={`rounded-xl border border-line bg-surface p-5 shadow-sm sm:p-6 ${className}`}>{children}</div>;
 }
 
 export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {

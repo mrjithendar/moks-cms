@@ -397,7 +397,7 @@ export function MediaPanel({ ctx }: { ctx: Ctx }) {
           </Link>
           ; storage credentials are managed in{" "}
           <Link href="/admin/storage" className="link">
-            Storage &amp; email
+            Storage
           </Link>
           . Images chosen here are served in responsive AVIF/WebP sizes and count as “in use” in the library.
         </p>

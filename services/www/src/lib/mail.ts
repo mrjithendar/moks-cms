@@ -15,7 +15,7 @@ import { traceAwsClient, withSpan } from "./trace";
 /**
  * Outgoing email (verification, password reset, contact-form notifications).
  *
- * An admin picks one provider in Admin → Storage & email: Disabled, SMTP, Mailgun or Amazon SES. Settings
+ * An admin picks one provider in Admin → Settings → Email: Disabled, SMTP, Mailgun or Amazon SES. Settings
  * of every provider are kept (secrets encrypted with SETTINGS_ENCRYPTION_KEY), but only the selected one
  * sends; there is no automatic failover. "Configured" (valid settings saved) and "tested" (a test email the
  * admin sent succeeded) are tracked separately; a test is only ever sent when the admin asks for it.
@@ -414,7 +414,7 @@ export async function sendTestEmail(actor: Actor, provider: unknown, to: unknown
     await sendVia(config, p, {
       to: recipient.data,
       subject: "Jithendar.com test email",
-      text: `This is a test email from Jithendar.com, sent through ${providerLabels[p]} by an admin from Admin → Storage & email.\n\nIf it reached you, the settings work.`,
+      text: `This is a test email from Jithendar.com, sent through ${providerLabels[p]} by an admin from Admin → Settings → Email.\n\nIf it reached you, the settings work.`,
     });
   } catch (e) {
     error = redact(e instanceof Error ? e.message : String(e), config);
