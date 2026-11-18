@@ -41,7 +41,7 @@ const ago = (iso: string | null) => {
 };
 
 /**
- * The review queue. Cards on phones, dense rows from `md` up. Selecting drafts allows bulk *reject* only:
+ * The review queue. Cards on phones, dense rows from `md` up. Selected drafts can be rejected or regenerated together;
  * approving is always one article at a time, from its diff view.
  */
 export function ReviewQueue({ items }: { items: QueueItem[] }) {
@@ -58,6 +58,21 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
     else n.add(id);
     return n;
   });
+
+  async function bulkRegenerate() {
+    const ids = [...selected].filter((id) => items.find((i) => i.id === id && ["ready_for_review", "generation_failed"].includes(i.status)));
+    if (!ids.length) return setMsg({ ok: false, text: "Only drafts waiting for review or failed can be regenerated." });
+    if (!window.confirm(`Regenerate ${ids.length} draft${ids.length === 1 ? "" : "s"}? Their pending changes are replaced by a fresh AI review (a model cost each).`)) return;
+    setBusy(true);
+    const res = await fetch("/api/admin/seo/review/bulk-regenerate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids.slice(0, 25) }) }).catch(() => null);
+    const data = (await res?.json().catch(() => ({}))) as { regenerated?: number; skipped?: { reason: string }[]; error?: string };
+    setBusy(false);
+    if (res?.ok) {
+      setMsg({ ok: true, text: `Regenerating ${data.regenerated} draft${data.regenerated === 1 ? "" : "s"}.${data.skipped?.length ? ` ${data.skipped.length} skipped: ${data.skipped[0]!.reason}` : ""}` });
+      setSelected(new Set());
+      router.refresh();
+    } else setMsg({ ok: false, text: data.error ?? "Could not regenerate." });
+  }
 
   async function bulkReject() {
     setBusy(true);
@@ -81,6 +96,7 @@ export function ReviewQueue({ items }: { items: QueueItem[] }) {
             <input type="checkbox" className="h-4 w-4" checked={selected.size > 0 && selected.size === selectable.length} onChange={(e) => setSelected(e.target.checked ? new Set(selectable.map((i) => i.id)) : new Set())} />
             Select all
           </label>
+          <Button variant="secondary" size="sm" disabled={!selected.size || busy} onClick={() => void bulkRegenerate()}>Regenerate {selected.size || ""} selected</Button>
           <Button variant="secondary" size="sm" disabled={!selected.size} onClick={() => setOpen(true)}>Reject {selected.size || ""} selected</Button>
           <span className="text-xs text-fg-subtle">Approval is per article, from its review page.</span>
         </div>
