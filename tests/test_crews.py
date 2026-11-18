@@ -279,6 +279,27 @@ async def test_brief_without_notes_or_examples_adds_no_empty_blocks(llm: FakeLlm
     assert all("author_first_hand_notes" not in c.user and "example_articles" not in c.user for c in llm.calls)
 
 
+async def test_improve_gives_the_writer_the_current_draft_to_revise(llm: FakeLlm, web: FakeWebApp) -> None:
+    brief = {**BRIEF, "currentDraft": "## Install\n\nRun `helm install ingress-nginx` and wait. CURRENT-DRAFT-MARKER"}
+    llm.queue("crew", *scripted(final_json([])))
+    r = await crew_with(llm, web).run(brief, feedback="Improve the current draft. The editor also asks: add a troubleshooting section.")
+    assert r.status == "completed"
+    research, write, review, seo = (c.user for c in llm.calls)
+    assert '<data name="current_draft">' in write and "CURRENT-DRAFT-MARKER" in write
+    assert "Revise the current draft" in write and "Write the full article as MDX" not in write
+    assert "add a troubleshooting section" in write
+    assert "already has a draft that will be revised" in research and "CURRENT-DRAFT-MARKER" not in research
+    assert '<data name="current_draft">' not in review  # the reviewer checks the revised body against the research
+    assert "current_draft" not in seo  # metadata comes from the reviewed body, not the old draft
+
+
+async def test_a_new_article_gets_no_current_draft_block(llm: FakeLlm, web: FakeWebApp) -> None:
+    llm.queue("crew", *scripted(final_json([])))
+    await crew_with(llm, web).run({**BRIEF, "currentDraft": None})
+    write = llm.calls[1].user
+    assert "current_draft" not in write and "Write the full article as MDX" in write
+
+
 def test_docs_allowlist_default_matches_the_web_app() -> None:
     import re
     from pathlib import Path

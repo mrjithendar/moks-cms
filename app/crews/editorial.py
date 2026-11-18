@@ -13,6 +13,10 @@ and an explicit depth target; the brief block now carries diagrams, reading time
 
 v5 prompt (seo-crew-v5): the researcher's notes have a length budget (about 1,500 words, at most 3,000). With no
 budget, after ten documentation fetches it tried to copy them into its final answer and ran past its 8,192-token cap.
+
+Improve (2026-11-18): when the brief carries `currentDraft` (the item's CMS draft as the editor left it), the writer
+revises that draft instead of writing a new one (REVISE_TASK), and the researcher is told to check its claims. The
+reviewer and SEO editor work as before on the writer's result.
 """
 
 from __future__ import annotations
@@ -60,6 +64,15 @@ WRITE_TASK = (
     "Code: every block declares its language and is complete enough to copy and run; no placeholders that hide the hard part.\n"
     "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences."
 )
+REVISE_TASK = (
+    "Revise the current draft (the current_draft block) into the best version of this article, following the style guide. Do not start over.\n"
+    "Keep: its structure and headings unless the outline needs a section it lacks, the author's voice, every first-hand passage, and everything that is correct.\n"
+    "Fix: commands, flags, versions and facts that the research notes contradict; sections that are missing, thin or vague (cover every heading in the brief's outline, why before how, with the output or result to expect and the trade-off an engineer would hit); code that is incomplete, inconsistent or not runnable.\n"
+    "Cut: padding, repetition and generic introductions or recaps.\n"
+    "Facts: use only the research notes, the author's first-hand notes and what the current draft already says correctly; where none has what a section needs, say less rather than invent.\n"
+    "Return the complete revised article body in MDX (no front matter, no H1), not a list of changes."
+)
+CURRENT_DRAFT_CHARS = 60_000  # the web app sends at most this much
 REVIEW_TASK = (
     "Check every command, flag and version in the draft against the research sources (fetch_allowlisted_docs when needed). Statements that come from the author's first-hand notes are the author's own experience: keep them and do not flag them unless they contradict a source. "
     "Correct what is wrong; do not shorten, summarise or restyle the article, and keep every section and code block."
@@ -127,6 +140,12 @@ def split_review(raw: str) -> tuple[str, list[FactCheckFlag]]:
     return body, flags[:30]
 
 
+def current_draft_block(brief: dict[str, Any]) -> str:
+    """The editor's current draft to improve, as a data block ("" for a new article)."""
+    text = str(brief.get("currentDraft") or "").strip()
+    return f"\n\n{data_block('current_draft', text[:CURRENT_DRAFT_CHARS])}" if text else ""
+
+
 def author_notes_block(brief: dict[str, Any]) -> str:
     """The author's first-hand notes as a data block ("" when there are none)."""
     text = str(brief.get("authorNotes") or "").strip()
@@ -185,8 +204,11 @@ class EditorialCrew:
             notes = author_notes_block(brief)
             examples = examples_block(brief)
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
-            research = Task(description=f"{RESEARCH_TASK}\n\n{b}{notes}", expected_output="Compact research notes (about 1,500 words, at most 3,000), as bullets per outline section: facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
-            write = Task(description=f"{WRITE_TASK}\n\n{b}{notes}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
+            current = current_draft_block(brief)
+            check = "\n\nThe article already has a draft that will be revised: research the outline as usual, so the writer can check its commands, versions and facts." if current else ""
+            research = Task(description=f"{RESEARCH_TASK}{check}\n\n{b}{notes}", expected_output="Compact research notes (about 1,500 words, at most 3,000), as bullets per outline section: facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
+            task = REVISE_TASK if current else WRITE_TASK
+            write = Task(description=f"{task}\n\n{b}{notes}{current}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
             review = Task(
                 description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify, as `- claim | reason` (or `- none`).",
                 expected_output=f"The complete corrected MDX body, then {FACT_CHECK_MARKER} and the list.",
