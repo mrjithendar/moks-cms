@@ -78,6 +78,11 @@ export const DEFAULT_DOCS_ALLOWLIST = [
   "docs.claude.com",
   "platform.claude.com",
   "docs.langchain.com",
+  "man7.org",
+  "www.freedesktop.org",
+  "systemd.io",
+  "docs.kernel.org",
+  "www.gnu.org",
 ];
 
 /** Public read-only MCP server switch (mirrors seo-agent's PUBLIC_MCP_ENABLED; the site shows how to connect only then). */

@@ -44,6 +44,46 @@ allowlisted tools, the limits and the runner.
 - **Structured output:** the final task of each crew has `output_pydantic`; the result is validated again in Python and
   then by the web app's own validators.
 
+## Skills (D-96)
+
+Every crew agent can be given **skills**: short instructions for a kind of work (how to structure a troubleshooting
+article, how to cover a security advisory, channel norms for promotion posts), managed on **AI room → Skills**
+(`/admin/automation/skills`).
+
+- **Where they live:** the web app's `seo_agent_skills` table (migration 0035). The 22 default skills are defined in
+  `src/lib/seo-agent/skills.ts` (`DEFAULT_SKILLS`) and inserted when missing (`ensureDefaultSkills`), so a new default
+  arrives with a deploy. Admins edit, disable and reset defaults (not delete: they would come back), and add, edit and
+  delete their own. Every change is audited (`seo.skill.*`) and bumps the skill's version when its content changes.
+- **How the agent gets them:** `run_crew` calls `GET /internal/seo-agent/skills` (the enabled skills) before building
+  the crew. Unreachable or slower than 10 s → the run goes on without skills (`crew_skills_unavailable`). No database
+  grant: the agent reads them through the callback API like the style guide.
+- **Which agent gets which:** decided in code (`app/crews/skills.py`), never by the model. A skill names its agents
+  (`editorial.writer`, or `news.*` for a crew) and optionally tags. Untagged: every run of those agents. Tagged: a run
+  with any one of the tags. Each crew computes its run's tags from signals it already has:
+
+  | Crew | Tags | From |
+  |---|---|---|
+  | Editorial | `intent:<…>` | the brief's intent: the editorial idea's, or (items without one, e.g. ML query clusters) the ML intent model's prediction for the item's queries when the model is in use and confident (`calendarBrief` → `mlIntentFor`). The model's `informational` also adds `intent:explainer` (main query starts with what/why) or `intent:how-to` |
+  | Editorial | `source:<ml\|analytics\|ask\|promotion\|manual>`, `queries:many`, `revise` | the calendar idea's source (calendar-auto, D-95), ≥ 3 supporting queries, Improve (a current draft) |
+  | Optimization | `category:<…>` | the recommendations being implemented |
+  | News | `topic:<slug>`, `mode:<single\|digest>`, `cve`, `release` | the news classifier's topics for the cluster, the job mode, a CVE id in the story, a version or release word in a story title |
+  | Report | `report:<weekly\|monthly>` | the report period |
+  | Promotion | none | the copywriter and strategist are separate agents |
+
+- **How they reach the model:** as CrewAI Agent Skills already activated (INSTRUCTIONS level), so CrewAI renders their
+  full text into the agent's system prompt (`<skills><skill name="…">…</skill></skills>`), which `ClaudeCrewLLM` sends
+  as the cached system block. No `load_skill` tool is added: it would bypass the tool allowlist and the model could
+  skip a skill. Registry refs (`@org/name`) are never used: they download from CrewAI's platform. An agent with skills
+  gets one more backstory line: where a skill differs from the task's rules or output format, the task wins.
+- **Limits:** at most 6 skills and 20,000 characters of skill text per agent (`crew_skill_skipped` beyond), 8,000
+  characters per skill, and no `<skill>` tags inside a skill (refused on save, skipped on read).
+- **Observability:** `CrewOutcome.skills` (agent → `name@vN`), the crew span attribute `crew.skills`, and `skills` and
+  `skill_tags` on the `crew_finished` log line.
+- **Tests:** `tests/test_skills.py` (agent: matching per agent and tag, rendered in the cached system block only, no
+  loader tool, failure → no skills, news tags from the story, the web app's agent list and default tags in step with
+  the crews), `tests/agent-skills.test.ts` (web app: defaults, edit/disable/reset/delete rules, validation, routes, the
+  callback, the ML intent in the calendar brief).
+
 ## Tools (read-only allowlist)
 
 `ALLOWED_TOOLS = {read_article, vector_search, gsc_queries_for_topic, gsc_queries_for_page, style_guide, fetch_allowlisted_docs}`.
@@ -64,7 +104,9 @@ official documentation sites in `services/seo-agent/app/config.py` (`DEFAULT_DOC
 `services/www/src/lib/seo-agent/config.ts`; a test keeps the two equal. It covers the tools the site writes about
 (Kubernetes, Helm, Docker, Istio, Kong, Argo CD, Karpenter, KEDA, Velero, Cilium, Linkerd, Prometheus, Grafana,
 OpenTelemetry, AWS, Google Cloud, Azure, Terraform, Ansible, GitHub, GitLab, Cloudflare, PostgreSQL, Redis, Next.js,
-React, Node.js, Go, Python, FastAPI, Pydantic, CrewAI, LangChain, Claude, MCP). Forums, blogs and code hosts are not on it.
+React, Node.js, Go, Python, FastAPI, Pydantic, CrewAI, LangChain, Claude, MCP) and Linux itself: the man-pages
+project (man7.org), systemd (www.freedesktop.org, systemd.io), the kernel (docs.kernel.org) and GNU manuals such as
+GRUB (www.gnu.org). Forums, blogs and code hosts are not on it.
 
 ## Optimization Crew (existing articles)
 

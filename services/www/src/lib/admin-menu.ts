@@ -86,6 +86,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
 
   // The AI that works on the site: the SEO agent's flows, its models and data, and access for AI clients.
   ["/admin/automation", { group: "ai" }],
+  ["/admin/automation/skills", { group: "ai" }],
   ["/admin/models", { group: "ai" }],
   ["/admin/lancedb", { group: "ai" }],
   ["/admin/automation/mcp", { group: "ai" }],

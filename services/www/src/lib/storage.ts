@@ -63,7 +63,15 @@ export function tempObjectKey(id: string, ext: string, now = new Date()): string
 
 // --- Configuration --------------------------------------------------------------------------
 
+/** Where media is stored: Cloudflare R2 (the default, and every setup before 2026-11-18) or Amazon S3. */
+export type StorageProvider = "r2" | "s3";
+export const PROVIDER_LABEL: Record<StorageProvider, string> = { r2: "Cloudflare R2", s3: "Amazon S3" };
+
 type StoredR2 = {
+  /** Absent in settings saved before 2026-11-18: R2. */
+  provider?: StorageProvider;
+  /** S3 only (e.g. eu-central-1). */
+  region?: string;
   accountId: string;
   endpoint: string;
   bucket: string;
@@ -75,6 +83,11 @@ type StoredR2 = {
 
 export type R2Config = {
   source: "env" | "admin";
+  provider: StorageProvider;
+  /** "auto" for R2; the bucket's region for S3. */
+  region: string;
+  /** True when the endpoint is a custom one (an R2 jurisdiction, an S3-compatible service): path-style requests. */
+  customEndpoint: boolean;
   accountId: string;
   endpoint: string;
   bucket: string;
@@ -88,18 +101,46 @@ export type R2Config = {
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const BUCKET = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 
-export function endpointFor(accountId: string, override = ""): string {
-  return override.replace(/\/+$/, "") || `https://${accountId}.r2.cloudflarestorage.com`;
+const REGION = /^[a-z]{2}(-gov|-iso[a-z]?)?-[a-z]+-\d{1,2}$/;
+
+/** The S3 API endpoint: R2's account endpoint, AWS's regional one, or the override (jurisdiction, S3-compatible). */
+export function endpointFor(accountId: string, override = "", provider: StorageProvider = "r2", region = "auto"): string {
+  const custom = override.replace(/\/+$/, "");
+  if (custom) return custom;
+  return provider === "s3" ? `https://s3.${region}.amazonaws.com` : `https://${accountId}.r2.cloudflarestorage.com`;
 }
 
 function envConfig(): R2Config | null {
   const e = process.env;
+  // Amazon S3 from the deployment: S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (S3_ENDPOINT and
+  // S3_PUBLIC_BASE_URL optional). R2_* wins when both are set.
+  if (!e.R2_ACCOUNT_ID && !e.R2_BUCKET && !e.R2_ACCESS_KEY_ID && (e.S3_BUCKET || e.S3_ACCESS_KEY_ID)) {
+    const missing = ["S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"].filter((k) => !e[k]);
+    if (missing.length) throw new Error(`S3 is partly configured; missing ${missing.join(", ")}`);
+    const secret = e.S3_SECRET_ACCESS_KEY!;
+    return {
+      source: "env",
+      provider: "s3",
+      region: e.S3_REGION!,
+      customEndpoint: Boolean(e.S3_ENDPOINT),
+      accountId: "",
+      endpoint: endpointFor("", e.S3_ENDPOINT, "s3", e.S3_REGION!),
+      bucket: e.S3_BUCKET!,
+      accessKeyId: e.S3_ACCESS_KEY_ID!,
+      secretAccessKey: () => secret,
+      publicBaseUrl: (e.S3_PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
+      verifiedAt: "env",
+    };
+  }
   if (!e.R2_ACCOUNT_ID && !e.R2_BUCKET && !e.R2_ACCESS_KEY_ID) return null;
   const missing = ["R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"].filter((k) => !e[k]);
   if (missing.length) throw new Error(`R2 is partly configured; missing ${missing.join(", ")}`);
   const secret = e.R2_SECRET_ACCESS_KEY!;
   return {
     source: "env",
+    provider: "r2",
+    region: "auto",
+    customEndpoint: Boolean(e.R2_ENDPOINT),
     accountId: e.R2_ACCOUNT_ID!,
     endpoint: endpointFor(e.R2_ACCOUNT_ID!, e.R2_ENDPOINT),
     bucket: e.R2_BUCKET!,
@@ -122,30 +163,48 @@ export async function readR2Config(): Promise<R2Config | null> {
   if (env) return env;
   const c = await storedConfig();
   if (!c) return null;
-  return { ...c, source: "admin", endpoint: endpointFor(c.accountId, c.endpoint), secretAccessKey: () => unseal(c.secretAccessKey) };
+  return fromStored(c);
+}
+
+function fromStored(c: StoredR2): R2Config {
+  const provider = c.provider ?? "r2";
+  const region = provider === "s3" ? (c.region ?? "us-east-1") : "auto";
+  return { ...c, source: "admin", provider, region, customEndpoint: Boolean(c.endpoint), endpoint: endpointFor(c.accountId, c.endpoint, provider, region), secretAccessKey: () => unseal(c.secretAccessKey) };
 }
 
 /** Safe view for the admin form and status page: never includes the secret. */
 export async function storageSummary() {
   const c = await readR2Config();
   if (!c) return null;
-  return { source: c.source, accountId: c.accountId, endpoint: c.endpoint, bucket: c.bucket, accessKeyId: c.accessKeyId, publicBaseUrl: c.publicBaseUrl, verifiedAt: c.verifiedAt };
+  return { source: c.source, provider: c.provider, region: c.region, accountId: c.accountId, endpoint: c.endpoint, customEndpoint: c.customEndpoint, bucket: c.bucket, accessKeyId: c.accessKeyId, publicBaseUrl: c.publicBaseUrl, verifiedAt: c.verifiedAt };
 }
 
 export async function storageReady(): Promise<boolean> {
   return Boolean((await readR2Config())?.verifiedAt);
 }
 
-export const storageInput = z.object({
-  accountId: z.string().trim().toLowerCase().regex(ACCOUNT_ID, "the 32-character account ID from the Cloudflare dashboard"),
-  /** Optional: a jurisdiction endpoint (e.g. https://<account>.eu.r2.cloudflarestorage.com) or a local S3 emulator. */
+const common = {
+  /** Optional: an R2 jurisdiction endpoint (https://<account>.eu.r2.cloudflarestorage.com), an S3-compatible service, or a local emulator. */
   endpoint: z.union([z.literal(""), z.url({ protocol: /^https?$/ })]).default(""),
-  bucket: z.string().trim().regex(BUCKET, "not a valid R2 bucket name"),
   publicBaseUrl: z.union([z.literal(""), z.url({ protocol: /^https$/ })]).default(""),
   accessKeyId: z.string().trim().min(3).max(200),
   /** Blank keeps the stored secret. */
   secretAccessKey: z.string().max(400).default(""),
-});
+};
+export const storageInput = z.discriminatedUnion("provider", [
+  z.object({
+    provider: z.literal("r2"),
+    accountId: z.string().trim().toLowerCase().regex(ACCOUNT_ID, "the 32-character account ID from the Cloudflare dashboard"),
+    bucket: z.string().trim().regex(BUCKET, "not a valid R2 bucket name"),
+    ...common,
+  }),
+  z.object({
+    provider: z.literal("s3"),
+    region: z.string().trim().toLowerCase().regex(REGION, "an AWS region such as us-east-1 or ap-south-1"),
+    bucket: z.string().trim().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, "not a valid S3 bucket name"),
+    ...common,
+  }),
+]);
 
 // --- Client ---------------------------------------------------------------------------------
 
@@ -156,9 +215,10 @@ function clientFor(c: R2Config): S3Client {
   const key = JSON.stringify([c.endpoint, c.accessKeyId, secret]);
   if (cached?.key === key) return cached.s3;
   const s3 = traceAwsClient(new S3Client({
-    region: "auto", // required by the SDK, ignored by R2
+    region: c.region, // "auto" for R2 (required by the SDK, ignored by R2); the bucket's region for S3
     endpoint: c.endpoint,
-    forcePathStyle: true,
+    // R2 and custom endpoints take path-style requests; AWS S3 prefers virtual-hosted ones (bucket.s3.region…).
+    forcePathStyle: c.provider === "r2" || c.customEndpoint,
     credentials: { accessKeyId: c.accessKeyId, secretAccessKey: secret },
     // Send checksums only where an operation requires them; we send Content-MD5 ourselves on uploads.
     requestChecksumCalculation: "WHEN_REQUIRED",
@@ -170,7 +230,7 @@ function clientFor(c: R2Config): S3Client {
 
 async function requireR2(): Promise<{ c: R2Config; s3: S3Client }> {
   const c = await readR2Config();
-  if (!c?.verifiedAt) throw new PostError("Media storage (Cloudflare R2) is not configured. An admin must set it up under Admin → Storage first.", 409);
+  if (!c?.verifiedAt) throw new PostError("Media storage (Cloudflare R2 or Amazon S3) is not configured. An admin must set it up under Admin → Settings → Storage first.", 409);
   return { c, s3: clientFor(c) };
 }
 
@@ -331,14 +391,16 @@ async function probe(c: R2Config) {
 /** Save the configuration, then prove it works. Uploads stay disabled until it does. */
 export async function saveStorageConfig(actor: Actor, raw: unknown): Promise<{ verified: boolean; error?: string }> {
   if (actor.role !== "admin") throw new PostError("Only admins can configure storage.", 403);
-  if (envConfig()) throw new PostError("Storage is configured by R2_* environment variables (the Kubernetes Secret). Change it there.", 409);
-  const parsed = storageInput.safeParse(raw);
+  if (envConfig()) throw new PostError("Storage is configured by R2_* or S3_* environment variables (the Kubernetes Secret). Change it there.", 409);
+  const parsed = storageInput.safeParse({ provider: "r2", ...(raw as object) });
   if (!parsed.success) throw new PostError("The storage settings are not valid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   const input = parsed.data;
   const existing = await storedConfig();
   if (!input.secretAccessKey && !existing) throw new PostError("Enter the secret access key.", 400);
   const stored: StoredR2 = {
-    accountId: input.accountId,
+    provider: input.provider,
+    ...(input.provider === "s3" ? { region: input.region } : {}),
+    accountId: input.provider === "r2" ? input.accountId : "",
     endpoint: input.endpoint,
     bucket: input.bucket,
     accessKeyId: input.accessKeyId,
@@ -348,7 +410,7 @@ export async function saveStorageConfig(actor: Actor, raw: unknown): Promise<{ v
   };
   let error: string | undefined;
   try {
-    await probe({ ...stored, source: "admin", endpoint: endpointFor(stored.accountId, stored.endpoint), secretAccessKey: () => unseal(stored.secretAccessKey) });
+    await probe(fromStored(stored));
     stored.verifiedAt = new Date().toISOString();
   } catch (e) {
     error = (e as Error).message;
@@ -358,19 +420,19 @@ export async function saveStorageConfig(actor: Actor, raw: unknown): Promise<{ v
     .insert(schema.setting)
     .values({ key: SETTING_KEY, value: stored, updatedBy: actor.id })
     .onConflictDoUpdate({ target: schema.setting.key, set: { value: stored, updatedBy: actor.id, updatedAt: new Date() } });
-  await audit(actor, "storage.configure", stored.bucket, { provider: "r2", verified: !error });
+  await audit(actor, "storage.configure", stored.bucket, { provider: input.provider, verified: !error });
   return { verified: !error, error };
 }
 
 /** Status check for Admin → System status: list one key under the media prefix. */
 export async function checkStorage(): Promise<{ status: "ok" | "degraded" | "not configured"; detail: string }> {
   const c = await readR2Config();
-  if (!c) return { status: "not configured", detail: "uploads disabled until R2 is configured" };
+  if (!c) return { status: "not configured", detail: "uploads disabled until Cloudflare R2 or Amazon S3 is configured" };
   const s3 = clientFor(c);
   await s3.send(new ListObjectsV2Command({ Bucket: c.bucket, Prefix: `${MEDIA_ROOT}/`, MaxKeys: 1 }));
   return {
     status: c.verifiedAt ? "ok" : "degraded",
-    detail: `R2 bucket ${c.bucket} (${c.source === "env" ? "from Secret" : "from admin"})${c.publicBaseUrl ? ` · public ${new URL(c.publicBaseUrl).host}` : " · served through the site"}${c.verifiedAt ? "" : " · not verified"}`,
+    detail: `${PROVIDER_LABEL[c.provider]} bucket ${c.bucket}${c.provider === "s3" ? ` (${c.region})` : ""} (${c.source === "env" ? "from Secret" : "from admin"})${c.publicBaseUrl ? ` · public ${new URL(c.publicBaseUrl).host}` : " · served through the site"}${c.verifiedAt ? "" : " · not verified"}`,
   };
 }
 

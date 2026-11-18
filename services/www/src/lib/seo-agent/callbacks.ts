@@ -13,6 +13,7 @@ import { allowedCategories, buildPrompt, DRAFT_RULES, eligibleRecommendations, g
 import { linkChangesFor } from "../seo-intel/internal-links";
 import { enqueueSeoJob } from "../seo-intel/jobs";
 import { safeQueries } from "../seo-intel/llm";
+import { mlIntentFor } from "../seo-intel/ml";
 import { publishWithApproval, verifyOnce } from "../seo-intel/publish";
 import { generateRecommendations, windowMetrics } from "../seo-intel/recommendations";
 import { DRAFT_CATEGORIES, getSeoSettings } from "../seo-intel/settings";
@@ -414,6 +415,11 @@ export async function calendarBrief(calendarId: string) {
   const brief = (typeof item.brief === "string" ? JSON.parse(item.brief) : item.brief ?? {}) as Record<string, unknown>;
   const body = String(item.post_body ?? "");
   const written = ["draft", "review"].includes(String(item.post_status ?? "")) && body.trim() !== "" && !isOutline(body);
+  // No intent on the item (ML query clusters, ideas added by hand): the intent model's, for the crew's skills (D-96).
+  if (!brief.intent && Array.isArray(brief.supportingQueries)) {
+    const ml = await mlIntentFor(db, brief.supportingQueries.map(String));
+    if (ml) Object.assign(brief, { intent: ml.intent, intentSource: ml.label });
+  }
   // Stored brief keys never replace the server-side ones (style guide, examples, current draft).
   return { ...brief, id: calendarId, postId: item.post_id ?? null, title: String(item.title), kind: String(item.kind), category: item.category ?? null, styleGuide: STYLE_GUIDE, examples: await exampleArticles(db, (item.category as string | null) ?? null), currentDraft: written ? body.slice(0, CURRENT_DRAFT_CHARS) : null };
 }
@@ -457,5 +463,7 @@ export async function lancedbStorage() {
     return { configured: false };
   }
   if (!c) return { configured: false };
-  return { configured: true, uri: `s3://${c.bucket}/${LANCEDB_PREFIX}`, endpoint: c.endpoint, accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey(), region: "auto" };
+  // Amazon S3 without a custom endpoint: the agent's object store finds AWS from the region (an empty value is dropped).
+  const endpoint = c.provider === "s3" && !c.customEndpoint ? "" : c.endpoint;
+  return { configured: true, uri: `s3://${c.bucket}/${LANCEDB_PREFIX}`, endpoint, accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey(), region: c.region };
 }

@@ -44,6 +44,43 @@ describe("R2 configuration", () => {
   });
 });
 
+describe("Amazon S3", () => {
+  const clearR2 = () => {
+    for (const k of ["R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PUBLIC_BASE_URL"]) vi.stubEnv(k, "");
+  };
+
+  it("reads S3_* from the deployment, with AWS's regional endpoint", async () => {
+    clearR2();
+    vi.stubEnv("S3_REGION", "ap-south-1");
+    vi.stubEnv("S3_BUCKET", "jithendar-media");
+    vi.stubEnv("S3_ACCESS_KEY_ID", "AKIAEXAMPLE");
+    vi.stubEnv("S3_SECRET_ACCESS_KEY", "s3-secret-never-shown");
+    expect(await readR2Config()).toMatchObject({ source: "env", provider: "s3", region: "ap-south-1", customEndpoint: false, endpoint: "https://s3.ap-south-1.amazonaws.com", bucket: "jithendar-media" });
+    expect(JSON.stringify(await storageSummary())).not.toContain("s3-secret-never-shown");
+    vi.stubEnv("S3_REGION", "");
+    await expect(readR2Config()).rejects.toThrow("S3_REGION");
+  });
+
+  it("validates each provider's own fields, and keeps settings saved before S3 existed as R2", async () => {
+    const { storageInput, endpointFor } = await import("@/lib/storage");
+    const base = { bucket: "jithendar-media", accessKeyId: "AKIAEXAMPLE", secretAccessKey: "x" };
+    expect(storageInput.safeParse({ provider: "s3", region: "ap-south-1", ...base }).success).toBe(true);
+    expect(storageInput.safeParse({ provider: "s3", region: "mumbai", ...base }).success).toBe(false);
+    expect(storageInput.safeParse({ provider: "s3", ...base }).success).toBe(false); // region required
+    expect(storageInput.safeParse({ provider: "r2", ...base }).success).toBe(false); // account id required
+    expect(storageInput.safeParse({ provider: "s3", region: "us-gov-west-1", ...base, bucket: "my.bucket.name" }).success).toBe(true);
+    expect(endpointFor("", "", "s3", "eu-central-1")).toBe("https://s3.eu-central-1.amazonaws.com");
+    expect(endpointFor("", "https://minio.example.com/", "s3", "us-east-1")).toBe("https://minio.example.com");
+    expect(endpointFor(ACCOUNT)).toBe(`https://${ACCOUNT}.r2.cloudflarestorage.com`);
+    // A row saved before 2026-11-18 has no provider: it is R2.
+    clearR2();
+    const { getDb, schema } = await import("@/db");
+    const { seal } = await import("@/lib/secrets");
+    await (await getDb()).insert(schema.setting).values({ key: "storage.r2", value: { accountId: ACCOUNT, endpoint: "", bucket: "old", accessKeyId: "k", secretAccessKey: seal("s"), publicBaseUrl: "", verifiedAt: "2026-11-01T00:00:00Z" } });
+    expect(await readR2Config()).toMatchObject({ source: "admin", provider: "r2", region: "auto", endpoint: `https://${ACCOUNT}.r2.cloudflarestorage.com`, bucket: "old" });
+  });
+});
+
 describe("presigned URLs", () => {
   it("signs a short-lived PUT bound to the declared type and size", async () => {
     const url = new URL(await presignPut(KEY, "video/mp4", 1234, 600));

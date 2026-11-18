@@ -34,6 +34,7 @@ from ..llm import Llm
 from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArticleDraft, Source
 from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
+from .skills import editorial_tags
 
 PROMPT_VERSION = "seo-crew-v5"
 
@@ -135,9 +136,59 @@ def split_review(raw: str) -> tuple[str, list[FactCheckFlag]]:
         item = line.strip().lstrip("-*• ").strip()
         if not item or item.lower().rstrip(".") in ("none", "n/a", "nothing"):
             continue
-        claim, _, reason = item.partition("|")
-        flags.append(FactCheckFlag(claim=claim.strip()[:500], reason=(reason.strip() or "the technical reviewer could not verify this against a source")[:500], severity="warning"))
-    return body, flags[:30]
+        claim, reason = _split_flag(item)
+        flags.append(FactCheckFlag(claim=claim[:500], reason=(reason or "the technical reviewer could not verify this against a source")[:500], severity="warning"))
+    return body, merge_flags(flags)[:30]
+
+
+def _split_flag(item: str) -> tuple[str, str]:
+    """`claim | reason` → (claim, reason). The separator is the last `|` that is not escaped and not inside a `code`
+    span, so a shell pipe in the claim (`ps -eo stat,cmd \\| awk ...`) stays in the claim. With unbalanced backticks
+    the spans cannot be trusted and the last unescaped `|` is used."""
+    seps: list[int] = []
+    spans: list[int] = []
+    code = False
+    for i, ch in enumerate(item):
+        if ch == "`":
+            code = not code
+        elif ch == "|" and (i == 0 or item[i - 1] != "\\"):
+            seps.append(i)
+            if not code:
+                spans.append(i)
+    cut = (seps if code else spans)[-1:] or [-1]
+    claim, reason = (item, "") if cut[0] == -1 else (item[: cut[0]], item[cut[0] + 1 :])
+    return claim.replace("\\|", "|").strip(), reason.strip()
+
+
+def _words(s: str) -> str:
+    """Text without its formatting (backticks, `->` for `→`, a comma, case): what two copies of a flag share."""
+    return " ".join(re.findall(r"[a-z0-9]+", s.lower()))
+
+
+def _starts_alike(a: str, b: str) -> bool:
+    return a == b or a.startswith(f"{b} ") or b.startswith(f"{a} ")
+
+
+def merge_flags(*groups: list[FactCheckFlag]) -> list[FactCheckFlag]:
+    """Each flag once. The SEO editor copies the reviewer's flags with the formatting changed and sometimes a sentence
+    added, so an exact comparison listed most claims twice. A copy has the claim's words and the reason's words or
+    their start; the first wording and the fuller reason are kept, and an error outranks a warning. Flags that share a
+    claim but give another reason (one per note left in a draft) all stay."""
+    out: list[FactCheckFlag] = []
+    for f in (f for g in groups for f in g):
+        claim, reason = _words(f.claim) or f.claim, _words(f.reason)
+        i = next((i for i, o in enumerate(out) if (_words(o.claim) or o.claim) == claim and _starts_alike(_words(o.reason), reason)), None)
+        if i is None:
+            out.append(f)
+            continue
+        kept = out[i]
+        update: dict[str, str] = {}
+        if len(reason) > len(_words(kept.reason)):
+            update["reason"] = f.reason
+        if f.severity == "error":
+            update["severity"] = "error"
+        out[i] = kept.model_copy(update=update) if update else kept
+    return out
 
 
 def current_draft_block(brief: dict[str, Any]) -> str:
@@ -225,7 +276,7 @@ class EditorialCrew:
             tasks = [research, write, review, seo]
             return make_crew(agents, tasks, self.settings), tasks
 
-        o = await run_crew("editorial", build, self.settings, ctx)
+        o = await run_crew("editorial", build, self.settings, ctx, tags=editorial_tags(brief))
         draft = self._result(o.output, o.tasks, brief, o.status, o.reason)
         draft = self._check_sources(draft, fetched)
         return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=o.tokens, cost_usd=o.cost_usd, tool_calls=o.tool_calls, fetched_sources=fetched)
@@ -245,8 +296,7 @@ class EditorialCrew:
         if status == "completed" and meta is None:
             status, reason = "incomplete", "the SEO editor's output did not match the schema"
         if meta is not None and status == "completed":
-            claims = {f.claim for f in meta.fact_check_flags}
-            merged = [*meta.fact_check_flags, *(f for f in flags if f.claim not in claims)]
+            merged = merge_flags(meta.fact_check_flags, flags)
             return NewArticleDraft(title=meta.title, slug_suggestion=meta.slug_suggestion, meta_description=meta.meta_description, outline=meta.outline, body_mdx=body, code_blocks=code_blocks_of(body), sources=meta.sources, fact_check_flags=merged, internal_links=meta.internal_links)
         # Partial: whatever the completed tasks produced (the reviewer's corrected body beats the writer's).
         title = str(brief.get("title") or "Untitled draft")[:110]
@@ -255,8 +305,5 @@ class EditorialCrew:
     @staticmethod
     def _check_sources(d: NewArticleDraft, fetched: list[str]) -> NewArticleDraft:
         got = {u.rstrip("/") for u in fetched}
-        flags = list(d.fact_check_flags)
-        for s in d.sources:
-            if s.url.rstrip("/") not in got and not s.url.startswith("/"):
-                flags.append(FactCheckFlag(claim=s.url, reason="source was not retrieved during research; verify it exists and says this", severity="warning"))
-        return d.model_copy(update={"fact_check_flags": flags})
+        missing = [FactCheckFlag(claim=s.url, reason="source was not retrieved during research; verify it exists and says this", severity="warning") for s in d.sources if s.url.rstrip("/") not in got and not s.url.startswith("/")]
+        return d.model_copy(update={"fact_check_flags": merge_flags(d.fact_check_flags, missing)})

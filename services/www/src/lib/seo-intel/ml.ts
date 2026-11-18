@@ -113,6 +113,24 @@ export async function mlIntents(db: Db): Promise<{ threshold: number; byQuery: M
   return { threshold: Number(m?.t ?? 0.7), byQuery: new Map(rows.map((r) => [r.query, { intent: r.intent, confidence: Number(r.confidence) }])) };
 }
 
+/**
+ * The search intent of a brief's queries according to the intent model (D-96: the crews pick the matching writing
+ * skill from it). Only when the model is in use (mlDecision "model") and only a prediction at or above the model's
+ * confidence threshold; the first such query wins (a brief lists its main query first). null otherwise.
+ */
+export async function mlIntentFor(db: Db, queries: string[]): Promise<{ intent: string; query: string; label: string } | null> {
+  const qs = queries.map((q) => q.trim()).filter(Boolean).slice(0, 10);
+  if (qs.length === 0) return null;
+  const decision = await mlDecision(db, "intent");
+  if (decision.mode !== "model") return null;
+  const { threshold, byQuery } = await mlIntents(db);
+  for (const q of qs) {
+    const p = byQuery.get(q) ?? byQuery.get(q.toLowerCase().replace(/\s+/g, " "));
+    if (p && p.confidence >= threshold) return { intent: p.intent, query: q, label: decision.label };
+  }
+  return null;
+}
+
 /** A/B arm by article-id parity, the same as the agent's app/seo_ml/related.py experiment_arm. */
 export function relatedArm(articleId: string): "model" | "rule" {
   const last = articleId.replace(/-/g, "").slice(-1).toLowerCase() || "0";

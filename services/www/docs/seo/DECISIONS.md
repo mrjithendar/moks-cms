@@ -823,3 +823,28 @@ add manually also can delete." Search Console content gaps and editorial ideas w
   filter and land unscheduled; a deleted item keeps its fingerprint and is not added again. Nothing is drafted,
   scheduled or published automatically (D-94).
 
+## D-96 Agent skills for every crew, managed on AI room → Skills (owner request 2026-11-18)
+
+"Add skills to each AI run … enable a skills menu and manage skills from there, add default skills, additionally admin
+can add more skills." Details: CREWS.md "Skills".
+
+- **CrewAI's own Agent Skills, activated.** crewai 1.15.34 has `Agent(skills=…)`. Skills are passed as `Skill` objects
+  at INSTRUCTIONS level, so their full text is in the system prompt (cached with it). Not used: path skills with
+  progressive disclosure (CrewAI then adds a `load_skill` tool outside our allowlist, and the model may not call it),
+  and registry refs (downloads from CrewAI's platform at run time, which the crews keep off).
+- **Stored by the web app, read through the callback API.** Like the news writing profiles, the web app owns the data
+  and the admin page; unlike them, the agent reads skills over `GET /internal/seo-agent/skills` instead of a database
+  grant, so a skill change needs no agent deploy and the agent's role is unchanged. Defaults live in code
+  (`DEFAULT_SKILLS`) and are inserted when missing, so they are reviewed like code and Reset can restore them.
+- **Chosen by code from signals the run already has, not by the model.** Tags come from the brief's intent and source,
+  the recommendation categories, the news classifier's topics and mode, and the report period. Where a calendar item
+  has no intent (ML query clusters, ideas added by hand), `calendarBrief` takes the ML intent model's prediction for its
+  queries, only when the model is in use (mlDecision) and the prediction is above the model's threshold. So the ML that
+  picks a topic (query clusters, D-95) also picks how it is written (intent → skill).
+- **Admin-only, instructions by design.** Skills are trusted text from admins (seoRoute: admin, same-origin, rate
+  limit, audit), placed outside the `<data>` blocks. Guards: no `<skill>` tags in a skill, length caps per skill and per
+  agent, and "the task wins" over a skill, so a skill cannot change an output format the code parses.
+- **Not given skills:** the single-shot calls outside the crews (news classification and vision checks, the style
+  review, ML labelling, the RAG-eval judge, Ask the Blog). They are classifiers, checks or a judge with fixed rules,
+  and their prompt versions are measured; guidance there would move those measurements.
+
