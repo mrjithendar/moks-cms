@@ -88,7 +88,7 @@ export function CalendarActions({ item }: { item: CalendarActionItem }) {
             <textarea className={`${input} min-h-20 py-2`} maxLength={1500} value={asks} onChange={(e) => setAsks(e.target.value)} placeholder="e.g. add a troubleshooting section, use Kubernetes 1.35, shorten the introduction" />
           </label>
           <p className="text-xs text-fg-subtle">The SEO agent reads the current draft, checks it against fresh research and returns a revised version.{item.draft === "scheduled" ? " The post is unscheduled until you schedule it again." : ""}</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button type="submit" size="sm" loading={busy === "improve"}>Improve draft</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setImproving(false)}>Cancel</Button>
           </div>

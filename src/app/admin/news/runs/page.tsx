@@ -55,7 +55,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
                 <td className={`${td} tabular-nums`}>{Math.round(Number(r.seconds ?? 0))} s</td>
                 <td className={`${td} text-xs`}>{["fetched", "new", "deduped", "clustered", "scored", "selected", "drafted", "failed_quality", "failed", "skipped_budget"].filter((k) => c[k]).map((k) => `${k.replace(/_/g, " ")} ${c[k]}`).join(" · ") || "—"}</td>
                 <td className={`${td} tabular-nums`}>${(Number(r.cost_usd) + Number(r.image_cost_usd)).toFixed(3)}</td>
-                <td className={`${td} max-w-xs text-xs text-red-700 dark:text-red-300 [overflow-wrap:anywhere]`}>{String(r.error_summary ?? "")}</td>
+                <td className={`${td} max-w-xs text-xs text-red-700 dark:text-red-300 min-w-48 [overflow-wrap:anywhere]`}>{String(r.error_summary ?? "")}</td>
               </tr>
             );
           })}

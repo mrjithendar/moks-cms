@@ -111,7 +111,7 @@ export function RunActions({ runId, live, inputs, blocked }: { runId: string; li
         onClose={() => setEditing(false)}
         title="Re-run with changed inputs"
         footer={
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setEditing(false)}>Close</Button>
             <Button
               type="button"

@@ -41,7 +41,7 @@ export async function SeoIntegrations() {
           return (
             <Card key={p}>
               <h3 className="flex items-center gap-2 font-semibold text-fg">{p === "gsc" ? "Search Console" : "Google Analytics 4"} <StatusPill status={pill(row?.status ?? st.state)} /></h3>
-              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
                 <dt className="text-fg-subtle">Property</dt><dd className="[overflow-wrap:anywhere]">{(p === "gsc" ? d.gscProperty : d.ga4PropertyId) || "not set (Settings or SEO_GSC_PROPERTY / SEO_GA4_PROPERTY_ID)"}</dd>
                 {p === "gsc" && <><dt className="text-fg-subtle">Search types</dt><dd>{d.searchTypes.join(", ")}</dd></>}
                 {p === "ga4" && <><dt className="text-fg-subtle">Time zone</dt><dd>{row?.timeZone ?? "learned on first test or sync"}</dd></>}

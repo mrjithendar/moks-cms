@@ -71,7 +71,7 @@ export function NewArticleReview({ draft, doc, html, editorUrl }: Props) {
 
       <section aria-labelledby="na-meta" className="rounded-xl border border-line bg-surface p-4 sm:p-5">
         <h2 id="na-meta" className="text-sm font-semibold text-fg">Search result</h2>
-        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
+        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
           <dt className="text-fg-subtle">Title ({doc.title.length}/60)</dt>
           <dd className={`font-medium ${doc.title.length > 60 ? "text-amber-800 dark:text-amber-200" : "text-fg"}`}>{doc.title}</dd>
           <dt className="text-fg-subtle">Meta ({doc.meta_description.length}, 120–155)</dt>

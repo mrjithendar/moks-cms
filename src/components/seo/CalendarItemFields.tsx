@@ -60,7 +60,7 @@ export function CalendarItemFields({ id, title, cluster, category, ownerId, owne
       </div>
       <details className="mt-2 text-sm" open={!compact}>
         <summary className="cursor-pointer font-medium text-fg-muted hover:text-fg">Brief</summary>
-        <dl className="mt-3 grid grid-cols-1 items-start gap-x-4 gap-y-2 sm:grid-cols-[9rem_1fr] [&>dt]:pt-1.5">
+        <dl className="mt-3 grid grid-cols-1 items-start gap-x-4 gap-y-2 sm:grid-cols-[9rem_minmax(0,1fr)] [&>dt]:pt-1.5">
           <dt className={label}>Gap</dt><dd><Lines name="Gap" value={brief.gap ? [brief.gap] : []} placeholder="Why this article" onSave={(v) => b("gap")(v.join(" "))} /></dd>
           <dt className={label}>Audience</dt><dd><Line name="Audience" value={brief.audience ?? ""} placeholder="Who it's for" onSave={b("audience")} /></dd>
           <dt className={label}>Intent</dt><dd><Line name="Intent" value={brief.intent ?? ""} placeholder="informational, how-to…" onSave={b("intent")} /></dd>

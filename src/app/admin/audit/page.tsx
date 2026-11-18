@@ -91,7 +91,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               <Table head={<tr><th className={th}>Account tried</th><th className={th}>Failures</th><th className={th}>From IPs</th><th className={th}>Last seen</th></tr>}>
                 {sec.topAccounts.map((a) => (
                   <tr key={a.account}>
-                    <td className={`${td} [overflow-wrap:anywhere]`}><Link href={`/admin/audit?q=${encodeURIComponent(a.account)}&days=1`} className="underline">{a.account}</Link></td>
+                    <td className={`${td} min-w-48 [overflow-wrap:anywhere]`}><Link href={`/admin/audit?q=${encodeURIComponent(a.account)}&days=1`} className="underline">{a.account}</Link></td>
                     <td className={td}>{a.failures}</td>
                     <td className={td}>{a.ips}</td>
                     <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={a.lastSeen} />}</td>
@@ -133,7 +133,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
           <label className="sr-only" htmlFor="a-ip">IP address</label>
           <Input id="a-ip" name="ip" defaultValue={filter.ip} placeholder="IP address" spellCheck={false} />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="secondary">Filter</Button>
           <Link href="/admin/audit" className={buttonClass("ghost")}>Reset</Link>
         </div>

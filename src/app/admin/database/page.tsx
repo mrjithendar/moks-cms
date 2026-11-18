@@ -68,7 +68,7 @@ export default async function DatabasePage({ searchParams }: { searchParams: Fla
             <h2 className="text-lg font-semibold text-fg">
               <code>{browse.table}</code> <span className="text-sm font-normal text-slate-500">· {browse.total.toLocaleString()} rows · page {browse.page} of {pages}</span>
             </h2>
-            <div className="flex gap-2 text-sm">
+            <div className="flex flex-wrap gap-2 text-sm">
               {browse.page > 1 && <Link className="rounded-lg border border-line-strong px-3 py-1.5" href={`/admin/database?table=${browse.table}&page=${browse.page - 1}`}>← Previous</Link>}
               {browse.page < pages && <Link className="rounded-lg border border-line-strong px-3 py-1.5" href={`/admin/database?table=${browse.table}&page=${browse.page + 1}`}>Next →</Link>}
               <Link className="rounded-lg border border-line-strong px-3 py-1.5" href="/admin/database">Close</Link>
@@ -97,7 +97,7 @@ export default async function DatabasePage({ searchParams }: { searchParams: Fla
           <tr key={t.name}>
             <td className={`${td} font-mono`}>{t.name}</td>
             <td className={td}>{t.rows.toLocaleString()}</td>
-            <td className={td}>{t.size}</td>
+            <td className={`${td} whitespace-nowrap`}>{t.size}</td>
             <td className={`${td} text-xs`}>{t.lastVacuum?.slice(0, 16) ?? "—"}</td>
             <td className={`${td} text-xs`}>{t.lastAnalyze?.slice(0, 16) ?? "—"}</td>
             <td className={`${td} text-right`}><Link className="font-semibold text-brand-600 hover:underline dark:text-brand-300" href={`/admin/database?table=${t.name}`}>Browse</Link></td>
@@ -110,7 +110,7 @@ export default async function DatabasePage({ searchParams }: { searchParams: Fla
         <p className="mb-4 text-sm text-slate-500">Safe housekeeping. Each run is recorded in the audit log. Postgres also autovacuums on its own.</p>
         <div className="flex flex-wrap gap-3">
           {Object.entries(MAINTENANCE).map(([task, label]) => (
-            <form key={task} action={maintain}>
+            <form key={task} action={maintain} className="max-w-full">
               <input type="hidden" name="task" value={task} />
               <Button type="submit" variant="secondary">{label}</Button>
             </form>

@@ -38,7 +38,7 @@ export function KeywordLinks({ initial }: { initial: Keyword[] }) {
         }}
       >
         <label className="grid gap-1 text-xs text-fg-subtle">Keyword<input required minLength={2} maxLength={80} className={input} value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="GitOps" /></label>
-        <label className="grid min-w-64 flex-1 gap-1 text-xs text-fg-subtle">Links to<input required className={`${input} w-full`} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/blog/gitops-guide or https://…" /></label>
+        <label className="grid min-w-[min(16rem,100%)] flex-1 gap-1 text-xs text-fg-subtle">Links to<input required className={`${input} w-full`} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/blog/gitops-guide or https://…" /></label>
         <label className="flex min-h-9 items-center gap-1.5 text-xs text-fg-muted"><input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} /> Match case</label>
         <button type="submit" className="min-h-9 rounded-md bg-accent px-3 text-sm font-medium text-on-accent">Add</button>
       </form>

@@ -148,7 +148,7 @@ export function RevisionsPanel({ list, load, preview, kind }: { list: () => Prom
           <p className="text-slate-500">
             <LocalTime iso={r.createdAt} /> · {r.author ?? "system"}
           </p>
-          <div className="mt-1 flex gap-3">
+          <div className="mt-1 flex flex-wrap gap-3">
             <button type="button" className="font-semibold underline" onClick={() => open(r.id)}>Preview</button>
             <button type="button" className="font-semibold underline" onClick={() => load(r.id)}>Load into editor</button>
           </div>

@@ -66,10 +66,10 @@ export function MetricCell({ articleId, metric, value, run, title }: { articleId
           {data?.score && (
             <div className="mt-2">
               <p className="text-xs text-fg-muted">{data.score.formula}</p>
-              <table className="mt-2 w-full text-xs">
+              <div className="overflow-x-auto"><table className="mt-2 w-full text-xs">
                 <thead><tr className="text-left text-fg-subtle"><th className="font-medium">Input</th><th className="text-right font-medium">Weight</th></tr></thead>
                 <tbody>{data.score.weights.map((w) => <tr key={w.input}><td>{w.input}</td><td className="text-right tabular-nums">−{w.weight}</td></tr>)}</tbody>
-              </table>
+              </table></div>
               <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
                 {data.score.rows.map((r, i) => <li key={i} className="flex gap-2"><span className="w-8 shrink-0 text-right tabular-nums text-fg-subtle">−{r.points}</span><span className="text-fg-muted">{r.message}</span></li>)}
               </ul>

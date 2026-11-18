@@ -31,7 +31,7 @@ export default async function VisitorAnalyticsPage({ searchParams }: { searchPar
           <Table head={<tr><th className={th}>Landing page</th><th className={th}>Sessions</th><th className={th}>Organic</th><th className={th}>Engagement rate</th><th className={th}>Engagement / session</th><th className={th}>Views</th></tr>}>
             {d.landing.map((r) => (
               <tr key={r.page}>
-                <td className={`${td} max-w-xs [overflow-wrap:anywhere]`}>{r.articleId ? <Link className="underline" href={`/admin/posts/${r.articleId}/insights`}>{r.title ?? r.page}</Link> : r.page}</td>
+                <td className={`${td} max-w-xs min-w-56 [overflow-wrap:anywhere]`}>{r.articleId ? <Link className="underline" href={`/admin/posts/${r.articleId}/insights`}>{r.title ?? r.page}</Link> : r.page}</td>
                 <td className={`${td} tabular-nums`}>{fmtInt(r.sessions)}</td>
                 <td className={`${td} tabular-nums`}>{fmtInt(r.organic)}</td>
                 <td className={`${td} tabular-nums`}>{fmtPct(r.engagementRate)}</td>

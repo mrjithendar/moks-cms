@@ -446,7 +446,7 @@ function PublishDialog({ open, onClose, issues, changes, onPublish }: { open: bo
       title="Publish changes"
       size="md"
       footer={
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>

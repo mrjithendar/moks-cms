@@ -58,7 +58,7 @@ export function SeoAgentCard({ initial }: { initial: AgentStatus }) {
         </Button>
       </div>
       <p className="mt-2 text-sm text-fg-muted [overflow-wrap:anywhere]">{st.reason}</p>
-      <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[10rem_1fr]">
+      <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
         <dt className="text-fg-subtle">Endpoint</dt>
         <dd className="font-mono text-xs [overflow-wrap:anywhere]">{st.url ?? "none"}{st.source ? <span className="ml-2 font-sans text-fg-subtle">({SOURCE[st.source]})</span> : null}</dd>
         {st.version ? (

@@ -330,7 +330,7 @@ export function DiffReview({ draft: initial, article, base, evidence, submission
       {/* Bottom action bar: thumb reach on phones */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2">
-          <div className="flex gap-1" role="group" aria-label="Navigate changes">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Navigate changes">
             <Button size="sm" variant="secondary" onClick={() => go(active - 1)} disabled={active === 0} aria-label="Previous change (k)">↑</Button>
             <Button size="sm" variant="secondary" onClick={() => go(active + 1)} disabled={active >= changes.length - 1} aria-label="Next change (j)">↓</Button>
           </div>

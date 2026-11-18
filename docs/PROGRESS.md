@@ -1,5 +1,38 @@
 # Progress log — jithendar.com
 
+## Phone layout: no admin page wider than the screen (2026-11-18, owner request)
+
+Owner (screenshot of Admin → Skills on a phone, page wider than the screen): "fix mobile view … check site wide ui ux".
+Cause: the skill's tags were inline chips with no space between them, so the line could not break, inside a grid column
+that grows to fit its content. The same patterns were then searched for in every `.tsx` file (a static pass; the pages
+were not opened in a browser in this change).
+
+- Skills (`SkillsManager.tsx`): tags wrap (`flex flex-wrap`), the one-column list is `minmax(0,1fr)`.
+- `globals.css`: inside the admin shell a long word breaks instead of overflowing; `dd` may shrink below its longest
+  word everywhere (definition values sit in grid columns).
+- Definition lists with a bare `1fr` column now use `minmax(0,1fr)`: post insights, integrations, ML models, calendar
+  item, new-article review, SEO agent card, practice workspace (details and test results); practice bar rows too.
+- Tables with no sideways scroll now have one: Claude usage (2), ML weights proposal, ML models, recommendation
+  evidence, health score, metric details, news run breakdown, news analytics trend, practice abuse, practice problems.
+- `AddPromptForm`, `KeywordLinks`: the 16rem minimum width no longer applies on a screen narrower than that.
+- Tests: `tests/mobile-overflow.test.ts` (4, static: tables have a scroll region, no margin-spaced chip rows in `dd`,
+  no bare `1fr` in a `dl` grid, no bare `flex gap-N` row of buttons). lint, typecheck, test and build were not run locally (the session that made this change had no
+  `node_modules` and no package registry access); they ran in CI on pull request #152.
+- Button rows wrap (owner's second screenshot, Ask the Blog settings: "Reset text and limits to defaults" ran off the
+  screen): `flex-wrap` on 18 rows of two or more buttons or links (Ask the Blog, SEO settings bar, calendar actions,
+  run actions, log viewer, editor, news settings, backups, database, audit, appearance, media, practice).
+- LanceDB tables list (third screenshot): the Columns cell keeps a readable width and the table scrolls sideways,
+  instead of one word per line.
+- Tables no longer squeeze a title or URL to two letters per line (fourth screenshot, Page insights): 16 cells that
+  may break inside a word (`overflow-wrap: anywhere`) now have a minimum width (12rem; 14rem for the page or title
+  column), so on a phone the table scrolls sideways and the text stays readable. Test guard added (5 tests).
+- Long button labels wrap on a phone (fifth screenshot, Database → Maintenance: "Delete abandoned uploads …" was wider
+  than the screen): the shared `buttonClass` (`components/ui/form.tsx`) is `whitespace-normal` with `max-w-full` below
+  `sm` and one line from `sm` up, so every Button and button-styled link is covered. Database: the Size cell stays on one line.
+- No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
+- Open: check on a real phone (Skills, ML models, Recommendations, Practice); a Playwright phone-viewport check that
+  asserts `scrollWidth <= clientWidth` on every admin page would catch what a static scan cannot.
+
 ## CrewAI console, phase 1: runs and logs like GitHub Actions (2026-11-18, owner request)
 
 Owner: "seo-agent crews and jobs can be managed from jithendar.com/admin/crewai, can see all run logs like github

@@ -356,7 +356,7 @@ export function Workspace({ problem, descriptionHtml, roleNames, topicNames, exe
       ) : (
         <span className="hidden text-xs text-fg-subtle sm:inline">Ctrl/⌘ + Enter runs · Ctrl/⌘ + Shift + Enter submits</span>
       )}
-      <div className="ml-auto flex gap-2">
+      <div className="ml-auto flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onClick={() => void execute("run")} disabled={Boolean(busy)}>
           Run
         </Button>
@@ -520,7 +520,7 @@ function ProblemPanel({ problem, html, roleNames, topicNames }: { problem: Publi
         </Section>
       )}
       <Section title="Details">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
           <dt className="text-fg-subtle">Level</dt>
           <dd>{DIFFICULTY_INFO[problem.difficulty].criteria}</dd>
           <dt className="text-fg-subtle">Roles</dt>
@@ -609,7 +609,7 @@ function SolutionPanel({ slug, state, setState, locked, sessionId, onError }: { 
               and it won&apos;t earn XP. Your time and attempts so far are recorded.
             </p>
             <p>You can keep experimenting with the code afterwards.</p>
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               <Button loading={busy} onClick={() => void reveal()}>
                 Reveal solution
               </Button>
@@ -840,7 +840,7 @@ function ResultsPanel({ submission, error, entrypoint, executionEnabled, busy }:
               <code className="font-mono text-fg-muted">{callRepr(entrypoint, r.args, r.kwargs).slice(0, 120)}</code>
               {r.ms !== undefined && <span className="ml-2 text-fg-subtle">{r.ms} ms</span>}
             </summary>
-            <dl className="mt-2 grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.8125rem]">
+            <dl className="mt-2 grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[0.8125rem]">
               <dt className="font-sans text-fg-subtle">Expected</dt>
               <dd className="[overflow-wrap:anywhere]">{pyRepr(r.expected)}</dd>
               <dt className="font-sans text-fg-subtle">Got</dt>

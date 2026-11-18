@@ -24,7 +24,7 @@ export default async function PageIntelligencePage({ searchParams }: { searchPar
           <Table head={<tr><th className={th}>Page</th><th className={th}>Clicks</th><th className={th}>Change</th><th className={th}>Impr.</th><th className={th}>CTR</th><th className={th}>Pos.</th><th className={th}>GA4 sessions</th><th className={th}>Engagement</th><th className={th}>Open recs</th></tr>}>
             {d.rows.map((r) => (
               <tr key={r.page}>
-                <td className={`${td} max-w-xs [overflow-wrap:anywhere]`}>
+                <td className={`${td} max-w-xs min-w-56 [overflow-wrap:anywhere]`}>
                   {r.articleId ? <Link className="underline" href={`/admin/posts/${r.articleId}/insights`}>{r.title}</Link> : r.page}
                   {r.category && <span className="block text-xs text-fg-subtle">{r.category}</span>}
                 </td>

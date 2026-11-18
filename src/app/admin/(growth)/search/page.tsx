@@ -15,7 +15,7 @@ function PageTable({ rows, showDelta = false }: { rows: PageLike[]; showDelta?: 
     <Table head={<tr><th className={th}>Page</th><th className={th}>Clicks</th>{showDelta && <th className={th}>Δ clicks</th>}<th className={th}>Impressions</th><th className={th}>CTR</th><th className={th}>Position</th></tr>}>
       {rows.map((r) => (
         <tr key={r.page}>
-          <td className={`${td} max-w-xs [overflow-wrap:anywhere]`}>
+          <td className={`${td} max-w-xs min-w-56 [overflow-wrap:anywhere]`}>
             {r.articleId ? <Link className="underline" href={`/admin/posts/${r.articleId}/insights`}>{r.title ?? r.page}</Link> : r.page}
             {r.title && <span className="block text-xs text-fg-subtle">{new URL(r.page).pathname}</span>}
           </td>
@@ -36,7 +36,7 @@ function QueryTable({ rows }: { rows: { query: string; clicks: number; impressio
     <Table head={<tr><th className={th}>Query</th><th className={th}>Clicks</th><th className={th}>Impressions</th><th className={th}>CTR</th><th className={th}>Position</th></tr>}>
       {rows.map((r) => (
         <tr key={r.query}>
-          <td className={`${td} [overflow-wrap:anywhere]`}>{r.query}</td>
+          <td className={`${td} min-w-56 [overflow-wrap:anywhere]`}>{r.query}</td>
           <td className={`${td} tabular-nums`}>{fmtInt(r.clicks)}</td>
           <td className={`${td} tabular-nums`}>{fmtInt(r.impressions)}</td>
           <td className={`${td} tabular-nums`}>{fmtPct(r.ctr)}</td>

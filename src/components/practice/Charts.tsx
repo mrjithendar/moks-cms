@@ -92,7 +92,7 @@ export function MeterRows({ rows }: { rows: { label: string; value: number | nul
   return (
     <ul className="space-y-2.5">
       {rows.map((r) => (
-        <li key={r.label} className="grid grid-cols-[minmax(8rem,12rem)_1fr_auto] items-center gap-3 text-sm" title={`${r.label}: ${r.detail}`}>
+        <li key={r.label} className="grid grid-cols-[minmax(5rem,12rem)_minmax(0,1fr)_auto] items-center gap-3 text-sm" title={`${r.label}: ${r.detail}`}>
           <span className="truncate text-fg">{r.label}</span>
           <span className="h-2 overflow-hidden rounded-full bg-surface-sunken">
             <span className="block h-full rounded-full bg-accent" style={{ width: `${r.value ?? 0}%` }} />

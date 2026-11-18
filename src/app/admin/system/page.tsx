@@ -63,7 +63,7 @@ export default async function SystemPage() {
                     <td className={`${td} font-medium text-fg`}>{c.name}</td>
                     <td className={td}><StatusPill status={c.status} /></td>
                     <td className={`${td} font-mono text-xs`}>{c.ms === null ? "—" : `${c.ms} ms`}</td>
-                    <td className={`${td} text-sm [overflow-wrap:anywhere]`}>{c.detail}</td>
+                    <td className={`${td} text-sm min-w-48 [overflow-wrap:anywhere]`}>{c.detail}</td>
                     <td className={td}><Configure c={c} /></td>
                   </tr>
                 ))}

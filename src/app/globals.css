@@ -139,6 +139,18 @@ body:has([data-admin-shell]) .site-header-inner {
   }
 }
 
+/* Phones: one long word, URL, slug or tag must never make a page wider than the screen. In the admin, text breaks
+   inside the word when nothing else fits (inherited; `pre` and tables keep their own sideways scroll). A definition
+   value may also shrink below its longest word, because `dd` usually sits in a grid column that would otherwise grow
+   to fit it and push the page sideways (Skills, 2026-11-18). */
+[data-admin-shell] {
+  overflow-wrap: break-word;
+}
+dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* The admin is a working tool, not a page to read: stronger edges than the public theme, so cards, fields, tables and
    sections stand apart from the background instead of reading as one white sheet. Only inside the admin shell. */
 [data-admin-shell] {

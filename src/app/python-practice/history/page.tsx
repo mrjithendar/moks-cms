@@ -75,7 +75,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
               </table>
             </div>
           )}
-          <div className="mt-4 flex gap-3 text-sm">
+          <div className="mt-4 flex flex-wrap gap-3 text-sm">
             {page > 1 && <Link href={`/python-practice/history?page=${page - 1}`} className="underline">Newer</Link>}
             {subs.hasMore && <Link href={`/python-practice/history?page=${page + 1}`} className="underline">Older</Link>}
           </div>

@@ -108,7 +108,7 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
               <Input id="r2-bucket" name="bucket" defaultValue={b.r2?.bucket ?? ""} placeholder="jithendar-backups" autoComplete="off" spellCheck={false} />
             </Field>
             <label className="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="enabled" defaultChecked={b.r2?.enabled ?? true} /> Back up to the storage bucket</label>
-            <div className="flex gap-2 sm:col-span-2">
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button type="submit" name="test" value="0" variant="secondary" disabled={!b.storageReady}>Save</Button>
               <Button type="submit" name="test" value="1" disabled={!b.storageReady}>Save and test</Button>
             </div>

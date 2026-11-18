@@ -23,7 +23,7 @@ export default async function AdminProblems({ searchParams }: { searchParams: Pr
         <Input name="q" defaultValue={sp.q ?? ""} placeholder="Search" className="!w-64" aria-label="Search" />
         <button className={buttonClass("secondary")}>Filter</button>
       </form>
-      <Card className="!p-0">
+      <Card className="overflow-x-auto !p-0">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-line text-fg-subtle">
             <tr>
