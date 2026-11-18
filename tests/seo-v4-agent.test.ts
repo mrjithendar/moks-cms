@@ -20,6 +20,7 @@ const { clearAgentCache } = await import("@/lib/seo-agent/endpoint");
 const { handleCallback, tokenOk } = await import("@/lib/seo-agent/internal-server");
 const { saveSeoSettings } = await import("@/lib/seo-intel/settings");
 const { docsFetcher } = await import("@/lib/seo-intel/crawler");
+const { fetchDocs } = await import("@/lib/seo-agent/callbacks");
 
 /**
  * SEO v3 on the web-app side, with the seo-agent mocked: the orchestrator switch, the callback API (auth, ownership,
@@ -187,6 +188,22 @@ describe("callback API", () => {
     }
     const r = await cb("POST", "/fetch-docs", { url: "https://169.254.169.254/latest/meta-data/" });
     expect((r.body as { error: string }).error).toMatch(/allowlist/);
+  });
+
+  it("fetch-docs sends the agent the page from its <main> element, so a long sidebar cannot push the content out", async () => {
+    const sidebar = `<nav>${"<a href=/docs/x>Page</a>".repeat(30_000)}</nav>`; // ~750 KB before the content
+    const url = "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/";
+    const fetched = async (inner: string) => {
+      const html = `<html><head><title>Deployments | Kubernetes</title></head><body>${sidebar}${inner}</body></html>`;
+      const r = await fetchDocs({ url }, async (u) => ({ url: u, finalUrl: u, status: 200, headers: { "content-type": "text/html; charset=utf-8" }, body: html, redirects: [], truncated: false }));
+      return r as { status: number; title: string; body: string };
+    };
+    const main = await fetched("<main class=td-main><h2 id=max-surge>Max Surge</h2><p>maxSurge</p></main>");
+    expect(main).toMatchObject({ status: 200, title: "Deployments | Kubernetes" });
+    expect(main.body.startsWith("<main class=td-main>") && main.body.includes("maxSurge")).toBe(true);
+    expect((await fetched("<article><p>maxSurge</p></article>")).body.startsWith("<article>")).toBe(true);
+    const plain = (await fetched("<p>maxSurge</p>")).body; // no <main> or <article>: the first 300,000 characters, as before
+    expect(plain.length === 300_000 && plain.startsWith("<html>")).toBe(true);
   });
 });
 

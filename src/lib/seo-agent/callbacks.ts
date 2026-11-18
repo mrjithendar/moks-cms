@@ -323,6 +323,19 @@ export async function gscQueries(q: URLSearchParams) {
   return { queries: rows.filter((r) => keep.has(r.query)).map((r) => ({ query: r.query, impressions: Number(r.impressions), clicks: Number(r.clicks), position: r.position === null ? null : Number(Number(r.position).toFixed(1)) })) };
 }
 
+/** The agent gets at most this much HTML per page. */
+export const DOCS_BODY_CHARS = 300_000;
+
+/**
+ * The HTML the agent reads: from the page's <main> (else <article>) element when it has one. Documentation sites put
+ * a language menu and a sidebar of every page first; on a Kubernetes page that is the first 490 KB of a 600 KB page,
+ * so the first 300,000 characters held no content at all. The <title> is read before this, from the whole page.
+ */
+export function docsContent(html: string): string {
+  const start = /<main(?=[\s>])[^>]*>/i.exec(html) ?? /<article(?=[\s>])[^>]*>/i.exec(html);
+  return html.slice(start?.index ?? 0, (start?.index ?? 0) + DOCS_BODY_CHARS);
+}
+
 /** POST /fetch-docs — the crew's only way out to the internet: allowlisted documentation domains, SSRF-guarded. */
 export async function fetchDocs(body: unknown, fetcher = docsFetcher(docsAllowlist(), { timeoutMs: 15_000, maxBytes: 1_500_000, maxRedirects: 3 })) {
   const b = parse(z.object({ url: z.string().url().max(2000) }), body);
@@ -331,7 +344,7 @@ export async function fetchDocs(body: unknown, fetcher = docsFetcher(docsAllowli
   const type = r.headers["content-type"] ?? "";
   if (!/text\/html|text\/plain|application\/xhtml/.test(type)) return { status: r.status, finalUrl: r.finalUrl, error: `Unsupported content type ${type.slice(0, 60)}.` };
   const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(r.body)?.[1]?.trim().slice(0, 200) ?? "";
-  return { status: r.status, finalUrl: r.finalUrl, title, body: r.body.slice(0, 300_000), truncated: r.truncated };
+  return { status: r.status, finalUrl: r.finalUrl, title, body: docsContent(r.body), truncated: r.truncated };
 }
 
 /**
