@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from app.crews.common import CrewBudgetExceeded, CrewCancelled, CrewRun, feedback_section, long_output_tokens
-from app.crews.editorial import EditorialCrew, code_blocks_of, merge_flags, split_review
+from app.crews.editorial import NOTE_CLAIM, NOTES_RULE, EditorialCrew, code_blocks_of, extract_editor_notes, merge_flags, split_review
 from app.index import MemoryRetriever
 from app.llm import BudgetGuard, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Usage
 from app.main import memory_container
@@ -211,6 +211,62 @@ def test_merge_flags_keeps_flags_that_share_a_claim_but_not_a_reason() -> None:
         (note, "confirm the link", "warning"),
         ("`x` is set", "No source. Check the man page.", "error"),
     ]
+
+
+# The note a writer put at the top of a real draft (2026-11-18): the site renders plain Markdown, so it was printed.
+OWNER_NOTE = (
+    "{/* TODO(owner): Draft for editorial review. Sources and checks: (1) Every technical claim here comes from "
+    "/blog/devops-interview-preparation-guide. Verify each claim against the man pages before publishing. (2) The worked "
+    "example has no captured output. Run each command on a throwaway VM and paste the real output. (3) Confirm "
+    "/blog/devops-interview-preparation-guide is published. */}"
+)
+
+
+def test_editor_notes_leave_the_body_and_become_flags() -> None:
+    body = f"{OWNER_NOTE}\n\nIntro.\n\n## A\n\nText <!-- check this number --> here.\n\n<Todo>add the kernel version</Todo>\n\nEnd."
+    clean, flags = extract_editor_notes(body)
+    assert clean == "Intro.\n\n## A\n\nText  here.\n\nEnd."  # the emptied paragraph leaves no blank-line run
+    assert "TODO" not in clean and "{/*" not in clean and "<!--" not in clean and "Todo" not in clean
+    assert [f.claim for f in flags] == [NOTE_CLAIM] * 5 and all(f.severity == "warning" for f in flags)
+    reasons = [f.reason for f in flags]
+    assert reasons[0].startswith("Every technical claim") and reasons[1].startswith("The worked example") and reasons[2].startswith("Confirm")
+    assert reasons[3:] == ["check this number", "add the kernel version"]  # the "Sources and checks:" lead-in is dropped
+
+
+def test_editor_notes_never_touch_code() -> None:
+    body = "Comment JSX with `{/* like this */}`.\n\n```jsx\n{/* a real JSX comment */}\n<App />\n```\n\n~~~html\n<!-- kept -->\n~~~"
+    assert extract_editor_notes(body) == (body, [])
+    # Only notes outside code go; the fence after the note is untouched.
+    clean, flags = extract_editor_notes("{/* TODO: verify */}\n\n```jsx\n{/* kept */}\n```")
+    assert clean == "```jsx\n{/* kept */}\n```" and [f.reason for f in flags] == ["verify"]
+
+
+def test_many_editor_notes_are_capped() -> None:
+    clean, flags = extract_editor_notes("\n\n".join(f"<!-- note {i} -->" for i in range(14)) + "\n\nText.")
+    assert clean == "Text." and len(flags) == 10 and flags[-1].reason.startswith("5 more notes")
+
+
+def test_split_review_skips_a_second_marker_line() -> None:
+    body, flags = split_review("## A\n\nText.\n\nNEEDS_FACT_CHECK:\n- writer item | why\nNEEDS_FACT_CHECK:\n- reviewer item | why")
+    assert body == "## A\n\nText." and [f.claim for f in flags] == ["writer item", "reviewer item"]
+
+
+async def test_a_note_the_reviewer_left_in_the_body_is_moved_to_the_flags(llm: FakeLlm, web: FakeWebApp) -> None:
+    llm.queue("crew", *editorial_script(f"{OWNER_NOTE}\n\n{REVIEWED}\n\nNEEDS_FACT_CHECK:\n- none"))
+    r = await crew_with(llm, web).run(BRIEF)
+    assert r.status == "completed" and r.draft.body_mdx == REVIEWED
+    assert [f.claim for f in r.draft.fact_check_flags] == [NOTE_CLAIM] * 3
+    _research, write, review, _seo = (c.user for c in llm.calls)
+    assert NOTES_RULE in write and "per note for the editor" in review
+
+
+async def test_without_a_review_the_writer_notes_become_flags(llm: FakeLlm, web: FakeWebApp) -> None:
+    truncated = InvalidOutput("stop_reason=max_tokens", Usage("claude-sonnet-5-5", 100, 16_000))
+    llm.queue("crew", final("Notes."), final(f"{OWNER_NOTE}\n\n## Why rotate\n\nDraft body.\n\nNEEDS_FACT_CHECK:\n- renew window | no source"), truncated)
+    r = await crew_with(llm, web).run(BRIEF)
+    assert r.status == "incomplete" and r.draft.body_mdx == "## Why rotate\n\nDraft body."
+    claims = [f.claim for f in r.draft.fact_check_flags]
+    assert claims[0] == "renew window" and "whole article" in claims and claims.count(NOTE_CLAIM) == 3
 
 
 # --- 3. publish idempotency ------------------------------------------------------------------------------------------

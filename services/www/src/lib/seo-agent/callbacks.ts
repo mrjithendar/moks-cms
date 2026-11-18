@@ -137,8 +137,10 @@ export async function validateNewArticle(db: Db, articleId: string, doc: Record<
   }
   const dup = rowsOf<{ id: string }>(await db.execute(sql`select id from post where deleted_at is null and status = 'published' and lower(coalesce(nullif(seo_title, ''), title)) = ${title.toLowerCase()} and id <> ${articleId} limit 1`));
   if (dup.length) errors.push("title: another published article already uses this title");
+  // The reason carries up to 500 characters: a note the crew moved out of the body ("Note left in the draft") is a
+  // whole instruction for the editor (what to verify, which output to capture). The message limit is 1,000.
   for (const f of (Array.isArray(doc.fact_check_flags) ? doc.fact_check_flags : []) as { claim?: string; reason?: string; severity?: string }[]) {
-    flags.push({ code: "needs_fact_check", severity: f.severity === "error" ? "error" : "warning", message: `${String(f.claim ?? "").slice(0, 160)}: ${String(f.reason ?? "").slice(0, 200)}` });
+    flags.push({ code: "needs_fact_check", severity: f.severity === "error" ? "error" : "warning", message: `${String(f.claim ?? "").slice(0, 160)}: ${String(f.reason ?? "").slice(0, 500)}` });
   }
   if (doc.incomplete) flags.push({ code: "incomplete", severity: "error", message: `The crew stopped early: ${String(doc.incomplete_reason ?? "limit reached")}. Regenerate or finish it in the editor.` });
   return { errors, flags, changes: [] as Change[] };
