@@ -2,8 +2,9 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { rowsOf } from "@/db/rows";
 import type { Actor } from "../posts";
-import { createDraftFromItem } from "../seo-intel/calendar";
-import { DraftError, getDraft, loadBase, queueDraft, rejectDraft, reserveDraft, type ExtraTask } from "../seo-intel/drafts";
+import { CalendarError, createDraftFromItem, getItem } from "../seo-intel/calendar";
+import { holdScheduledPost } from "../seo-intel/calendar-schedule";
+import { DraftError, getDraft, loadBase, openDraft, queueDraft, rejectDraft, reserveDraft, type ExtraTask } from "../seo-intel/drafts";
 import { recordApproval } from "../seo-intel/publish";
 import { AgentError, decide, kickoff, type AgentDeps, type Decision } from "./client";
 import { orchestrator } from "./config";
@@ -77,27 +78,70 @@ export async function resumeScheduled(draftId: string, now = new Date(), deps: A
   await send(draftId, { decision: "approve", approval_id: a.id, accepted_change_ids: ids, actor: a.approved_by }, deps);
 }
 
-/** Editorial calendar: an approved content-gap idea → CMS draft post (v1) → new_article_flow (the Editorial Crew). */
+/**
+ * Editorial calendar, "Generate draft": the item's CMS draft post (an outline from the brief, or the outline post it
+ * already has) → new_article_flow (the Editorial Crew), which writes the article into that post (handoff.ts). Legacy
+ * mode (no SEO agent) stops at the outline post.
+ */
 export async function draftNewArticle(calendarId: string, actor: Actor, deps: AgentDeps = {}) {
   const created = await createDraftFromItem(calendarId, actor);
   if (orchestrator(deps.env) === "legacy") return { ...created, orchestrator: "legacy" as const };
-  const db = await getDb();
-  const base = await loadBase(db, created.postId);
-  const d = await reserveDraft(db, created.postId, base, "calendar", { kind: "new_article", threadManaged: true, calendarId });
-  const r = await kickoff("new_article_flow", { calendar_id: calendarId, draft_id: d.id, article_id: created.postId }, { actor: actor.label }, deps);
-  return { ...created, orchestrator: "crewai" as const, draftId: d.id, runId: r.run_id };
+  return { ...created, ...(await runEditorialCrew(calendarId, created.postId, actor, { trigger: "calendar" }, deps)) };
+}
+
+/** The editor's request to Improve, sent to the crew as feedback next to the current draft (`currentDraft` in the brief). */
+export const IMPROVE_FEEDBACK =
+  "Improve the current draft (current_draft in the brief) instead of starting over: keep its structure, the author's voice and everything that is correct; fix factual and technical errors against your research; complete every outline section it is missing or treats thinly; make code examples minimal, runnable and consistent; cut padding and repetition; keep its first-hand material. Return the complete revised article.";
+
+/**
+ * Editorial calendar, "Improve": the crew reads the item's current draft (its CMS post, as the editor left it) and
+ * returns a revised version, which replaces the post body only if nobody edits the post meanwhile (handoff.ts). A
+ * scheduled post goes back to draft first: the person reviews the improved text and schedules it again.
+ */
+export async function improveCalendarDraft(calendarId: string, actor: Actor, instructions: string | null, deps: AgentDeps = {}) {
+  if (orchestrator(deps.env) === "legacy") throw new CalendarError("Improve needs the SEO agent (SEO_ORCHESTRATOR=crewai).", 409);
+  const item = await getItem(calendarId);
+  if (!item) throw new CalendarError("Calendar item not found.", 404);
+  if (item.draft === "published") throw new CalendarError("This item is already published. Improve published articles from the review queue.", 409);
+  if (item.draft === "writing") throw new CalendarError("The SEO agent is already writing this draft.", 409);
+  if (!item.postId || !["ready", "scheduled"].includes(item.draft)) throw new CalendarError("Generate the draft first: there is nothing to improve yet.", 409);
+  const unscheduled = await holdScheduledPost(calendarId, actor, "Unscheduled while the draft is improved. Review it, then press Schedule again.");
+  const asked = instructions?.trim().slice(0, 1500);
+  const feedback = asked ? `${IMPROVE_FEEDBACK}\nThe editor also asks: ${asked}` : IMPROVE_FEEDBACK;
+  return { ...(await runEditorialCrew(calendarId, item.postId, actor, { trigger: "improve", feedback, fresh: true }, deps)), unscheduled };
 }
 
 /**
- * Owner decision 2026-11-10: "Create draft post" runs by itself once a calendar item is scheduled — it has a target date,
- * is approved (or drafting) and has no post yet — whichever of approval and scheduling comes last. Same path as the
- * button: a CMS DRAFT post (never published) and, in crewai mode, the Editorial Crew writes it up to human review.
- * Returns null when the item isn't due a draft.
+ * Start the Editorial Crew on an item's post. `fresh`: an open draft row from an earlier run is closed first, so the
+ * new one snapshots the post as it is now (the handoff only writes over exactly that text).
+ */
+async function runEditorialCrew(calendarId: string, postId: string, actor: Actor, opts: { trigger: string; feedback?: string; fresh?: boolean }, deps: AgentDeps) {
+  const db = await getDb();
+  const open = await openDraft(db, postId);
+  if (open?.status === "generating") throw new CalendarError("The SEO agent is already writing this draft.", 409);
+  if (open && ["scheduled", "publishing"].includes(open.status)) throw new CalendarError("This draft is approved and waiting to publish.", 409);
+  if (open && opts.fresh) await db.execute(sql`update seo_drafts set status = 'superseded', failure_reason = 'Replaced by a new run (Improve).', updated_at = now() where id = ${open.id}`);
+  const base = await loadBase(db, postId);
+  const d = await reserveDraft(db, postId, base, opts.trigger, { kind: "new_article", threadManaged: true, calendarId });
+  // A draft reused after a failed attempt shows as being written again, not failed, while the new run works.
+  await db.execute(sql`update seo_drafts set status = 'generating', failure_reason = null, calendar_id = ${calendarId}, updated_at = now() where id = ${d.id} and status = 'generation_failed'`);
+  await db.execute(sql`update seo_editorial_calendar set status = 'drafting', updated_at = now() where id = ${calendarId} and status not in ('published', 'dropped')`);
+  const inputs: Record<string, unknown> = { calendar_id: calendarId, draft_id: d.id, article_id: postId };
+  if (opts.feedback) inputs.feedback = opts.feedback;
+  const r = await kickoff("new_article_flow", inputs, { actor: actor.label }, deps);
+  return { orchestrator: "crewai" as const, draftId: d.id, runId: r.run_id };
+}
+
+/**
+ * Owner decision 2026-11-10: picking a date for an item that has no draft yet starts "Generate draft" by itself. Same
+ * path as the button: a CMS DRAFT post (never published) and, in crewai mode, the Editorial Crew writes it. The post is
+ * scheduled only once the person has seen the draft and presses Schedule (calendar-schedule.ts). Returns null when the
+ * item has a draft already.
  */
 export async function draftIfScheduled(calendarId: string, actor: Actor, deps: AgentDeps = {}) {
-  const db = await getDb();
-  const [item] = rowsOf<{ target_date: string | null; post_id: string | null; status: string }>(await db.execute(sql`select target_date, post_id, status from seo_editorial_calendar where id = ${calendarId}`));
-  if (!item || !item.target_date || item.post_id || !["approved", "drafting"].includes(item.status)) return null;
+  const item = await getItem(calendarId);
+  if (!item || !item.targetDate || !["none", "outline"].includes(item.draft)) return null;
+  if (item.draft === "outline" && orchestrator(deps.env) === "legacy") return null;
   return draftNewArticle(calendarId, actor, deps);
 }
 
