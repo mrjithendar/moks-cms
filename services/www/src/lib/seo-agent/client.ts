@@ -74,6 +74,8 @@ async function call<T>(method: string, path: string, body: unknown, deps: AgentD
 
 export const kickoff = (flow: FlowName, inputs: Record<string, unknown>, opts: { triggeredBy?: "manual" | "cron"; actor?: string } = {}, deps?: AgentDeps) =>
   call<{ run_id: string; status: string; existing: boolean }>("POST", `/flows/${flow}/kickoff`, { inputs, triggered_by: opts.triggeredBy ?? "manual", actor: opts.actor ?? null }, deps);
+/** GET /readyz: the agent is up and reaches its database (System status). */
+export const agentReady = (deps?: AgentDeps) => call<{ status: string; vector?: boolean; notes?: unknown }>("GET", "/readyz", undefined, deps, 4_000);
 export const getRun = (runId: string, deps?: AgentDeps) => call<RunView>("GET", `/flows/runs/${encodeURIComponent(runId)}`, undefined, deps, 5_000);
 export const listRuns = (q: { flow?: string; status?: string; draftId?: string; limit?: number }, deps?: AgentDeps) => {
   const p = new URLSearchParams(Object.entries({ flow: q.flow, status: q.status, draft_id: q.draftId, limit: q.limit ? String(q.limit) : undefined }).filter((e): e is [string, string] => Boolean(e[1])));

@@ -9,16 +9,18 @@ import { log } from "./log";
 import { withSpan } from "./trace";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
-import { decryptWithPassphrase, seal, unseal, type Sealed } from "./secrets";
+import { decryptWithPassphrase, derivedSecret, unseal, type Sealed } from "./secrets";
 import { bucketOps, storageReady } from "./storage";
 
 /**
  * Site backups to Cloudflare R2 (the media storage account; optionally a separate private bucket).
  * Contents: content, configuration and accounts WITHOUT password hashes, sessions, API-key hashes or stored
  * credentials. Each file is a standard zip: backup.json (the data) and README.txt (what it is, how to open it).
- * Encryption is the admin's choice (Admin → Backups): on, backup.json is AES-256 encrypted inside the zip
- * (WinZip AES; opens in 7-Zip, Keka, WinRAR or `7z x`, not macOS Archive Utility) with a passphrase only the owner
- * knows; off, it is a plain zip anything opens.
+ * Encryption is the admin's choice (Admin → Backups), on by default: backup.json is AES-256 encrypted inside the zip
+ * (WinZip AES) with a key derived from SETTINGS_ENCRYPTION_KEY (owner request 2026-11-18: no backup passphrase). The
+ * key lives in the Kubernetes Secret, outside the database, so a backup can be restored after the database is lost;
+ * nobody has to type or keep a passphrase. Downloading a backup gives an unencrypted copy (the owner can open it with
+ * any zip tool). A passphrase stored before 2026-11-18 is kept (sealed) only to restore backups made with it.
  *
  * Objects: {bucket}/jithendar/backups/jithendar-backup-{yyyymmdd-hhmmss}.zip. Backups made before the zip format
  * (….json.gz.enc: gzip + AES-256-GCM, lib/secrets) are still listed, downloaded and restored.
@@ -33,8 +35,9 @@ const LOCK_ID = 7_250_032;
 
 type R2Dest = { enabled: boolean; bucket: string };
 export type BackupConfig = {
-  /** Encrypt new backups with the passphrase (AES-256 zip). Existing backups keep the format they were made in. */
+  /** Encrypt new backups (AES-256 zip, server key). Existing backups keep the format they were made in. */
   encrypt: boolean;
+  /** Before 2026-11-18 only: the passphrase older backups were encrypted with (no longer set or shown). */
   passphrase: Sealed | null;
   schedule: "off" | "daily" | "weekly";
   hourUtc: number;
@@ -66,7 +69,8 @@ export async function backupSummary() {
   const c = await readBackupConfig();
   return {
     encrypt: c.encrypt,
-    hasPassphrase: Boolean(c.passphrase),
+    /** A passphrase from before 2026-11-18 is kept to restore the backups made with it. */
+    legacyPassphrase: Boolean(c.passphrase),
     schedule: c.schedule,
     hourUtc: c.hourUtc,
     retention: c.retention,
@@ -83,7 +87,6 @@ const generalInput = z.object({
   schedule: z.enum(["off", "daily", "weekly"]),
   hourUtc: z.coerce.number().int().min(0).max(23),
   retention: z.coerce.number().int().min(1).max(365),
-  passphrase: z.string().max(200).default(""),
   // A checkbox: present ("on") when ticked, absent otherwise.
   encrypt: z.preprocess((v) => v === true || v === "on" || v === "true", z.boolean()).default(false),
 });
@@ -93,9 +96,7 @@ export async function saveGeneral(actor: Actor, raw: unknown) {
   const parsed = generalInput.safeParse(raw);
   if (!parsed.success) throw new PostError("Backup settings are not valid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   const c = await readBackupConfig();
-  if (parsed.data.passphrase && parsed.data.passphrase.length < 12) throw new PostError("Use a backup passphrase of at least 12 characters.");
-  if (parsed.data.encrypt && !parsed.data.passphrase && !c.passphrase) throw new PostError("Set a backup passphrase to encrypt backups. You will need it to restore.");
-  // Turning encryption off keeps the stored passphrase: older encrypted backups still need it to restore.
+  // An old stored passphrase is kept whatever is chosen: backups made with it still need it to restore.
   await writeConfig(
     {
       ...c,
@@ -103,7 +104,6 @@ export async function saveGeneral(actor: Actor, raw: unknown) {
       schedule: parsed.data.schedule,
       hourUtc: parsed.data.hourUtc,
       retention: parsed.data.retention,
-      passphrase: parsed.data.passphrase ? seal(parsed.data.passphrase) : c.passphrase,
     },
     actor.id,
   );
@@ -202,6 +202,22 @@ const TABLES: { name: string; omit?: string[] }[] = [
   { name: "user", omit: [] },
 ];
 
+/** The AES password of backups made since 2026-11-18: derived from SETTINGS_ENCRYPTION_KEY, never stored or shown. */
+const serverBackupPassword = () => derivedSecret("backup-zip-v1");
+
+/** Every password a stored backup may use: the server key, then a passphrase kept from before 2026-11-18. */
+function backupPasswords(c: BackupConfig): string[] {
+  const out = [serverBackupPassword()];
+  if (c.passphrase) {
+    try {
+      out.push(unseal(c.passphrase));
+    } catch {
+      /* SETTINGS_ENCRYPTION_KEY changed since: the old passphrase is unreadable */
+    }
+  }
+  return out;
+}
+
 const README = (encrypted: boolean, createdAt: string) =>
   [
     "Jithendar.com site backup",
@@ -212,7 +228,7 @@ const README = (encrypted: boolean, createdAt: string) =>
     "credentials. Media files stay in Cloudflare R2; only their records are here.",
     "",
     encrypted
-      ? "backup.json is encrypted (AES-256). Open it with 7-Zip, Keka, WinRAR or `7z x <file>` and the backup passphrase\nset in Admin → Backups. macOS Archive Utility cannot open AES-encrypted zips."
+      ? "backup.json is encrypted (AES-256) with a key derived from the site's SETTINGS_ENCRYPTION_KEY. To read it, download\nit from Admin → Backups: the download is an unencrypted copy. To restore it, use Restore there."
       : "backup.json is not encrypted: anyone with this file can read it. Keep it private.",
     "",
     "Restore: Admin → Backups → Restore (the file must be in the backup bucket under jithendar/backups/).",
@@ -227,26 +243,49 @@ export async function zipBackup(json: string, createdAt: string, password?: stri
   return Buffer.from(await zip.close());
 }
 
-/** backup.json from a zip backup. Throws PostError when it is encrypted and the passphrase is missing or wrong. */
-export async function unzipBackup(data: Buffer, password?: string): Promise<string> {
+/** backup.json from a zip backup, trying each password for an encrypted one. Throws PostError when none fits. */
+export async function unzipBackup(data: Buffer, password?: string | string[]): Promise<string> {
+  const passwords = (Array.isArray(password) ? password : password ? [password] : []).filter(Boolean);
   const reader = new ZipReader(new Uint8ArrayReader(new Uint8Array(data)));
   try {
     const entry = (await reader.getEntries()).find((e) => e.filename === "backup.json");
     if (!entry || entry.directory) throw new PostError("This zip is not a Jithendar.com backup (no backup.json).");
-    if (entry.encrypted && !password) throw new PostError("This backup is encrypted: set the backup passphrase first.");
-    try {
-      return await entry.getData!(new TextWriter(), entry.encrypted ? { password } : {});
-    } catch {
-      throw new PostError("That backup could not be decrypted with the current passphrase (was it changed since?).");
+    if (!entry.encrypted) return await entry.getData!(new TextWriter(), {});
+    if (!passwords.length) throw new PostError("This backup is encrypted.");
+    for (const pw of passwords) {
+      try {
+        return await entry.getData!(new TextWriter(), { password: pw });
+      } catch {
+        /* try the next one */
+      }
     }
+    throw new PostError("That backup could not be decrypted: it was encrypted with another SETTINGS_ENCRYPTION_KEY or an old passphrase this site no longer has.");
   } finally {
     await reader.close();
   }
 }
 
-export async function buildBackup(): Promise<{ filename: string; data: Buffer; encrypted: boolean }> {
+/** An unencrypted copy of a stored backup, for the owner to download and open with any zip tool. */
+export async function plainCopyOfStoredBackup(name: string): Promise<Buffer> {
   const c = await readBackupConfig();
-  if (c.encrypt && !c.passphrase) throw new PostError("Set a backup passphrase first, or turn encryption off.");
+  const bytes = await readStoredBackup(name);
+  if (isLegacyBackup(name)) {
+    const passphrase = backupPasswords(c)[1];
+    if (!passphrase) throw new PostError("This backup is from before the zip format and needs its old passphrase, which this site no longer has.");
+    return zipBackup(gunzipSync(await decryptWithPassphrase(bytes, passphrase)).toString("utf8"), name);
+  }
+  const reader = new ZipReader(new Uint8ArrayReader(new Uint8Array(bytes)));
+  const created = await reader
+    .getEntries()
+    .then((es) => es.find((e) => e.filename === "README.txt"))
+    .then(async (e) => ((e && !e.directory ? await e.getData(new TextWriter()) : "").match(/^Created: (.+)$/m)?.[1] ?? name))
+    .finally(() => reader.close());
+  return zipBackup(await unzipBackup(bytes, backupPasswords(c)), created);
+}
+
+/** A backup of the site now: encrypted as configured, or unencrypted (`plain`) for a download. */
+export async function buildBackup(opts: { plain?: boolean } = {}): Promise<{ filename: string; data: Buffer; encrypted: boolean }> {
+  const c = await readBackupConfig();
   const db = await getDb();
   const tables: Record<string, unknown[]> = {};
   for (const t of TABLES) tables[t.name] = rowsOf(await db.execute(sql.raw(`select * from "${t.name}"`)));
@@ -262,7 +301,7 @@ export async function buildBackup(): Promise<{ filename: string; data: Buffer; e
     settings: site?.value ?? null,
     tables,
   };
-  const password = c.encrypt && c.passphrase ? unseal(c.passphrase) : undefined;
+  const password = c.encrypt && !opts.plain ? serverBackupPassword() : undefined;
   const data = await zipBackup(JSON.stringify(payload), createdAt, password);
   const stamp = createdAt.replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   return { filename: `${PREFIX}${stamp}.zip`, data, encrypted: Boolean(password) };
@@ -333,7 +372,7 @@ export function startBackupScheduler() {
   const tick = async () => {
     try {
       const c = await readBackupConfig();
-      if (c.schedule === "off" || (c.encrypt && !c.passphrase)) return;
+      if (c.schedule === "off") return;
       const now = new Date();
       if (now.getUTCHours() < c.hourUtc) return;
       const [last] = await recentRuns(1);
@@ -396,20 +435,21 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
   admin(actor);
   const c = await readBackupConfig();
   if (!c.r2) throw new PostError("Backups are not configured.");
-  const passphrase = c.passphrase ? unseal(c.passphrase) : undefined;
+  const passwords = backupPasswords(c);
   const bytes = await readStoredBackup(name);
   let payload: BackupPayload;
   try {
     if (isLegacyBackup(name)) {
-      // Before the zip format: always gzip + AES-256-GCM.
-      if (!passphrase) throw new PostError("Set the backup passphrase first: it is needed to decrypt this backup.");
+      // Before the zip format: always gzip + AES-256-GCM with the old passphrase.
+      const passphrase = passwords[1];
+      if (!passphrase) throw new PostError("This backup is from before the zip format and needs its old passphrase, which this site no longer has.");
       payload = parseBackup(gunzipSync(await decryptWithPassphrase(bytes, passphrase)).toString("utf8"));
     } else {
-      payload = parseBackup(await unzipBackup(bytes, passphrase));
+      payload = parseBackup(await unzipBackup(bytes, passwords));
     }
   } catch (e) {
     if (e instanceof PostError) throw e;
-    throw new PostError("That backup could not be decrypted with the current passphrase (was it changed since?).");
+    throw new PostError("That backup could not be decrypted: it was encrypted with another SETTINGS_ENCRYPTION_KEY or an old passphrase this site no longer has.");
   }
 
   // Safety net first: if this fails, nothing is restored.
