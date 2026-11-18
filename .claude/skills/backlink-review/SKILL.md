@@ -6,7 +6,7 @@ description: Review a site's backlinks (any site in sites/, host from sites/<dom
 # Backlink review
 
 Needs the site's admin MCP server (`https://<host>/mcp/admin`, scope `seo:read`) and DataForSEO backlinks switched on
-(`services/www/docs/seo/DATAFORSEO.md`). Counts come from DataForSEO's link index, not Google's, so say so.
+(`docs/seo/DATAFORSEO.md`). Counts come from DataForSEO's link index, not Google's, so say so.
 
 ## Pick the site
 

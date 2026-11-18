@@ -3,10 +3,10 @@ name: moks-cms
 # moks-cms tests its code and pushes the CMS image. It deploys nothing: each website has its own repository (jithendar.com:
 # moks-tech/jithendar.com) that ships its site.json, config/, articles and images in a content image, and names the
 # CMS image tag it runs in its Kubernetes manifests. The image reads the site's files at run time
-# (services/www/src/config/site-files.ts), so one image serves any site.
+# (src/config/site-files.ts), so one image serves any site.
 #
 # check   → pull requests (opened, updated) and manual runs: lint, typecheck, test, build, against the test fixture
-#           site (services/www/tests/fixtures/site; scripts/use-site.mjs)
+#           site (tests/fixtures/site; scripts/use-site.mjs)
 # image   → pull requests: the production build packaged as the arm64 image (Dockerfile.ci) and smoke-tested; not pushed
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #           in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
@@ -32,10 +32,15 @@ on:
   workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened, closed]
+    # The app is the repository root: everything except the site template, the runner notes, the Claude skills and
+    # the other workflows.
     paths:
-      - 'services/www/**'
+      - '**'
+      - '!sites/**'
+      - '!runner/**'
+      - '!.claude/**'
+      - '!.github/**'
       - '.github/workflows/ci-moks-cms.yml'
-      - 'scripts/image-size.sh'
 
 permissions:
   contents: read
@@ -44,10 +49,6 @@ permissions:
 concurrency:
   group: moks-cms-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
-
-defaults:
-  run:
-    working-directory: services/www
 
 jobs:
   check:
@@ -64,9 +65,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: services/www/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: services/www/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       # site/, content/ and public/images/ as copies of the test fixture site (output tracing needs real files)
       - run: npm run site -- --copy
@@ -75,9 +76,9 @@ jobs:
       # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: services/www/.next/cache
-          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
-          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-
       - run: npm run build
         env:
           APP_ENV: production
@@ -93,9 +94,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: services/www/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: services/www/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run site -- --copy
       - run: npm run build
@@ -104,7 +105,7 @@ jobs:
       - name: Package image
         run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$GITHUB_SHA" -t moks-cms:ci .
       - name: Smoke-test the image
-        run: ../../scripts/smoke-site-image.sh moks-cms:ci "$GITHUB_SHA"
+        run: scripts/smoke-site-image.sh moks-cms:ci "$GITHUB_SHA"
 
   # The test suite (~1150 tests, ~7 min on one 2-worker runner) split by file across parallel runners.
   test:
@@ -122,9 +123,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: services/www/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: services/www/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run site -- --copy
       - run: npm test -- --shard=${{ matrix.shard }}/3
@@ -143,9 +144,6 @@ jobs:
     outputs:
       image: ${{ steps.files.outputs.image }}
       verified: ${{ steps.checks.outputs.verified }}
-    defaults:
-      run:
-        working-directory: .
     steps:
       - name: Files changed by the pull request
         id: files
@@ -158,9 +156,11 @@ jobs:
           image=false
           while IFS= read -r f; do
             case "$f" in
-              services/www/docs/*) ;;
-              services/www/*.md) ;;
-              services/www/*|.github/workflows/ci-moks-cms.yml|scripts/image-size.sh|scripts/smoke-site-image.sh) image=true ;;
+              docs/*|*.md|LICENSE|sites/*|runner/*|.claude/*) ;;
+              .github/workflows/ci-moks-cms.yml) image=true ;;
+              .github/*) ;;
+              scripts/build-alerts.py|scripts/check-dashboards.py|scripts/check-conflict-copies.sh|scripts/notify-sites.sh) ;;
+              *) image=true ;;
             esac
           done < "$RUNNER_TEMP/files.txt"
           echo "image=$image" >> "$GITHUB_OUTPUT"
@@ -249,9 +249,9 @@ jobs:
           ref: ${{ env.RELEASE_SHA }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: services/www/.nvmrc
+          node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: services/www/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       # site/, content/ and public/images/ as copies of the test fixture site. The image ships them as defaults, so it
       # starts bare; a site's Deployment mounts its own site/, content/ and public/images/ over them.
@@ -267,9 +267,9 @@ jobs:
       # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: services/www/.next/cache
-          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-${{ github.sha }}
-          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('services/www/package-lock.json') }}-
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-
       # The production build type-checks the whole project, so no separate typecheck is needed here.
       - run: npm run build
         env:
@@ -286,10 +286,10 @@ jobs:
         run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$RELEASE_SHA" -t "$REGISTRY_IMAGE:$PR_TAG" -t "$REGISTRY_IMAGE:latest" .
       # Before the push: a release whose image grew more than 15 % over the stored baseline stops here.
       - name: Image size (summary; fails above +15 % of the stored baseline)
-        run: ../../scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
+        run: scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
       # Never push an image that cannot start or optimise images.
       - name: Smoke-test the image
-        run: ../../scripts/smoke-site-image.sh "$REGISTRY_IMAGE:latest" "$RELEASE_SHA"
+        run: scripts/smoke-site-image.sh "$REGISTRY_IMAGE:latest" "$RELEASE_SHA"
       - name: Push
         # Two tags for one image: pr-<number> is this release's own tag, which sites name in their manifests;
         # latest names the newest.
@@ -297,7 +297,6 @@ jobs:
           docker push --quiet "$REGISTRY_IMAGE:$PR_TAG"
           docker push --quiet "$REGISTRY_IMAGE:latest"
       - name: Tell the site repositories
-        working-directory: .
         env:
           REPOS: ${{ vars.RELEASE_NOTIFY_REPOS }}
           GH_TOKEN: ${{ secrets.RELEASE_NOTIFY_TOKEN }}

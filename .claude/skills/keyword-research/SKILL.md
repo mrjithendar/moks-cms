@@ -6,7 +6,7 @@ description: Keyword research for a site in sites/ (host from sites/<domain>/sit
 # Keyword research
 
 Needs the site's admin MCP server (`https://<host>/mcp/admin`, scope `seo:read`). Volume and keyword difficulty (KD, 0-100) appear on
-keyword rows only when DataForSEO is on (`services/www/docs/seo/DATAFORSEO.md`). Without them, rank by impressions
+keyword rows only when DataForSEO is on (`docs/seo/DATAFORSEO.md`). Without them, rank by impressions
 and click gap, and say that you did.
 
 ## Pick the site

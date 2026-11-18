@@ -1,0 +1,18 @@
+node_modules
+.next
+coverage
+tests
+docs
+**/.site-copy
+deploy
+Dockerfile
+.dockerignore
+.env*
+!.env.example
+*.md
+# Repository files outside the app (it moved to the repository root on 2026-11-18)
+.git
+.github
+.claude
+runner
+sites

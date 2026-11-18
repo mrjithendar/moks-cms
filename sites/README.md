@@ -9,7 +9,7 @@ moks-cms itself deploys nothing.
   site.json        identity: host, name, tagline, description, language, time zone, author, social links, AdSense ID;
                    "aiCrawlers" sets robots.txt for AI crawlers: "search" (answer engines that cite pages:
                    OAI-SearchBot, Claude-SearchBot, PerplexityBot…) and "training" (GPTBot, ClaudeBot,
-                   Google-Extended, CCBot…), each "allow" or "block" (services/www/src/lib/seo/ai-crawlers.ts)
+                   Google-Extended, CCBot…), each "allow" or "block" (src/lib/seo/ai-crawlers.ts)
   config/          redirects.json ([{"source", "destination"}], 308), gone.json (paths answered with 410),
                    hire-me-profile.json (/hire-me)
   content/         blog/ news/ projects/ pages/ authors/ (MDX), python-practice/
@@ -26,17 +26,16 @@ moks-cms itself deploys nothing.
 
 ## Working on a site
 
-The app in `services/www` reads `site/`, `content/` and `public/images/` in its own folder. `npm run site` fills them
-from a site folder ([`scripts/use-site.mjs`](../services/www/scripts/use-site.mjs)). It uses `SITE_DIR` (any path), else
-`SITE` (a folder here), else the test fixture site `services/www/tests/fixtures/site`.
+The app reads `site/`, `content/` and `public/images/` in its own folder. `npm run site` fills them
+from a site folder ([`scripts/use-site.mjs`](../scripts/use-site.mjs)). It uses `SITE_DIR` (any path), else
+`SITE` (a folder here), else the test fixture site `tests/fixtures/site`.
 
 - `site/` is a copy of `site.json` and `config/`, refreshed by every `npm run dev`, `build`, `typecheck` and `test`.
 - `content/` and `public/images/` are symlinks, so edit articles and images in the site folder as usual.
 - `npm run site -- --copy` makes real copies instead. CI does this, and Docker builds need it.
 
 ```bash
-cd services/www
-SITE_DIR=../../../jithendar.com npm run dev          # a site repository checked out next to moks-cms
+SITE_DIR=../jithendar.com npm run dev                # a site repository checked out next to moks-cms
 ```
 
 ## Adding a site
