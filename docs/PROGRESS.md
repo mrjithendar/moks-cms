@@ -29,6 +29,9 @@ were not opened in a browser in this change).
 - Long button labels wrap on a phone (fifth screenshot, Database → Maintenance: "Delete abandoned uploads …" was wider
   than the screen): the shared `buttonClass` (`components/ui/form.tsx`) is `whitespace-normal` with `max-w-full` below
   `sm` and one line from `sm` up, so every Button and button-styled link is covered. Database: the Size cell stays on one line.
+- Audit log (sixth screenshot): a long IPv6 address ran out of its cell over the Details column. It is now cut with an
+  ellipsis like the client line under it (full address in the tooltip, and the link still filters by it); in the
+  failed sign-ins table it wraps.
 - No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
 - Open: check on a real phone (Skills, ML models, Recommendations, Practice); a Playwright phone-viewport check that
   asserts `scrollWidth <= clientWidth` on every admin page would catch what a static scan cannot.
