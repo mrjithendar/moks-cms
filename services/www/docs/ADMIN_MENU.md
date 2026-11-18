@@ -1,43 +1,52 @@
 # The admin menu
 
-Status: reorganised 2026-11-15 (owner request, first step of the admin UI plan). The look has **not been seen in a
-browser** by its author: check it on a desktop and a phone after deploying.
+Status: reorganised 2026-11-15; regrouped and changed to submenus on 2026-11-18 (owner request: "every menu should
+have a submenu; no expand on desktop or tablet; expand and collapse on mobile"). Checked in Chrome on 2026-11-18 at
+1440, 820 and 390 px against a local build.
 
 ## What a person sees
 
-One entry per area of work, each with an icon. An entry with several pages opens to show them; an entry with one page
-is a link.
+One entry per area of work, each with an icon, and **every entry opens a submenu**, even one with a single page.
+
+- **Tablet and desktop (768 px and wider; the sidebar is beside the page):** pointing at an entry, or clicking it,
+  opens its pages in a panel beside the sidebar, one entry at a time. Nothing expands inside the sidebar. The panel
+  stays open for 200 ms after the pointer leaves, so it can be reached across the gap; Escape, a click elsewhere or
+  scrolling the sidebar closes it. The entry holding the current page is highlighted.
+- **Phone:** the Menu button opens the list; an entry expands and collapses in place, the current page's entry is
+  open, and the browser remembers which entries were opened.
 
 | Entry | Pages |
 |---|---|
 | Dashboard | Home |
-| Posts | All posts, Add new, Categories, Tags, Editorial calendar, Review queue |
+| Posts | All posts, Add new, Categories, Tags |
+| Editorial | Editorial calendar, Review queue, Promotion |
 | Media | Library |
 | Pages | All pages, Add new, Hire me page |
-| Comments | Comments |
-| Inbox | Messages, Bookings |
-| Billing | Invoices (when that page exists), Payments |
-| AI newsroom | News desk, Promotion, Automation & AI, ML models, MCP access |
+| Newsroom | Jobs, Run history, Sources, Topics, Profiles & playground, Analytics, Settings (the news desk) |
+| AI room | Automation & AI (the SEO agent's flows), ML models, LanceDB, MCP access |
 | SEO & insights | **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Content:** Keywords, Recommendations, Content audit, Internal linking. **Authority & health:** Backlinks, AI visibility, Technical health |
+| Community | Comments, Messages, Bookings |
+| Billing | Invoices, Payments |
 | Practice | Python practice |
 | Appearance | Customise, Menus, Homepage, Typography & colours |
 | Users | All users, Your profile, API keys ("Your account" for someone without the Users page) |
-| Tools | Backups, Database, Data sync, Audit log, System status |
-| Settings | General, Integrations, Storage & email, Advanced settings |
+| Settings | General, Integrations, Storage, Email, Advanced settings |
+| System | System status, Backups, Database, Data sync, Audit log |
 
 Below the entries: **Help** (the user manual) and **Collapse menu**.
 
-- **No address changed.** Every page is where it was; only the grouping and some names inside a group are new.
+- **One address is new:** Email moved out of Storage & email to `/admin/email`. Every other page is where it was.
   Menus, Homepage, Typography & colours and General are sections of Appearance & settings
   (`/admin/appearance?section=…`); the editor now follows such a link when it is already open.
 - **Filter menu** finds a page by name across all entries (every word typed must appear in the page's name, its short
   name, its sub-heading or its entry). Enter opens the first match, Escape clears.
-- **Pins:** the star beside a page pins it; pinned pages are listed first under "Pinned" (at most 8).
-- **Collapse menu** narrows the sidebar to icons on large screens. An icon with several pages opens them in a panel
-  beside it (one at a time; Escape or a click elsewhere closes it). On a phone the setting changes nothing: the Menu
-  button opens the same list as before.
-- A closed entry shows the total of its badges; in the narrow menu a dot marks an entry with something waiting.
-- Authors see only what they may open: Dashboard, Posts, Media, Pages, Comments, Practice and Your account.
+- **Pins:** the star beside a page pins it; pinned pages are listed first under "Pinned" (at most 8), directly in the
+  sidebar on a tablet or desktop.
+- **Collapse menu** narrows the sidebar to icons on a tablet or desktop; an icon opens its panel the same way. On a
+  phone the setting changes nothing.
+- An entry shows the total of its badges while its pages are not shown; in the narrow menu a dot marks an entry with
+  something waiting.
+- Authors see only what they may open: Dashboard, Posts, Media, Pages, Community (Comments), Practice and Your account.
 
 ## How it is built
 

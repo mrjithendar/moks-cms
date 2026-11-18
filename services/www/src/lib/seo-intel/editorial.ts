@@ -16,8 +16,9 @@ import type { SeoSettings } from "./settings";
  * Coverage counts an article towards every theme its title or tags name (whole words), not only its best match.
  * Titles are kept to 60 characters (what search results show). At most MAX_OPEN_IDEAS ideas wait as "suggested";
  * a topic already on the calendar (any status, dropped included) is not suggested again.
- * Suggestions land in seo_editorial_calendar as "suggested"; an admin approves, drafts and publishes them through the
- * normal editor. Existing calendar items are never overwritten (a human may have edited them).
+ * Suggestions land in seo_editorial_calendar as "suggested" (shown as unscheduled); a person generates, improves and
+ * schedules them there (calendar.ts, D-94). Existing calendar items are never overwritten (a human may have edited
+ * them). calendar-auto.ts adds ideas from the AI, the ML query clusters and Google Analytics next to these.
  */
 export type Topic = { name: string; match: string[] };
 export type Theme = { cluster: string; category: string; keywords: string[]; audience: string; diagram: string; code: string; topics: Topic[] };

@@ -6,20 +6,40 @@ import { createPost, type Actor } from "../posts";
 import { addDays, isDay } from "./sqlutil";
 
 /**
- * Editorial calendar. Status flow: suggested → approved → drafting → in_review → published (or dropped at any point
- * before published). "published" is never set by hand: it follows the linked post, which only a person can publish
- * with the editor's own Publish button. "Create draft" uses the CMS's createPost with status "draft".
+ * Editorial calendar (owner request 2026-11-18). An item is in one of three phases, shown and filtered as such:
+ *
+ *   unscheduled → scheduled (has a date) → published (its post is published)
+ *
+ * There is no approval step: an item is worked on by generating its draft (a CMS draft post the Editorial Crew
+ * writes), improving that draft, and scheduling it. "published" is never set by hand: it follows the linked post.
+ * Deleting an item hides it (status "dropped") and keeps its fingerprint, so the suggestion engine does not add it
+ * again. The stored `status` column keeps its old values for this reason and for history; the UI reads `phase`.
+ * Scheduling the post itself is calendar-schedule.ts (a person's action, never the agent's).
  */
 export const STATUSES = ["suggested", "approved", "drafting", "in_review", "published", "dropped"] as const;
 export type CalStatus = (typeof STATUSES)[number];
-const NEXT: Record<CalStatus, CalStatus[]> = {
-  suggested: ["approved", "dropped"],
-  approved: ["drafting", "suggested", "dropped"],
-  drafting: ["in_review", "approved", "dropped"],
-  in_review: ["drafting", "dropped"],
-  published: [],
-  dropped: ["suggested"],
-};
+export const PHASES = ["unscheduled", "scheduled", "published"] as const;
+export type Phase = (typeof PHASES)[number];
+
+/**
+ * Where an item came from, for the filter: Search Console demand, the ML query clusters, Google Analytics, the AI
+ * (reader questions on Ask the Blog, the Promotion crew's ideas), the editorial engine, or a person.
+ */
+export type Source = "measured" | "ml" | "analytics" | "ai" | "editorial" | "manual";
+
+/**
+ * The state of an item's draft:
+ * - none: no post (never generated, or its post was deleted or trashed);
+ * - outline: a draft post holding only the generated outline (the agent has not written it, or is not configured);
+ * - writing / failed: the SEO agent is writing it, or its last attempt failed;
+ * - ready: a draft (or "in review") post with real content;
+ * - scheduled / published: the post is scheduled, or published.
+ */
+export type DraftState = "none" | "outline" | "writing" | "failed" | "ready" | "scheduled" | "published";
+
+/** The first line of the outline post createDraftFromItem writes; a post that still starts with it is not written yet. */
+export const OUTLINE_MARKER = "> Draft created from the SEO editorial calendar";
+export const isOutline = (body: string | null | undefined) => (body ?? "").trimStart().startsWith(OUTLINE_MARKER);
 
 export class CalendarError extends Error {
   constructor(
@@ -62,9 +82,6 @@ export const briefPatch = z
 
 export const patchSchema = z
   .object({
-    status: z.enum(["suggested", "approved", "drafting", "in_review", "dropped"]).optional(),
-    targetDate: z.union([z.string().refine(isDay, "Use YYYY-MM-DD"), z.null()]).optional(),
-    targetTime: z.union([z.string().regex(TIME, "Use HH:MM (24-hour)"), z.null()]).optional(),
     ownerId: z.union([z.string().min(1).max(100), z.null()]).optional(),
     postId: z.union([z.string().uuid(), z.null()]).optional(),
     title: z.string().trim().min(5).max(200).optional(),
@@ -76,29 +93,65 @@ export const patchSchema = z
   .refine((v) => Object.keys(v).length > 0, "Nothing to change.");
 
 type Row = Record<string, unknown>;
-const shape = (r: Row) => ({
-  id: String(r.id),
-  title: String(r.title),
-  status: String(r.status) as CalStatus,
-  kind: String(r.kind),
-  category: (r.category as string | null) ?? null,
-  cluster: (r.cluster as string | null) ?? null,
-  priorityScore: Number(r.priority_score),
-  priorityBand: String(r.priority_band),
-  targetDate: r.target_date ? String(r.target_date).slice(0, 10) : null,
-  targetTime: r.target_time ? String(r.target_time).slice(0, 5) : null,
-  ownerId: (r.owner_id as string | null) ?? null,
-  ownerName: (r.owner_name as string | null) ?? null,
-  recommendationId: (r.recommendation_id as string | null) ?? null,
-  postId: (r.post_id as string | null) ?? null,
-  postTitle: (r.post_title as string | null) ?? null,
-  postStatus: (r.post_status as string | null) ?? null,
-  postPath: r.post_slug ? `/${r.post_collection}/${r.post_slug}` : null,
-  brief: (r.brief as Record<string, unknown>) ?? {},
-  evidence: (r.evidence as unknown[]) ?? [],
-  publishedAt: r.published_at ? new Date(String(r.published_at)).toISOString() : null,
-  clicksSincePublish: r.clicks_since === null || r.clicks_since === undefined ? null : Number(r.clicks_since),
-});
+
+const sourceOf = (r: Row): Source => {
+  const source = String(((r.brief as { source?: string } | null) ?? {}).source ?? "");
+  if (source === "ml") return "ml";
+  if (source === "analytics") return "analytics";
+  if (source === "ask" || source === "promotion") return "ai";
+  if (source === "manual") return "manual";
+  return String(r.kind) === "measured" ? "measured" : "editorial";
+};
+
+function draftStateOf(r: Row): DraftState {
+  const post = r.post_status as string | null;
+  if (r.status === "published" || post === "published") return "published";
+  if (post === "scheduled") return "scheduled";
+  const agent = r.agent_status as string | null;
+  if (agent === "generating") return "writing";
+  if (!post) return "none";
+  if (isOutline(r.post_head as string | null)) return agent === "generation_failed" ? "failed" : "outline";
+  return "ready";
+}
+
+const shape = (r: Row) => {
+  const draft = draftStateOf(r);
+  const targetDate = r.target_date ? String(r.target_date).slice(0, 10) : null;
+  const flags = Array.isArray(r.agent_flags) ? (r.agent_flags as { severity?: string }[]) : [];
+  return {
+    id: String(r.id),
+    title: String(r.title),
+    status: String(r.status) as CalStatus,
+    phase: (draft === "published" ? "published" : targetDate || draft === "scheduled" ? "scheduled" : "unscheduled") as Phase,
+    source: sourceOf(r),
+    kind: String(r.kind),
+    category: (r.category as string | null) ?? null,
+    cluster: (r.cluster as string | null) ?? null,
+    priorityScore: Number(r.priority_score),
+    priorityBand: String(r.priority_band),
+    targetDate,
+    targetTime: r.target_time ? String(r.target_time).slice(0, 5) : null,
+    ownerId: (r.owner_id as string | null) ?? null,
+    ownerName: (r.owner_name as string | null) ?? null,
+    recommendationId: (r.recommendation_id as string | null) ?? null,
+    postId: (r.post_id as string | null) ?? null,
+    postTitle: (r.post_title as string | null) ?? null,
+    postStatus: (r.post_status as string | null) ?? null,
+    postPath: r.post_slug ? `/${r.post_collection}/${r.post_slug}` : null,
+    postScheduledFor: r.post_status === "scheduled" && r.post_published_at ? new Date(String(r.post_published_at)).toISOString() : null,
+    draft,
+    agentFailure: (r.agent_failure as string | null) ?? null,
+    flagErrors: flags.filter((f) => f.severity === "error").length,
+    flagWarnings: flags.filter((f) => f.severity !== "error").length,
+    scheduleNote: (r.schedule_note as string | null) ?? null,
+    brief: (r.brief as Record<string, unknown>) ?? {},
+    evidence: (r.evidence as unknown[]) ?? [],
+    publishedAt: r.published_at ? new Date(String(r.published_at)).toISOString() : null,
+    clicksSincePublish: r.clicks_since === null || r.clicks_since === undefined ? null : Number(r.clicks_since),
+    createdAt: r.created_at ? new Date(String(r.created_at)).toISOString() : null,
+  };
+};
+export type CalendarItem = ReturnType<typeof shape>;
 
 /** Sync "published" from linked posts (the only way an item becomes published). */
 async function syncPublished() {
@@ -108,21 +161,56 @@ async function syncPublished() {
     from post p where p.id = c.post_id and p.status = 'published' and p.deleted_at is null and c.status <> 'published'`);
 }
 
-export async function listCalendar(opts: { from?: string; to?: string; status?: string } = {}) {
-  await syncPublished();
+/**
+ * Keep each item's link to its post true before it is shown:
+ * - a link to a post that was deleted or is in the trash is cleared (the item then offers "Generate draft" again,
+ *   instead of a draft link that answers "not found");
+ * - an item without a post is linked to the one live post with the same title, if exactly one and no other item has
+ *   it (a draft or published post written by hand for that idea);
+ * - an item follows its post to published.
+ */
+export async function reconcileCalendar() {
   const db = await getDb();
-  const parts = [sql`true`];
+  await db.execute(sql`
+    update seo_editorial_calendar c set post_id = null, updated_at = now()
+    where c.post_id is not null and c.status <> 'published'
+      and not exists (select 1 from post p where p.id = c.post_id and p.deleted_at is null)`);
+  await db.execute(sql`
+    update seo_editorial_calendar c set post_id = m.id, updated_at = now()
+    from (
+      select c2.id as item_id, min(p.id::text)::uuid as id from seo_editorial_calendar c2
+      join post p on lower(btrim(p.title)) = lower(btrim(c2.title)) and p.deleted_at is null
+      where c2.post_id is null and c2.status not in ('dropped', 'published')
+        and not exists (select 1 from seo_editorial_calendar o where o.post_id = p.id)
+      group by c2.id having count(*) = 1
+    ) m
+    where c.id = m.item_id`);
+  await syncPublished();
+}
+
+export async function listCalendar(opts: { from?: string; to?: string; status?: string } = {}) {
+  await reconcileCalendar();
+  const db = await getDb();
+  const parts = [sql`c.status <> 'dropped'`];
   if (opts.status && (STATUSES as readonly string[]).includes(opts.status)) parts.push(sql`c.status = ${opts.status}`);
   const rows = rowsOf<Row>(
     await db.execute(sql`
       select c.*, u.name as owner_name, p.title as post_title, p.status as post_status, p.collection as post_collection, p.slug as post_slug,
+        p.published_at as post_published_at, left(p.body, 200) as post_head,
+        sd.status as agent_status, sd.flags as agent_flags, sd.failure_reason as agent_failure,
         (select sum(g.clicks)::float8 from seo_gsc_page_daily g join seo_url_map m on m.url = g.page where m.article_id = c.post_id and g.search_type = 'web' and g.date >= c.published_at::date) as clicks_since
-      from seo_editorial_calendar c left join "user" u on u.id = c.owner_id left join post p on p.id = c.post_id
+      from seo_editorial_calendar c left join "user" u on u.id = c.owner_id left join post p on p.id = c.post_id and p.deleted_at is null
+      left join lateral (select d.status, d.flags, d.failure_reason from seo_drafts d where d.calendar_id = c.id and d.kind = 'new_article' order by d.created_at desc limit 1) sd on true
       where ${sql.join(parts, sql` and `)} order by c.target_date nulls last, c.target_time nulls last, c.priority_score desc limit 500`),
   );
   const items = rows.map(shape);
   const inRange = (d: string | null) => d !== null && (!opts.from || d >= opts.from) && (!opts.to || d <= opts.to);
-  return { scheduled: items.filter((i) => inRange(i.targetDate)), unscheduled: items.filter((i) => !i.targetDate && !["dropped", "published"].includes(i.status)), all: items };
+  return { scheduled: items.filter((i) => inRange(i.targetDate)), unscheduled: items.filter((i) => i.phase === "unscheduled"), all: items };
+}
+
+/** One item as the calendar shows it (after reconciling), or undefined. */
+export async function getItem(id: string): Promise<CalendarItem | undefined> {
+  return (await listCalendar()).all.find((i) => i.id === id);
 }
 
 export async function createItem(input: z.output<typeof createSchema>) {
@@ -141,47 +229,59 @@ export async function updateItem(id: string, patch: z.output<typeof patchSchema>
   const [cur] = rowsOf<Row>(await db.execute(sql`select * from seo_editorial_calendar where id = ${id}`));
   if (!cur) throw new CalendarError("Calendar item not found.", 404);
   const status = String(cur.status) as CalStatus;
-  if (patch.status && patch.status !== status && !NEXT[status].includes(patch.status)) throw new CalendarError(`Cannot move from ${status} to ${patch.status}.`, 409);
+  if (status === "dropped") throw new CalendarError("Calendar item not found.", 404);
   if (patch.postId) {
     const [p] = rowsOf<{ id: string }>(await db.execute(sql`select id from post where id = ${patch.postId} and deleted_at is null`));
     if (!p) throw new CalendarError("That post does not exist.", 400);
   }
-  // A time needs a date (clearing the date clears the time).
-  if (patch.targetTime && patch.targetDate === null) throw new CalendarError("Set a date before a time.", 400);
-  if (patch.targetTime && patch.targetDate === undefined && !cur.target_date) throw new CalendarError("Set a date before a time.", 400);
   if (patch.ownerId) {
     const [u] = rowsOf<{ id: string }>(await db.execute(sql`select id from "user" where id = ${patch.ownerId} and role in ('admin', 'author')`));
     if (!u) throw new CalendarError("The owner must be an admin or author.", 400);
   }
   await db.execute(sql`
     update seo_editorial_calendar set
-      status = coalesce(${patch.status ?? null}, status),
       title = coalesce(${patch.title ?? null}, title),
       category = case when ${patch.category !== undefined} then ${patch.category || null} else category end,
       cluster = case when ${patch.cluster !== undefined} then ${patch.cluster || null} else cluster end,
       brief = brief || ${JSON.stringify(patch.brief ?? {})}::jsonb,
-      target_date = case when ${patch.targetDate !== undefined} then ${patch.targetDate ?? null}::date else target_date end,
-      target_time = case when ${patch.targetDate === null} then null when ${patch.targetTime !== undefined} then ${patch.targetTime ?? null}::time else target_time end,
       owner_id = case when ${patch.ownerId !== undefined} then ${patch.ownerId ?? null} else owner_id end,
       post_id = case when ${patch.postId !== undefined} then ${patch.postId ?? null}::uuid else post_id end,
       updated_at = now()
     where id = ${id}`);
   await syncPublished();
-  return { before: { status, title: cur.title, targetDate: cur.target_date ?? null, targetTime: cur.target_time ?? null, postId: cur.post_id ?? null, ownerId: cur.owner_id ?? null, category: cur.category ?? null, cluster: cur.cluster ?? null, ...(patch.brief ? { brief: cur.brief } : {}) }, after: patch };
+  return { before: { title: cur.title, postId: cur.post_id ?? null, ownerId: cur.owner_id ?? null, category: cur.category ?? null, cluster: cur.cluster ?? null, ...(patch.brief ? { brief: cur.brief } : {}) }, after: patch };
 }
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "draft";
 
-/** Create a DRAFT post from an approved item (brief as outline). Never publishes. */
-export async function createDraftFromItem(id: string, actor: Actor, now = new Date()) {
+/**
+ * Delete an item from the calendar. It is hidden (status "dropped"), not removed, so a suggestion with the same
+ * fingerprint is not added again; its post, if any, is kept (calendar-schedule.ts unschedules it first).
+ */
+export async function deleteItem(id: string) {
   const db = await getDb();
-  const [item] = rowsOf<Row>(await db.execute(sql`select * from seo_editorial_calendar where id = ${id}`));
+  const [row] = rowsOf<{ id: string }>(await db.execute(sql`update seo_editorial_calendar set status = 'dropped', target_date = null, target_time = null, scheduled_by = null, schedule_note = null, updated_at = now() where id = ${id} and status <> 'dropped' returning id`));
+  if (!row) throw new CalendarError("Calendar item not found.", 404);
+}
+
+/**
+ * The item's CMS draft post: an outline from the brief (the Editorial Crew then writes it, see orchestrate.ts). Never
+ * publishes. An item whose post still holds only the outline reuses that post; one with a real draft is refused.
+ */
+export async function createDraftFromItem(id: string, actor: Actor, now = new Date()) {
+  await reconcileCalendar();
+  const db = await getDb();
+  const [item] = rowsOf<Row>(await db.execute(sql`select c.*, p.body as post_body from seo_editorial_calendar c left join post p on p.id = c.post_id and p.deleted_at is null where c.id = ${id} and c.status <> 'dropped'`));
   if (!item) throw new CalendarError("Calendar item not found.", 404);
-  if (item.post_id) throw new CalendarError("This item already has a draft.", 409);
-  if (!["approved", "drafting"].includes(String(item.status))) throw new CalendarError("Approve the item before creating a draft.", 409);
+  if (item.status === "published") throw new CalendarError("This item is already published.", 409);
+  if (item.post_id && !isOutline(item.post_body as string | null)) throw new CalendarError("This item already has a draft. Use Improve to revise it.", 409);
+  if (item.post_id) {
+    await db.execute(sql`update seo_editorial_calendar set status = 'drafting', updated_at = now() where id = ${id}`);
+    return { postId: String(item.post_id), editorUrl: `/admin/posts/${String(item.post_id)}`, reused: true };
+  }
   const brief = (item.brief as { outline?: string[]; audience?: string; intent?: string; supportingQueries?: string[]; internalLinks?: { title: string; path: string }[]; codeExamples?: string[]; diagrams?: string[]; gap?: string }) ?? {};
   const body = [
-    `> Draft created from the SEO editorial calendar (${String(item.kind) === "measured" ? "measured: backed by Search Console data" : "editorial idea"}). Replace these notes before review.`,
+    `${OUTLINE_MARKER} (${String(item.kind) === "measured" ? "measured: backed by Search Console data" : "editorial idea"}). Replace these notes before review.`,
     "",
     brief.gap ? `> Why: ${brief.gap}` : "",
     brief.audience ? `> Audience: ${brief.audience}; intent: ${brief.intent ?? "n/a"}` : "",

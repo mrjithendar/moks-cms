@@ -1,5 +1,54 @@
 # Progress log — jithendar.com
 
+## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
+
+Decision record: docs/seo/DECISIONS.md **D-95**.
+
+- `src/lib/seo-intel/calendar-auto.ts` (new), called from `recommendations.ts` after the Search Console and editorial
+  suggestions: reader questions asked ≥ 2 times (Ask the Blog), Promotion ideas scoring ≥ 70, ML query clusters with
+  ≥ 100 impressions in 28 days and no article, and Google Analytics follow-ups for the most engaging articles. At most 2
+  per source a run, none while 12 automatic items are open; fingerprints keep a subject (and a deleted idea) from
+  coming back; a failing source is skipped.
+- Calendar Source filter: Search Console, ML query clusters, Google Analytics, AI (reader questions, Promotion),
+  Editorial idea, Added by hand (`calendar.ts` `sourceOf`, calendar page).
+- User guide (calendar) updated; `editorial.ts` header comment no longer mentions approving.
+- Tests: `tests/calendar-auto.test.ts` (6: each source with its threshold, two per run, the open cap, a deleted idea
+  not coming back, a failing source skipped).
+- No migration, no new dependency.
+
+## Editorial calendar: unscheduled, scheduled, published; Generate, Improve, Schedule; filters (2026-11-18, owner request)
+
+Owner: no approve/drop, just unscheduled, scheduled and published; each item has Generate draft (checking for a draft,
+then a published post, first) and Improve (reads the draft and improves it); scheduling publishes; an expand/collapse
+button before each title; better filters. Decision record: docs/seo/DECISIONS.md **D-94**.
+
+- **Phases and draft states** (`src/lib/seo-intel/calendar.ts`): phase = published / scheduled (has a date) /
+  unscheduled; draft = none, outline, writing, failed, ready, scheduled, published. Every listing reconciles first:
+  links to deleted or trashed posts are cleared (the reported "draft … not found"), an item without a post is linked to
+  the one live post with its title, items follow their post to published. `patchSchema` has no status any more.
+- **Delete** hides an item (`dropped`, fingerprint kept so suggestions do not return) and keeps its post.
+- **Generate draft** reuses an outline post; **Improve** (`lib/seo-agent/orchestrate.ts`) unschedules a scheduled post,
+  closes any open draft row, reserves a fresh one (snapshot = the current body, so the handoff writes only over it) and
+  starts `new_article_flow` with the editor's instructions; `GET /calendar/{id}/brief` adds `currentDraft`. seo-agent:
+  `crews/editorial.py` revises with REVISE_TASK when `currentDraft` is set (2 new tests in `tests/test_crews.py`).
+- **Schedule** (`lib/seo-intel/calendar-schedule.ts`, migration `0034_calendar_schedule.sql`: `scheduled_by`,
+  `schedule_note`): a person's Schedule calls `publishPost` with a future date in their name when the draft is written,
+  has no fact-check errors and is valid; otherwise the date is kept with the reason. Unschedule/Delete/Improve return a
+  scheduled post to draft. The "no automatic publishing" guard test pins its checks and its importers.
+- **Routes:** `POST|DELETE /api/admin/seo/calendar/{id}/schedule`, `POST …/{id}/improve`, `DELETE …/{id}`; PATCH edits
+  details only.
+- **Page:** phase tabs with counts; filters (search, source, draft state, category, cluster, sort); month/week grid
+  coloured by phase; collapsible cards (`CalendarItemCard.tsx`) with `CalendarActions.tsx` (Generate, Improve with
+  instructions, Open draft, Schedule/Reschedule/Unschedule, link a post, Delete) and a note saying why a dated item's
+  post is not scheduled yet.
+- User guide (calendar, posts) updated.
+- Commands (Node 26): `npm run lint` pass; `tsc --noEmit` pass; `vitest run` 1258 passed, 1 skipped
+  (`tests/seo-intel-cms.test.ts`: 7 calendar tests + the guard); `next build` pass. seo-agent (uv, Python 3.13):
+  `ruff check` pass, `mypy app` pass, `pytest` 438 passed, 22 skipped (no Postgres here), 7 failed: the same 7 ML
+  ranking tests fail on untouched master on this Mac (LightGBM/scikit-learn numerics), so not this change. Checked in
+  Chrome against a local build: tabs, filters, cards, schedule note, phone width without horizontal scroll.
+- Manual step: none (migration runs at start).
+
 ## Admin menu: a submenu for every area, Newsroom and AI room apart, Storage and Email apart, stronger edges (2026-11-18, owner request)
 
 The owner found the admin hard on the eyes (white on white, fields that looked like text) and the menu's groups

@@ -6,6 +6,7 @@ import { rowsOf } from "@/db/rows";
 import { PermanentJobError } from "../jobs";
 import { log } from "../log";
 import { unsafeLinks } from "../posts";
+import { isOutline } from "../seo-intel/calendar";
 import { blocksOf, linksIn, modelOutputSchema, toChanges, validateChangeSet, type Change, type Flag } from "../seo-intel/changeset";
 import { docsFetcher } from "../seo-intel/crawler";
 import { allowedCategories, buildPrompt, DRAFT_RULES, eligibleRecommendations, getDraft, loadBase, normalize, openDraft, renumber, reserveDraft, validationContext, type ExtraTask } from "../seo-intel/drafts";
@@ -393,15 +394,28 @@ export async function planArticleLinks(articleId: string, body: unknown) {
   return { added: links.length, draftId: d.id };
 }
 
-/** GET /calendar/{id}/brief — the content-gap idea the crew writes up (and its CMS draft post). */
+/** The most of a current draft handed to the crew to improve (≈ 15k tokens). */
+const CURRENT_DRAFT_CHARS = 60_000;
+
+/**
+ * GET /calendar/{id}/brief — the content-gap idea the crew writes up (and its CMS draft post). When that post already
+ * holds a written draft (not the generated outline), `currentDraft` is its body: the run is an Improve, and the crew
+ * revises it instead of starting over (crews/editorial.py).
+ */
 export async function calendarBrief(calendarId: string) {
   uuid(calendarId, "calendar id");
   const db = await getDb();
-  const [item] = rowsOf<Record<string, unknown>>(await db.execute(sql`select id, title, kind, category, brief, post_id, status from seo_editorial_calendar where id = ${calendarId}`));
+  const [item] = rowsOf<Record<string, unknown>>(
+    await db.execute(sql`
+      select c.id, c.title, c.kind, c.category, c.brief, c.post_id, c.status, p.body as post_body, p.status as post_status
+      from seo_editorial_calendar c left join post p on p.id = c.post_id and p.deleted_at is null where c.id = ${calendarId}`),
+  );
   if (!item) throw new CallbackError("Calendar item not found.", 404, "not_found");
   const brief = (typeof item.brief === "string" ? JSON.parse(item.brief) : item.brief ?? {}) as Record<string, unknown>;
-  // Stored brief keys never replace the server-side ones (style guide, examples).
-  return { ...brief, id: calendarId, postId: item.post_id ?? null, title: String(item.title), kind: String(item.kind), category: item.category ?? null, styleGuide: STYLE_GUIDE, examples: await exampleArticles(db, (item.category as string | null) ?? null) };
+  const body = String(item.post_body ?? "");
+  const written = ["draft", "review"].includes(String(item.post_status ?? "")) && body.trim() !== "" && !isOutline(body);
+  // Stored brief keys never replace the server-side ones (style guide, examples, current draft).
+  return { ...brief, id: calendarId, postId: item.post_id ?? null, title: String(item.title), kind: String(item.kind), category: item.category ?? null, styleGuide: STYLE_GUIDE, examples: await exampleArticles(db, (item.category as string | null) ?? null), currentDraft: written ? body.slice(0, CURRENT_DRAFT_CHARS) : null };
 }
 
 /** Each example article is cut to this many characters (two examples ≈ 7k tokens for the writer). */
