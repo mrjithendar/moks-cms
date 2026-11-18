@@ -22,7 +22,8 @@ v6 prompt (seo-crew-v6): notes for the editor never go in the body. The site ren
 (moks-cms/src/lib/mdx/compile.ts, `format: "md"`), so a `{/* TODO(owner): … */}` the writer added was printed in the
 review preview and would have been published. The writer and reviewer now list such notes under NEEDS_FACT_CHECK, and
 `extract_editor_notes` moves any that are still in the body (MDX or HTML comments, <Todo>; never inside code) into
-fact-check flags, which the review page lists.
+fact-check flags, which the review page lists. It also takes `{ /* … */ }`, a comment that never closes (to the end of
+its paragraph), and a line or [bracket] that starts with TODO(…): or FIXME:.
 """
 
 from __future__ import annotations
@@ -204,8 +205,22 @@ def merge_flags(*groups: list[FactCheckFlag]) -> list[FactCheckFlag]:
     return out
 
 
-# A note for the editor left in the body: inline code (kept, group 1), an MDX comment, an HTML comment or <Todo>.
-_NOTE_RE = re.compile(r"(`+)[^\n]*?\1|\{/\*([\s\S]*?)\*/\}|<!--([\s\S]*?)-->|<Todo>([\s\S]*?)</Todo>")
+# A note for the editor left in the body. In order: inline code (kept, group 1); an MDX comment, also `{ /* … */ }`; an
+# HTML comment; <Todo>…</Todo>; a comment that never closes (the writer was cut off or forgot `*/}`), to the end of its
+# paragraph; a line, or a [bracket], that starts with TODO(…): or FIXME:. A comment never runs past the start of another
+# one, so an unclosed `{/*` cannot swallow the article up to a later note's `*/}`.
+_PARAGRAPH = r"[^\n]*(?:\n(?![ \t]*(?:\n|\Z))[^\n]*)*"
+_TODO_LEAD = r"(?:TODO|FIXME)(?:\([^)\n]*\))?[*_]{0,2}[ \t]*:[*_]{0,2}[ \t]*"
+_NOTE_RE = re.compile(
+    r"(`+)[^\n]*?\1"
+    r"|\{[ \t]*/\*((?:(?!\{[ \t]*/\*)[\s\S])*?)\*/[ \t]*\}"
+    r"|<!--((?:(?!<!--)[\s\S])*?)-->"
+    r"|<Todo>([\s\S]*?)</Todo>"
+    rf"|(?:\{{[ \t]*/\*|<!--)({_PARAGRAPH})"
+    rf"|^[ \t]*(?:>[ \t]*)*(?:[-*+][ \t]+)?[*_]{{0,2}}{_TODO_LEAD}([^\n]*)$"
+    rf"|\[[ \t]*{_TODO_LEAD}([^\]\n]*)\]",
+    re.M,
+)
 _FENCE_LINE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _NOTE_ITEM_RE = re.compile(r"(?:^|\s)\(\d{1,2}\)\s+")
 _NOTE_PREFIX_RE = re.compile(r"^(?:TODO|NOTE|FIXME)(?:\([^)]*\))?\s*:\s*", re.I)
@@ -226,7 +241,8 @@ def _note_items(note: str) -> list[str]:
 
 def extract_editor_notes(body: str) -> tuple[str, list[FactCheckFlag]]:
     """Body → (the body without notes for the editor, one fact-check flag per note item). The site renders plain
-    Markdown, where an MDX comment and the text inside <Todo> are printed on the page. Code (fenced or inline) is kept."""
+    Markdown, where an MDX comment, the text inside <Todo> and a TODO line are printed on the page. Code (fenced or
+    inline) is kept."""
     notes: list[str] = []
 
     def take(m: re.Match[str]) -> str:
