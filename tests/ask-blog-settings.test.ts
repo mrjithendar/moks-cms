@@ -32,6 +32,8 @@ beforeEach(async () => {
   revalidated.length = 0;
   vi.stubEnv("BETTER_AUTH_SECRET", "s".repeat(40));
   vi.stubEnv("SEO_AGENT_TOKEN", "a".repeat(40));
+  // The agent forced on: these cases are about the admin's switches (discovery: seo-agent-endpoint.test.ts).
+  vi.stubEnv("SEO_ORCHESTRATOR", "crewai");
   vi.stubGlobal("fetch", (async () => {
     agentCalls++;
     return new Response('event: final\ndata: {"outcome":"answered","answer":"x [1]","citations":[]}\n\n', { headers: { "content-type": "text/event-stream" } });
@@ -93,16 +95,22 @@ describe("settings document", () => {
   });
 });
 
-describe("the two switches", () => {
+describe("the switches", () => {
   it("needs the environment switch and the admin's switch; with the environment off the database is not read", async () => {
     await save({ enabled: true, audience: "everyone" });
     expect(await askState({})).toMatchObject({ on: false, envOn: false });
     setDbForTests(undefined); // no database at all: still answers "off" instead of throwing
     expect((await askState({ ASK_BLOG_ENABLED: "false" })).on).toBe(false);
     setDbForTests(db);
-    expect(await askState({ ASK_BLOG_ENABLED: "true" })).toMatchObject({ on: true, envOn: true });
+    const on = { ASK_BLOG_ENABLED: "true", SEO_ORCHESTRATOR: "crewai" };
+    expect(await askState(on)).toMatchObject({ on: true, envOn: true, agentOn: true });
     await save({ enabled: false });
-    expect(await askState({ ASK_BLOG_ENABLED: "true" })).toMatchObject({ on: false, envOn: true });
+    expect(await askState(on)).toMatchObject({ on: false, envOn: true });
+  });
+
+  it("is off while the SEO agent is disabled, whatever the admin saved", async () => {
+    await save({ enabled: true, audience: "everyone" });
+    expect(await askState({ ASK_BLOG_ENABLED: "true", SEO_ORCHESTRATOR: "legacy" })).toMatchObject({ on: false, envOn: true, agentOn: false });
   });
 
   it("/api/ask is 404 and reports disabled until both are on", async () => {

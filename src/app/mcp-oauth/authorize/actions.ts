@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { auditSafe } from "@/lib/audit";
 import { approve, denyUrl, parseAuthorize } from "@/lib/mcp-oauth/oauth";
-import { adminMcpEnabled } from "@/lib/seo-agent/config";
+import { mcpEnabled } from "@/lib/seo-agent/endpoint";
 import { getSessionUser } from "@/lib/session";
 
 /**
@@ -12,7 +12,7 @@ import { getSessionUser } from "@/lib/session";
  */
 export async function decide(formData: FormData) {
   const user = await getSessionUser();
-  if (!user || user.role !== "admin" || !adminMcpEnabled()) redirect("/account?denied=1");
+  if (!user || user.role !== "admin" || !(await mcpEnabled("admin"))) redirect("/account?denied=1");
   const q = Object.fromEntries([...formData.entries()].filter(([k]) => k.startsWith("q_")).map(([k, v]) => [k.slice(2), String(v)]));
   const r = await parseAuthorize(q);
   if (!("ok" in r)) redirect("/account?denied=1");

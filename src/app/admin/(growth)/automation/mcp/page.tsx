@@ -1,7 +1,7 @@
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { Empty, fmtWhen, Section } from "@/components/seo/ui";
 import { listGrants, metadata as asMetadata, resourceUrl, SCOPES } from "@/lib/mcp-oauth/oauth";
-import { adminMcpEnabled, publicMcpEnabled } from "@/lib/seo-agent/config";
+import { mcpEnabled } from "@/lib/seo-agent/endpoint";
 import { siteOrigin } from "@/lib/seo-intel/urls";
 import { revokeGrant } from "./actions";
 
@@ -10,7 +10,7 @@ export const metadata = { title: "MCP access" };
 
 /** Settings → MCP access: who is connected to the admin MCP server, what they may do, and revoke. */
 export default async function McpAccessPage() {
-  const grants = await listGrants();
+  const [grants, adminOn, publicOn] = await Promise.all([listGrants(), mcpEnabled("admin"), mcpEnabled("public")]);
   const origin = siteOrigin().origin;
   const on = (v: boolean) => <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${v ? "bg-green-50 text-green-800 dark:bg-green-500/10 dark:text-green-300" : "bg-surface-sunken text-fg-muted"}`}>{v ? "on" : "off"}</span>;
   return (
@@ -20,14 +20,14 @@ export default async function McpAccessPage() {
         <Card>
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="font-medium">Admin server {on(adminMcpEnabled())}</dt>
+              <dt className="font-medium">Admin server {on(adminOn)}</dt>
               <dd className="mt-1 font-mono text-xs text-fg-muted">{resourceUrl()}</dd>
-              <dd className="mt-1 text-xs text-fg-subtle">OAuth 2.1 with PKCE · authorization server {asMetadata().issuer} · switch: ADMIN_MCP_ENABLED</dd>
+              <dd className="mt-1 text-xs text-fg-subtle">OAuth 2.1 with PKCE · authorization server {asMetadata().issuer} · switch: ADMIN_MCP_ENABLED, and the SEO agent on</dd>
             </div>
             <div>
-              <dt className="font-medium">Public server {on(publicMcpEnabled())}</dt>
+              <dt className="font-medium">Public server {on(publicOn)}</dt>
               <dd className="mt-1 font-mono text-xs text-fg-muted">{origin}/mcp/public</dd>
-              <dd className="mt-1 text-xs text-fg-subtle">Read-only, published articles only, no sign-in · switch: PUBLIC_MCP_ENABLED</dd>
+              <dd className="mt-1 text-xs text-fg-subtle">Read-only, published articles only, no sign-in · switch: PUBLIC_MCP_ENABLED, and the SEO agent on</dd>
             </div>
           </dl>
           <p className="mt-4 text-sm text-fg-muted">

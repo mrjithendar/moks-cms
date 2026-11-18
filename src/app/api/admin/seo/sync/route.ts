@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AgentError, kickoff } from "@/lib/seo-agent/client";
-import { orchestrator } from "@/lib/seo-agent/config";
+import { orchestrator } from "@/lib/seo-agent/endpoint";
 import { backfillRange, enqueueSeoJob, type JobType } from "@/lib/seo-intel/jobs";
 import { json, parse, seoRoute } from "@/lib/seo-intel/http";
 
@@ -16,7 +16,7 @@ const body = z.object({
 /**
  * POST /api/admin/seo/sync — queue "sync now" (trailing window) or a manual backfill (up to 16 months). Jobs run in
  * the background worker within ~30 s; progress is in GET /api/admin/seo/sync/history. Rate-limited (5 per 10 min).
- * With SEO_ORCHESTRATOR=crewai, "sync now" starts gsc_sync_flow / ga4_sync_flow through the same kickoff endpoint
+ * While the SEO agent is on, "sync now" starts gsc_sync_flow / ga4_sync_flow through the same kickoff endpoint
  * the CronJobs use (the flows run the same job); backfills stay in the web worker (they are not flows).
  */
 export const POST = seoRoute("sync", { mutating: true, rate: { max: 5, windowSeconds: 600 } }, async (_req, ctx) => {
@@ -28,7 +28,7 @@ export const POST = seoRoute("sync", { mutating: true, rate: { max: 5, windowSec
       const range = backfillRange(b.months ?? 16);
       const type: JobType = src === "gsc" ? "gsc_backfill" : "ga4_backfill";
       queued.push({ type, ...range, queued: await enqueueSeoJob({ type, trigger: "backfill", ...range, actor: ctx.actor.label }) });
-    } else if (orchestrator() === "crewai") {
+    } else if ((await orchestrator()) === "crewai") {
       const type: JobType = src === "gsc" ? "gsc_sync" : "ga4_sync";
       try {
         const r = await kickoff(src === "gsc" ? "gsc_sync_flow" : "ga4_sync_flow", {}, { actor: ctx.actor.label });

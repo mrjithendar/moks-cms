@@ -1,7 +1,7 @@
 import { clientAddress } from "@/app/api/ask/route";
 import { hit } from "../rate-limit";
 import { readBodyTextOrNull } from "../read-body";
-import { adminMcpEnabled } from "../seo-agent/config";
+import { mcpEnabled } from "../seo-agent/endpoint";
 import { OAuthError } from "./oauth";
 
 /**
@@ -32,7 +32,7 @@ export async function readParams(req: Request): Promise<Record<string, string | 
 
 /** Kill switch + per-IP limit. Returns an error response, or null to continue. */
 export async function guard(req: Request, name: string, max: number): Promise<Response | null> {
-  if (!adminMcpEnabled()) return Response.json({ error: "temporarily_unavailable", error_description: "The admin MCP server is switched off (ADMIN_MCP_ENABLED)." }, { status: 404, headers: HEADERS });
+  if (!(await mcpEnabled("admin"))) return Response.json({ error: "temporarily_unavailable", error_description: "The admin MCP server is switched off (ADMIN_MCP_ENABLED, or the SEO agent is disabled)." }, { status: 404, headers: HEADERS });
   const ip = clientAddress(req.headers) ?? "unknown";
   if (!(await hit(`mcp-oauth:${name}:${ip}`, max, 600))) return Response.json({ error: "slow_down", error_description: "Too many requests; try again in a few minutes." }, { status: 429, headers: { ...HEADERS, "Retry-After": "600" } });
   return null;

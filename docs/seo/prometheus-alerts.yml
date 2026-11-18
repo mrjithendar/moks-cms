@@ -56,7 +56,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'The seo-agent service is down or not scraped: no CrewAI flow runs (SEO_ORCHESTRATOR=crewai), MCP is unavailable; legacy path unaffected'
+          summary: 'The seo-agent service is down or not scraped: no CrewAI flow runs, MCP is unavailable, and the web app switches to the legacy path within a minute'
           runbook_url: 'https://github.com/moks-tech/moks-cms/blob/master/docs/seo/FLOWS.md#operations'
       - alert: SeoFlowRepeatedFailures
         expr: sum by (flow) (increase(seo_flow_runs_total{job="seo-agent", status="failed"}[6h])) >= 3

@@ -4,16 +4,18 @@ import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { ASK_LIMITS } from "./ask";
 import { askEnabled } from "./config";
+import { agentEnabled } from "./endpoint";
 
 /**
  * Ask the Blog settings (Admin → Automation & AI → Ask the Blog): one JSON document in the `setting` table
  * (key "ask_blog"), validated with zod and merged over the defaults. Read from the database on every call, like the
  * SEO settings: production runs two replicas, so a per-process copy could not be invalidated on the other one.
  *
- * Two switches decide whether the assistant is on:
+ * Three things decide whether the assistant is on:
  * - ASK_BLOG_ENABLED (environment, web app and seo-agent): the deployment's master kill switch;
+ * - the seo-agent, which answers the questions, is found and on (endpoint.ts agentStatus());
  * - `enabled` here: the admin's switch, applied without a restart.
- * Both must be on. The seo-agent reads the same row (moks-seo-agent/app/ask_runtime.py) for the fields it owns:
+ * All three must be on. The seo-agent reads the same row (moks-seo-agent/app/ask_runtime.py) for the fields it owns:
  * enabled, audience, dailyBudgetUsd, cacheTtlSeconds, answerLength, fallbackMessage and conversation.{followUps, turns,
  * pageContext, feedback}. Keep the defaults in step.
  */
@@ -133,16 +135,17 @@ export async function getAskSettings(): Promise<AskSettings> {
   return mergeAskSettings(row?.value);
 }
 
-export type AskState = { on: boolean; envOn: boolean; settings: AskSettings };
+export type AskState = { on: boolean; envOn: boolean; agentOn: boolean; settings: AskSettings };
 
 /**
  * Whether the assistant is on right now, and its settings. With the environment switch off nothing is read from the
- * database (pages and /api/ask behave exactly as before this setting existed).
+ * database (pages and /api/ask behave exactly as before this setting existed). With the seo-agent disabled it is off
+ * whatever the admin saved: nothing could answer.
  */
 export async function askState(env: Record<string, string | undefined> = process.env): Promise<AskState> {
-  if (!askEnabled(env)) return { on: false, envOn: false, settings: DEFAULT_ASK_SETTINGS };
-  const settings = await getAskSettings();
-  return { on: settings.enabled, envOn: true, settings };
+  if (!askEnabled(env)) return { on: false, envOn: false, agentOn: false, settings: DEFAULT_ASK_SETTINGS };
+  const [settings, agentOn] = await Promise.all([getAskSettings(), agentEnabled({ env }).catch(() => false)]);
+  return { on: settings.enabled && agentOn, envOn: true, agentOn, settings };
 }
 
 export class AskSettingsError extends Error {

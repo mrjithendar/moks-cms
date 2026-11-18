@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AgentError, kickoff } from "@/lib/seo-agent/client";
-import { orchestrator } from "@/lib/seo-agent/config";
+import { orchestrator } from "@/lib/seo-agent/endpoint";
 import { json, parse, SeoApiError, seoRoute } from "@/lib/seo-intel/http";
 import { getPromotionSettings } from "@/lib/seo-intel/promotion/settings";
 import { reopenForReshare } from "@/lib/seo-intel/promotion/strategies";
@@ -18,7 +18,7 @@ export const POST = seoRoute("promotion-reshare", { mutating: true, rate: { max:
   if (!(await getPromotionSettings()).enabled) throw new SeoApiError("Promotion is switched off in its settings.", 409, "disabled");
   const reopened = await reopenForReshare(b.articleId);
   let runId: string | null = null;
-  if (orchestrator() === "crewai") {
+  if ((await orchestrator()) === "crewai") {
     try {
       runId = (await kickoff("promotion_flow", { article_id: b.articleId }, { actor: ctx.actor.label })).run_id;
     } catch (e) {

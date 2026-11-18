@@ -6,7 +6,7 @@ import { CopyText } from "@/components/seo/CopyText";
 import { PromoDraftEditor } from "@/components/seo/PromoDraftEditor";
 import { PromotionSettingsForm } from "@/components/seo/PromotionSettingsForm";
 import { Empty, fmtInt, fmtWhen, Section } from "@/components/seo/ui";
-import { orchestrator } from "@/lib/seo-agent/config";
+import { orchestrator } from "@/lib/seo-agent/endpoint";
 import { CHANNELS } from "@/lib/seo-intel/promotion/channels";
 import { redditState } from "@/lib/seo-intel/promotion/reddit";
 import { CHANNEL_IDS, getPromotionSettings } from "@/lib/seo-intel/promotion/settings";
@@ -179,7 +179,7 @@ export default async function PromotionPage({ searchParams }: { searchParams: Pr
   const tab: Tab = TABS.some(([t]) => t === sp.tab) ? (sp.tab as Tab) : "strategies";
   const ideaStatus = sp.show === "dismissed" || sp.show === "sent" ? sp.show : undefined;
   const [settings, counts, reddit] = await Promise.all([getPromotionSettings(), promotionCounts(), redditState()]);
-  const crewai = orchestrator() === "crewai";
+  const crewai = (await orchestrator()) === "crewai";
   const canRun = settings.enabled && crewai;
   const articles = tab === "drafts" ? await listOpportunities({ status: "drafted" }) : tab === "opportunities" ? await listOpportunities({ status: sp.status === "dismissed" ? "dismissed" : "open" }) : tab === "posted" ? await listOpportunities({ status: "posted" }) : [];
   const ideas = tab === "ideas" ? await listIdeas({ status: ideaStatus }) : [];
@@ -198,7 +198,7 @@ export default async function PromotionPage({ searchParams }: { searchParams: Pr
         ) : undefined}
       />
       {!settings.enabled && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion is switched off. Turn it on under <Link className="underline" href="?tab=settings">Settings</Link>.</p>}
-      {settings.enabled && !crewai && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion runs as CrewAI flows in the SEO agent. Set <code>SEO_ORCHESTRATOR=crewai</code> to start runs from here.</p>}
+      {settings.enabled && !crewai && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion runs as CrewAI flows in the SEO agent, which is disabled. Add its endpoint under <Link href="/admin/automation#seo-agent" className="underline">Automation &amp; AI → SEO agent</Link> to start runs from here.</p>}
       {settings.enabled && !reddit.configured && tab !== "settings" && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Reddit is not connected yet, so threads are not used as a signal. See <Link className="underline" href="?tab=settings">Settings</Link>.</p>}
       <nav aria-label="Promotion views" className="mb-6 flex flex-wrap gap-x-4 gap-y-2 text-sm">
         {TABS.map(([t, label]) => (

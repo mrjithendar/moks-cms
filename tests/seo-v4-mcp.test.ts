@@ -20,7 +20,8 @@ const oauth = await import("@/lib/mcp-oauth/oauth");
 const { seoTick } = await import("@/lib/seo-intel/jobs");
 const { saveSeoSettings } = await import("@/lib/seo-intel/settings");
 const { handleCallback } = await import("@/lib/seo-agent/internal-server");
-const { orchestrator, callbackPort } = await import("@/lib/seo-agent/config");
+const { callbackPort } = await import("@/lib/seo-agent/config");
+const { orchestrator } = await import("@/lib/seo-agent/endpoint");
 const reports = await import("@/lib/seo-intel/reports");
 
 /**
@@ -154,12 +155,18 @@ describe("scheduling: each job runs once, through one scheduler", () => {
     expect(await kinds()).toEqual(expect.arrayContaining(["gsc_sync"]));
   });
 
-  it("orchestrator values: crewai, the v3 alias langgraph, and legacy by default; the callback port follows", () => {
-    expect(orchestrator({ SEO_ORCHESTRATOR: "crewai" })).toBe("crewai");
-    expect(orchestrator({ SEO_ORCHESTRATOR: "langgraph" })).toBe("crewai");
-    expect(orchestrator({})).toBe("legacy");
+  it("orchestrator: forced by crewai, the v3 alias langgraph and legacy; otherwise legacy until an agent is found", async () => {
+    expect(await orchestrator({ env: { SEO_ORCHESTRATOR: "crewai" } })).toBe("crewai");
+    expect(await orchestrator({ env: { SEO_ORCHESTRATOR: "langgraph" } })).toBe("crewai");
+    expect(await orchestrator({ env: { SEO_ORCHESTRATOR: "legacy" } })).toBe("legacy");
+    const nobody = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    expect(await orchestrator({ env: { SEO_AGENT_TOKEN: "t" }, fetchImpl: nobody, readAdminUrl: async () => null })).toBe("legacy");
+    // The callback listener is off only when forced legacy (it also needs SEO_AGENT_CALLBACK_TOKEN).
     expect(callbackPort({ SEO_ORCHESTRATOR: "crewai" })).toBe(9465);
-    expect(callbackPort({})).toBe(0);
+    expect(callbackPort({})).toBe(9465);
+    expect(callbackPort({ SEO_ORCHESTRATOR: "legacy" })).toBe(0);
   });
 });
 

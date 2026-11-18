@@ -1,22 +1,21 @@
 /**
  * SEO switches (docs/seo/FLOWS.md, DECISIONS.md D-54 …).
  *
- * SEO_ORCHESTRATOR: "legacy" (default) keeps v2's direct Claude path (job queue + Message Batches) and the in-process
- * scheduler; "crewai" (v4) sends every AI workflow and scheduled SEO job through the seo-agent's CrewAI Flows: drafting,
- * approval → publish_flow, rejection, regeneration, and the sync/audit/recommendations/report jobs (triggered by
- * Kubernetes CronJobs; the in-process scheduler then skips those job types). Rollback = set it back to legacy.
- * "langgraph" (v3) is accepted as an alias of "crewai": the LangGraph runtime no longer exists.
+ * Which path SEO work takes: "crewai" (v4) sends every AI workflow and scheduled SEO job through the seo-agent's CrewAI
+ * Flows (drafting, approval → publish_flow, rejection, regeneration, and the sync/audit/recommendations/report jobs,
+ * triggered by Kubernetes CronJobs; the in-process scheduler then skips those job types); "legacy" keeps v2's direct
+ * Claude path (job queue + Message Batches) and the in-process scheduler. It is "crewai" exactly when the seo-agent is
+ * found and answers (endpoint.ts: orchestrator(), agentStatus()); otherwise the agent is disabled.
  */
 export type Orchestrator = "legacy" | "crewai";
 
-export function orchestrator(env: Record<string, string | undefined> = process.env): Orchestrator {
+/**
+ * SEO_ORCHESTRATOR as an override: "legacy" forces the agent off, "crewai" (or the v3 alias "langgraph": the LangGraph
+ * runtime no longer exists) forces it on without probing; unset or anything else: "auto" (find the agent).
+ */
+export function orchestratorSetting(env: Record<string, string | undefined> = process.env): Orchestrator | "auto" {
   const v = env.SEO_ORCHESTRATOR?.trim().toLowerCase();
-  return v === "crewai" || v === "langgraph" ? "crewai" : "legacy";
-}
-
-/** seo-agent base URL (ClusterIP service; never public). */
-export function agentUrl(env: Record<string, string | undefined> = process.env): string {
-  return (env.SEO_AGENT_URL?.trim() || "http://seo-agent.jithendar:8080").replace(/\/+$/, "");
+  return v === "crewai" || v === "langgraph" ? "crewai" : v === "legacy" ? "legacy" : "auto";
 }
 
 /** Web app → seo-agent bearer token. */
@@ -24,9 +23,12 @@ export const agentToken = (env: Record<string, string | undefined> = process.env
 /** seo-agent → web app callback bearer token (a different secret). */
 export const callbackToken = (env: Record<string, string | undefined> = process.env) => env.SEO_AGENT_CALLBACK_TOKEN?.trim() || null;
 
-/** Port of the cluster-internal callback listener on the web pods (0 = off). Off unless the orchestrator is crewai. */
+/**
+ * Port of the cluster-internal callback listener on the web pods (0 = off). Off when SEO_ORCHESTRATOR=legacy; otherwise
+ * it listens whenever SEO_AGENT_CALLBACK_TOKEN is set (internal-server.ts), because the agent may be found at any time.
+ */
 export function callbackPort(env: Record<string, string | undefined> = process.env): number {
-  if (orchestrator(env) !== "crewai") return 0;
+  if (orchestratorSetting(env) === "legacy") return 0;
   const n = Number(env.SEO_AGENT_CALLBACK_PORT ?? 9465);
   return Number.isInteger(n) && n > 0 && n < 65536 ? n : 0;
 }
