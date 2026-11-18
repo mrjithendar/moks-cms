@@ -110,7 +110,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
     }),
     timed("Redis (optional)", { group: "Core", env: "REDIS_URL" }, () => redisCheck()),
     timed("Cache bus (Valkey pub/sub)", { group: "Core", env: "CACHE_BUS_REDIS_URL or REDIS_URL" }, async () => cacheBusCheck()),
-    timed("Media storage (Cloudflare R2)", { group: "Core", href: "/admin/storage" }, checkStorage),
+    timed("Media storage", { group: "Core", href: "/admin/storage" }, checkStorage),
     timed("Scheduled publishing & IndexNow", { group: "Publishing", href: "/admin/posts?status=scheduled" }, async () => {
       const db = await getDb();
       const [r] = rowsOf<{ scheduled: number; overdue: number }>(
