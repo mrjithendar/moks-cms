@@ -1,5 +1,19 @@
 # Progress log — jithendar.com
 
+## Promotion: Strategies (2026-11-18, owner request)
+
+Owner: "improve content promotion, add different strategies to promote content". Details: docs/seo/PROMOTION.md
+§ Strategies.
+
+- `src/lib/seo-intel/promotion/strategies.ts` (new): `promotionPlan` (launch, evergreen reshare, refresh then reshare,
+  syndication, community answers, internal links, newsletter digest) and `reopenForReshare`.
+- `POST /api/admin/seo/promotion/reshare` (new). Refresh uses the existing `POST /api/admin/seo/drafts` with
+  freshness and title/meta tasks.
+- Promotion page: a Strategies tab, first and default, one card per strategy with its articles and action; the digest
+  in a copy box (`CopyText.tsx`).
+- User guide (promotion). Tests: `tests/promotion-strategies.test.ts` (2).
+- No migration, no new dependency. Nothing is posted automatically.
+
 ## System status: every service, grouped, with its settings page; backups without a passphrase (2026-11-18, owner request)
 
 Owner: "backups should not have backup phrase. Review system status and add all the required checks, and links to the

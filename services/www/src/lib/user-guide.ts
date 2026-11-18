@@ -269,8 +269,18 @@ const guides: GuideEntry[] = [
     summary: "Where each article is worth sharing, with drafted posts.",
     href: "/admin/promotion",
     adminOnly: true,
-    keywords: ["social", "share", "linkedin", "marketing", "distribution"],
-    body: ["Promotion suggests where each published article is worth sharing, drafts posts for you to edit and post yourself, and suggests new article ideas that already have an audience. Nothing is posted automatically."],
+    keywords: ["social", "share", "linkedin", "marketing", "distribution", "strategy", "reshare", "evergreen", "syndicate", "newsletter", "digest", "reddit"],
+    body: [
+      "Promotion suggests where each published article is worth sharing, drafts posts for you to edit and post yourself, and suggests new article ideas that already have an audience. Nothing is posted automatically.",
+      "Strategies, the first tab, shows seven ways to promote and the articles each applies to right now:",
+      "- Launch new articles: posts for each channel in an article's first two weeks (Draft posts).",
+      "- Reshare evergreen articles: older articles still earning search clicks and not shared for 90 days. Reshare reopens their channels (the last post is kept as a record) and drafts fresh posts with a new angle. Channels you dismissed stay dismissed.",
+      "- Refresh, then reshare: articles whose search clicks fell by 30% or more. Refresh first sends the article for an AI review in the review queue; publish the refreshed version, then reshare it.",
+      "- Syndicate to dev.to and Hashnode: post the full article there with the canonical URL pointing to your site, so search engines credit the original.",
+      "- Answer questions in communities: Reddit threads that ask what an article answers. Answer in the thread; link only where it helps.",
+      "- Link new articles from your own site: suggested internal links to recent articles, accepted in Internal linking.",
+      "- Newsletter digest: a ready issue with this week's articles and one evergreen pick, links tagged utm_source=newsletter. Copy it into your newsletter tool.",
+    ],
   },
 
   // Insights

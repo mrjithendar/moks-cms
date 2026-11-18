@@ -189,3 +189,20 @@ Every mutation is audit-logged (`seo.promotion.*`). Callback routes for the agen
 - **Hacker News as a signal.** Only Search Console and Reddit feed the ideas.
 - **Alerts and a Grafana panel** for the two flows. Their runs are counted by the existing
   `seo_flow_runs_total{flow,status}` metric.
+
+## Strategies (2026-11-18, owner request)
+
+"Improve content promotion, add different strategies to promote content." The Strategies tab
+(`src/lib/seo-intel/promotion/strategies.ts`, `promotionPlan`) computes, from data the site already has, seven
+strategies and the articles each applies to now. Every action ends in drafts or links for a person; nothing is posted.
+
+| Strategy | Applies to | Action |
+|---|---|---|
+| Launch | Published in the last 14 days | Draft posts (promotion_flow for the article) |
+| Evergreen reshare | Older than 60 days, ≥ 10 search clicks in 28 days, not shared for 90 days | Reshare: `POST /api/admin/seo/promotion/reshare` reopens channels posted over 90 days ago (posted URL and date kept, dismissed channels untouched) and drafts again |
+| Refresh, then reshare | Search clicks down ≥ 30% (previous 28 days ≥ 20) | Refresh first: an optimisation draft with freshness and title/meta tasks in the review queue |
+| Syndicate | Older than 7 days, not posted on dev.to or Hashnode | The article's dev.to / Hashnode drafts, canonical URL shown |
+| Community answers | Reddit threads matched to an article in the last 30 days | Open the thread |
+| Internal links | Suggested internal links to articles from the last 45 days | Internal linking |
+| Newsletter digest | This week's articles plus the top evergreen pick | A ready issue to copy, links with utm_source=newsletter |
+
