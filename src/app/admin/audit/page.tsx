@@ -79,7 +79,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               <Table head={<tr><th className={th}>IP address</th><th className={th}>Failures</th><th className={th}>Accounts</th><th className={th}>Last seen</th></tr>}>
                 {sec.topIps.map((r) => (
                   <tr key={r.ip}>
-                    <td className={`${td} font-mono text-xs`} title={r.lastAgent ?? ""}><Link href={`/admin/audit?ip=${encodeURIComponent(r.ip)}&days=1`} className="underline">{r.ip}</Link></td>
+                    <td className={`${td} min-w-48 font-mono text-xs [overflow-wrap:anywhere]`} title={r.lastAgent ?? ""}><Link href={`/admin/audit?ip=${encodeURIComponent(r.ip)}&days=1`} className="underline">{r.ip}</Link></td>
                     <td className={td}>{r.failures}</td>
                     <td className={td}>{r.accounts}</td>
                     <td className={`${td} whitespace-nowrap`}>{<LocalTime iso={r.lastSeen} />}</td>
@@ -149,8 +149,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
             <td className={`${td} max-w-[12rem] truncate`} title={r.actor}>{r.actor}</td>
             <td className={`${td} whitespace-nowrap font-mono text-xs`}>{r.action}</td>
             <td className={`${td} max-w-[14rem] truncate`} title={r.target ?? ""}>{r.target}</td>
-            <td className={`${td} max-w-[12rem]`}>
-              {r.ip ? <Link href={`/admin/audit${qs({ ...filter, page: 1 }, { ip: r.ip })}`} className="font-mono text-xs underline">{r.ip}</Link> : <span className="text-xs">—</span>}
+            <td className={`${td} max-w-[14rem]`}>
+              {r.ip ? <Link href={`/admin/audit${qs({ ...filter, page: 1 }, { ip: r.ip })}`} className="block truncate font-mono text-xs underline" title={r.ip}>{r.ip}</Link> : <span className="text-xs">—</span>}
               {r.userAgent && <span className="block truncate text-xs text-fg-subtle" title={r.userAgent}>{r.userAgent}</span>}
             </td>
             <td className={`${td} max-w-sm truncate font-mono text-xs`} title={r.detail ? JSON.stringify(r.detail) : ""}>{summary(r.detail)}</td>
