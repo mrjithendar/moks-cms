@@ -13,11 +13,12 @@ import httpx
 import pytest
 
 from app.crews.common import CrewBudgetExceeded, CrewCancelled, CrewRun, feedback_section, long_output_tokens
-from app.crews.editorial import EditorialCrew, code_blocks_of, split_review
+from app.crews.editorial import EditorialCrew, code_blocks_of, merge_flags, split_review
 from app.index import MemoryRetriever
 from app.llm import BudgetGuard, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Usage
 from app.main import memory_container
 from app.mcp.common import CLIENT_IP, Guard, RateLimiter, guarded
+from app.schemas import FactCheckFlag
 from app.services import review
 from app.services.content import ContentError
 from app.webapp import HttpWebApp, WebAppError
@@ -158,6 +159,58 @@ def test_split_review_wrapped_body() -> None:
     cut = "## Corrected MDX body\n\nNotes.\n\n```mdx\nIntro.\n\n```bash\nls\n```\n\n## Command reference"
     assert split_review(cut)[0] == "Intro.\n\n```bash\nls\n```\n\n## Command reference"
     assert split_review("## Corrected body\n\n## A\n\nText.")[0] == "## A\n\nText."
+
+
+def test_split_review_keeps_a_shell_pipe_in_the_claim() -> None:
+    rest = (
+        "## A\n\nNEEDS_FACT_CHECK:\n"
+        "- `ps -eo pid,stat,wchan:20,cmd \\| awk '$2 ~ /^D/'` | ps(1) not retrievable\n"
+        "- `dmesg | tail` shows the OOM kill | no source\n"
+        "- ps -ef | grep x | unbalanced `backtick\n"
+        "- a claim with no reason\n"
+    )
+    assert [(f.claim, f.reason) for f in split_review(rest)[1]] == [
+        ("`ps -eo pid,stat,wchan:20,cmd | awk '$2 ~ /^D/'`", "ps(1) not retrievable"),
+        ("`dmesg | tail` shows the OOM kill", "no source"),
+        ("ps -ef | grep x", "unbalanced `backtick"),
+        ("a claim with no reason", "the technical reviewer could not verify this against a source"),
+    ]
+
+
+async def test_the_seo_editors_copy_of_a_review_flag_is_listed_once(llm: FakeLlm, web: FakeWebApp) -> None:
+    # The SEO editor copies the reviewer's flags with backticks dropped, -> for → and a comma lost, or a sentence added.
+    review = (
+        REVIEWED + "\n\nNEEDS_FACT_CHECK:\n- Boot chain (UEFI → GRUB 2 → systemd), and the diagram | no boot docs\n"
+        "- `systemctl daemon-reload` is required | systemctl(1) not retrieved\n- `/blog/guide` is published | it is a draft\n- `lsof +L1` lists deleted files | no lsof docs"
+    )
+    meta = json.loads(META)
+    meta["fact_check_flags"] = [
+        {"claim": "Source status", "reason": "no official documentation fetched", "severity": "error"},
+        {"claim": "Boot chain (UEFI -> GRUB 2 -> systemd) and the diagram", "reason": "no boot docs", "severity": "warning"},
+        {"claim": "systemctl daemon-reload is required", "reason": "systemctl(1) not retrieved", "severity": "warning"},
+        {"claim": "/blog/guide is published", "reason": "It is a draft. Confirm it before linking.", "severity": "warning"},
+    ]
+    llm.queue("crew", final("Notes."), final("## Why rotate\n\nDraft body."), final(review), final(json.dumps(meta)))
+    r = await crew_with(llm, web).run(BRIEF)
+    assert r.status == "completed"
+    assert [(f.claim, f.reason, f.severity) for f in r.draft.fact_check_flags] == [
+        ("Source status", "no official documentation fetched", "error"),
+        ("Boot chain (UEFI -> GRUB 2 -> systemd) and the diagram", "no boot docs", "warning"),
+        ("systemctl daemon-reload is required", "systemctl(1) not retrieved", "warning"),
+        ("/blog/guide is published", "It is a draft. Confirm it before linking.", "warning"),
+        ("`lsof +L1` lists deleted files", "no lsof docs", "warning"),
+    ]
+
+
+def test_merge_flags_keeps_flags_that_share_a_claim_but_not_a_reason() -> None:
+    note = "Note left in the draft"
+    w = lambda c, r, s="warning": FactCheckFlag(claim=c, reason=r, severity=s)  # noqa: E731
+    merged = merge_flags([w(note, "capture real output"), w(note, "confirm the link"), w("`x` is set", "no source")], [w("x is set", "No source. Check the man page.", "error"), w(note, "Capture real output.")])
+    assert [(f.claim, f.reason, f.severity) for f in merged] == [
+        (note, "capture real output", "warning"),
+        (note, "confirm the link", "warning"),
+        ("`x` is set", "No source. Check the man page.", "error"),
+    ]
 
 
 # --- 3. publish idempotency ------------------------------------------------------------------------------------------
