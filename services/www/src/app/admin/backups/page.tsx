@@ -27,7 +27,7 @@ async function destination(form: FormData) {
   await flash("/admin/backups", async () => {
     await saveDestination(actor, { enabled: form.has("enabled"), bucket: String(form.get("bucket") ?? "") });
     if (form.get("test") === "1") await testDestination(actor);
-    return form.get("test") === "1" ? "Cloudflare R2 destination saved and tested successfully." : "Cloudflare R2 destination saved.";
+    return form.get("test") === "1" ? "Backup destination saved and tested successfully." : "Backup destination saved.";
   });
 }
 
@@ -94,20 +94,20 @@ export default async function BackupsPage({ searchParams }: { searchParams: Flas
         </Card>
 
         <Card>
-          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold text-fg">Cloudflare R2</h2><StatusPill status={b.r2?.enabled ? "ok" : b.r2 ? "read" : "not configured"} /></div>
+          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold text-fg">Storage bucket (Cloudflare R2 or Amazon S3)</h2><StatusPill status={b.r2?.enabled ? "ok" : b.r2 ? "read" : "not configured"} /></div>
           <p className="mb-4 text-sm text-fg-muted">
-            Backups use the R2 account and API token from <Link href="/admin/storage" className="link">Storage</Link> and are written to{" "}
+            Backups use the storage account and keys from <Link href="/admin/storage" className="link">Storage</Link> (Cloudflare R2 or Amazon S3) and are written to{" "}
             <code className="text-xs">{BACKUP_ROOT}/</code> in the bucket below. A separate private bucket is recommended: anything in a bucket with a public custom domain can be
-            fetched by URL (backups are encrypted, but keep them private anyway). The API token must have Object Read &amp; Write on that bucket.
+            fetched by URL (backups are encrypted, but keep them private anyway). The key must be able to read and write objects in that bucket.
           </p>
           {!b.storageReady && (
-            <div className="mb-4"><Alert tone="info">Cloudflare R2 is not configured yet. <Link href="/admin/storage" className="font-semibold underline">Set it up</Link> first.</Alert></div>
+            <div className="mb-4"><Alert tone="info">Media storage (Cloudflare R2 or Amazon S3) is not configured yet. <Link href="/admin/storage" className="font-semibold underline">Set it up</Link> first.</Alert></div>
           )}
           <form action={destination} className="grid gap-4 sm:grid-cols-2">
             <Field label="Bucket (optional)" htmlFor="r2-bucket" hint="Leave empty to use the media bucket.">
               <Input id="r2-bucket" name="bucket" defaultValue={b.r2?.bucket ?? ""} placeholder="jithendar-backups" autoComplete="off" spellCheck={false} />
             </Field>
-            <label className="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="enabled" defaultChecked={b.r2?.enabled ?? true} /> Back up to Cloudflare R2</label>
+            <label className="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="enabled" defaultChecked={b.r2?.enabled ?? true} /> Back up to the storage bucket</label>
             <div className="flex gap-2 sm:col-span-2">
               <Button type="submit" name="test" value="0" variant="secondary" disabled={!b.storageReady}>Save</Button>
               <Button type="submit" name="test" value="1" disabled={!b.storageReady}>Save and test</Button>

@@ -13,7 +13,7 @@ import { decryptWithPassphrase, derivedSecret, unseal, type Sealed } from "./sec
 import { bucketOps, storageReady } from "./storage";
 
 /**
- * Site backups to Cloudflare R2 (the media storage account; optionally a separate private bucket).
+ * Site backups to the media storage account, Cloudflare R2 or Amazon S3 (optionally a separate private bucket).
  * Contents: content, configuration and accounts WITHOUT password hashes, sessions, API-key hashes or stored
  * credentials. Each file is a standard zip: backup.json (the data) and README.txt (what it is, how to open it).
  * Encryption is the admin's choice (Admin → Backups), on by default: backup.json is AES-256 encrypted inside the zip
@@ -117,7 +117,7 @@ export async function saveDestination(actor: Actor, f: { enabled: boolean; bucke
   admin(actor);
   const bucket = f.bucket.trim().toLowerCase();
   if (!BUCKET.test(bucket)) throw new PostError("Bucket names are 3–63 lowercase letters, digits and hyphens.");
-  if (f.enabled && !(await storageReady())) throw new PostError("Configure Cloudflare R2 in Settings → Storage first.");
+  if (f.enabled && !(await storageReady())) throw new PostError("Configure media storage (Cloudflare R2 or Amazon S3) in Settings → Storage first.");
   const c = await readBackupConfig();
   await writeConfig({ ...c, r2: { enabled: f.enabled, bucket } }, actor.id);
   await audit(actor, "backup.destination", "r2", { enabled: f.enabled, bucket: bucket || "(media bucket)" });
@@ -225,7 +225,7 @@ const README = (encrypted: boolean, createdAt: string) =>
     "",
     "backup.json holds posts, pages, categories, author profiles, comments, contact messages, media records, redirects,",
     "Appearance & settings and accounts. It does NOT hold password hashes, sessions, API-key hashes or stored",
-    "credentials. Media files stay in Cloudflare R2; only their records are here.",
+    "credentials. Media files stay in the storage bucket; only their records are here.",
     "",
     encrypted
       ? "backup.json is encrypted (AES-256) with a key derived from the site's SETTINGS_ENCRYPTION_KEY. To read it, download\nit from Admin → Backups: the download is an unencrypted copy. To restore it, use Restore there."
@@ -319,7 +319,7 @@ async function runBackupNow(trigger: "manual" | "scheduled", actor?: Actor, runI
   try {
     const c = await readBackupConfig();
     const dests = await targets(c);
-    if (dests.length === 0) throw new PostError("Turn on the Cloudflare R2 destination first.");
+    if (dests.length === 0) throw new PostError("Turn on the backup destination first.");
     const { filename, data } = await buildBackup();
     for (const d of dests) {
       try {
