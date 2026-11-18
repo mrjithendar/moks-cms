@@ -296,7 +296,7 @@ export default async function LanceDbPage({ searchParams }: { searchParams: Prom
                 <td className={`${td} font-mono`}>{t.name}</td>
                 <td className={td}>{t.rows.toLocaleString()}</td>
                 <td className={td}>{t.version}</td>
-                <td className={`${td} text-xs`}>{t.columns.map((c) => `${c.name} (${c.kind})`).join(", ")}</td>
+                <td className={`${td} min-w-72 text-xs`}>{t.columns.map((c) => `${c.name} (${c.kind})`).join(", ")}</td>
                 <td className={`${td} text-right`}><Link className={linkCls} href={href({ table: t.name })}>Browse</Link></td>
               </tr>
             ))}

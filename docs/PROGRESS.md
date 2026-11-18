@@ -15,10 +15,14 @@ were not opened in a browser in this change).
 - Tables with no sideways scroll now have one: Claude usage (2), ML weights proposal, ML models, recommendation
   evidence, health score, metric details, news run breakdown, news analytics trend, practice abuse, practice problems.
 - `AddPromptForm`, `KeywordLinks`: the 16rem minimum width no longer applies on a screen narrower than that.
-- Tests: `tests/mobile-overflow.test.ts` (3, static: tables have a scroll region, no margin-spaced chip rows in `dd`,
-  no bare `1fr` in a `dl` grid). **lint, typecheck, test and build: not run** (the session that made this change had no
-  `node_modules` and no package registry access); the three scans were run with plain Node (before: 9 / 1 / 8 files,
-  after: 0 / 0 / 0). CI on the pull request is the first real run.
+- Tests: `tests/mobile-overflow.test.ts` (4, static: tables have a scroll region, no margin-spaced chip rows in `dd`,
+  no bare `1fr` in a `dl` grid, no bare `flex gap-N` row of buttons). lint, typecheck, test and build were not run locally (the session that made this change had no
+  `node_modules` and no package registry access); they ran in CI on pull request #152.
+- Button rows wrap (owner's second screenshot, Ask the Blog settings: "Reset text and limits to defaults" ran off the
+  screen): `flex-wrap` on 18 rows of two or more buttons or links (Ask the Blog, SEO settings bar, calendar actions,
+  run actions, log viewer, editor, news settings, backups, database, audit, appearance, media, practice).
+- LanceDB tables list (third screenshot): the Columns cell keeps a readable width and the table scrolls sideways,
+  instead of one word per line.
 - No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
 - Open: check on a real phone (Skills, ML models, Recommendations, Practice); a Playwright phone-viewport check that
   asserts `scrollWidth <= clientWidth` on every admin page would catch what a static scan cannot.

@@ -322,7 +322,7 @@ function AttachmentDetails({
           <Button type="button" variant="ghost" size="sm" disabled={!hasPrev} onClick={() => onNavigate(-1)} aria-label="Previous item">←</Button>
           <Button type="button" variant="ghost" size="sm" disabled={!hasNext} onClick={() => onNavigate(1)} aria-label="Next item">→</Button>
           <button type="button" onClick={remove} className="ml-2 text-sm font-medium text-red-600 underline">Delete permanently</button>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>Close</Button>
             <Button type="button" onClick={save} loading={pending} disabled={!dirty}>{saved && !dirty ? "Saved" : "Save"}</Button>
           </div>

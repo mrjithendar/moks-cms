@@ -91,7 +91,7 @@ function ProtectedView({ node, updateAttributes, deleteNode, selected }: NodeVie
     <NodeViewWrapper className={`not-prose my-4 rounded-xl border bg-surface-muted p-3 ${selected ? "border-brand-500 ring-2 ring-brand-500/30" : "border-slate-200 dark:border-white/10"}`} data-drag-handle>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{describe(source)}</span>
-        <span className="flex gap-1">
+        <span className="flex flex-wrap gap-1">
           <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-accent-text hover:bg-white dark:hover:bg-white/10" onClick={() => { setDraft(source); setOpen(true); }}>
             Edit
           </button>

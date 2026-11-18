@@ -133,7 +133,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
           <label className="sr-only" htmlFor="a-ip">IP address</label>
           <Input id="a-ip" name="ip" defaultValue={filter.ip} placeholder="IP address" spellCheck={false} />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="secondary">Filter</Button>
           <Link href="/admin/audit" className={buttonClass("ghost")}>Reset</Link>
         </div>

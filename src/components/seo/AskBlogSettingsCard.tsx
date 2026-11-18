@@ -272,7 +272,7 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
             ) : null}
           </Alert>
         )}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="submit" loading={busy}>
             Save Ask the Blog settings
           </Button>

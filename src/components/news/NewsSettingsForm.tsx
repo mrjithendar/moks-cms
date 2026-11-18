@@ -72,7 +72,7 @@ export function NewsSettingsForm({ initial, envEnabled, envProvider }: { initial
           {num("max_items_per_source", "Items per source per fetch")}
         </div>
       </section>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button disabled={busy} onClick={async () => { setBusy(true); try { await api("/api/admin/news/settings", "PUT", s); setMsg({ ok: true, text: "Saved." }); router.refresh(); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); } }}>Save settings</Button>
         <Button variant="ghost" disabled={busy} onClick={async () => { try { await api("/api/admin/news/settings", "POST", { action: "style_review" }); setMsg({ ok: true, text: "Style review started; a proposed profile version appears under Profiles when it finds consistent edits." }); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } }}>Run style review now</Button>
       </div>

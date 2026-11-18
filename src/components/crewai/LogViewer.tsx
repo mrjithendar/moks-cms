@@ -244,7 +244,7 @@ export function LogViewer({ runId, initial, live, steps, runStatus, hasMore }: {
             <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow
           </label>
         )}
-        <span className="flex gap-1 text-xs">
+        <span className="flex flex-wrap gap-1 text-xs">
           <button type="button" className="min-h-9 rounded-md px-2 text-fg-muted hover:bg-surface-sunken hover:text-fg" onClick={() => setOpen(new Set(groups.map((g) => g.key)))}>Expand all</button>
           <button type="button" className="min-h-9 rounded-md px-2 text-fg-muted hover:bg-surface-sunken hover:text-fg" onClick={() => setOpen(new Set())}>Collapse all</button>
           <a href={`/api/admin/crewai/runs/${runId}/logs?format=text`} className="inline-flex min-h-9 items-center rounded-md px-2 text-fg-muted hover:bg-surface-sunken hover:text-fg" download>Download</a>

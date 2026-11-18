@@ -356,7 +356,7 @@ export function Workspace({ problem, descriptionHtml, roleNames, topicNames, exe
       ) : (
         <span className="hidden text-xs text-fg-subtle sm:inline">Ctrl/⌘ + Enter runs · Ctrl/⌘ + Shift + Enter submits</span>
       )}
-      <div className="ml-auto flex gap-2">
+      <div className="ml-auto flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onClick={() => void execute("run")} disabled={Boolean(busy)}>
           Run
         </Button>
@@ -609,7 +609,7 @@ function SolutionPanel({ slug, state, setState, locked, sessionId, onError }: { 
               and it won&apos;t earn XP. Your time and attempts so far are recorded.
             </p>
             <p>You can keep experimenting with the code afterwards.</p>
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               <Button loading={busy} onClick={() => void reveal()}>
                 Reveal solution
               </Button>

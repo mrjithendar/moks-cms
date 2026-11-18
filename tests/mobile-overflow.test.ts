@@ -34,4 +34,10 @@ describe("phone layout", () => {
     const rigid = files.flatMap((f) => (/<dl className="[^"]*grid-cols-\[[^\]"]*(?<!minmax\(0,)1fr\]/.test(f.text) ? [f.name] : []));
     expect(rigid).toEqual([]);
   });
+
+  it("a row of buttons wraps: a bare `flex gap-N` row never holds two or more buttons", () => {
+    // Buttons do not break their label (whitespace-nowrap), so two long ones side by side are wider than a phone.
+    const rows = files.flatMap((f) => (/<div className="flex gap-\d">\n\s*<Button\b[\s\S]{0,600}?\n\s*<Button\b/.test(f.text) ? [f.name] : []));
+    expect(rows).toEqual([]);
+  });
 });

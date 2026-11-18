@@ -272,7 +272,7 @@ export function SettingsForm({ initial, defaults }: { initial: PublicSeoSettings
         <p className="text-sm text-fg-muted" aria-live="polite">
           {dirty ? `${changed.size + (llmApiKey || clearLlmKey ? 1 : 0)} unsaved change${changed.size + (llmApiKey || clearLlmKey ? 1 : 0) === 1 ? "" : "s"}` : "All changes saved"}
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="secondary"

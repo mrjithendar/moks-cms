@@ -68,7 +68,7 @@ export default async function DatabasePage({ searchParams }: { searchParams: Fla
             <h2 className="text-lg font-semibold text-fg">
               <code>{browse.table}</code> <span className="text-sm font-normal text-slate-500">· {browse.total.toLocaleString()} rows · page {browse.page} of {pages}</span>
             </h2>
-            <div className="flex gap-2 text-sm">
+            <div className="flex flex-wrap gap-2 text-sm">
               {browse.page > 1 && <Link className="rounded-lg border border-line-strong px-3 py-1.5" href={`/admin/database?table=${browse.table}&page=${browse.page - 1}`}>← Previous</Link>}
               {browse.page < pages && <Link className="rounded-lg border border-line-strong px-3 py-1.5" href={`/admin/database?table=${browse.table}&page=${browse.page + 1}`}>Next →</Link>}
               <Link className="rounded-lg border border-line-strong px-3 py-1.5" href="/admin/database">Close</Link>

@@ -75,7 +75,7 @@ export default async function SessionPage({ params, searchParams }: { params: Pr
             );
           })}
         </ol>
-        <div className="mt-8 flex gap-3">
+        <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/python-practice/dashboard" className={buttonClass("primary")}>
             Dashboard
           </Link>
