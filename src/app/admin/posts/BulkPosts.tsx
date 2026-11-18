@@ -126,21 +126,21 @@ export function BulkPosts({ rows, trash = false }: { rows: PostRowView[]; trash?
                 <td className={td}>
                   <input type="checkbox" aria-label={`Select ${r.title}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
                 </td>
-                <td className={`${td} min-w-56`}>
+                <td className={`${td} min-w-72`}>
                   {trash ? (
                     <span className="font-medium text-fg">{r.title}</span>
                   ) : (
-                    <Link href={`/admin/posts/${r.id}`} className="flex items-center gap-3 font-medium text-fg hover:underline">
+                    <Link href={`/admin/posts/${r.id}`} className="flex items-start gap-3 font-medium leading-snug text-fg hover:underline">
                       {r.cover ? (
                         // eslint-disable-next-line @next/next/no-img-element -- admin thumbnail
-                        <img src={r.cover} alt="" className="h-10 w-16 shrink-0 rounded-md object-cover" />
+                        <img src={r.cover} alt="" loading="lazy" className="h-10 w-16 shrink-0 rounded-md bg-slate-100 object-cover dark:bg-white/5" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
                       ) : (
                         <span className="h-10 w-16 shrink-0 rounded-md bg-slate-100 dark:bg-white/5" aria-hidden="true" />
                       )}
-                      {r.title}
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{r.title}</span>
                     </Link>
                   )}
-                  <div className="mt-1 flex flex-wrap gap-x-3 text-xs">
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
                     {trash ? (
                       <>
                         <button type="button" className="font-semibold text-accent-text underline" onClick={() => act("restore", [r.id])}>Restore</button>

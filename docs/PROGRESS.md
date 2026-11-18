@@ -1,5 +1,20 @@
 # Progress log — jithendar.com
 
+## Phone layout, part 2: posts list and audit log (2026-11-18, owner request)
+
+Follow-up to #152 (merged before its last commit, so the audit log fix is here).
+
+- Posts list (`BulkPosts.tsx`, owner's screenshot "looking ugly"): the Post cell is wider (18rem, the table already
+  scrolls sideways), the thumbnail sits at the top of the title instead of floating in the middle of five lines, the
+  row actions fit on one line, and a cover that fails to load shows the grey placeholder instead of the browser's
+  broken-image mark. Why those covers fail to load was not looked into here (see Open).
+- Audit log: a long IPv6 address ran out of its cell over the Details column. It is now cut with an ellipsis like the
+  client line under it (full address in the tooltip, and the link still filters by it); in the failed sign-ins table
+  it wraps.
+- lint, typecheck, test and build were not run locally (no `node_modules`); they run in CI on the pull request. Not
+  checked in a browser. No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
+- Open: the draft posts in the screenshot have a cover URL that does not load in the admin list.
+
 ## Phone layout: no admin page wider than the screen (2026-11-18, owner request)
 
 Owner (screenshot of Admin → Skills on a phone, page wider than the screen): "fix mobile view … check site wide ui ux".
@@ -29,9 +44,6 @@ were not opened in a browser in this change).
 - Long button labels wrap on a phone (fifth screenshot, Database → Maintenance: "Delete abandoned uploads …" was wider
   than the screen): the shared `buttonClass` (`components/ui/form.tsx`) is `whitespace-normal` with `max-w-full` below
   `sm` and one line from `sm` up, so every Button and button-styled link is covered. Database: the Size cell stays on one line.
-- Audit log (sixth screenshot): a long IPv6 address ran out of its cell over the Details column. It is now cut with an
-  ellipsis like the client line under it (full address in the tooltip, and the link still filters by it); in the
-  failed sign-ins table it wraps.
 - No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
 - Open: check on a real phone (Skills, ML models, Recommendations, Practice); a Playwright phone-viewport check that
   asserts `scrollWidth <= clientWidth` on every admin page would catch what a static scan cannot.
