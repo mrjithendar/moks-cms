@@ -121,7 +121,7 @@ async def test_the_body_is_the_reviewed_body_and_the_seo_editor_returns_metadata
     assert [(b.lang, b.code) for b in r.draft.code_blocks] == [("bash", "kubectl get certificate -A")]
     assert [f.claim for f in r.draft.fact_check_flags] == ["cert-manager renews at 2/3 of lifetime"]  # from the review
     by_agent = {s.agent: s.max_tokens for s in llm.calls}
-    assert by_agent == {"researcher": 4096, "writer": 16_000, "reviewer": 16_000, "seo_editor": 4096}
+    assert by_agent == {"researcher": 8192, "writer": 16_000, "reviewer": 16_000, "seo_editor": 4096}
     assert "Do NOT include the article body" in llm.calls[3].user
 
 
