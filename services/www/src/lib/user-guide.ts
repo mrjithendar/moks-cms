@@ -220,7 +220,8 @@ const guides: GuideEntry[] = [
       "- Improve (once a draft exists): the SEO agent reads the current draft, checks it against fresh research and replaces it with a revised version, unless you edit the post meanwhile. Add instructions if you want something specific.",
       "- Schedule: pick a date and time (India Standard Time; 09:00 when empty). If the draft is written and ready to publish, its post is scheduled and publishes by itself then. Otherwise the date is kept and a note says what is missing (no draft yet, outline only, fact-check errors, fields the post still needs); fix it and press Schedule again. Unschedule returns the post to draft.",
       "- Delete: removes the item from the calendar; its post is kept, and a scheduled post goes back to draft.",
-      "Ideas from Search Console and the editorial engine are added automatically; add your own with Add an item.",
+      "Ideas are added automatically every week, each with its source (the Source filter): Search Console (queries with demand and no article), ML query clusters (groups of related searches with at least 100 impressions in 28 days that no article covers), Google Analytics (the next topic for readers of your most engaging articles), AI (questions readers asked Ask the Blog at least twice that no article answered, and the Promotion crew's best ideas) and editorial ideas. At most two per source a week, and none while twelve automatic ideas are still waiting without a draft or a date. Delete an idea you do not want: it is not suggested again.",
+      "Add your own ideas with Add an item.",
     ],
   },
   {

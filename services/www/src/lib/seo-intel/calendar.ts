@@ -21,8 +21,11 @@ export type CalStatus = (typeof STATUSES)[number];
 export const PHASES = ["unscheduled", "scheduled", "published"] as const;
 export type Phase = (typeof PHASES)[number];
 
-/** Where an item came from, for the filter: Search Console data, the ML/analytics engine, an editorial idea, or a person. */
-export type Source = "measured" | "ml" | "editorial" | "manual";
+/**
+ * Where an item came from, for the filter: Search Console demand, the ML query clusters, Google Analytics, the AI
+ * (reader questions on Ask the Blog, the Promotion crew's ideas), the editorial engine, or a person.
+ */
+export type Source = "measured" | "ml" | "analytics" | "ai" | "editorial" | "manual";
 
 /**
  * The state of an item's draft:
@@ -92,11 +95,12 @@ export const patchSchema = z
 type Row = Record<string, unknown>;
 
 const sourceOf = (r: Row): Source => {
-  const brief = (r.brief as { source?: string } | null) ?? {};
-  if (String(r.kind) === "measured") return "measured";
-  if (brief.source === "manual") return "manual";
-  if (["ml", "analytics", "ga4", "ai"].includes(String(brief.source ?? ""))) return "ml";
-  return "editorial";
+  const source = String(((r.brief as { source?: string } | null) ?? {}).source ?? "");
+  if (source === "ml") return "ml";
+  if (source === "analytics") return "analytics";
+  if (source === "ask" || source === "promotion") return "ai";
+  if (source === "manual") return "manual";
+  return String(r.kind) === "measured" ? "measured" : "editorial";
 };
 
 function draftStateOf(r: Row): DraftState {

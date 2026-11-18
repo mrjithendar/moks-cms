@@ -4,6 +4,7 @@ import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { recordSeoRecommendations } from "../metrics";
 import { loadAnalysisData } from "./data";
+import { addAutomaticIdeas } from "./calendar-auto";
 import { generateEditorialSuggestions } from "./editorial";
 import { llmJson, safeQueries, type LlmDeps } from "./llm";
 import { runRules, type Candidate } from "./rules";
@@ -20,7 +21,7 @@ import { addDays } from "./sqlutil";
  */
 export const PROMPT_VERSION = "seo-rec-explain-v1";
 
-export type GenerateResult = { created: number; refreshed: number; skipped: number; linkSuggestions: number; editorial: number; enriched: number; asOf: string | null };
+export type GenerateResult = { created: number; refreshed: number; skipped: number; linkSuggestions: number; editorial: number; automatic?: Record<string, number>; enriched: number; asOf: string | null };
 
 export async function generateRecommendations(opts: { llm?: boolean; now?: Date; llmDeps?: LlmDeps } = {}): Promise<GenerateResult> {
   const db = await getDb();
@@ -68,8 +69,10 @@ export async function generateRecommendations(opts: { llm?: boolean; now?: Date;
       where seo_internal_link_suggestions.status = 'suggested'`);
   }
   const editorial = await generateEditorialSuggestions(db, s, data, candidates, now);
+  // Calendar ideas from the AI (reader questions, Promotion ideas), the ML query clusters and Google Analytics.
+  const automatic = await addAutomaticIdeas(db, data, now);
   const enriched = opts.llm === false ? 0 : await enrichRecommendations(db, s, 10, opts.llmDeps);
-  return { created, refreshed, skipped, linkSuggestions: linkSuggestions.length, editorial, enriched, asOf: data.asOf };
+  return { created, refreshed, skipped, linkSuggestions: linkSuggestions.length, editorial, automatic, enriched, asOf: data.asOf };
 }
 
 async function writeEvidence(db: Db, id: string, c: Candidate) {

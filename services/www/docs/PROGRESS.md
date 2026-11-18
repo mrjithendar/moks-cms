@@ -1,5 +1,21 @@
 # Progress log — jithendar.com
 
+## Editorial calendar ideas added automatically from the AI, ML and Google Analytics (2026-11-18, owner request)
+
+Decision record: docs/seo/DECISIONS.md **D-95**.
+
+- `src/lib/seo-intel/calendar-auto.ts` (new), called from `recommendations.ts` after the Search Console and editorial
+  suggestions: reader questions asked ≥ 2 times (Ask the Blog), Promotion ideas scoring ≥ 70, ML query clusters with
+  ≥ 100 impressions in 28 days and no article, and Google Analytics follow-ups for the most engaging articles. At most 2
+  per source a run, none while 12 automatic items are open; fingerprints keep a subject (and a deleted idea) from
+  coming back; a failing source is skipped.
+- Calendar Source filter: Search Console, ML query clusters, Google Analytics, AI (reader questions, Promotion),
+  Editorial idea, Added by hand (`calendar.ts` `sourceOf`, calendar page).
+- User guide (calendar) updated; `editorial.ts` header comment no longer mentions approving.
+- Tests: `tests/calendar-auto.test.ts` (6: each source with its threshold, two per run, the open cap, a deleted idea
+  not coming back, a failing source skipped).
+- No migration, no new dependency.
+
 ## Editorial calendar: unscheduled, scheduled, published; Generate, Improve, Schedule; filters (2026-11-18, owner request)
 
 Owner: no approve/drop, just unscheduled, scheduled and published; each item has Generate draft (checking for a draft,
