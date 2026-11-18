@@ -1,5 +1,28 @@
 # Progress log — jithendar.com
 
+## Phone layout: no admin page wider than the screen (2026-11-18, owner request)
+
+Owner (screenshot of Admin → Skills on a phone, page wider than the screen): "fix mobile view … check site wide ui ux".
+Cause: the skill's tags were inline chips with no space between them, so the line could not break, inside a grid column
+that grows to fit its content. The same patterns were then searched for in every `.tsx` file (a static pass; the pages
+were not opened in a browser in this change).
+
+- Skills (`SkillsManager.tsx`): tags wrap (`flex flex-wrap`), the one-column list is `minmax(0,1fr)`.
+- `globals.css`: inside the admin shell a long word breaks instead of overflowing; `dd` may shrink below its longest
+  word everywhere (definition values sit in grid columns).
+- Definition lists with a bare `1fr` column now use `minmax(0,1fr)`: post insights, integrations, ML models, calendar
+  item, new-article review, SEO agent card, practice workspace (details and test results); practice bar rows too.
+- Tables with no sideways scroll now have one: Claude usage (2), ML weights proposal, ML models, recommendation
+  evidence, health score, metric details, news run breakdown, news analytics trend, practice abuse, practice problems.
+- `AddPromptForm`, `KeywordLinks`: the 16rem minimum width no longer applies on a screen narrower than that.
+- Tests: `tests/mobile-overflow.test.ts` (3, static: tables have a scroll region, no margin-spaced chip rows in `dd`,
+  no bare `1fr` in a `dl` grid). **lint, typecheck, test and build: not run** (the session that made this change had no
+  `node_modules` and no package registry access); the three scans were run with plain Node (before: 9 / 1 / 8 files,
+  after: 0 / 0 / 0). CI on the pull request is the first real run.
+- No admin page, setting or option changed, so the user guide is unchanged. No new dependency.
+- Open: check on a real phone (Skills, ML models, Recommendations, Practice); a Playwright phone-viewport check that
+  asserts `scrollWidth <= clientWidth` on every admin page would catch what a static scan cannot.
+
 ## CrewAI console, phase 1: runs and logs like GitHub Actions (2026-11-18, owner request)
 
 Owner: "seo-agent crews and jobs can be managed from jithendar.com/admin/crewai, can see all run logs like github

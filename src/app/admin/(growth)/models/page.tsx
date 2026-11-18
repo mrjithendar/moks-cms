@@ -48,7 +48,7 @@ function Comparison({ m }: { m: ModelRow }) {
     ],
   };
   return (
-    <table className="mt-3 w-full text-left text-sm tabular-nums">
+    <div className="overflow-x-auto"><table className="mt-3 w-full text-left text-sm tabular-nums">
       <thead>
         <tr className="text-xs text-fg-subtle">
           <th className="py-1 pr-3 font-medium">Held-out metric</th>
@@ -65,7 +65,7 @@ function Comparison({ m }: { m: ModelRow }) {
           </tr>
         ))}
       </tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -108,7 +108,7 @@ export default async function ModelsPage() {
             </div>
             {m.latest ? (
               <>
-                <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr_auto_1fr]">
+                <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
                   <dt className="text-fg-subtle">Version</dt><dd>{m.latest.version}{m.latest.active ? " (active)" : ""}</dd>
                   <dt className="text-fg-subtle">Trained</dt><dd>{fmtWhen(m.latest.trainedAt)}</dd>
                   <dt className="text-fg-subtle">Data size</dt><dd>{m.latest.nSamples}</dd>

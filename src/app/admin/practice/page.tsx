@@ -122,7 +122,7 @@ export default async function PracticeAdmin({ searchParams }: { searchParams: Fl
           <h2 className="font-semibold text-fg">Abuse signals (last hour)</h2>
           <p className="mt-1 text-sm text-fg-muted">Accounts with 10+ runs hitting time or memory limits, or 100+ runs. The executor also blocks repeat offenders for 15 minutes on its own.</p>
           {o.abuse.length ? (
-            <table className="mt-3 w-full text-sm">
+            <div className="overflow-x-auto"><table className="mt-3 w-full text-sm">
               <thead className="text-left text-fg-subtle">
                 <tr>
                   <th className="py-1">Account</th>
@@ -141,7 +141,7 @@ export default async function PracticeAdmin({ searchParams }: { searchParams: Fl
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           ) : (
             <p className="mt-3 text-sm text-fg-muted">Nothing unusual.</p>
           )}

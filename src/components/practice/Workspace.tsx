@@ -520,7 +520,7 @@ function ProblemPanel({ problem, html, roleNames, topicNames }: { problem: Publi
         </Section>
       )}
       <Section title="Details">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
           <dt className="text-fg-subtle">Level</dt>
           <dd>{DIFFICULTY_INFO[problem.difficulty].criteria}</dd>
           <dt className="text-fg-subtle">Roles</dt>
@@ -840,7 +840,7 @@ function ResultsPanel({ submission, error, entrypoint, executionEnabled, busy }:
               <code className="font-mono text-fg-muted">{callRepr(entrypoint, r.args, r.kwargs).slice(0, 120)}</code>
               {r.ms !== undefined && <span className="ml-2 text-fg-subtle">{r.ms} ms</span>}
             </summary>
-            <dl className="mt-2 grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 font-mono text-[0.8125rem]">
+            <dl className="mt-2 grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[0.8125rem]">
               <dt className="font-sans text-fg-subtle">Expected</dt>
               <dd className="[overflow-wrap:anywhere]">{pyRepr(r.expected)}</dd>
               <dt className="font-sans text-fg-subtle">Got</dt>

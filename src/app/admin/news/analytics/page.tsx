@@ -63,7 +63,7 @@ export default async function NewsAnalyticsPage() {
                 })}
               </svg>
               <figcaption className="sr-only">{trend.map((t) => `${t.week}: ${Number(t.avg).toFixed(2)} (${t.n})`).join("; ")}</figcaption>
-              <table className="mt-2 w-full text-xs"><tbody>{trend.map((t) => <tr key={t.week}><td>{t.week}</td><td className="tabular-nums">{Number(t.avg).toFixed(3)}</td><td className="text-fg-subtle">{t.n} articles</td></tr>)}</tbody></table>
+              <div className="overflow-x-auto"><table className="mt-2 w-full text-xs"><tbody>{trend.map((t) => <tr key={t.week}><td>{t.week}</td><td className="tabular-nums">{Number(t.avg).toFixed(3)}</td><td className="text-fg-subtle">{t.n} articles</td></tr>)}</tbody></table></div>
             </figure>
           )}
         </section>

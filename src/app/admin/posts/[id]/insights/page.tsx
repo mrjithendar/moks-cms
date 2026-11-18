@@ -99,7 +99,7 @@ export default async function ArticleSeoPage({ params, searchParams }: { params:
       <div className="grid gap-6 lg:grid-cols-2">
         <Section title="Current metadata">
           <Card>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
               <dt className="text-fg-subtle">Search title</dt><dd className="[overflow-wrap:anywhere]">{a.seoTitle || <em>{a.title} (title)</em>}</dd>
               <dt className="text-fg-subtle">Meta description</dt><dd className="[overflow-wrap:anywhere]">{a.seoDescription || <em>{a.description} (description)</em>}</dd>
               <dt className="text-fg-subtle">Category · tags</dt><dd>{a.category} · {a.tags.join(", ") || "—"}</dd>

@@ -36,7 +36,7 @@ export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
         {b.paused && <p className="mt-2 text-sm font-medium text-red-700 dark:text-red-300">Budget reached: drafting is paused until next month or until the budget is raised.</p>}
       </div>
       {b.byModel.length > 0 && (
-        <table className="mt-4 w-full text-sm">
+        <div className="overflow-x-auto"><table className="mt-4 w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-fg-subtle"><th className="py-1 font-medium">Model</th><th className="font-medium">Calls</th><th className="font-medium">Cache hit</th><th className="text-right font-medium">Cost</th></tr>
           </thead>
@@ -50,13 +50,13 @@ export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       {flows && (flows.flows.length > 0 || flows.outsideFlowsUsd > 0) && (
         <div className="mt-5">
           <h3 className="text-sm font-semibold text-fg">By flow</h3>
           <p className="mt-0.5 text-xs text-fg-subtle">Measured cost of each agent flow&apos;s runs this month (seo_flow_runs). News and Ask the Blog have their own caps and are not included.</p>
-          <table className="mt-2 w-full text-sm">
+          <div className="overflow-x-auto"><table className="mt-2 w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-fg-subtle"><th className="py-1 font-medium">Flow</th><th className="font-medium">Runs</th><th className="font-medium">Share</th><th className="text-right font-medium">Cost</th></tr>
             </thead>
@@ -83,7 +83,7 @@ export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </Card>

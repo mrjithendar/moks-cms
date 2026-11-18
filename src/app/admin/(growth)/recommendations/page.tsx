@@ -69,10 +69,10 @@ export default async function RecommendationsPage({ searchParams }: { searchPara
                   )}
                   <details className="mt-3 text-sm">
                     <summary className="cursor-pointer text-fg-muted">Evidence ({r.evidence.length}) and score inputs</summary>
-                    <table className="mt-2 w-full text-left text-xs tabular-nums">
+                    <div className="overflow-x-auto"><table className="mt-2 w-full text-left text-xs tabular-nums">
                       <thead><tr className="text-fg-subtle"><th className="py-1 pr-3">Metric</th><th className="pr-3">Period</th><th className="pr-3">Value</th><th>Source</th></tr></thead>
                       <tbody>{r.evidence.map((e, i) => <tr key={i}><td className="py-0.5 pr-3">{e.metric}</td><td className="pr-3">{e.period}</td><td className="pr-3 [overflow-wrap:anywhere]">{e.valueText ?? fmtVal(e.metric, e.value)}</td><td>{e.source}</td></tr>)}</tbody>
-                    </table>
+                    </table></div>
                     <p className="mt-2 text-xs text-fg-subtle">Inputs used: {si.used?.join(", ") || "none"}{si.missing?.length ? `; missing (excluded, weights renormalised): ${si.missing.join(", ")}` : ""}.</p>
                   </details>
                   {r.baseline != null && <p className="mt-2 text-xs text-fg-subtle">Baseline (28 days before): {JSON.stringify(r.baseline)}{r.after28 != null ? ` · +28 days: ${JSON.stringify(r.after28)}` : ""}{r.after56 != null ? ` · +56 days: ${JSON.stringify(r.after56)}` : ""}</p>}

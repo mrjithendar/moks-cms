@@ -30,7 +30,7 @@ export function AddPromptForm() {
     >
       <label className="grid flex-1 gap-1 text-xs text-fg-subtle">
         Add a prompt (a question a reader would ask an assistant)
-        <input value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={200} placeholder="e.g. How do Argo CD sync waves work?" className="min-h-11 w-full min-w-64 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg md:min-h-9" />
+        <input value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={200} placeholder="e.g. How do Argo CD sync waves work?" className="min-h-11 w-full min-w-[min(16rem,100%)] rounded-md border border-line-strong bg-surface px-2 text-sm text-fg md:min-h-9" />
       </label>
       <Button type="submit" size="sm" loading={busy}>Add</Button>
       {msg && <span role="status" className="text-xs text-fg-muted">{msg}</span>}

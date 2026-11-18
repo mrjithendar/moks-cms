@@ -20,10 +20,10 @@ export function HealthScore({ score, inputs }: { score: number | null; inputs: H
                 <div>
                   <p className="font-semibold text-fg">How the score is calculated</p>
                   <p className="mt-1 text-xs text-fg-muted">Weighted average of the measured inputs (each 0–100). Inputs not measured yet are left out and the weights renormalised.</p>
-                  <table className="mt-2 w-full text-xs">
+                  <div className="overflow-x-auto"><table className="mt-2 w-full text-xs">
                     <thead><tr className="text-left text-fg-subtle"><th className="font-medium">Input</th><th className="text-right font-medium">Score</th><th className="text-right font-medium">Weight</th></tr></thead>
                     <tbody>{inputs.map((i) => <tr key={i.key} className="border-t border-line align-top"><td className="py-1 pr-2">{i.label}<span className="block text-fg-subtle">{i.detail}</span></td><td className="py-1 text-right tabular-nums">{i.score ?? "n/a"}</td><td className="py-1 text-right tabular-nums">{i.score === null ? "—" : `${Math.round((i.weight / total) * 100)}%`}</td></tr>)}</tbody>
-                  </table>
+                  </table></div>
                 </div>
               )}
             </Popover>

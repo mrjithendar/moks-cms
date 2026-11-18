@@ -104,14 +104,14 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                   <td className={td}>
                     <details>
                       <summary className="cursor-pointer text-xs">breakdown</summary>
-                      <table className="mt-2 text-xs">
+                      <div className="overflow-x-auto"><table className="mt-2 text-xs">
                         <tbody>
                           {Object.entries(feats).sort((x, y) => y[1].contribution - x[1].contribution).map(([k, v]) => (
                             <tr key={k}><td className="pr-3">{k.replace(/_/g, " ")}</td><td className="pr-3 tabular-nums">{v.value.toFixed(2)} × {v.weight.toFixed(2)}</td><td className="tabular-nums">= {v.contribution.toFixed(3)}</td></tr>
                           ))}
                           {b.contributions && Object.entries(b.contributions).map(([k, v]) => <tr key={`m-${k}`}><td className="pr-3">model: {k}</td><td colSpan={2} className="tabular-nums">{v >= 0 ? "+" : ""}{v.toFixed(3)}</td></tr>)}
                         </tbody>
-                      </table>
+                      </table></div>
                     </details>
                   </td>
                   <td className={`${td} text-xs`}><span className={c.decision === "selected" ? "font-semibold text-emerald-700 dark:text-emerald-300" : ""}>{String(c.decision)}</span><p className="text-fg-subtle [overflow-wrap:anywhere]">{String(c.reason)}</p></td>

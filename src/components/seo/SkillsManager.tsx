@@ -119,11 +119,11 @@ function SkillCard({ skill: s, ...ctx }: { skill: Skill } & Ctx) {
         </span>
       </div>
       <p className="mt-2 text-sm text-fg-muted">{s.description}</p>
-      <dl className="mt-2 grid gap-1 text-xs text-fg-subtle sm:grid-cols-[auto_1fr] sm:gap-x-3">
+      <dl className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-1 text-xs text-fg-subtle sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-3">
         <dt className="font-medium">For</dt>
         <dd>{s.agents.map((a) => ctx.label.get(a) ?? a).join(" · ")}</dd>
         <dt className="font-medium">When</dt>
-        <dd>{s.tags.length ? s.tags.map((t) => <code key={t} className="mr-1 rounded bg-surface-sunken px-1">{t}</code>) : "every run of these agents"}</dd>
+        <dd className="flex flex-wrap gap-1">{s.tags.length ? s.tags.map((t) => <code key={t} className="rounded bg-surface-sunken px-1 [overflow-wrap:anywhere]">{t}</code>) : "every run of these agents"}</dd>
       </dl>
       {msg && <p role="status" className="mt-2 text-xs text-red-700 dark:text-red-300">{msg}</p>}
       {editing ? (

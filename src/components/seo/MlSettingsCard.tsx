@@ -52,7 +52,7 @@ export function MlSettingsCard({ data }: { data: Awaited<ReturnType<typeof loadM
             <p className="mt-1 text-sm text-fg-muted">
               Learned from {open.nOutcomes} implemented recommendations ({open.modelVersion}, {fmtWhen(open.createdAt)}). Held-out NDCG@10: proposed {Number(open.metrics.ndcg10_proposed ?? 0).toFixed(3)} vs current {Number(open.metrics.ndcg10_current ?? 0).toFixed(3)}. Observational data, not a controlled experiment.
             </p>
-            <table className="mt-2 w-full max-w-lg text-left text-sm tabular-nums">
+            <div className="overflow-x-auto"><table className="mt-2 w-full max-w-lg text-left text-sm tabular-nums">
               <thead><tr className="text-xs text-fg-subtle"><th className="py-1 font-medium">Input</th><th className="font-medium">Current</th><th className="font-medium">Proposed</th></tr></thead>
               <tbody>
                 {INPUTS.map((k) => (
@@ -63,7 +63,7 @@ export function MlSettingsCard({ data }: { data: Awaited<ReturnType<typeof loadM
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             <div className="mt-3 flex gap-2">
               <ApiButton url={`/api/admin/seo/models/proposals/${open.id}`} body={{ decision: "approve" }} label="Approve: use these weights" variant="primary" confirm="Replace the scoring weights with the proposed ones? Recommendations are re-scored on the next analysis run; the change is audit-logged and can be edited back in Scoring weights." />
               <ApiButton url={`/api/admin/seo/models/proposals/${open.id}`} body={{ decision: "dismiss" }} label="Dismiss" />
