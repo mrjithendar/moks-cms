@@ -1,5 +1,21 @@
 # Progress log — jithendar.com
 
+## Agent skills for every crew, managed on AI room → Skills (2026-11-18, owner request)
+
+Decision record: docs/seo/DECISIONS.md **D-96**; how it works: docs/seo/CREWS.md "Skills".
+
+- Web app: migration `0035_agent_skills.sql` (`seo_agent_skills`; rollback in `src/db/rollback/`),
+  `src/lib/seo-agent/skills.ts` (22 default skills covering all 16 crew agents, validation, create/edit/disable/reset/
+  delete with audit, the agent's list), admin API `/api/admin/seo/skills` (+ `[id]`, `[id]/reset`), callback
+  `GET /internal/seo-agent/skills`, page `/admin/automation/skills` (`SkillsManager`), menu entry under AI room, user
+  guide entry. `calendarBrief` fills a missing intent from the ML intent model (`mlIntentFor` in `ml.ts`).
+- seo-agent: `app/crews/skills.py` (fetch, per-agent selection by tags, activated CrewAI skills, run tags per crew),
+  `run_crew`/`build_agents` give each agent its skills in the cached system prompt; the Editorial, Optimization,
+  Report and News crews pass their run's tags. `HttpWebApp.agent_skills`.
+- Tests: `tests/agent-skills.test.ts` (10, including the page render), `tests/admin-nav.test.tsx` (Skills in the AI room), seo-agent
+  `tests/test_skills.py` (10) and the callback contract.
+- No new dependency. The agent's database role is unchanged.
+
 ## Storage: Amazon S3 next to Cloudflare R2 (2026-11-18, owner request)
 
 Owner: "make separate storage and email menus and add S3 bucket support" (the menus came in #130).

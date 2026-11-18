@@ -18,6 +18,7 @@ from ..config import Settings
 from ..llm import Llm
 from ..tools import ToolContext, data_block
 from .common import AgentDef, CrewRun, build_agents, make_crew, run_crew
+from .skills import report_tags
 
 PROMPT_VERSION = "seo-report-crew-v1"
 
@@ -172,6 +173,6 @@ class ReportCrew:
             )
             return make_crew(agents, [task], self.settings), [task]
 
-        o = await run_crew("report", build, self.settings, ctx)
+        o = await run_crew("report", build, self.settings, ctx, tags=report_tags(report))
         text = str(getattr(o.output, "raw", "") or "").strip() if o.output is not None else ""
         return ReportCrewResult(text, o.status if text else "incomplete", o.reason or (None if text else "no narrative"), o.tokens, o.cost_usd)
