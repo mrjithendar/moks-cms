@@ -1,5 +1,22 @@
 # Progress log — jithendar.com
 
+## Storage: Amazon S3 next to Cloudflare R2 (2026-11-18, owner request)
+
+Owner: "make separate storage and email menus and add S3 bucket support" (the menus came in #130).
+
+- `src/lib/storage.ts`: a `provider` (`r2` default, `s3`) and `region` on the stored and env configuration; AWS's
+  regional endpoint (`https://s3.<region>.amazonaws.com`) with virtual-hosted requests, path-style kept for R2 and
+  custom endpoints (S3-compatible services); `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
+  (`S3_ENDPOINT`, `S3_PUBLIC_BASE_URL` optional) from the deployment; `storageInput` is a union per provider. Settings
+  saved before today have no provider and stay R2. Media, presigned uploads, site files, invoices and backups use the
+  same S3 API, so nothing else changes.
+- The SEO agent's LanceDB location (`lancedbStorage`) passes the real region, and no endpoint for plain S3.
+- Admin → Settings → Storage: provider choice (`StorageForm.tsx`), region or account ID, S3 CORS note.
+- User guide and settings reference updated. Tests: `tests/r2-config.test.ts` (S3 env, validation, old rows),
+  `tests/seo-agent-lancedb-storage.test.ts` (S3 handoff).
+- Not changed: the System status check's name ("Media storage (Cloudflare R2)") and the Backups card title, which
+  #136 also edits; its detail line already names the provider.
+
 ## Media: Unused filter, unused notice, select all matching (2026-11-18, owner request)
 
 Owner: "can filter unused media, select multiple media and delete media items". Bulk select and bulk delete existed
