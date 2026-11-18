@@ -56,9 +56,7 @@ SITE_DIR=../jithendar.com npm run dev                # a site repository checked
    (jithendar.com's `scripts/check-content.sh`).
 5. Deploy it: a Deployment, Service, route, TLS certificate, Secret and database for the site. `moks-tech/jithendar.com`
    is the worked example (`kubernetes/`, `.github/workflows/content.yml`, `deploy-kubernetes.yml` and its README).
-6. To hear about new moks-cms images, add the repository to moks-cms's variable `RELEASE_NOTIFY_REPOS` and handle
-   the `moks-cms-released` repository_dispatch (jithendar.com puts the tag in its manifests and applies them).
-7. **Dashboards**: copy jithendar.com's `grafana/`, change the `jithendar-com` job, service and namespace names, the
+6. **Dashboards**: copy jithendar.com's `grafana/`, change the `jithendar-com` job, service and namespace names, the
    uids and the titles, name the ConfigMap after the site, and add an Argo CD Application for the folder (tools repo,
    next to jithendar.com's in `deploy/minikube/applications/grafana.yaml`). uids and ConfigMap names must be unique
    across sites, since all sites share one Grafana.

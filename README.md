@@ -20,7 +20,7 @@ The SEO agent service (Python: CrewAI Flows and Crews, MCP servers, pgvector, As
 | [`docs/`](docs/) | Design and operations docs (content model, media, SEO, news desk, cache bus) |
 | `Dockerfile`, `Dockerfile.ci` | The image: a full local build, and CI's package of a prebuilt `.next/standalone` |
 | [`sites/`](sites/README.md) | The template for a new site's repository (`_template/`) |
-| `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `image-size.sh`, `notify-sites.sh`, `check-dashboards.py`, `build-alerts.py` |
+| `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `image-size.sh`, `check-dashboards.py`, `build-alerts.py` |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; when one is merged, tests and pushes the image to Harbor (`registry.jithendar.com/jithendar`) |
 
@@ -77,9 +77,7 @@ reads them at run time, so a site never builds the CMS. The `seo-agent` image is
 Lint and the tests run on the pull request. A release skips them only if the pull request's last commit passed them
 there, and runs them itself otherwise. A commit pushed straight to `master` builds nothing (no `push` triggers).
 
-After a push, CI sends a `moks-cms-released` repository_dispatch (`{component, tag, revision}`) to each repository in
-variable `RELEASE_NOTIFY_REPOS` (space-separated, secret `RELEASE_NOTIFY_TOKEN`; `scripts/notify-sites.sh`). What a
-site does with it is up to the site. jithendar.com applies its manifests and restarts the component.
+CI only pushes the image. It doesn't tell any site about it: each site decides when to pull and restart.
 
 The seo-agent's contract tests read files here: the migrations, `src/lib/seo-agent/internal-server.ts` and the
 constants both sides keep equal. No CI job runs them across the two repositories (no cross-repository credentials, by

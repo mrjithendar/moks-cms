@@ -11,10 +11,8 @@ name: moks-cms
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #           in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
 #           same image and smoke test, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
-#           (:manual-<run number> for manual runs) and :latest (the same image). When repository variable
-#           RELEASE_NOTIFY_REPOS lists site repositories (space-separated owner/name) and secret RELEASE_NOTIFY_TOKEN
-#           may write to them, each gets a repository_dispatch "moks-cms-released" {component: www, tag}; what a site
-#           does with it is up to the site (jithendar.com puts the tag in its manifests and applies them).
+#           (:manual-<run number> for manual runs) and :latest (the same image). Nothing else: no site is told,
+#           each site pulls the image it names.
 #           Lint and the tests are skipped in `release` only when `scope` finds that the pull request's head commit
 #           passed `check` and every `test` shard in an earlier run of this workflow. Otherwise (merged while a check
 #           was red, still running or cancelled; or a manual run, which has no pull request) `release` runs them
@@ -159,7 +157,7 @@ jobs:
               docs/*|*.md|LICENSE|sites/*|runner/*|.claude/*) ;;
               .github/workflows/ci-moks-cms.yml) image=true ;;
               .github/*) ;;
-              scripts/build-alerts.py|scripts/check-dashboards.py|scripts/check-conflict-copies.sh|scripts/notify-sites.sh) ;;
+              scripts/build-alerts.py|scripts/check-dashboards.py|scripts/check-conflict-copies.sh) ;;
               *) image=true ;;
             esac
           done < "$RUNNER_TEMP/files.txt"
@@ -296,11 +294,6 @@ jobs:
         run: |
           docker push --quiet "$REGISTRY_IMAGE:$PR_TAG"
           docker push --quiet "$REGISTRY_IMAGE:latest"
-      - name: Tell the site repositories
-        env:
-          REPOS: ${{ vars.RELEASE_NOTIFY_REPOS }}
-          GH_TOKEN: ${{ secrets.RELEASE_NOTIFY_TOKEN }}
-        run: scripts/notify-sites.sh www "$PR_TAG" "$RELEASE_SHA"
       - name: Record image
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
