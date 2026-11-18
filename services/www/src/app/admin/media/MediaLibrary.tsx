@@ -61,6 +61,7 @@ export function MediaLibrary({
   total,
   filtered,
   clearHref,
+  matchingIds,
 }: {
   items: LibraryItem[];
   view: "grid" | "list";
@@ -69,6 +70,8 @@ export function MediaLibrary({
   total: number;
   filtered: boolean;
   clearHref: string;
+  /** Every matching file's id across pages (Usage filter), for "Select all matching"; at most one bulk delete's worth. */
+  matchingIds?: string[];
 }) {
   const router = useRouter();
   const [bulk, setBulk] = useState(false);
@@ -119,6 +122,8 @@ export function MediaLibrary({
       {bulk && (
         <>
           <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set(items.map((i) => i.id)))}>Select all on page</Button>
+          {matchingIds && <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set(matchingIds))}>Select all {matchingIds.length} matching</Button>}
+          {selected.size > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear selection</Button>}
           <Button type="button" variant="danger" size="sm" disabled={selected.size === 0} loading={pending} onClick={deleteSelected}>
             Delete permanently{selected.size ? ` (${selected.size})` : ""}
           </Button>

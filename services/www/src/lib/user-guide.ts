@@ -167,11 +167,12 @@ const guides: GuideEntry[] = [
     title: "Media library",
     summary: "Upload images, video, audio and PDFs; see where each file is used.",
     href: "/admin/media",
-    keywords: ["images", "upload", "files", "video", "audio", "pdf", "r2", "storage", "generate image", "ai image"],
+    keywords: ["images", "upload", "files", "video", "audio", "pdf", "r2", "storage", "generate image", "ai image", "unused", "bulk delete", "select"],
     body: [
       "Media keeps every uploaded file. Images are served in modern formats (AVIF/WebP) at the right size for each screen.",
       "Images up to 10 MB upload through the site; video, audio and PDFs up to 200 MB upload directly to storage.",
       "A file shows where it is used, and cannot be deleted while a post still uses it. Removing an image from a post never deletes the file.",
+      "Filter by usage to find Unused files (not named by any post, page or site setting); a notice at the top says how many there are and how much space they take. Press Bulk select, then Select all on page, or Select all matching to take every unused file across pages (up to 200 at a time), and Delete permanently. Files still in use are always kept.",
       "Generate image creates a picture with AI (when it is configured in Integrations); you choose whether to keep it.",
     ],
   },
