@@ -111,9 +111,13 @@ async function validate(input: ParsedInput, authorId: string, selfId?: string, i
   if (input.canonicalUrl && data(input).ownUrl === input.canonicalUrl) issues.push("canonicalUrl: leave empty when it is this post's own URL");
   for (const link of unsafeLinks(input.body)) issues.push(`body: link "${link}" uses a scheme that is not allowed`);
 
+  // On a published post, a related post that is gone (deleted, or renamed) but was already on it is dropped with a note
+  // instead of blocking every later edit (and every review-queue publish). A new reference to a post that does not
+  // exist is still refused (typos, invented slugs), and so is one a draft saved before it was published.
+  const notes: string[] = [];
   if (input.related.length > 0) {
     const db = await getDb();
-    const rows = await db.select({ collection: schema.post.collection, slug: schema.post.slug, id: schema.post.id }).from(schema.post);
+    const rows = await db.select({ collection: schema.post.collection, slug: schema.post.slug, id: schema.post.id, related: schema.post.related, status: schema.post.status }).from(schema.post);
     const known = new Set(rows.filter((r) => r.id !== selfId).map((r) => `${r.collection}/${r.slug}`));
     // Posts still waiting in content/ (not imported yet, see Admin → Posts) are valid targets too; readers only
     // ever see related posts that are published.
@@ -126,18 +130,26 @@ async function validate(input: ParsedInput, authorId: string, selfId?: string, i
       }
     }
     const self = selfId ? rows.find((r) => r.id === selfId) : undefined;
+    const stored = new Set(self?.status === "published" ? self.related : []);
+    const gone: string[] = [];
     for (const ref of input.related) {
       if (self && ref === `${self.collection}/${self.slug}`) issues.push("related: a post cannot be related to itself");
+      else if (!known.has(ref) && stored.has(ref)) gone.push(ref);
       else if (!known.has(ref)) issues.push(`related: "${ref}" does not exist (check the spelling, or remove it under Related posts)`);
+    }
+    if (gone.length > 0) {
+      input.related = input.related.filter((ref) => !gone.includes(ref));
+      if (result.success) (result.data as { related?: string[] }).related = input.related;
+      for (const ref of gone) notes.push(`related: "${ref}" no longer exists and was removed from Related posts`);
     }
   }
   const draft = incompleteDrafts && input.status === "draft";
   const blocking = draft ? issues.filter((i) => BLOCKS_DRAFTS.test(i)) : issues;
   if (blocking.length > 0) throw new PostError(draft ? "This draft cannot be saved." : "The post is not valid.", 400, blocking);
-  if (result.success) return { data: result.data, warnings: issues };
+  if (result.success) return { data: result.data, warnings: [...issues, ...notes] };
   // An incomplete draft: store what the author typed (the public site never reads drafts).
   const partial = { ...input, author, canonicalUrl: input.canonicalUrl || undefined, featuredImage: input.featuredImage ?? undefined, sponsor: input.sponsor || undefined, socialImage: input.socialImage ?? undefined };
-  return { data: partial as unknown as NonNullable<typeof result.data>, warnings: issues };
+  return { data: partial as unknown as NonNullable<typeof result.data>, warnings: [...issues, ...notes] };
 }
 
 /** A saved post, plus what still has to be fixed before it can be published (drafts only). */
@@ -323,7 +335,12 @@ export async function updatePost(actor: Actor, id: string, patch: unknown, opts:
       if (!updated) return undefined;
       const oldPath = `/${current.collection}/${current.slug}`;
       const newPath = `/${updated.collection}/${updated.slug}`;
-      if (oldPath !== newPath) await recordRedirect(oldPath, newPath, within(tx));
+      if (oldPath !== newPath) {
+        await recordRedirect(oldPath, newPath, within(tx));
+        // Posts that name it as related follow the new path (a stale one would block their every edit).
+        const [from, to] = [oldPath.slice(1), newPath.slice(1)];
+        await tx.execute(sql`update post set related = array_replace(related, ${from}, ${to}) where ${from} = any(related)`);
+      }
       await recordRevision(within(tx), "post", id, updated.version, opts.reason ?? (updated.status === "published" ? "update" : "save"), snapshot(updated), actor.id);
       await clearAutosave(actor, "post", id, within(tx));
       await audit(actor, "post.update", id, { slug: updated.slug, status: updated.status, version: updated.version }, { db: within(tx) });
@@ -418,6 +435,9 @@ export async function deletePostPermanently(actor: Actor, id: string): Promise<v
   if (!row.deletedAt) throw new PostError("Move the post to the trash first.", 409);
   const db = await getDb();
   await db.delete(schema.post).where(eq(schema.post.id, id));
+  // Other posts must not keep naming it: every later edit of theirs would be refused.
+  const ref = `${row.collection}/${row.slug}`;
+  await db.execute(sql`update post set related = array_remove(related, ${ref}) where ${ref} = any(related)`);
   await audit(actor, "post.delete", id, { slug: row.slug });
   invalidateContent();
 }
