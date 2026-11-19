@@ -12,10 +12,10 @@ export const metadata = { title: "Schedules" };
 const LAST: Record<string, string> = { starting: "starting", started: "started", already_running: "previous run still going", failed: "not started" };
 
 function Last({ s }: { s: Schedule }) {
-  if (!s.last.firedAt) return <span className="text-xs text-fg-subtle">not yet</span>;
+  if (!s.last.firedAt) return <span className="whitespace-nowrap text-xs text-fg-subtle">not yet</span>;
   return (
     <div className="text-xs">
-      <p className="flex items-center gap-1.5">
+      <p className="flex items-center gap-1.5 whitespace-nowrap">
         {s.last.status === "failed" ? <RunStatusIcon status="failed" /> : s.last.status === "already_running" ? <RunStatusIcon status="running" /> : null}
         {s.last.runId ? <Link href={`/admin/crewai/runs/${s.last.runId}`} className="text-fg hover:underline">{LAST[s.last.status ?? ""] ?? s.last.status}</Link> : <span className="text-fg">{LAST[s.last.status ?? ""] ?? s.last.status}</span>}
       </p>
@@ -53,24 +53,29 @@ export default async function CrewaiSchedulesPage({ searchParams }: { searchPara
             {sp.flow && <> Showing {flowInfo(sp.flow).label} only · <Link href="/admin/crewai/schedules" className="underline">show all</Link>.</>}
             {" "}Nothing runs unless the dispatcher CronJob is deployed (<code>seo-flow-dispatcher</code>, every minute).
           </p>
-          <Table head={<tr><th className={th}>Schedule</th><th className={th}>Flow</th><th className={th}>When</th><th className={th}>Next</th><th className={th}>Last</th><th className={th}><span className="sr-only">Actions</span></th></tr>}>
+          {/* Only the Schedule column wraps; the others stay on one line so a row is as tall as its description. */}
+          <Table head={<tr><th className={th}>Schedule</th><th className={th}>When</th><th className={th}>Next</th><th className={th}>Last</th><th className={th}><span className="sr-only">Actions</span></th></tr>}>
             {shown.map((s) => (
               <tr key={s.id} className={s.enabled ? "" : "opacity-70"}>
-                <td className={td}>
-                  <span className="font-medium text-fg">{s.name}</span>
-                  {s.builtin && <span className="ml-2 rounded bg-surface-sunken px-1.5 py-0.5 text-[11px] text-fg-subtle">built-in</span>}
-                  {!s.enabled && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">paused</span>}
-                  {s.description && <p className="max-w-sm text-xs text-fg-subtle">{s.description}</p>}
-                  {Object.keys(s.inputs).length > 0 && <p className="font-mono text-xs text-fg-subtle [overflow-wrap:anywhere]">{JSON.stringify(s.inputs)}</p>}
+                <td className={`${td} min-w-56`}>
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-medium text-fg">{s.name}</span>
+                    {s.builtin && <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-[11px] leading-none text-fg-subtle">built-in</span>}
+                    {!s.enabled && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] leading-none text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">paused</span>}
+                  </p>
+                  <p className="mt-0.5 text-xs text-fg-subtle">
+                    Flow <Link href={`/admin/crewai/flows/${s.flow}`} className="font-medium text-fg-muted hover:text-fg hover:underline">{flowInfo(s.flow).label}</Link>
+                  </p>
+                  {s.description && <p className="mt-0.5 max-w-md text-xs text-fg-subtle">{s.description}</p>}
+                  {Object.keys(s.inputs).length > 0 && <p className="mt-0.5 font-mono text-xs text-fg-subtle [overflow-wrap:anywhere]">{JSON.stringify(s.inputs)}</p>}
                 </td>
-                <td className={td}><Link href={`/admin/crewai/flows/${s.flow}`} className="text-fg hover:underline">{flowInfo(s.flow).label}</Link></td>
-                <td className={`${td} text-xs`}>
-                  <p className="text-fg">{describeCron(s.cron)}</p>
-                  <p className="font-mono text-fg-subtle">{s.cron} · {s.timezone}</p>
+                <td className={`${td} whitespace-nowrap text-xs`}>
+                  <p className="text-sm text-fg first-letter:uppercase">{describeCron(s.cron)}</p>
+                  <p className="mt-0.5 font-mono text-fg-subtle">{s.cron} · {s.timezone}</p>
                 </td>
-                <td className={`${td} text-xs`}>{s.nextAt ? <Ago iso={s.nextAt} /> : "—"}</td>
+                <td className={`${td} whitespace-nowrap`}>{s.nextAt ? <Ago iso={s.nextAt} /> : <span className="text-xs text-fg-subtle">{s.enabled ? "—" : "paused"}</span>}</td>
                 <td className={td}><Last s={s} /></td>
-                <td className={`${td} text-right`}>
+                <td className={`${td} w-px text-right`}>
                   <ScheduleRowActions schedule={{ id: s.id, name: s.name, flow: s.flow, description: s.description, cron: s.cron, timezone: s.timezone, inputs: s.inputs, enabled: s.enabled, builtin: s.builtin, defaults: s.defaults }} flows={flows} agentOn={Boolean(agent)} />
                 </td>
               </tr>
