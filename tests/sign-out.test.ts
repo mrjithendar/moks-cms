@@ -23,7 +23,7 @@ let sessionClear: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   replace = vi.fn();
   sessionClear = vi.fn();
-  local = memoryStorage({ "editor:u1:post:new": "{draft}", "editor:u1:post:42": "{draft}", theme: "dark", "announcement-dismissed": "a1" });
+  local = memoryStorage({ "editor:u1:post:new": "{draft}", "editor:u1:post:42": "{draft}", "site-theme": "dark", "announcement-dismissed": "a1" });
   vi.stubGlobal("window", { location: { replace, pathname: "/admin/posts", search: "?status=draft" } });
   vi.stubGlobal("localStorage", local);
   vi.stubGlobal("sessionStorage", { clear: sessionClear });
@@ -39,7 +39,7 @@ describe("signOutAndLeave", () => {
     expect(signOut).toHaveBeenCalledTimes(1);
     // Admin pages are not offered as the next destination; replace() keeps them out of Back history.
     expect(replace).toHaveBeenCalledWith("/login?signedOut=1");
-    expect(local.keys()).toEqual(["announcement-dismissed", "theme"]);
+    expect(local.keys()).toEqual(["announcement-dismissed", "site-theme"]);
     expect(sessionClear).toHaveBeenCalled();
   });
 
