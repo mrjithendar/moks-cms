@@ -44,6 +44,36 @@ export const FLOWS: FlowInfo[] = [
   F("news_playground_flow", "News playground", "News desk", "news", "A trial draft from the profile playground."),
   F("reindex_flow", "Reindex", "Maintenance", "yes", "Rebuilds the article search index the agents and Ask the Blog use."),
   F("seo_ml_flow", "ML models", "Maintenance", "yes", "Retrains the SEO models (decay, query clusters, intent, priority, related articles)."),
+  F("crew_test_flow", "Crew test run", "Maintenance", "yes", "Runs one crew with edited prompts on the inputs of an earlier run (Crews → Test run, like Jenkins Replay). Saves nothing."),
+];
+
+/** The crew a flow runs, for "Replay with edited prompts" (moks-seo-agent crews' CrewDef.replay). */
+export const CREW_OF_FLOW: Record<string, string> = {
+  new_article_flow: "editorial",
+  optimize_article_flow: "optimization",
+  report_flow: "report",
+  promotion_flow: "promotion",
+  content_ideas_flow: "promotion",
+  news_draft_flow: "news",
+  news_playground_flow: "news",
+};
+
+/** Flows a schedule may start: moks-seo-agent app/flows/__init__.py CRON_FLOWS (the agent refuses any other). */
+export const SCHEDULABLE_FLOWS: readonly string[] = [
+  "gsc_sync_flow",
+  "ga4_sync_flow",
+  "tech_audit_flow",
+  "weekly_recommendations_flow",
+  "internal_linking_flow",
+  "reindex_flow",
+  "ask_gaps_flow",
+  "report_flow",
+  "seo_ml_flow",
+  "promotion_flow",
+  "content_ideas_flow",
+  "news_dispatch_flow",
+  "news_train_flow",
+  "news_style_review_flow",
 ];
 
 const BY_NAME = new Map(FLOWS.map((f) => [f.name, f]));
@@ -64,7 +94,7 @@ export function rerunBlocked(name: string): string | null {
     case "approval":
       return "Publish runs start only from an approval in the review queue.";
     case "cron":
-      return "The news dispatcher runs on its schedule only.";
+      return "The news dispatcher runs on its schedule only (CrewAI console → Schedules → news-dispatch → Run now).";
     case "news":
       return "Retry news drafts and images from the news run page.";
     default:

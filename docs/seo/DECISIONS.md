@@ -873,3 +873,36 @@ Details: FLOWS.md "Run history (CrewAI console)".
   review queue), publish_flow starts only from an approval, and per-story news runs have their own retry.
 - **No new dependency.** Icons are inline SVG; the per-day chart is plain HTML.
 
+## D-98 CrewAI console, phases 2–3: schedules in the database, Run with parameters, crew versions and Test run, import / export (owner request 2026-11-19)
+
+"Replace the 15 CronJobs with one dispatcher and schedules stored in the database, Run with parameters from the UI, a
+crew editor with versioned prompts and a test-run button, like Jenkins Replay, and enable import export of
+configurations." Phases 2 and 3 of D-97, as accepted on 2026-11-18. Details: FLOWS.md "Scheduling", CREWS.md
+"Configuration versions and Test run", the user guide's CrewAI console entries.
+
+- **One dispatcher, called by one CronJob every minute, not a scheduler loop in the agent.** That is the accepted
+  design, it keeps "is anything firing" visible as Kubernetes Jobs, and a suspended CronJob pauses everything. The
+  agent does the work (`POST /schedules/dispatch`): which times are due, in each schedule's own time zone, with the
+  cron evaluator the news desk already uses. Cost: one short pod a minute instead of fifteen spread over the week.
+- **Exactly once per time slot, without a lease:** one conditional `UPDATE … where last_slot < slot`. A retried
+  CronJob, two calls or two pods start a slot once; the flow's own one-active-run lock still applies on top.
+- **No surprise runs:** `armed_at` moves when the cron, time zone or switch changes, and the dispatcher never fires a
+  time at or before it. Missed times (agent down) run late within an hour, and only the latest, like
+  `startingDeadlineSeconds: 3600` with `concurrencyPolicy: Forbid` before.
+- **The fifteen schedules are built-in rows of migration 0037** (same times, UTC), with their defaults on the row, so
+  Reset needs no copy of them in code. They were site configuration in jithendar.com's manifests; they are now product
+  defaults every site gets, and import / export carries a site's own times.
+- **The agent may write five columns of the schedules table** (`last_*`, column grants in scripts/db-role.sql) and
+  nothing else of the console's configuration. Crew versions reach it through the callback API, like the skills.
+- **Run with parameters uses the flows' own input models** (JSON Schema from Pydantic), so the form never drifts from
+  what the agent accepts, and the agent validates again. Same limits as Re-run: no drafting, publish or per-story news
+  flows from the console.
+- **Crew configuration is an overlay on code, never code:** text, models, limits and tools from the crew's own set.
+  Output contracts and safety rules stay in code and are shown as "Added by the code". Custom crews and flows (phase 4
+  of D-97) are not part of this.
+- **Test run replays the crew, not the flow:** it starts from the source run's persisted state, so it needs no
+  dry-run mode in every flow and cannot write a draft, report, post or article. The configuration under test is in
+  the run's inputs, so the run records exactly what it ran and can be saved as a version from its page.
+- **Import is a plan first and only adds or changes** (nothing deleted or paused); crews are checked by the agent,
+  schedules matched by name. No secrets, IDs or run history in the file.
+- **No new dependency.** The word diff uses `diff`, already a dependency.

@@ -2,7 +2,7 @@
 
 Crews are used only where reasoning or writing adds value. Data steps (sync, scoring, crawling, link limits) are plain
 Python in the flows ([FLOWS.md](FLOWS.md)). All three crews share `app/crews/common.py`: the Claude adapter, the
-allowlisted tools, the limits and the runner.
+allowlisted tools, the limits and the runner; `app/crews/config.py` the editable configuration (versions, Test run).
 
 ## Common rules
 
@@ -43,6 +43,35 @@ allowlisted tools, the limits and the runner.
   material, never instructions, and that the agent cannot publish, approve or change anything.
 - **Structured output:** the final task of each crew has `output_pydantic`; the result is validated again in Python and
   then by the web app's own validators.
+
+## Configuration versions and Test run (D-98)
+
+Admins edit each crew in **CrewAI console → Crews** (`/admin/crewai/crews/<crew>`). The editable surface is defined in
+code, per crew, by a `CrewDef` (moks-seo-agent `app/crews/config.py` and each crew module's `CREW`):
+
+| Editable (an overlay, stored per version) | Stays in code (guardrails and structure) |
+|---|---|
+| each agent's role, goal, backstory, model (one the service has prices for), output tokens (256–64,000), iterations (1–25) | the untrusted-data rule and the skills rule in every system prompt |
+| each agent's tools, **only** from the tools the crew's agents have in code | the read-only tool allowlist (`app/tools`), the data blocks a task gets |
+| each task's instructions (placeholders such as `{kind}` filled at run time) | each task's output contract: JSON shapes, `NEEDS_FACT_CHECK:`, the news crew rules, `output_pydantic` |
+| a task's expected output, unless the code parses that answer | sequential process, no delegation, memory or code execution, the token and wall-clock caps, which flows run which crew |
+
+- **Versions** live in `seo_crew_configs` (web migration 0037): only what differs from the code's defaults (the agent
+  normalises it on `POST /crews/{crew}/validate` before the web app stores it), never edited afterwards, at most one
+  active per crew. No active version = the code's defaults. `base_hash` records which defaults a version was written
+  against; the console marks a version whose crew's defaults changed since (an agent update).
+- **At run time** each crew reads the active versions from the web app (`GET /internal/seo-agent/crew-configs`, like
+  the skills) before it builds its agents. A version entry that no longer fits the code (an agent or tool that is gone)
+  is ignored with a `crew_config_ignored` warning; an unreachable web app means the code's defaults. Model precedence:
+  a per-run override (brief or news job) → the version → `SEO_CREW_MODELS` → the crew default.
+- **Attribution:** every model call's `prompt_version` (usage rows, transcripts) is the crew's own, plus `+v<N>` for a
+  version or `+test` for a test run; New article and Optimize article drafts record it as their prompt version.
+- **Test run** (`crew_test_flow`, Jenkins Replay): the edited configuration, saved or not, travels in the run's inputs
+  (`{crew, source_run_id, config, version?}`) and is set for that run only (`CREW_OVERRIDE`). The flow replays the crew
+  on the state of a finished run of a flow that uses it (the brief, the article context, the report figures, the
+  promotion article or idea signals; for the news crew the story's items and the job's writing profile) and keeps the
+  output on its own run. It writes nothing else: no draft, report, post, idea or news article. Admins only
+  (`triggered_by=manual`; refused for cron, flows and MCP), one at a time per crew, with the normal budget guard.
 
 ## Skills (D-96)
 

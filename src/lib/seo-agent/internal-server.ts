@@ -8,6 +8,7 @@ import * as v4 from "./callbacks-v4";
 import * as news from "../news/callbacks";
 import * as promo from "./callbacks-promotion";
 import * as skills from "./skills";
+import { crewConfigsCallback } from "../crewai/crews";
 import { runHistoryCallbackSettings } from "../crewai/runs";
 import { callbackPort, callbackToken } from "./config";
 
@@ -43,6 +44,8 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["POST", /^\/promotion\/ideas$/, (_m, b) => promo.promoSaveIdeas(b)],
   // Agent skills (D-96): the enabled skills the crews match to each run. Read only.
   ["GET", /^\/skills$/, () => skills.agentSkills()],
+  // Crew configuration (CrewAI console → Crews, D-98): the active version of each crew. Read only.
+  ["GET", /^\/crew-configs$/, () => crewConfigsCallback()],
   // Run history (CrewAI console): whether the agent keeps model-call transcripts (moks-seo-agent/app/run_history.py).
   ["GET", /^\/run-history\/settings$/, () => runHistoryCallbackSettings()],
   // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns

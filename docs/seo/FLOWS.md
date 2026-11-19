@@ -35,7 +35,7 @@ web pods (port 9465) runs whenever `SEO_AGENT_CALLBACK_TOKEN` is set, unless `SE
 ```mermaid
 flowchart LR
   subgraph k8s["namespace jithendar"]
-    cron["CronJobs seo-flow-*\n(python -m app.trigger <flow>)"]
+    cron["CronJob seo-flow-dispatcher\n(every minute: python -m app.trigger dispatch)"]
     subgraph web["jithendar-com pods (Next.js)"]
       ui["/admin/review UI\n(approve = only here)"]
       cb[":9465 callback API\n(v1/v2 functions)"]
@@ -86,9 +86,9 @@ flowchart LR
 | `promotion_flow` | CronJob `seo-flow-promotion` daily 07:40 UTC; Promotion → "Find opportunities" / "Re-score and draft posts" | collect (web: Reddit read, channel scores) → draft (**Promotion Crew** copywriter) → save | **drafts awaiting a person** ([PROMOTION.md](PROMOTION.md)) |
 | `content_ideas_flow` | CronJob `seo-flow-content-ideas` Tue 05:20 UTC; Promotion → "Suggest content ideas" | collect_signals (web: Search Console demand, Reddit threads) → ideate (**Promotion Crew** strategist) → save (evidence verified by the web app) | **ideas awaiting a person** |
 
-Schedules are configuration in `kubernetes/seo-agent-60-flow-triggers.yaml` (the two promotion flows: `seo-agent-62-promotion-triggers.yaml`): change a `schedule:` (or
-`kubectl patch cronjob seo-flow-… -p '{"spec":{"schedule":"…"}}'`) without a code change. "Run now" buttons in the admin
-and the MCP `kickoff_flow` tool call the same `POST /flows/{name}/kickoff` endpoint as the CronJobs.
+"CronJob" in this table means the flow's built-in schedule: since D-98 (2026-11-19) the times are rows in the database,
+edited in CrewAI console → Schedules and started by one dispatcher (see [Scheduling](#scheduling)). "Run now" buttons,
+CrewAI console → Run with parameters and the MCP `kickoff_flow` tool call the same `POST /flows/{name}/kickoff` endpoint.
 
 ## The flows
 
@@ -271,10 +271,26 @@ runs it started, and Re-run / Cancel. Web migration 0036:
 
 ## Scheduling
 
-One CronJob per scheduled flow (`kubernetes/seo-agent-60-flow-triggers.yaml`): `concurrencyPolicy: Forbid`,
-`startingDeadlineSeconds: 3600`, `successfulJobsHistoryLimit: 2`, `failedJobsHistoryLimit: 3`, `activeDeadlineSeconds:
-600`. The container runs `python -m app.trigger <flow> [json inputs]`: one authenticated `POST /flows/{flow}/kickoff`
-(`triggered_by=cron`), then `/quitquitquit` so the Istio sidecar exits. While the agent is on the web app's
+Schedules are rows in `seo_flow_schedules` (web migration 0037, D-98), edited in **CrewAI console → Schedules**
+(`/admin/crewai/schedules`): a name, the flow, a 5-field cron in an IANA time zone, the inputs the run gets, and a
+switch. One CronJob (`seo-flow-dispatcher` in the site repository's `kubernetes/seo-agent-60-dispatcher.yaml`, every
+minute) runs `python -m app.trigger dispatch`: one authenticated `POST /schedules/dispatch`, then `/quitquitquit`. The
+agent (moks-seo-agent `app/schedules.py`) then, for each enabled schedule:
+
+- takes the latest fire time within the catch-up window (`SCHEDULE_CATCHUP_MINUTES`, 60) that is after `armed_at`.
+  The web app moves `armed_at` when the cron, time zone or switch changes, so a new or edited schedule never fires a
+  time that has already passed; missed times are not replayed one by one (like `concurrencyPolicy: Forbid`);
+- claims that slot (`20261119T0610Z`) with one conditional `UPDATE … where last_slot < slot`, so a retried CronJob, a
+  second call or a second pod starts it once;
+- starts the flow through `FlowRunner.kickoff(triggered_by="cron", actor="schedule:<name>")` with the schedule's
+  inputs (checked by the flow's input model) and writes the outcome back: `last_status` started · already_running (a
+  run of the same flow and target was going) · failed, `last_run_id`, `last_error`.
+
+Only `CRON_FLOWS` can be scheduled (the agent refuses `triggered_by=cron` for any other flow). The fifteen built-in
+schedules (`builtin`, the times the per-flow CronJobs had until 2026-11-19) can be edited, paused and reset to
+`default_*`, not deleted; admins add their own. The agent may write only the `last_*` columns (`scripts/db-role.sql`).
+Without the table the dispatcher answers 503 and starts nothing. Pause everything with
+`kubectl -n jithendar patch cronjob seo-flow-dispatcher -p '{"spec":{"suspend":true}}'`. While the agent is on the web app's
 in-process scheduler skips these job types (`FLOW_OWNED_JOBS`): gsc_sync, ga4_sync, technical_scan, recommendations,
 drafts_weekly, drafts_poll, report_weekly, report_monthly. Keywords refresh, retention, outcomes and the digest stay in
 the web worker (they are not AI workflows and the brief lists no flow for them).
@@ -282,7 +298,12 @@ the web worker (they are not AI workflows and the brief lists no flow for them).
 ## Internal API (seo-agent :8080, bearer `SEO_AGENT_TOKEN`)
 
 ```
+GET  /flows                         every flow: inputs as JSON Schema, schedulable, approval_only, crews
+POST /flows/{flow_name}/validate    {inputs} → {inputs} as the flow would get them, or 422
 POST /flows/{flow_name}/kickoff     {inputs, triggered_by: cron|manual, actor?} → {run_id, status, existing}
+POST /schedules/dispatch            start every schedule that is due (the dispatcher CronJob)
+GET  /crews                         each crew's editable configuration as the code defines it (CREWS.md)
+POST /crews/{crew}/validate         {config} → {config} as it would be stored, or 422 {issues}
 GET  /flows/runs                    ?flow=&status=&draft_id=&limit=
 GET  /flows/runs/{run_id}           status, current_step, outcome, outputs, error, tokens, cost (+ state)
 POST /flows/runs/{run_id}/cancel
@@ -298,10 +319,11 @@ review UI is unchanged (it reads the latest `seo_flow_runs` row for a draft).
 
 - <a id="failed-runs"></a>**Failed runs:** the CrewAI console (`/admin/crewai/runs?status=failed`) shows the failed
   step, its log and the model calls; Sync history and MCP `list_flow_runs(status=failed)` show the error; the
-  state is kept in `state_json`. Fix the cause and rerun (the "Run now" button, the CronJob, or for drafts
+  state is kept in `state_json`. Fix the cause and rerun (Re-run, Run with parameters, the schedule's Run now, or for drafts
   "Regenerate"). Alert `SeoFlowRepeatedFailures`.
 - **Stale flows:** `SeoFlowStale` fires when a flow hasn't succeeded within twice its schedule (from
-  `seo_flow_last_success_timestamp_seconds`). Check `kubectl -n jithendar get cronjob seo-flow-…` and the last runs.
+  `seo_flow_last_success_timestamp_seconds`). Check the schedule's Last column in CrewAI console → Schedules,
+  `kubectl -n jithendar get cronjob seo-flow-dispatcher` (and its last Jobs' logs) and the last runs.
 - **Restarts:** Deployment strategy `Recreate` (never two pods). Interrupted runs are failed on start; rerun them.
 - **Cancel:** the review page's run strip or `POST /api/admin/seo/agent/runs/{draftId}/cancel`.
 - **Metrics:** `seo_flow_runs_total{flow,status}`, `seo_flow_duration_seconds{flow}`, `seo_flow_step_duration_seconds{flow,step}`,

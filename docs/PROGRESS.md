@@ -1,5 +1,37 @@
 # Progress log — jithendar.com
 
+## CrewAI console, phases 2–3: schedules, Run with parameters, crew versions and Test run, import / export (2026-11-19, owner request)
+
+Owner: "Replace the 15 CronJobs with one dispatcher and schedules stored in the database – Run with parameters from the
+UI – a crew editor with versioned prompts and a test-run button, like Jenkins Replay. and enable import export of
+configurations." Decision record **D-98**; FLOWS.md "Scheduling", CREWS.md "Configuration versions and Test run".
+Works with moks-tech/moks-seo-agent (dispatcher, crew configuration, crew_test_flow) and moks-tech/jithendar.com (one
+dispatcher CronJob instead of fifteen).
+
+- Migration 0037 (rollback in `src/db/rollback/`): `seo_flow_schedules` with the fifteen built-in schedules the
+  CronJobs ran (same times, UTC), `seo_crew_configs` (versions, one active per crew).
+- Pages: CrewAI console → **Flows** (every flow, its schedules and last run, Run with parameters) and a flow page
+  (parameters, schedules, crews, run history); **Schedules** (new, edit with a live next-runs preview, pause/resume,
+  run now, reset built-ins, delete own; last start and its error); **Crews** and a crew page (agents, tasks, word diff
+  against the defaults, Check, Save as new version / Save and activate, Test run on a chosen earlier run, versions with
+  Activate and Use the code's defaults); **Import / export**. Run page: "Replay with edited prompts" on runs that used a
+  crew, and a test run's output with "Save as new version".
+- API: `POST /api/admin/crewai/flows/[name]`, `GET|POST /api/admin/crewai/schedules`, `PATCH|DELETE|POST
+  /api/admin/crewai/schedules/[id]`, `GET|POST /api/admin/crewai/crews/[crew]`, `GET|POST /api/admin/crewai/config`; all
+  admin only, audit-logged. Callback `GET /internal/seo-agent/crew-configs`.
+- `lib/news/cron.ts nextFire` (skips days and hours that cannot match: a monthly schedule costs a few hundred checks).
+  `Ago` also writes times to come ("in 3 h").
+- User guide: four new entries (flows, schedules, crews, import / export) and a pointer in the console entry; admin
+  menu entries for the four pages.
+- Tests: `tests/crewai-console-config.test.ts` (12: migration, cron helpers, schedules API, Run with parameters, crew
+  versions and Test run, import / export, pages). Ran locally: typecheck, eslint on the changed files, the whole vitest
+  suite (all pass once `content/` is filled as CI does with `npm run site -- --copy`). `npm run build` not run locally.
+- **Manual steps (in order):** release this (the web app applies 0037 when it starts) → release moks-seo-agent with
+  `/schedules/dispatch` and restart deploy/seo-agent → in jithendar.com, delete the fifteen CronJobs
+  (`kubectl -n jithendar delete cronjob -l app=seo-agent-trigger`) and apply `seo-agent-60-dispatcher.yaml`
+  (`scripts/manifests.sh seo-agent | kubectl apply -f -`). With the agent's own database role, re-run
+  `scripts/db-role.sql` from moks-seo-agent (select and five update columns on `seo_flow_schedules`).
+
 ## Phone layout, part 2: posts list and audit log (2026-11-18, owner request)
 
 Follow-up to #152 (merged before its last commit, so the audit log fix is here).

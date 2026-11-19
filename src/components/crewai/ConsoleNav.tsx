@@ -6,6 +6,10 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/admin/crewai", label: "Overview" },
   { href: "/admin/crewai/runs", label: "Runs" },
+  { href: "/admin/crewai/flows", label: "Flows" },
+  { href: "/admin/crewai/schedules", label: "Schedules" },
+  { href: "/admin/crewai/crews", label: "Crews" },
+  { href: "/admin/crewai/config", label: "Import / export" },
   { href: "/admin/automation/skills", label: "Skills ↗" },
   { href: "/admin/automation#tab-runs", label: "Settings ↗" },
 ];
