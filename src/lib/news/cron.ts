@@ -86,3 +86,33 @@ export function nextRuns(expr: string, tz: string, from = new Date(), count = 3,
   for (; t < end && out.length < count; t += 60_000) if (cronMatches(c, new Date(t))) out.push(new Date(t));
   return out;
 }
+
+/**
+ * The first fire time after `from`, or null within `days` (default 400: a yearly cron still has one). Skips whole days
+ * and hours that cannot match instead of testing every minute, so a monthly schedule costs a few hundred checks; the
+ * CrewAI console computes one per schedule on every page view. Same rules as the dispatcher (moks-seo-agent
+ * app/news/cron.py next_after); a wall-clock time a DST change skips does not exist and is never returned.
+ */
+export function nextFire(expr: string, tz: string, from = new Date(), days = 400): Date | null {
+  const c = parseCron(expr, tz);
+  let t = Math.floor(from.getTime() / 60_000) * 60_000 + 60_000;
+  const end = from.getTime() + days * 86_400_000;
+  while (t < end) {
+    const l = local(new Date(t), c.tz);
+    const domOk = c.dom.set.has(l.day);
+    const dowOk = c.dow.set.has(l.wd);
+    const dayOk = c.month.has(l.month) && (c.dom.restricted && c.dow.restricted ? domOk || dowOk : domOk && dowOk);
+    if (!dayOk) {
+      // To 23:00 of this local day, then hour by hour: a DST change in the night never skips the start of the next day.
+      t += (l.hour < 23 ? (22 - l.hour) * 60 + (60 - l.minute) : 60 - l.minute) * 60_000;
+      continue;
+    }
+    if (!c.hour.has(l.hour)) {
+      t += (60 - l.minute) * 60_000;
+      continue;
+    }
+    if (c.min.has(l.minute)) return new Date(t);
+    t += 60_000;
+  }
+  return null;
+}

@@ -12,6 +12,8 @@ export class AgentError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** The agent's own list of problems (a 422 for crew configuration or flow inputs), when it sent one. */
+    readonly issues: string[] = [],
   ) {
     super(message);
   }
@@ -41,8 +43,9 @@ export type RunView = {
 /** POST /review/{draft_id}/decision: approve starts publish_flow (only with the approval the web app recorded). */
 export type Decision = { decision: "approve" | "reject" | "regenerate"; approval_id?: string | null; accepted_change_ids?: string[]; edits?: Record<string, string>; feedback?: string | null; actor?: string | null };
 
-/** Flows a person or a CronJob may start with POST /flows/{name}/kickoff. publish_flow is not one of them. */
-export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | NewsFlowName;
+/** Flows a person or a schedule may start with POST /flows/{name}/kickoff. publish_flow is not one of them.
+ * crew_test_flow is the CrewAI console's crew Test run (moks-seo-agent/app/flows/crew_test.py), started by an admin only. */
+export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | NewsFlowName;
 /** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
 export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
 
@@ -74,13 +77,56 @@ async function call<T>(method: string, path: string, body: unknown, deps: AgentD
   }
   if (!res.ok) {
     const msg = (data as { error?: unknown; detail?: unknown }).error ?? (data as { detail?: unknown }).detail;
-    throw new AgentError(typeof msg === "string" ? msg.slice(0, 300) : `SEO agent error (${res.status}).`, res.status);
+    const issues = (data as { issues?: unknown }).issues;
+    throw new AgentError(typeof msg === "string" ? msg.slice(0, 500) : `SEO agent error (${res.status}).`, res.status, Array.isArray(issues) ? issues.filter((i): i is string => typeof i === "string").slice(0, 30) : []);
   }
   return data as T;
 }
 
 export const kickoff = (flow: FlowName, inputs: Record<string, unknown>, opts: { triggeredBy?: "manual" | "cron"; actor?: string } = {}, deps?: AgentDeps) =>
   call<{ run_id: string; status: string; existing: boolean }>("POST", `/flows/${flow}/kickoff`, { inputs, triggered_by: opts.triggeredBy ?? "manual", actor: opts.actor ?? null }, deps);
+/** One flow as the agent's GET /flows describes it (CrewAI console: Run with parameters, schedules, crews). */
+export type AgentFlow = { name: string; inputs_schema: JsonSchema; approval_only: boolean; schedulable: boolean; mcp: boolean; crews: string[] };
+/** The JSON Schema subset Pydantic emits for the flows' input models. */
+export type JsonSchema = {
+  type?: string | string[];
+  title?: string;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  enum?: unknown[];
+  anyOf?: JsonSchema[];
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  maxLength?: number;
+  minLength?: number;
+  maxItems?: number;
+  pattern?: string;
+  additionalProperties?: boolean | JsonSchema;
+  $ref?: string;
+  $defs?: Record<string, JsonSchema>;
+};
+/** One crew's editable configuration as the code defines it (moks-seo-agent/app/crews/config.py catalogue). */
+export type AgentCrew = {
+  crew: string;
+  label: string;
+  description: string;
+  prompt_version: string;
+  default_hash: string;
+  tools: string[];
+  models: string[];
+  replay_flows: string[];
+  agents: { key: string; role: string; goal: string; backstory: string; tools: string[]; max_tokens: number | null }[];
+  tasks: { key: string; agent: string; label: string; instructions: string; expected_output: string; variables: string[]; contract: string; output_editable: boolean }[];
+};
+export const flowCatalogue = (deps?: AgentDeps) => call<{ items: AgentFlow[] }>("GET", "/flows", undefined, deps, 8_000);
+export const validateFlowInputs = (flow: string, inputs: Record<string, unknown>, deps?: AgentDeps) => call<{ inputs: Record<string, unknown> }>("POST", `/flows/${encodeURIComponent(flow)}/validate`, { inputs }, deps, 8_000);
+export const crewCatalogue = (deps?: AgentDeps) => call<{ items: AgentCrew[] }>("GET", "/crews", undefined, deps, 8_000);
+export const validateCrewConfig = (crew: string, config: Record<string, unknown>, deps?: AgentDeps) =>
+  call<{ config: Record<string, unknown>; default_hash: string; prompt_version: string }>("POST", `/crews/${encodeURIComponent(crew)}/validate`, { config }, deps, 8_000);
+
 /** GET /readyz: the agent is up and reaches its database (System status). */
 export const agentReady = (deps?: AgentDeps) => call<{ status: string; vector?: boolean; notes?: unknown }>("GET", "/readyz", undefined, deps, 4_000);
 export const getRun = (runId: string, deps?: AgentDeps) => call<RunView>("GET", `/flows/runs/${encodeURIComponent(runId)}`, undefined, deps, 5_000);

@@ -11,6 +11,15 @@ const subscribe = (tick: () => void) => {
 export function relative(iso: string, now: number): string {
   const s = Math.round((now - new Date(iso).getTime()) / 1000);
   if (!Number.isFinite(s)) return iso;
+  if (s < -45) {
+    // A time to come (a schedule's next run): "in 12 min", "in 3 h", "in 2 days".
+    const fm = Math.round(-s / 60);
+    if (fm < 60) return `in ${fm} min`;
+    const fh = Math.round(fm / 60);
+    if (fh < 24) return `in ${fh} h`;
+    const fd = Math.round(fh / 24);
+    return fd < 30 ? `in ${fd} day${fd === 1 ? "" : "s"}` : formatLocal(iso, "date");
+  }
   if (s < 45) return "just now";
   const m = Math.round(s / 60);
   if (m < 60) return `${m} min ago`;

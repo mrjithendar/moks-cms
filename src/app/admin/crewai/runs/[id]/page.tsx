@@ -7,8 +7,10 @@ import { AutoRefresh } from "@/components/crewai/AutoRefresh";
 import { LogViewer, type StepView } from "@/components/crewai/LogViewer";
 import { RunActions } from "@/components/crewai/RunActions";
 import { RunStatus, RunStatusIcon } from "@/components/crewai/RunStatusIcon";
+import { SaveTestVersion } from "@/components/crewai/SaveTestVersion";
+import { buttonClass } from "@/components/ui/form";
 import { LocalTime } from "@/components/LocalTime";
-import { flowInfo, rerunBlocked, TRIGGER_LABELS } from "@/lib/crewai/flows";
+import { CREW_OF_FLOW, flowInfo, rerunBlocked, TRIGGER_LABELS } from "@/lib/crewai/flows";
 import { formatDuration, formatTokens, formatUsd, runDurationMs } from "@/lib/crewai/format";
 import { runDetail, runLogs, type RunDetail, type RunStep } from "@/lib/crewai/runs";
 
@@ -51,6 +53,48 @@ function artifacts(run: RunDetail): { label: string; href: string }[] {
   return out;
 }
 
+const text = (v: unknown) => (typeof v === "string" ? v : "");
+
+/** A crew test run's output (crew_test_flow, outputs.result): the text or JSON the crew produced, never saved anywhere. */
+function CrewTestResult({ run }: { run: RunDetail }) {
+  const crew = text(run.inputs.crew);
+  const source = text(run.inputs.source_run_id);
+  const config = (run.inputs.config && typeof run.inputs.config === "object" ? run.inputs.config : {}) as Record<string, unknown>;
+  const r = (run.outputs.result && typeof run.outputs.result === "object" ? run.outputs.result : {}) as Record<string, unknown>;
+  const draft = (r.draft && typeof r.draft === "object" ? r.draft : null) as Record<string, unknown> | null;
+  const body = text(r.narrative) || text(draft?.body_mdx);
+  const rest = Object.fromEntries(Object.entries(r).filter(([k]) => !["narrative", "draft", "status", "reason", "tokens", "cost_usd"].includes(k)));
+  const check = r.check as { ok?: boolean; mismatches?: string[] } | null | undefined;
+  const live = run.status === "queued" || run.status === "running";
+  return (
+    <section aria-labelledby="test-h" className="space-y-3 rounded-xl border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="test-h" className="text-base font-semibold text-fg">Test run of the {crew} crew</h2>
+        <p className="text-sm text-fg-muted">
+          Replayed <Link className="font-medium text-fg hover:underline" href={`/admin/crewai/runs/${source}`}>the source run</Link> · <Link className="hover:underline" href={`/admin/crewai/crews/${crew}?source=${source}`}>edit and test again</Link>
+        </p>
+      </div>
+      <p className="text-xs text-fg-subtle">Nothing from a test run is saved anywhere: no draft, report, post or article. {typeof run.inputs.version === "number" ? `It ran saved version v${run.inputs.version}.` : "It ran unsaved edits."}</p>
+      {live ? <p className="text-sm text-fg-muted">Running… the output appears here when the crew finishes.</p> : null}
+      {!live && typeof r.status === "string" && (
+        <p className="text-sm text-fg">
+          Crew status <strong>{r.status}</strong>{text(r.reason) ? `: ${text(r.reason)}` : ""}
+          {check ? <> · numbers check {check.ok ? "passed" : <span className="text-red-700 dark:text-red-300">failed ({(check.mismatches ?? []).join(", ")})</span>}</> : null}
+        </p>
+      )}
+      {draft && (text(draft.title) || text(draft.meta_description)) && (
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          {text(draft.title) && <div><dt className="text-xs text-fg-subtle">Title</dt><dd className="text-fg">{text(draft.title)}</dd></div>}
+          {text(draft.meta_description) && <div><dt className="text-xs text-fg-subtle">Meta description</dt><dd className="text-fg">{text(draft.meta_description)}</dd></div>}
+        </dl>
+      )}
+      {body && <pre className="max-h-[32rem] overflow-auto rounded-lg border border-line bg-surface-muted p-3 text-sm leading-6 whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{body}</pre>}
+      {Object.keys(rest).length > 0 && <pre className="max-h-96 overflow-auto rounded-lg border border-line bg-surface-muted p-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{JSON.stringify(rest, null, 2)}</pre>}
+      {!live && crew && <SaveTestVersion crew={crew} config={config} runId={run.runId} label={`#${run.number ?? "?"}`} />}
+    </section>
+  );
+}
+
 /** One run: GitHub Actions' run page (steps, annotations, summary, log) plus the crew's cost per agent and model. */
 export default async function CrewaiRunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -89,7 +133,14 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
             {run.next && <> · <Link className="hover:underline" href={`/admin/crewai/runs/${run.next.runId}`}>#{run.next.number} →</Link></>}
           </p>
         </div>
-        <RunActions runId={run.runId} live={live} inputs={run.inputs} blocked={rerunBlocked(run.flow)} />
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <RunActions runId={run.runId} live={live} inputs={run.inputs} blocked={rerunBlocked(run.flow)} />
+          {CREW_OF_FLOW[run.flow] && !live && (
+            <Link href={`/admin/crewai/crews/${CREW_OF_FLOW[run.flow]}?source=${run.runId}`} className={buttonClass("ghost", "sm")} title="Edit the crew's prompts and run the crew again on this run's inputs; nothing is saved">
+              Replay with edited prompts
+            </Link>
+          )}
+        </div>
       </header>
 
       {(run.status === "failed" || run.status === "paused_budget" || errors.length > 0) && (
@@ -163,6 +214,8 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
               )}
             </Card>
           </section>
+
+          {run.flow === "crew_test_flow" && <CrewTestResult run={run} />}
 
           <LogViewer runId={run.runId} initial={logs} live={live} steps={steps} runStatus={run.status} hasMore={logs.length === FIRST_PAGE} />
 

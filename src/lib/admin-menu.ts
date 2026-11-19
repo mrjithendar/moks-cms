@@ -87,6 +87,10 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   // The AI that works on the site: the SEO agent's flows, its models and data, and access for AI clients.
   ["/admin/crewai", { group: "ai", title: "CrewAI console" }],
   ["/admin/crewai/runs", { group: "ai", title: "Flow runs" }],
+  ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
+  ["/admin/crewai/schedules", { group: "ai", title: "Schedules" }],
+  ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
+  ["/admin/crewai/config", { group: "ai", title: "CrewAI import / export" }],
   ["/admin/automation", { group: "ai" }],
   ["/admin/automation/skills", { group: "ai" }],
   ["/admin/models", { group: "ai" }],
