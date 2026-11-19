@@ -22,7 +22,9 @@ from ..config import Settings
 from ..llm import Llm
 from ..schemas import FactCheckFlag, ModelChangeSet
 from ..tools import ToolContext, data_block
+from . import config as crew_config
 from .common import AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew
+from .config import CrewDef, TaskDef
 from .skills import optimization_tags
 
 PROMPT_VERSION = "seo-optimize-crew-v1"
@@ -50,6 +52,25 @@ CHANGESET_RULES = (
     "\"reason\": str, \"severity\": \"warning\"|\"error\"}]}. `before` must match the article block exactly. No internal links."
 )
 
+ANALYSE_TASK = "Read the evidence and the article. Use gsc_queries_for_page for the queries this page ranks for. Write a problem statement of at most 5 sentences: which queries, what gap, which part of the article."
+EDIT_TASK = "Write the minimal change set for the problem statement. Follow the rules and the style guide (style_guide tool). Every change names its block id and quotes `before` exactly."
+REVIEW_TASK = "Check every command, version or technical claim the editor changed against official documentation (fetch_allowlisted_docs). Remove or fix any change you can prove wrong; list anything you cannot verify in needs_fact_check. Return the final JSON object."
+# The crew's editable configuration (crews/config.py, CrewAI console → Crews). The evidence, the article blocks, the
+# draft rules and the change-set contract (CHANGESET_RULES) stay in code.
+CREW = CrewDef(
+    crew="optimization",
+    label="Optimization crew",
+    description="Turns recommendations for a published article into a minimal, reviewed change set that waits for a person in the review queue.",
+    prompt_version=PROMPT_VERSION,
+    agents=tuple(AGENTS),
+    tasks=(
+        TaskDef("analyse", "analyst", "Problem statement", ANALYSE_TASK, "A short problem statement grounded in the evidence.", contract="Then the evidence block (recommendations, 28-day metrics, GA4 engagement, related articles)."),
+        TaskDef("edit", "editor", "Change set", EDIT_TASK, "The JSON object described above.", contract="Then the draft rules, the article with its block ids, any feedback, and the change-set JSON contract.", output_editable=False),
+        TaskDef("review", "reviewer", "Technical review", REVIEW_TASK, "The final JSON object.", contract="Then the change-set JSON contract; the answer is parsed as OptimizationResult.", output_editable=False),
+    ),
+    replay=("optimize_article_flow",),
+)
+
 
 @dataclass
 class OptimizationCrewResult:
@@ -59,6 +80,7 @@ class OptimizationCrewResult:
     tokens: int
     cost_usd: float
     tool_calls: list[tuple[str, str]]
+    config: dict[str, Any] | None = None  # which crew configuration ran (crews/config.py Effective.summary)
 
 
 def _parse(raw: str) -> OptimizationResult | None:
@@ -83,18 +105,19 @@ class OptimizationCrew:
         prompt = context.get("prompt") or {}
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, article_id=article_id, style=str(prompt.get("styleGuide") or ""))
         recs = [r for r in context.get("recommendations", []) if not recommendation_ids or r.get("id") in recommendation_ids]
+        cfg = await crew_config.load("optimization", self.web)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not (feedback or validator_feedback) else "regenerate", prompt_version=PROMPT_VERSION, crew="optimization", models=context.get("models") or {})
+            agents = build_agents(cfg.agents(), self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="draft" if not (feedback or validator_feedback) else "regenerate", prompt_version=cfg.prompt_version, crew="optimization", models=context.get("models") or {})
             evidence = data_block("evidence", {"recommendations": recs, "metrics_28d": context.get("metrics") or {}, "ga4_engagement_28d": context.get("ga4") or {}, "related_site_articles": related or []})
             # v2's own prompt (article blocks with ids). The web app already wraps article text in data blocks; it is
             # wrapped again here so a closing tag inside the article can never end the data section (defence in depth).
             article = data_block("article_and_recommendations", str(prompt.get("user") or ""))
             rules = data_block("draft_rules", prompt.get("rules") or "")
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
-            analyse = Task(description=f"Read the evidence and the article. Use gsc_queries_for_page for the queries this page ranks for. Write a problem statement of at most 5 sentences: which queries, what gap, which part of the article.\n\n{evidence}", expected_output="A short problem statement grounded in the evidence.", agent=agents["analyst"])
-            edit = Task(description=f"Write the minimal change set for the problem statement. Follow the rules and the style guide (style_guide tool). Every change names its block id and quotes `before` exactly.\n\n{rules}\n\n{article}{fb}\n\n{CHANGESET_RULES}", expected_output="The JSON object described above.", agent=agents["editor"], context=[analyse])
-            review = Task(description=f"Check every command, version or technical claim the editor changed against official documentation (fetch_allowlisted_docs). Remove or fix any change you can prove wrong; list anything you cannot verify in needs_fact_check. Return the final JSON object.\n\n{CHANGESET_RULES}", expected_output="The final JSON object.", agent=agents["reviewer"], context=[analyse, edit], output_pydantic=OptimizationResult)
+            analyse = Task(description=f"{cfg.instructions('analyse')}\n\n{evidence}", expected_output=cfg.expected_output("analyse"), agent=agents["analyst"])
+            edit = Task(description=f"{cfg.instructions('edit')}\n\n{rules}\n\n{article}{fb}\n\n{CHANGESET_RULES}", expected_output=cfg.expected_output("edit"), agent=agents["editor"], context=[analyse])
+            review = Task(description=f"{cfg.instructions('review')}\n\n{CHANGESET_RULES}", expected_output=cfg.expected_output("review"), agent=agents["reviewer"], context=[analyse, edit], output_pydantic=OptimizationResult)
             tasks = [analyse, edit, review]
             return make_crew(agents, tasks, self.settings), tasks
 
@@ -114,4 +137,4 @@ class OptimizationCrew:
             if partial is not None:
                 partial.needs_fact_check.append(FactCheckFlag(claim="all changes", reason=f"technical review did not finish ({reason}); verify before approving", severity="warning"))
                 result = partial
-        return OptimizationCrewResult(result, status, reason, o.tokens, o.cost_usd, o.tool_calls)
+        return OptimizationCrewResult(result, status, reason, o.tokens, o.cost_usd, o.tool_calls, cfg.summary())

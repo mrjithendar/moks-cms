@@ -227,11 +227,13 @@ def test_cronjob_trigger_posts_one_kickoff_and_stops_the_sidecar(monkeypatch) ->
     assert trigger.main(["4ga_flow"]) == 2 and trigger.main(["GA4_sync_flow"]) == 2 and trigger.main(["ga4-sync_flow"]) == 2
 
 
-def test_every_cronjob_names_a_flow_the_trigger_accepts() -> None:
-    """Each `python -m app.trigger <flow>` in the cluster manifests passes the trigger's name check and is a flow cron may start.
+def test_the_cluster_runs_one_dispatcher_cronjob() -> None:
+    """Since 2026-11-19 the schedules are in the database (app/schedules.py) and the cluster runs one CronJob that calls
+    `python -m app.trigger dispatch` every minute. Any other `app.trigger <flow>` left in the manifests passes the
+    trigger's name check and is a flow a schedule may start.
 
-    The CronJob manifests live in the jithendar.com repository (kubernetes/seo-agent-*-triggers.yaml), not here.
-    Point SEO_AGENT_K8S_DIR at that kubernetes/ directory, or check jithendar.com out next to this repository, to run this.
+    The CronJob manifests live in the jithendar.com repository (kubernetes/seo-agent-*.yaml), not here. Point
+    SEO_AGENT_K8S_DIR at that kubernetes/ directory, or check jithendar.com out next to this repository, to run this.
     """
     import os
     import re
@@ -242,11 +244,32 @@ def test_every_cronjob_names_a_flow_the_trigger_accepts() -> None:
 
     repo = Path(__file__).resolve().parents[1]
     candidates = [Path(os.environ["SEO_AGENT_K8S_DIR"])] if os.environ.get("SEO_AGENT_K8S_DIR") else [repo.parent / "jithendar.com" / "kubernetes"]
-    manifests = sorted(f for d in candidates for f in d.glob("seo-agent-*-triggers.yaml"))
+    manifests = sorted(f for d in candidates for f in d.glob("seo-agent-*.yaml"))
     if not manifests:
         pytest.skip("CronJob manifests not found: set SEO_AGENT_K8S_DIR to jithendar.com's kubernetes/ directory")
-    names = [n for f in manifests for n in re.findall(r'"app\.trigger",\s*"([^"]+)"', f.read_text())]
-    assert len(names) >= 10, names
+    text = "\n".join(f.read_text() for f in manifests)
+    names = re.findall(r'"app\.trigger",\s*"([^"]+)"', text)
+    assert names.count("dispatch") == 1, names
+    assert re.search(r'schedule:\s*"\* \* \* \* \*"[\s\S]{0,1500}"app\.trigger",\s*"dispatch"', text), "the dispatcher runs every minute"
     for name in names:
-        assert trigger.NAME.match(name), name
-        assert name in CRON_FLOWS, name
+        if name != "dispatch":
+            assert trigger.NAME.match(name) and name in CRON_FLOWS, name
+
+
+def test_the_default_schedules_name_flows_a_schedule_may_start() -> None:
+    """moks-cms migration 0037 seeds the fifteen schedules the CronJobs ran; each must be a flow the dispatcher starts,
+    with inputs the flow accepts, and a cron the dispatcher's evaluator reads."""
+    import json
+    import re
+
+    from app.flows import CRON_FLOWS, SPECS
+    from app.news.cron import Cron
+    from tests.moks_cms import www
+
+    sql = www("src/db/migrations/0037_crewai_schedules_crews.sql").read_text()
+    rows = re.findall(r"\('([a-z0-9-]+)', '([a-z0-9_]+_flow)', '(?:[^']|'')*', '([^']+)', '(\{[^']*\})'\)", sql)
+    assert len(rows) == 15, rows
+    assert {flow for _, flow, _, _ in rows} == CRON_FLOWS
+    for _name, flow, cron, inputs in rows:
+        Cron(cron, "Etc/UTC")
+        SPECS[flow].input_model.model_validate(json.loads(inputs))

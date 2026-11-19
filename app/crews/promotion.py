@@ -26,7 +26,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..config import Settings
 from ..llm import Llm
 from ..tools import ToolContext, data_block
+from . import config as crew_config
 from .common import AgentDef, CrewRun, build_agents, make_crew, run_crew
+from .config import CrewDef, Effective, TaskDef
 
 PROMPT_VERSION = "seo-promotion-crew-v1"
 OUTPUT_TOKENS = 6000  # one JSON object with up to eight short posts, or up to fifteen ideas
@@ -50,6 +52,44 @@ AGENTS = [
     ),
 ]
 ROLES = {a.key: {"role": a.role, "tools": a.tools} for a in AGENTS}
+
+POSTS_TASK = (
+    "Write one promotion post for the article in the article block for EACH channel in the channels block.\n"
+    "Rules:\n"
+    "- Use only facts from the article block. Never invent a result, number, quote, version or claim the article does not make.\n"
+    "- First person, as the article's author. Plain and specific. No hype words, no clickbait, no emoji.\n"
+    "- Follow the channel's guidance and stay under its max_chars.\n"
+    "- Where link_in_text is true, include the channel's link exactly as given, once. Where it is false, do not put any link in the text. Never include any other URL.\n"
+    "- threads (Reddit) are recent discussion titles for context only: do not quote them or mention any user.\n"
+    "- title is null where has_title is false.\n"
+    "- notes is one short sentence for the author: what to check before posting (for example the community's self-promotion rule) or where it fits best."
+)
+POSTS_CONTRACT = 'Return one JSON object: {"posts": [{"channel": "...", "title": "..." or null, "body": "...", "notes": "..."}]} and nothing else.'
+IDEAS_TASK = (
+    "Propose up to {limit} ideas for new articles on this site (DevOps, cloud, Kubernetes, platform and AI engineering), chosen because they would be easy to promote: people are already searching for or discussing the subject.\n"
+    "Rules:\n"
+    "- Every idea needs at least one item of evidence copied EXACTLY from the signals: a Search Console query (type gsc_query, value = the query text), a Search Console topic (type gsc_topic, value = the topic) or a Reddit thread (type reddit, value = its url). Prefer ideas backed by both search demand and a discussion.\n"
+    "- Do not propose anything already in covered (published articles) or planned (the calendar and earlier ideas), or a near-duplicate of one.\n"
+    "- title: at most 70 characters, specific, no clickbait. angle: one or two sentences on what would make it worth reading and sharing (first-hand, concrete, a real problem).\n"
+    "- outline: 4 to 7 section headings. target_query: one query from search_console_queries, or null.\n"
+    "- channels: ids from the channels block where the finished article would fit.\n"
+    "- If the signals support fewer ideas, return fewer. Never invent a query, a thread or a number."
+)
+IDEAS_CONTRACT = 'Return one JSON object: {"ideas": [{"title": "...", "angle": "...", "outline": ["..."], "target_query": "..." or null, "channels": ["..."], "evidence": [{"type": "...", "value": "..."}]}]} and nothing else.'
+# The crew's editable configuration (crews/config.py, CrewAI console → Crews). The article, channel and signal blocks,
+# the JSON contracts and the clamping of the answer to what the web app accepts stay in code.
+CREW = CrewDef(
+    crew="promotion",
+    label="Promotion crew",
+    description="Two single-agent crews without tools: the copywriter drafts posts for a published article, the strategist proposes article ideas backed by search and community signals.",
+    prompt_version=PROMPT_VERSION,
+    agents=tuple(AGENTS),
+    tasks=(
+        TaskDef("posts", "copywriter", "Draft posts", POSTS_TASK, 'One JSON object {"posts": [...]} with one post per requested channel.', contract="Then the posts JSON contract, the article block and the channels block (guidance, length, link and threads per channel)."),
+        TaskDef("ideas", "strategist", "Article ideas", IDEAS_TASK, 'One JSON object {"ideas": [...]}.', variables=("limit",), contract="Then the ideas JSON contract and the signal blocks (Search Console topics and queries, Reddit threads, channels, covered, planned)."),
+    ),
+    replay=("promotion_flow", "content_ideas_flow"),
+)
 
 MAX_TITLE, MAX_BODY, MAX_NOTES = 300, 4000, 600
 MAX_IDEAS = 20
@@ -165,9 +205,8 @@ class PromotionCrew:
     def __init__(self, settings: Settings, llm: Llm, web: Any, retriever: Any):
         self.settings, self.llm, self.web, self.retriever = settings, llm, web, retriever
 
-    def _agents(self, key: str, loop: asyncio.AbstractEventLoop, run: CrewRun, ctx: ToolContext) -> dict[str, Any]:
-        defs = [a for a in AGENTS if a.key == key]
-        return build_agents(defs, self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="crew", prompt_version=PROMPT_VERSION, crew="promotion")
+    def _agents(self, cfg: Effective, key: str, loop: asyncio.AbstractEventLoop, run: CrewRun, ctx: ToolContext) -> dict[str, Any]:
+        return build_agents(cfg.agents((key,)), self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="crew", prompt_version=cfg.prompt_version, crew="promotion")
 
     async def draft_posts(self, article: dict[str, Any]) -> PromoPostsResult:
         """`article` is one entry of the web app's /promotion/collect answer (title, url, excerpt, topQueries, channels)."""
@@ -177,26 +216,15 @@ class PromotionCrew:
         if not channels:
             return PromoPostsResult([], "completed", "no channel to draft", 0, 0.0)
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist)
+        cfg = await crew_config.load("promotion", self.web)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = self._agents("copywriter", loop, run, ctx)
+            agents = self._agents(cfg, "copywriter", loop, run, ctx)
             a = data_block("article", {k: article.get(k) for k in ("title", "url", "description", "excerpt", "topQueries")})
             ch = data_block("channels", [{"channel": c.get("channel"), "name": c.get("label"), "guidance": c.get("guidance"), "max_chars": c.get("maxChars"), "has_title": c.get("hasTitle"), "link_in_text": c.get("linkInBody"), "link": c.get("link"), "threads": [t.get("title") for t in (c.get("threads") or [])][:5]} for c in channels])
             task = Task(
-                description=(
-                    "Write one promotion post for the article in the article block for EACH channel in the channels block.\n"
-                    "Rules:\n"
-                    "- Use only facts from the article block. Never invent a result, number, quote, version or claim the article does not make.\n"
-                    "- First person, as the article's author. Plain and specific. No hype words, no clickbait, no emoji.\n"
-                    "- Follow the channel's guidance and stay under its max_chars.\n"
-                    "- Where link_in_text is true, include the channel's link exactly as given, once. Where it is false, do not put any link in the text. Never include any other URL.\n"
-                    "- threads (Reddit) are recent discussion titles for context only: do not quote them or mention any user.\n"
-                    "- title is null where has_title is false.\n"
-                    "- notes is one short sentence for the author: what to check before posting (for example the community's self-promotion rule) or where it fits best.\n"
-                    'Return one JSON object: {"posts": [{"channel": "...", "title": "..." or null, "body": "...", "notes": "..."}]} and nothing else.\n\n'
-                    f"{a}\n\n{ch}"
-                ),
-                expected_output='One JSON object {"posts": [...]} with one post per requested channel.',
+                description=f"{cfg.instructions('posts')}\n{POSTS_CONTRACT}\n\n{a}\n\n{ch}",
+                expected_output=cfg.expected_output("posts"),
                 agent=agents["copywriter"],
                 output_pydantic=PromoPosts,
             )
@@ -216,9 +244,10 @@ class PromotionCrew:
 
         limit = max(1, min(MAX_IDEAS, int(signals.get("max") or 8)))
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist)
+        cfg = await crew_config.load("promotion", self.web)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = self._agents("strategist", loop, run, ctx)
+            agents = self._agents(cfg, "strategist", loop, run, ctx)
             gsc = signals.get("gsc") or {}
             blocks = "\n\n".join(
                 [
@@ -231,19 +260,8 @@ class PromotionCrew:
                 ]
             )
             task = Task(
-                description=(
-                    f"Propose up to {limit} ideas for new articles on this site (DevOps, cloud, Kubernetes, platform and AI engineering), chosen because they would be easy to promote: people are already searching for or discussing the subject.\n"
-                    "Rules:\n"
-                    "- Every idea needs at least one item of evidence copied EXACTLY from the signals: a Search Console query (type gsc_query, value = the query text), a Search Console topic (type gsc_topic, value = the topic) or a Reddit thread (type reddit, value = its url). Prefer ideas backed by both search demand and a discussion.\n"
-                    "- Do not propose anything already in covered (published articles) or planned (the calendar and earlier ideas), or a near-duplicate of one.\n"
-                    "- title: at most 70 characters, specific, no clickbait. angle: one or two sentences on what would make it worth reading and sharing (first-hand, concrete, a real problem).\n"
-                    "- outline: 4 to 7 section headings. target_query: one query from search_console_queries, or null.\n"
-                    "- channels: ids from the channels block where the finished article would fit.\n"
-                    "- If the signals support fewer ideas, return fewer. Never invent a query, a thread or a number.\n"
-                    'Return one JSON object: {"ideas": [{"title": "...", "angle": "...", "outline": ["..."], "target_query": "..." or null, "channels": ["..."], "evidence": [{"type": "...", "value": "..."}]}]} and nothing else.\n\n'
-                    f"{blocks}"
-                ),
-                expected_output='One JSON object {"ideas": [...]}.',
+                description=f"{cfg.instructions('ideas', limit=limit)}\n{IDEAS_CONTRACT}\n\n{blocks}",
+                expected_output=cfg.expected_output("ideas"),
                 agent=agents["strategist"],
                 output_pydantic=ContentIdeas,
             )
