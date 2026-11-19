@@ -5,6 +5,9 @@ blog's MDX files, and write docs/seo/rag-eval/<date>-<config>.md (+ <date>-summa
   # real run (ONNX bge-small; Postgres full text in a scratch database; no pgvector needed: exact cosine in numpy)
   uv run python scripts/rag_eval.py --embeddings onnx --model-dir /models/bge-small-en-v1.5 \
       --dsn postgresql://postgres@127.0.0.1:54329/rag --configs baseline-v4,token-vector,token-hybrid
+  # bge-m3 on mk4 (kubectl -n embeddings port-forward svc/bge-m3 11434:11434); ~10 min to embed the corpus on its CPU
+  uv run python scripts/rag_eval.py --embeddings ollama --ollama-url http://127.0.0.1:11434 --ollama-model bge-m3:567m \
+      --configs token-vector-div,token-hybrid --out /tmp/rag-eval
   # CI smoke (only that it runs): hashed embeddings, BM25 instead of Postgres, output to a temp dir
   uv run python scripts/rag_eval.py --embeddings hash --configs token-hybrid --out "$RUNNER_TEMP/rag-eval"
 
@@ -37,7 +40,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.embeddings import HashEmbeddings, OnnxEmbeddings  # noqa: E402
+from app.embeddings import HashEmbeddings, OllamaEmbeddings, OnnxEmbeddings  # noqa: E402
 from app.rag_eval import BLOG_DIR, EVAL_PATH, LocalIndex, evaluate, load_articles, load_eval_set, pct, render_markdown, similar_overlap  # noqa: E402
 from app.retrieval import RetrievalConfig  # noqa: E402
 
@@ -82,8 +85,10 @@ def commit() -> str:
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--embeddings", choices=["onnx", "hash"], default="onnx")
+    ap.add_argument("--embeddings", choices=["onnx", "ollama", "hash"], default="onnx")
     ap.add_argument("--model-dir", default="/models/bge-small-en-v1.5")
+    ap.add_argument("--ollama-url", default="http://127.0.0.1:11434")
+    ap.add_argument("--ollama-model", default="bge-m3:567m")
     ap.add_argument("--dsn", default=None, help="scratch Postgres for full-text search (tables are dropped and recreated)")
     ap.add_argument("--configs", default="baseline-v4,token-vector,token-vector-div,token-hybrid-noid,token-hybrid")
     ap.add_argument("--floor", type=float, default=0.15)
@@ -102,7 +107,8 @@ async def main() -> int:
     ap.add_argument("--judge-model", default="claude-opus-5-5")
     a = ap.parse_args()
 
-    emb = CachedEmbeddings(OnnxEmbeddings(a.model_dir) if a.embeddings == "onnx" else HashEmbeddings())
+    inner = {"onnx": lambda: OnnxEmbeddings(a.model_dir), "ollama": lambda: OllamaEmbeddings(a.ollama_url, a.ollama_model), "hash": HashEmbeddings}[a.embeddings]()
+    emb = CachedEmbeddings(inner)
     articles = load_articles(BLOG)
     questions = load_eval_set(a.eval)
     out = Path(a.out)
