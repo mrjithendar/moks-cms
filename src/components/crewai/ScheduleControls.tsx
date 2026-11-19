@@ -177,7 +177,8 @@ export function ScheduleRowActions({ schedule, flows, agentOn }: { schedule: Sch
   const url = `/api/admin/crewai/schedules/${schedule.id}`;
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="flex flex-wrap justify-end gap-1">
+      {/* One row; -mt-2 lines the button labels up with the first line of text in the other cells. */}
+      <div className="-mt-2 flex justify-end gap-1 whitespace-nowrap">
         <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)}>Edit</Button>
         <Button type="button" size="sm" variant="ghost" loading={busy === "toggle"} onClick={() => void act("toggle", () => send(url, "PATCH", { enabled: !schedule.enabled }))}>{schedule.enabled ? "Pause" : "Resume"}</Button>
         <Button type="button" size="sm" variant="ghost" disabled={!agentOn} title={agentOn ? undefined : "The SEO agent is off."} loading={busy === "run"} onClick={() => void act("run", () => send(url, "POST", { action: "run" }), `Start ${schedule.flow} now with this schedule's inputs?`)}>Run now</Button>
