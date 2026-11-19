@@ -56,7 +56,7 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
                 return
             s.add_cost(r.cost_usd, r.tokens)
             s.document = r.draft.model_dump()
-            s.crew = {"status": r.status, "tokens": r.tokens, "tool_calls": len(r.tool_calls), "fetched_sources": r.fetched_sources}
+            s.crew = {"status": r.status, "tokens": r.tokens, "tool_calls": len(r.tool_calls), "fetched_sources": r.fetched_sources, "config": getattr(r, "config", None)}
 
     @router(draft)
     def after_draft(self) -> str:
@@ -88,7 +88,7 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
             s = self.state
             doc = s.document or {}
             r = s.validation_report
-            await self.retry(lambda: self.deps.web.save_draft(s.draft_id, {"kind": "new_article", "document": doc, "changes": r.get("changes") or [], "flags": r.get("flags") or [], "summary": f"New article: {doc.get('title', '')}", "model": self._body_model(), "promptVersion": PROMPT_VERSION, "threadId": s.draft_id, "runId": s.id}))
+            await self.retry(lambda: self.deps.web.save_draft(s.draft_id, {"kind": "new_article", "document": doc, "changes": r.get("changes") or [], "flags": r.get("flags") or [], "summary": f"New article: {doc.get('title', '')}", "model": self._body_model(), "promptVersion": (s.crew.get("config") or {}).get("prompt_version") or PROMPT_VERSION, "threadId": s.draft_id, "runId": s.id}))
             s.feedback = s.validator_feedback = None
             s.outcome = "draft_ready"
 

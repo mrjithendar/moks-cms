@@ -51,7 +51,9 @@ from ..llm import CallSpec, InvalidOutput, Llm, Usage
 from ..runs import CURRENT_RUN_ID
 from ..schemas import CodeBlock, FactCheckFlag, InternalLinkSuggestion, NewArticleDraft, Source
 from ..tools import ToolContext, data_block
+from . import config as crew_config
 from .common import UNTRUSTED, AgentDef, CrewRun, build_agents, feedback_section, make_crew, run_crew, task_raw
+from .config import CrewDef, TaskDef
 from .skills import editorial_tags
 
 PROMPT_VERSION = "seo-crew-v7"
@@ -82,29 +84,60 @@ NOTES_RULE = (
     "Notes for the editor never go in the body: the site renders it as plain Markdown, so a comment ({/* */} or <!-- -->), JSX or a TODO line is published as text. "
     f"Put what the editor must check or add (an unsourced claim, real command output to capture, a link to confirm) after the body: a line `{FACT_CHECK_MARKER}` followed by one `- claim | reason` line each. Move any such note already in a draft there."
 )
-WRITE_TASK = (
+WRITE_INSTRUCTIONS = (
     "Write the full article as MDX following the style guide.\n"
     "Facts: use only the research notes and the author's first-hand notes. The author's notes are their own experience (what they built, ran, measured or decided): write those parts in the first person and keep their commands, versions and numbers exactly. Where neither has what a section needs, say less rather than invent.\n"
     "Depth: cover every heading in the brief's outline. Each section explains why before how, shows the command or configuration with the output or result to expect, and names the trade-off, limit or failure mode an engineer would hit. Prefer one worked example carried through the article over several disconnected snippets. Use a table for a comparison, a list for steps, and a mermaid diagram where the brief asks for one. Aim for the brief's reading time (about 220 words a minute); without one, write 1,500 to 2,500 words of prose.\n"
     "Opening and ending: open with the concrete problem or result in two or three sentences, with no generic introduction; end with what to check or do next, not a recap.\n"
     "Code: every block declares its language and is complete enough to copy and run; no placeholders that hide the hard part.\n"
-    "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences.\n"
-    f"{NOTES_RULE}"
+    "The example articles show the voice, depth and structure to match. Take nothing factual from them and do not reuse their sentences."
 )
-REVISE_TASK = (
+REVISE_INSTRUCTIONS = (
     "Revise the current draft (the current_draft block) into the best version of this article, following the style guide. Do not start over.\n"
     "Keep: its structure and headings unless the outline needs a section it lacks, the author's voice, every first-hand passage, and everything that is correct.\n"
     "Fix: commands, flags, versions and facts that the research notes contradict; sections that are missing, thin or vague (cover every heading in the brief's outline, why before how, with the output or result to expect and the trade-off an engineer would hit); code that is incomplete, inconsistent or not runnable.\n"
     "Cut: padding, repetition and generic introductions or recaps.\n"
     "Facts: use only the research notes, the author's first-hand notes and what the current draft already says correctly; where none has what a section needs, say less rather than invent.\n"
-    "Return the complete revised article body in MDX (no front matter, no H1), not a list of changes.\n"
-    f"{NOTES_RULE}"
+    "Return the complete revised article body in MDX (no front matter, no H1), not a list of changes."
 )
+WRITE_TASK = f"{WRITE_INSTRUCTIONS}\n{NOTES_RULE}"
+REVISE_TASK = f"{REVISE_INSTRUCTIONS}\n{NOTES_RULE}"
 CURRENT_DRAFT_CHARS = 60_000  # the web app sends at most this much
 REVIEW_TASK = (
     "Check every command, flag and version in the draft against the research sources (fetch_allowlisted_docs when needed). Statements that come from the author's first-hand notes are the author's own experience: keep them and do not flag them unless they contradict a source. "
     "Correct what is wrong; do not shorten, summarise or restyle the article, and keep every section and code block. "
     "Leave no note for the editor in the body (a {/* */} or <!-- --> comment, JSX, a TODO line): the site renders plain Markdown and would publish it as text."
+)
+
+RESEARCH_OUTPUT = "Compact research notes (about 1,500 words, at most 3,000), as bullets per outline section: facts, exact commands and versions, related site article paths, gaps, and a list of source URLs."
+REVIEW_CONTRACT = (
+    "Return the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line "
+    f"`{FACT_CHECK_MARKER}` followed by one line per claim you could not verify and per note for the editor (the writer's list after its body, "
+    "and any note left in the body), as `- claim | reason` (or `- none`)."
+)
+SEO_TASK = (
+    "Produce the article's metadata as JSON matching the schema: title (≤ 60 chars), slug_suggestion, meta_description (120–155 chars), "
+    "outline (the H2s of the reviewed body), sources (only URLs from the research), fact_check_flags (from the review), internal_links "
+    "(≤ 3, only existing site paths from vector_search). Use gsc_queries_for_topic for the target queries. Do NOT include the article body: "
+    "it is taken from the technical review unchanged."
+)
+# The crew's editable configuration (crews/config.py, CrewAI console → Crews). The brief, author notes, examples, style
+# guide and feedback blocks, the rule that editor notes never go in the body, the review's output format and the SEO
+# editor's schema stay in code.
+CREW = CrewDef(
+    crew="editorial",
+    label="Editorial crew",
+    description="Researches, writes, reviews and edits a new article from a calendar item (or revises its current draft); the draft waits for review.",
+    prompt_version=PROMPT_VERSION,
+    agents=tuple(AGENTS),
+    tasks=(
+        TaskDef("research", "researcher", "Research", RESEARCH_TASK, RESEARCH_OUTPUT, contract="Then the brief block and the author's first-hand notes."),
+        TaskDef("write", "writer", "Write (new article)", WRITE_INSTRUCTIONS, "The complete article body in MDX (no front matter, no H1).", contract=f"{NOTES_RULE}\nThen the brief, the author's notes, the style guide, the example articles and any feedback."),
+        TaskDef("revise", "writer", "Revise (Improve)", REVISE_INSTRUCTIONS, "The complete article body in MDX (no front matter, no H1).", contract=f"{NOTES_RULE}\nThen the brief, the author's notes, the current draft, the style guide, the example articles and any feedback."),
+        TaskDef("review", "reviewer", "Technical review", REVIEW_TASK, f"The complete corrected MDX body, then {FACT_CHECK_MARKER} and the list.", contract=f"Then the author's notes, and: {REVIEW_CONTRACT}", output_editable=False),
+        TaskDef("seo", "seo_editor", "SEO metadata", SEO_TASK, "One JSON object with title, slug_suggestion, meta_description, outline, sources, fact_check_flags and internal_links (no body).", contract="Then the brief and any feedback. The answer is parsed as SeoMetadata (title, slug, meta description, outline, sources, flags, internal links)."),
+    ),
+    replay=("new_article_flow",),
 )
 
 _MARKER_RE = re.compile(r"^\s*(?:\**\s*needs[_ ]fact[_ ]check\s*\**\s*:|#{1,6}\s*needs[_ ]fact[_ ]check\b[^\n]*$)", re.I | re.M)
@@ -362,6 +395,7 @@ class CrewResult:
     cost_usd: float
     tool_calls: list[tuple[str, str]]
     fetched_sources: list[str]
+    config: dict[str, Any] | None = None  # which crew configuration ran (crews/config.py Effective.summary)
 
 
 class EditorialCrew:
@@ -379,9 +413,10 @@ class EditorialCrew:
             titles.setdefault(url, title)
 
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist, on_source=on_source, style=str(brief.get("styleGuide") or ""))
+        cfg = await crew_config.load("editorial", self.web)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=PROMPT_VERSION, crew="editorial", models=brief.get("models") or {})
+            agents = build_agents(cfg.agents(), self.settings, self.llm, loop, run, ctx, draft_id=draft_id, purpose="crew", prompt_version=cfg.prompt_version, crew="editorial", models=brief.get("models") or {})
             b = data_block("brief", {k: brief.get(k) for k in BRIEF_KEYS})
             style = data_block("style_guide", brief.get("styleGuide", ""))
             notes = author_notes_block(brief)
@@ -389,18 +424,18 @@ class EditorialCrew:
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
             current = current_draft_block(brief)
             check = "\n\nThe article already has a draft that will be revised: research the outline as usual, so the writer can check its commands, versions and facts." if current else ""
-            research = Task(description=f"{RESEARCH_TASK}{check}\n\n{b}{notes}", expected_output="Compact research notes (about 1,500 words, at most 3,000), as bullets per outline section: facts, exact commands and versions, related site article paths, gaps, and a list of source URLs.", agent=agents["researcher"])
-            task = REVISE_TASK if current else WRITE_TASK
-            write = Task(description=f"{task}\n\n{b}{notes}{current}\n\n{style}{examples}{fb}", expected_output="The complete article body in MDX (no front matter, no H1).", agent=agents["writer"], context=[research])
+            research = Task(description=f"{cfg.instructions('research')}{check}\n\n{b}{notes}", expected_output=cfg.expected_output("research"), agent=agents["researcher"])
+            key = "revise" if current else "write"
+            write = Task(description=f"{cfg.instructions(key)}\n{NOTES_RULE}\n\n{b}{notes}{current}\n\n{style}{examples}{fb}", expected_output=cfg.expected_output(key), agent=agents["writer"], context=[research])
             review = Task(
-                description=f"{REVIEW_TASK}{notes}\n\nReturn the complete corrected MDX body (this is the body that will be published; do not shorten it), then a line `{FACT_CHECK_MARKER}` followed by one line per claim you could not verify and per note for the editor (the writer's list after its body, and any note left in the body), as `- claim | reason` (or `- none`).",
-                expected_output=f"The complete corrected MDX body, then {FACT_CHECK_MARKER} and the list.",
+                description=f"{cfg.instructions('review')}{notes}\n\n{REVIEW_CONTRACT}",
+                expected_output=cfg.expected_output("review"),
                 agent=agents["reviewer"],
                 context=[research, write],
             )
             seo = Task(
-                description=f"Produce the article's metadata as JSON matching the schema: title (≤ 60 chars), slug_suggestion, meta_description (120–155 chars), outline (the H2s of the reviewed body), sources (only URLs from the research), fact_check_flags (from the review), internal_links (≤ 3, only existing site paths from vector_search). Use gsc_queries_for_topic for the target queries. Do NOT include the article body: it is taken from the technical review unchanged.\n\n{b}{fb}",
-                expected_output="One JSON object with title, slug_suggestion, meta_description, outline, sources, fact_check_flags and internal_links (no body).",
+                description=f"{cfg.instructions('seo')}\n\n{b}{fb}",
+                expected_output=cfg.expected_output("seo"),
                 agent=agents["seo_editor"],
                 context=[research, review],
                 output_pydantic=SeoMetadata,
@@ -416,7 +451,7 @@ class EditorialCrew:
             if usage is not None:
                 tokens, cost = tokens + usage.total_tokens, round(cost + usage.cost_usd(), 6)
         draft = self._check_sources(draft, fetched)
-        return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=tokens, cost_usd=cost, tool_calls=o.tool_calls, fetched_sources=fetched)
+        return CrewResult(draft=draft, status="incomplete" if draft.incomplete else "completed", tokens=tokens, cost_usd=cost, tool_calls=o.tool_calls, fetched_sources=fetched, config=cfg.summary())
 
     @staticmethod
     def _reviewed(tasks: list[Any]) -> bool:

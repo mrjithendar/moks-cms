@@ -84,7 +84,7 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
                 s.errors.append(f"budget: {e.detail}")
                 return
             s.add_cost(r.cost_usd, r.tokens)
-            s.crew = {"status": r.status, "reason": r.reason, "tokens": r.tokens, "tool_calls": len(r.tool_calls)}
+            s.crew = {"status": r.status, "reason": r.reason, "tokens": r.tokens, "tool_calls": len(r.tool_calls), "config": getattr(r, "config", None)}
             if r.result is None:
                 s.change_set = None
                 s.validation_report = {"errors": [f"crew: {r.reason or 'no output'}"], "flags": []}
@@ -128,6 +128,7 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
     async def save_draft(self) -> None:
         async with self.step("save_draft"):
             s = self.state
+            ran = (s.crew or {}).get("config") or {}  # the crew configuration version an admin activated, if one ran
             body: dict[str, Any] = {
                 "changes": s.changes,
                 "flags": s.validation_report.get("flags") or [],
@@ -135,7 +136,7 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
                 "recommendationIds": s.plan.get("recommendation_ids", []),
                 "categories": s.plan.get("categories", []),
                 "model": self.deps.settings.draft_model if s.change_set else None,
-                "promptVersion": PROMPT_VERSION,
+                "promptVersion": PROMPT_VERSION + (f"+v{ran['version']}" if ran.get("source") == "version" and ran.get("version") else ""),
                 "threadId": s.draft_id,
                 "runId": s.id,
             }

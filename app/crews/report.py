@@ -17,7 +17,9 @@ from typing import Any
 from ..config import Settings
 from ..llm import Llm
 from ..tools import ToolContext, data_block
+from . import config as crew_config
 from .common import AgentDef, CrewRun, build_agents, make_crew, run_crew
+from .config import CrewDef, TaskDef
 from .skills import report_tags
 
 PROMPT_VERSION = "seo-report-crew-v1"
@@ -31,6 +33,24 @@ AGENTS = [
         [],
     )
 ]
+
+WRITE_TASK = (
+    "Write the {kind} SEO briefing in 120–250 words of plain prose (no headings, no tables): what changed, the likely reasons the facts support, "
+    "and the 2–3 next actions from the next-actions list. Use only figures from the facts block, copied exactly; never compute a new number, "
+    "percentage or difference. If data is incomplete (data_complete=false), say so first."
+)
+# The crew's editable configuration (crews/config.py, CrewAI console → Crews). The facts and context blocks and the
+# number check after the crew stay in code.
+CREW = CrewDef(
+    crew="report",
+    label="Report crew",
+    description="Writes the weekly and monthly SEO briefing from figures computed by the web app; every number in it is checked against those figures.",
+    prompt_version=PROMPT_VERSION,
+    agents=tuple(AGENTS),
+    tasks=(TaskDef("write", "analyst", "Write the briefing", WRITE_TASK, "The briefing text only.", variables=("kind",), contract="Then the facts block (every figure the briefing may use) and the context block (data_complete, next actions, sources). Afterwards every number in the text must equal a fact, or the report fails."),),
+    replay=("report_flow",),
+    default_models="classify",
+)
 
 
 def _pct(v: Any) -> str | None:
@@ -157,18 +177,17 @@ class ReportCrew:
         from crewai import Task
 
         ctx = ToolContext(self.web, self.retriever, self.settings.docs_allowlist)
+        cfg = await crew_config.load("report", self.web)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents(AGENTS, self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=PROMPT_VERSION, crew="report", default_model=self.settings.classify_model)
+            agents = build_agents(cfg.agents(), self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=cfg.prompt_version, crew="report", default_model=self.settings.classify_model)
             kind = report.get("type", "weekly")
             task = Task(
                 description=(
-                    f"Write the {kind} SEO briefing in 120–250 words of plain prose (no headings, no tables): what changed, the likely reasons the facts support, "
-                    "and the 2–3 next actions from the next-actions list. Use only figures from the facts block, copied exactly; never compute a new number, "
-                    "percentage or difference. If data is incomplete (data_complete=false), say so first.\n\n"
+                    f"{cfg.instructions('write', kind=kind)}\n\n"
                     f"{data_block('facts', fact_list)}\n\n{data_block('context', {'data_complete': (report.get('organic') or {}).get('dataComplete'), 'next_actions': [a.get('action') for a in (report.get('nextActions') or [])][:5], 'sources': report.get('sources')})}"
                 ),
-                expected_output="The briefing text only.",
+                expected_output=cfg.expected_output("write"),
                 agent=agents["analyst"],
             )
             return make_crew(agents, [task], self.settings), [task]
