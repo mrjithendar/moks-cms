@@ -115,7 +115,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
           { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
           { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
-          { href: "/admin/advanced", label: "Advanced settings", section: "Site settings" },
           { href: "/admin/storage", label: "Storage", section: "Site settings" },
           { href: "/admin/email", label: "Email", section: "Site settings" },
           { href: "/admin/users", label: "Users", section: "Site settings" },

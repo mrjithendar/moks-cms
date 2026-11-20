@@ -143,9 +143,9 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
       if (p.lastError) return { status: "degraded", detail: `${label} · ${String(p.fields.fromEmail)} · last test failed` };
       return { status: "ok", detail: `${label} · ${String(p.fields.fromEmail)} · ${p.testedAt ? "test email succeeded" : "not tested yet"}` };
     }),
-    timed("Cloudflare Turnstile", { group: "Integrations", href: "/admin/advanced" }, async () => {
+    timed("Cloudflare Turnstile", { group: "Integrations", href: "/admin/integrations#turnstile" }, async () => {
       const t = await turnstileKeys();
-      if (!t.siteKey || !t.secret) return { status: "down", detail: "keys missing (Admin → Advanced settings): sign-in, comments and contact are blocked" };
+      if (!t.siteKey || !t.secret) return { status: "down", detail: "keys missing (Admin → Integrations → Turnstile): sign-in, comments and contact are blocked" };
       const r = await reachable("https://challenges.cloudflare.com/turnstile/v0/api.js");
       return { ...r, detail: `${t.production ? "production keys" : "test keys"} · ${r.detail}` };
     }),

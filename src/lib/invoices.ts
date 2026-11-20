@@ -751,7 +751,7 @@ export async function renewPaymentLink(actor: Actor, id: string, fetchImpl: Fetc
   const row = await mustGet(id);
   if (row.status !== "sent" || !row.number) throw new PostError("Only a sent, unpaid invoice can get a payment link.", 409);
   const keys = razorpayKeys(await effectiveEnv());
-  if (!keys.keyId || !keys.keySecret) throw new PostError("Razorpay is not connected (Admin → Advanced settings → Razorpay payments).", 409);
+  if (!keys.keyId || !keys.keySecret) throw new PostError("Razorpay is not connected (Admin → Payments → Razorpay payments).", 409);
   if (row.total < MIN_AMOUNT) throw new PostError(`Razorpay cannot collect less than ${formatMoney(MIN_AMOUNT, row.currency)}.`, 400);
   if (row.paymentLinkId && row.paymentLinkStatus === "created") {
     const closed = await closePaymentLink(row.paymentLinkId, keys, fetchImpl);

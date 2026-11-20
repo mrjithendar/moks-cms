@@ -26,7 +26,7 @@ import { verifyTurnstile } from "./turnstile";
  *    the row paid and returns the booking link with the length and the payer's details filled in.
  * 4. POST /api/razorpay/webhook: the same outcome server to server (payment.captured / order.paid / payment.failed),
  *    so a payment is recorded even if the visitor closes the tab before step 3.
- * The keys live in Admin → Advanced settings → Razorpay payments. Invoices (lib/invoices.ts) use the same keys and the
+ * The keys live in Admin → Payments → Razorpay payments. Invoices (lib/invoices.ts) use the same keys and the
  * same webhook, with Razorpay Payment Links instead of Checkout.
  */
 

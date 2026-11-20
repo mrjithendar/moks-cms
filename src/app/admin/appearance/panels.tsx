@@ -518,11 +518,11 @@ export function HireMePanel() {
         <Toggle path="hireMe.embedBooking" label="Open Cal.com links in a pop-up on the page"
           hint="Cal.com's scheduler loads only when a visitor clicks Book; other links (and blocked scripts) open in a new tab." />
         <TextField path="hireMe.calOrigin" label="Self-hosted Cal.com address (optional)" placeholder="https://cal.example.com" type="url"
-          hint="Only if you run Cal.com yourself. Leave empty for cal.com. Bookings reach Admin → Bookings through a webhook: see Advanced settings → Cal.com bookings." />
+          hint="Only if you run Cal.com yourself. Leave empty for cal.com. Bookings reach Admin → Bookings through a webhook: see Bookings → Cal.com bookings." />
       </Panel>
       <Panel
         title="Paid calls (Razorpay)"
-        description={<>Visitors choose a call length, pay minutes × your rate, then book a time. Visitors in India pay in INR; everyone else pays in USD. Needs the keys in <Link href="/admin/advanced" className="underline">Advanced settings → Razorpay payments</Link>; payments appear in <Link href="/admin/payments" className="underline">Payments</Link>.</>}
+        description={<>Visitors choose a call length, pay minutes × your rate, then book a time. Visitors in India pay in INR; everyone else pays in USD. Needs the keys in <Link href="/admin/payments#razorpay" className="underline">Payments → Razorpay payments</Link>; payments appear in <Link href="/admin/payments" className="underline">Payments</Link>.</>}
       >
         <Toggle path="hireMe.paidCall.enabled" label="Offer paid calls" hint="Shown only while the page is on, you are taking work, both rates are set and the Razorpay keys are saved." />
         <TextField path="hireMe.paidCall.title" label="Title" max={60} />

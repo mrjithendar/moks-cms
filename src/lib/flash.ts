@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation";
 import { PostError } from "./posts";
 
-/** Server-action helper: run, then redirect back with ?ok= or ?error= (+ issues) for the page to show. */
-export async function flash(path: string, fn: () => Promise<string | void>): Promise<never> {
+/**
+ * Server-action helper: run, then redirect back with ?ok= or ?error= (+ issues) for the page to show. A `#anchor` in
+ * `path` is kept at the end, after the query, so the browser scrolls back to the form that was saved.
+ */
+export async function flash(back: string, fn: () => Promise<string | void>): Promise<never> {
+  const [path, anchor] = back.split("#", 2) as [string, string | undefined];
+  const hash = anchor ? `#${anchor}` : "";
   let target: string;
   try {
     const message = (await fn()) || "Saved.";
@@ -19,5 +24,5 @@ export async function flash(path: string, fn: () => Promise<string | void>): Pro
     }
     target = `${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(text)}`;
   }
-  redirect(target);
+  redirect(target + hash);
 }

@@ -98,11 +98,11 @@ export type VideoGenerationStatus = {
 /** For the editor: whether "Generate video" is on, and why not. Never exposes the key. */
 export async function videoGenerationStatus(): Promise<VideoGenerationStatus> {
   const config = await resolveVideoConfig();
-  if (!config) return { enabled: false, reason: "Video generation is not configured (Gemini key in Admin → Integrations, video model in Admin → Advanced settings).", aspectRatios: VIDEO_ASPECT_RATIOS };
+  if (!config) return { enabled: false, reason: "Video generation is not configured (Gemini key in Admin → Integrations, video model in Admin → Integrations → Video generation).", aspectRatios: VIDEO_ASPECT_RATIOS };
   // Storage is needed whatever the destination: the clip is previewed from the private tmp prefix first.
   if (!(await storageReady())) return { enabled: false, reason: "Configure media storage (R2) first.", aspectRatios: VIDEO_ASPECT_RATIOS };
   const destinations = offeredDestinations(await effective(), true);
-  if (destinations.length === 0) return { enabled: false, reason: "No video destination is switched on (Admin → Advanced settings → Video destinations).", aspectRatios: VIDEO_ASPECT_RATIOS };
+  if (destinations.length === 0) return { enabled: false, reason: "No video destination is switched on (Admin → Storage → Video destinations).", aspectRatios: VIDEO_ASPECT_RATIOS };
   return { enabled: true, aspectRatios: VIDEO_ASPECT_RATIOS, model: config.model, destinations };
 }
 
@@ -116,7 +116,7 @@ const MESSAGES: Record<VideoGenErrorCode, string> = {
   timeout: "Video generation took too long and was stopped. Try again, or simplify the prompt.",
   unsupported: "The video service rejected these options for this model. Try the other aspect ratio, or check the video settings.",
   auth: "The Gemini API key was rejected. An admin must check the key in Admin → Integrations.",
-  model: "The configured video model is not available. An admin must check GEMINI_VIDEO_MODEL in Admin → Advanced settings.",
+  model: "The configured video model is not available. An admin must check the video model in Admin → Integrations → Video generation.",
   unavailable: "The video service is unavailable right now. Try again in a minute.",
   empty: "The model did not return a video. Try rephrasing the prompt.",
   invalid_video: "The video service returned data that is not a valid MP4 video. Try again.",
