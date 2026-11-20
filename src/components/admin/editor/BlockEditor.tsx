@@ -597,7 +597,7 @@ export function BlockEditor({
         </div>
       )}
       <div className="rounded-xl border border-line bg-surface">
-        <div className="z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b border-line bg-surface px-2 py-1.5 transition-[top] duration-200 motion-reduce:transition-none sm:sticky sm:top-[calc(var(--spacing-header)+var(--editor-bar,3.8rem))] [[data-editor-focus]_&]:sm:top-[var(--editor-bar,3.8rem)]">
+        <div className="z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b border-line bg-surface px-2 py-1.5 transition-[top] duration-200 motion-reduce:transition-none sm:sticky sm:top-[calc(var(--spacing-chrome)+var(--editor-bar,3.8rem))] [[data-editor-focus]_&]:sm:top-[var(--editor-bar,3.8rem)]">
           <div role="tablist" aria-label="Editing mode" className="flex shrink-0 rounded-lg bg-surface-sunken p-0.5">
             {(["visual", "source"] as const).map((m) => (
               <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => switchTo(m)}

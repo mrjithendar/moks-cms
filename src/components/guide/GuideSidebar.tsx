@@ -58,7 +58,7 @@ export function GuideLayout({ sidebar, children }: { sidebar: ReactNode; childre
           </summary>
           <div className="border-t border-line p-3">{sidebar}</div>
         </details>
-        <div className="hidden lg:sticky lg:top-[calc(var(--spacing-header)+1.5rem)] lg:block lg:max-h-[calc(100dvh-var(--spacing-header)-3rem)] lg:overflow-y-auto lg:pr-1">{sidebar}</div>
+        <div className="hidden lg:sticky lg:top-[calc(var(--spacing-chrome)+1.5rem)] lg:block lg:max-h-[calc(100dvh-var(--spacing-chrome)-3rem)] lg:overflow-y-auto lg:pr-1">{sidebar}</div>
       </div>
       <div className="min-w-0">{children}</div>
     </div>

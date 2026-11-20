@@ -211,7 +211,7 @@ export function AdminSidebar({ items, role, account, prefs }: { items: NavItem[]
         if (flyout) setFlyout(null);
       }}
       // Above the page beside it (a group's panel in the narrow menu overlaps the page), below the site header and dialogs.
-      className={`border-b border-line bg-canvas md:sticky md:top-header md:z-30 md:h-[calc(100dvh-var(--spacing-header))] md:overflow-y-auto md:border-b-0 md:border-r ${rail ? "md:w-16" : "md:w-64"}`}
+      className={`border-b border-line bg-canvas md:sticky md:top-chrome md:z-30 md:h-[calc(100dvh-var(--spacing-chrome))] md:overflow-y-auto md:border-b-0 md:border-r ${rail ? "md:w-16" : "md:w-64"}`}
     >
       <div className={`flex flex-col gap-3 px-4 py-3 sm:px-6 md:min-h-full md:gap-4 md:py-5 ${rail ? "md:px-2" : "md:px-3"}`}>
         <Link href="/admin" className={`hidden items-center gap-2 px-3 ${rail ? "" : "md:flex"}`}>

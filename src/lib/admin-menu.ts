@@ -134,6 +134,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/advanced", { group: "settings" }],
 
   ["/admin/system", { group: "system" }],
+  ["/admin/cache", { group: "system" }],
   ["/admin/backups", { group: "system" }],
   ["/admin/database", { group: "system" }],
   ["/admin/sync", { group: "system" }],

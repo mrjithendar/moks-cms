@@ -35,6 +35,8 @@ const SEVERITY: [string, Severity][] = [
   ["site-config.publish", "notice"],
   ["database.", "warning"],
   ["audit.export", "notice"],
+  ["cache.purge.all", "notice"],
+  ["cache.", "info"],
   ["practice.settings", "warning"],
   ["practice.problem.archive", "notice"],
   ["practice.abuse", "warning"],

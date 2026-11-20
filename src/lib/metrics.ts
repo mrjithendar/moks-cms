@@ -264,7 +264,7 @@ async function seoGauges(db: Awaited<ReturnType<typeof import("@/db").getDb>>, s
 }
 
 // --- Cache bus (src/lib/cache-bus.ts) -----------------------------------------------------------------
-// Fixed labels only: kind (5 cache kinds) and role (publisher | subscriber). cache_bus_connected exists only once the
+// Fixed labels only: kind (5 cache kinds, plus "page" for the admin's page purges) and role (publisher | subscriber). cache_bus_connected exists only once the
 // bus is configured (CACHE_BUS_REDIS_URL) and has created a connection, so the CacheBusDisconnected alert
 // (max(...{role="subscriber"}) == 0) cannot fire on a deployment that runs without it.
 

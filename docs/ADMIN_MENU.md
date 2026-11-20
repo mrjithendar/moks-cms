@@ -31,9 +31,27 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Appearance | Customise, Menus, Homepage, Typography & colours |
 | Users | All users, Your profile, API keys ("Your account" for someone without the Users page) |
 | Settings | General, Integrations, Storage, Email, Advanced settings |
-| System | System status, Backups, Database, Data sync, Audit log |
+| System | System status, Cache, Backups, Database, Data sync, Audit log |
 
 Below the entries: **Help** (the user manual) and **Collapse menu**.
+
+## The admin bar (2026-11-20)
+
+A dark toolbar fixed at the top of every page for staff, on the public site and in the admin, like WordPress's
+(`src/components/admin-bar/AdminBar.tsx`, `src/lib/admin-bar.ts`). Left to right: Dashboard (on the site; its arrow
+opens a short admin menu) or Visit site (in the admin), **New** (post, page, media; invoice and user for admins), the
+page's own link (Edit post / Edit page / Customize homepage / Edit categories… on the site, View post or View page in
+the editor once it is live), the Comments, Messages and Review queue counts, **Cache** (admins), and the person's menu
+(profile, account, Hide/Show toolbar on the site, Sign out). 44 px high on phones (icons only), 32 px from 768 px.
+
+- **Never in cached HTML.** Public pages are cached for everyone (the ISR page cache and any CDN in front, which keys
+  on the URL only), so the bar is drawn in the browser after the session says the reader is staff, with its data from
+  `GET /api/admin/bar?path=…` (no-store; authors get only their own Edit links).
+- **No layout jump.** A hint cookie, `moks-adminbar` (`on` / `off`, readable by scripts, grants nothing), lets a
+  head script add `html.has-adminbar` before the first paint; the bar's height is `--adminbar-h` (0 for readers) and
+  every sticky element offsets by `--spacing-chrome` (header + bar). The cookie is set by the bar API on a staff
+  member's first page and removed when the session ends; `off` is kept (the person hid the bar on the site).
+- **Not shown** in `/preview/*`, inside frames (the device previews), in the editor's focus mode, or in print.
 
 - **One address is new:** Email moved out of Storage & email to `/admin/email`. Every other page is where it was.
   Menus, Homepage, Typography & colours and General are sections of Appearance & settings

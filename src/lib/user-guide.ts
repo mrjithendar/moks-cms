@@ -790,7 +790,48 @@ const guides: GuideEntry[] = [
     body: ["Advanced settings holds lower-level site options. Change these only when you know what a setting does; each page section explains its options."],
   },
 
+  {
+    id: "admin-bar",
+    kind: "guide",
+    section: "Getting started",
+    title: "The admin bar",
+    summary: "The dark toolbar at the top of every page while you are signed in as staff.",
+    keywords: ["toolbar", "admin bar", "top bar", "edit this page", "shortcut", "quick links", "wordpress", "hide toolbar"],
+    body: [
+      "While you are signed in as an admin or author, a dark bar stays at the top of every page, on the public site and in the admin. Readers never see it, and cached pages never contain it: your browser draws it after the page loads.",
+      "- Dashboard / Visit site: on the site it leads to the admin (its arrow opens a short menu of admin pages); in the admin it leads back to the site.",
+      "- New: start a post or a page, or open Media. Admins can also start an invoice or add a user.",
+      "- Edit: on a post, page, category, tag or your author page, a link to edit it (authors only for their own posts). In the post or page editor it becomes View, once the post is live.",
+      "- Comments, Messages and Review queue show how many items are waiting, like the admin menu.",
+      "- Cache (admins): purge this page, clear the page cache, reload content and settings, or purge everything; see Cache.",
+      "- Your name: your profile, account settings, Hide toolbar on the site, and Sign out.",
+      "Hide toolbar on the site keeps the bar in the admin only, in this browser; Show toolbar on the site brings it back. Signing out removes the bar at once.",
+      "The bar is not shown in the editor's previews, in focus mode, or when you print a page.",
+    ],
+  },
+
   // Operations
+  {
+    id: "cache",
+    kind: "guide",
+    section: "Operations",
+    title: "Cache",
+    summary: "See the page cache and clear it on every server.",
+    href: "/admin/cache",
+    adminOnly: true,
+    keywords: ["cache", "purge", "clear cache", "flush", "stale", "old page", "refresh", "page cache", "performance", "cache bus"],
+    body: [
+      "Public pages are rendered once and served from memory, so readers get them fast. Each server of the site keeps its own copy; the cache bus (Redis/Valkey) carries every clear to all of them.",
+      "Publishing, editing or deleting a post or page, and saving settings, menus, categories or integrations, already clears the cache everywhere, and the site renders its pages again in the background within seconds. Without the cache bus the other servers catch up within five minutes.",
+      "- Purge this page: removes one address (for example /blog/my-post, or / for the home page) on every server. Also in the admin bar while you look at the page.",
+      "- Clear page cache: every page is rendered again on its next visit.",
+      "- Reload content & settings: reads posts, pages, categories, menus, appearance and integrations from the database again, and clears the page cache.",
+      "- Purge all caches: everything above at once.",
+      "The page also shows, for the server that answered, how many pages it holds, the memory they use (PAGE_CACHE_MAX_MB), how often visits were served from the cache, and the last cache actions with who ran them. Every action is also in the Audit log.",
+      "These clear the site's own caches. A CDN in front of the site (such as Cloudflare) keeps its own copies: purge those in its dashboard.",
+      "Demo accounts see these tools but cannot run them.",
+    ],
+  },
   {
     id: "system",
     kind: "guide",
@@ -965,6 +1006,9 @@ const faqs: GuideEntry[] = [
   faq("faq-backup", "Operations", "Are passwords included in backups?", [
     "No. Backups exclude password hashes, sessions, API-key hashes and stored credentials. Choose encryption when you create one if it will leave your machine.",
   ], { href: "/admin/backups", adminOnly: true, keywords: ["backup", "password", "security", "encrypt"] }),
+  faq("faq-stale-page", "Operations", "I changed something but the site still shows the old version. What do I do?", [
+    "Reload the page first: saving already clears the site's cache. If it is still old, open the page and choose Cache → Purge this page in the admin bar (or Admin → Cache). If a CDN such as Cloudflare is in front of the site, purge the address there too.",
+  ], { href: "/admin/cache", adminOnly: true, keywords: ["old", "stale", "cache", "not updating", "purge", "refresh"] }),
   faq("faq-site-down", "Operations", "Something on the site is broken. Where do I look first?", [
     "Admin → System status runs live checks of every dependency. Then check Data sync for failed runs and the Audit log for recent changes.",
   ], { href: "/admin/system", adminOnly: true, keywords: ["broken", "down", "error", "outage", "troubleshoot"] }),

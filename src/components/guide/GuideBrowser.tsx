@@ -175,7 +175,7 @@ export function GuideBrowser({
 
   return (
     <div>
-      <div className="sticky top-header z-10 -mx-1 bg-surface-muted/95 px-1 pb-3 pt-1 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
+      <div className="sticky top-chrome z-10 -mx-1 bg-surface-muted/95 px-1 pb-3 pt-1 backdrop-blur supports-[backdrop-filter]:bg-surface-muted/80">
         <label htmlFor="guide-search" className="sr-only">Search the guide</label>
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />

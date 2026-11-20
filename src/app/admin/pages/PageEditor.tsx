@@ -121,7 +121,7 @@ export function PageEditor({
 
   return (
     <div style={editorBarOffset(barHidden)}>
-      <div className={`sticky top-header z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-line bg-canvas px-4 py-2 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0 sm:px-3 [[data-editor-focus]_&]:top-0 ${autoHideClass(barHidden)}`}>
+      <div className={`sticky top-chrome z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-line bg-canvas px-4 py-2 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0 sm:px-3 [[data-editor-focus]_&]:top-0 ${autoHideClass(barHidden)}`}>
         <Link href="/admin/pages" className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-fg-muted hover:bg-surface-sunken hover:text-fg"
           onClick={(e) => { if (dirty && !window.confirm("You have unsaved changes. Leave anyway?")) e.preventDefault(); }}>← Pages</Link>
         <SaveIndicator state={state} dirty={dirty} status="live" />

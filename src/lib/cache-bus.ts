@@ -1,3 +1,4 @@
+import { purgeablePath } from "./admin-bar";
 import { log } from "./log";
 import { recordCacheBusError, recordCacheBusPublished, recordCacheBusReceived, setCacheBusConnected } from "./metrics";
 
@@ -11,11 +12,14 @@ import { recordCacheBusError, recordCacheBusPublished, recordCacheBusReceived, s
  * Without CACHE_BUS_REDIS_URL the bus falls back to REDIS_URL if that is set, else it is local only.
  *
  * Rules: messages are `{kind, origin}` and nothing else (no content, user data or secrets: channels are shared by
- * every Valkey tenant). Redis is never awaited by a request: publishing is fire-and-forget with short timeouts and no
+ * every Valkey tenant). The one exception is kind "page" (the admin's "Purge this page"), which may add `path`: a
+ * public URL path, checked by purgeablePath() before sending and again on arrival; without it, every page. Redis is never awaited by a request: publishing is fire-and-forget with short timeouts and no
  * offline queue; when Valkey is down or unset, caches converge within their TTL as before.
  */
 export const KINDS = ["content", "categories", "settings", "integrations", "practice"] as const;
 export type Kind = (typeof KINDS)[number];
+/** Page-cache purges from the admin: one public path, or every page. Separate from KINDS (no data cache to clear). */
+export const PAGE_KIND = "page";
 export type Role = "publisher" | "subscriber";
 export const CHANNEL = "jithendar:invalidate";
 
@@ -93,6 +97,7 @@ export function createCacheBus(opts: Options = {}) {
   const logEveryMs = opts.logEveryMs ?? 60_000;
 
   const handlers = new Map<Kind, Set<() => void>>();
+  const pageHandlers = new Set<(path: string | null) => void>();
   const conns: Partial<Record<Role, Promise<BusConnection | null>>> = {};
   const up: Record<Role, boolean> = { publisher: false, subscriber: false };
   // First connect of the publisher: one shared wait, so a burst of publishes adds one listener, not one each.
@@ -131,6 +136,16 @@ export function createCacheBus(opts: Options = {}) {
     }
   }
 
+  function purgeLocal(path: string | null) {
+    for (const purge of pageHandlers) {
+      try {
+        purge(path);
+      } catch (err) {
+        log.warn("page purge handler failed", { event: "cache_bus_handler_failed", kind: PAGE_KIND, err });
+      }
+    }
+  }
+
   function onMessage(_channel: string, message: string) {
     let parsed: unknown;
     try {
@@ -138,8 +153,15 @@ export function createCacheBus(opts: Options = {}) {
     } catch {
       return; // malformed: ignored
     }
-    const { kind, origin: from } = (parsed ?? {}) as { kind?: unknown; origin?: unknown };
+    const { kind, origin: from, path } = (parsed ?? {}) as { kind?: unknown; origin?: unknown; path?: unknown };
     if (typeof from !== "string" || from === origin) return; // own echo
+    if (kind === PAGE_KIND) {
+      const target = path === undefined ? null : purgeablePath(path);
+      if (path !== undefined && target === null) return; // a path that is not a public URL path: ignored
+      recordCacheBusReceived(PAGE_KIND);
+      purgeLocal(target);
+      return;
+    }
     if (!KINDS.includes(kind as Kind)) return; // unknown kind: never becomes a metric label
     recordCacheBusReceived(kind as Kind);
     clearLocal(kind as Kind);
@@ -218,12 +240,12 @@ export function createCacheBus(opts: Options = {}) {
     });
   }
 
-  async function publish(kind: Kind) {
+  async function publish(kind: Kind | typeof PAGE_KIND, path?: string) {
     try {
       const c = await connection("publisher");
       if (!c) return;
       if (!(await whenReady(c))) throw new Error(`publisher not connected (${c.status})`);
-      await c.publish(CHANNEL, JSON.stringify({ kind, origin }));
+      await c.publish(CHANNEL, JSON.stringify(path === undefined ? { kind, origin } : { kind, origin, path }));
       recordCacheBusPublished(kind);
     } catch (err) {
       failed("publisher", err);
@@ -259,6 +281,22 @@ export function createCacheBus(opts: Options = {}) {
     broadcast(kind: Kind) {
       clearLocal(kind);
       if (target()) void publish(kind);
+    },
+
+    onPagePurge(purge: (path: string | null) => void) {
+      pageHandlers.add(purge);
+    },
+
+    /**
+     * Drops one cached page (a public path) or every page (null) here and on the other replicas. Returns false, and
+     * does nothing, for a path purgeablePath() refuses. Synchronous for the caller; never throws.
+     */
+    broadcastPage(path: string | null): boolean {
+      const checked = path === null ? null : purgeablePath(path);
+      if (path !== null && checked === null) return false;
+      purgeLocal(checked);
+      if (target()) void publish(PAGE_KIND, checked ?? undefined);
+      return true;
     },
 
     /** Starts both connections in the background (server start). Returns at once; never throws. */
@@ -305,6 +343,16 @@ export function onInvalidate(kind: Kind, clear: () => void) {
 
 export function broadcastInvalidate(kind: Kind) {
   bus.broadcast(kind);
+}
+
+/** Registers what drops a cached page (page-cache.ts). */
+export function onPagePurge(purge: (path: string | null) => void) {
+  bus.onPagePurge(purge);
+}
+
+/** Drop one public path (or every page, null) from the page cache on every replica. False for a refused path. */
+export function broadcastPagePurge(path: string | null): boolean {
+  return bus.broadcastPage(path);
 }
 
 /** Called once at server start (instrumentation.ts). */
