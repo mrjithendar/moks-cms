@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Button } from "@/components/ui/form";
 import { adminActor } from "@/lib/admin";
@@ -37,7 +38,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Fla
         <Card>
           <p className="text-sm text-fg-muted">
             Not connected yet. In Cal.com: Settings → Developer → Webhooks → New, subscriber URL <code>{absoluteUrl("/api/cal/webhook")}</code>, booking events, and a
-            secret; then paste the secret in <Link href="/admin/advanced" className="underline">Advanced settings → Cal.com bookings</Link>.
+            secret; then paste the secret in <a href="#calcom" className="underline">Cal.com bookings</a> below.
           </p>
         </Card>
       )}
@@ -78,6 +79,9 @@ export default async function BookingsPage({ searchParams }: { searchParams: Fla
             </form>
           </Card>
         ))}
+      </div>
+      <div className="mt-10">
+        <RuntimeSettings ids={["calcom"]} />
       </div>
     </>
   );

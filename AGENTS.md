@@ -77,7 +77,7 @@ are owned by other workloads — the site must not shadow them.
 15. Prefer existing dependencies; justify every new one in the phase report.
 16. **Keep the user guide current.** Adding, changing or removing an admin page, a setting, an option or a feature
     also updates the in-app user guide in the same change: `src/lib/user-guide.ts` (guides and FAQ, in plain words),
-    `src/lib/user-guide-settings.ts` (hand-written setting rows; the SEO agent, Advanced settings and MCP scopes are
+    `src/lib/user-guide-settings.ts` (hand-written setting rows; the SEO agent, runtime settings and MCP scopes are
     generated from code) and, when a flow changes, its diagram in `docs/guide/diagrams/` (re-export with
     `scripts/export-guide-diagrams.sh`). `tests/user-guide.test.ts` fails when a nav page, form label, setting or
     diagram is not covered. See `docs/USER_GUIDE.md`.

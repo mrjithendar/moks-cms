@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db } from "@/db";
 import { rowsOf } from "@/db/rows";
-import { checkLlmBudget } from "../llm-budgets";
 import { log } from "../log";
 import { recordSeoLlm } from "../metrics";
 import { anthropicClient, mapAnthropicError, messageParams, resultOf } from "../practice/ai/anthropic";
@@ -145,16 +144,9 @@ export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts
     const user = feedback ? `${o.call.user}\n\n<feedback>Your previous answer was rejected by the validator:\n${feedback}\nAnswer again with the complete JSON object, fixing every problem.</feedback>` : o.call.user;
     const chars = user.length + o.call.system.length + (o.call.cachedSystem ?? []).join("").length;
     const state = await budgetState(db, cfg, o.now);
-    const estimate = estimateCostUsd(o.model, chars, o.call.maxTokens);
-    if (state.paused || estimate > state.remainingUsd) {
+    if (state.paused || estimateCostUsd(o.model, chars, o.call.maxTokens) > state.remainingUsd) {
       log.warn("seo llm budget cap reached", { operation: "seo_llm", outcome: "budget", model: o.model });
       return { ok: false, reason: "budget", detail: `Monthly budget of $${cfg.monthlyBudgetUsd.toFixed(2)} reached ($${state.spentUsd.toFixed(2)} spent).`, attempts: attempt - 1, costUsd: spent };
-    }
-    // The model's and the provider's own limits (Admin → Automation & AI → LLM budgets), across every purpose.
-    const over = await checkLlmBudget(db, o.model, estimate, "anthropic", o.now);
-    if (over) {
-      log.warn("llm budget reached", { operation: "seo_llm", outcome: "budget", model: o.model });
-      return { ok: false, reason: "budget", detail: over, attempts: attempt - 1, costUsd: spent };
     }
     const started = performance.now();
     let res: ModelResult;
@@ -190,11 +182,6 @@ export async function submitBatch(db: Db, cfg: ClaudeConfig, model: string, requ
   const state = await budgetState(db, cfg, deps.now);
   if (estimate > state.remainingUsd) {
     log.warn("seo batch refused by budget", { operation: "seo_llm_batch", outcome: "budget", requests: requests.length });
-    return null;
-  }
-  const over = await checkLlmBudget(db, model, estimate, "anthropic", deps.now);
-  if (over) {
-    log.warn("seo batch refused by llm budget", { operation: "seo_llm_batch", outcome: "budget", requests: requests.length, model });
     return null;
   }
   const client = anthropicClient(cfg.apiKey, deps.fetchImpl);

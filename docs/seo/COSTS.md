@@ -70,14 +70,16 @@ per draft). v3's graph path had used ~$3–4.5 a month.
 6. **Alerts:** `SeoLlmBudget80` (≥ 80 %) and `SeoLlmBudgetReached` (100 %).
 7. **Kill switches:** `SEO_ORCHESTRATOR=legacy`, `ASK_BLOG_ENABLED=false`, `PUBLIC_MCP_ENABLED=false`,
    `ADMIN_MCP_ENABLED=false`, and suspending the CronJobs.
-8. **LLM budgets (per model and per provider):** Admin → Automation & AI → **LLM budgets**. An optional daily and
-   monthly limit for each model, and for each provider (all of its models together, e.g. the credit on the
-   Anthropic account). Empty = no limit; nothing is preset. Unlike 1–2 they count **every** Claude call in
-   `seo_llm_usage` (drafts, flows, Ask the Blog and the news desk) plus legacy batches in flight, because all of them
-   spend the same account's money; the caps above still apply on top. Days and months are UTC calendar periods, as
-   Anthropic's spend limits. Stored in the `setting` row `llm_budgets` (`src/lib/llm-budgets.ts`); the web app checks
-   it before every call and batch, the seo-agent before every call (`moks-seo-agent/app/llm_limits.py`, read every
-   ~30 s). A refused call names the limit, what was used and when it resets. AI visibility answers are recorded in
+8. **LLM budgets (per model and per provider):** owned by the **seo-agent**, which makes the platform's LLM calls
+   (`moks-seo-agent/app/llm_budgets.py`, its own table `seo_agent_llm_budgets`). An optional daily and monthly limit
+   for each model, and for each provider (all of its models together, e.g. the credit on the Anthropic account).
+   Empty = no limit; nothing is preset. The agent checks them before every call, for every purpose (drafts, flows,
+   Ask the Blog, the news desk), counting all of `seo_llm_usage` (this app's own few Claude calls included) plus legacy
+   batches in flight, by UTC day and month, as Anthropic's spend limits; the caps above still apply on top. Admin →
+   Automation & AI → **LLM budgets** only shows and edits them through the agent's `GET`/`PUT /llm-budgets`
+   (`src/lib/llm-budgets-view.ts`, `src/lib/seo-agent/client.ts`); nothing is stored here, and the card cannot change
+   them while the agent is unreachable. This app's own Claude calls (keyword intent labelling, the legacy draft path)
+   are counted by the agent but not stopped by these limits; their cap is item 1. AI visibility answers are recorded in
    `seo_ai_answers` and stay under their own monthly cap only. Setting the provider's monthly limit to the spend limit
    of this site's workspace in the Claude Console keeps the site from ever reaching Anthropic's hard stop.
 

@@ -9,7 +9,7 @@ import { DEFAULT_SEO_SETTINGS } from "./seo-intel/settings";
  * never a stored value, so the same reference can be public.
  *
  * Generated from the code where the code has a registry (Automation & AI from DEFAULT_SEO_SETTINGS and its help
- * text, Advanced settings from runtime-settings GROUPS, MCP scopes from the OAuth server), so it cannot drift; the
+ * text, the runtime settings from runtime-settings GROUPS, MCP scopes from the OAuth server), so it cannot drift; the
  * Appearance, Integrations and Storage forms have no registry and are described here from their labels.
  */
 
@@ -54,13 +54,23 @@ function seoGroups(): SettingsGroup[] {
   });
 }
 
-function advancedGroups(): SettingsGroup[] {
+/** The guide area of each admin page that shows runtime settings (lib/runtime-settings.ts `page`). */
+export const RUNTIME_SETTINGS_AREA: Record<string, string> = {
+  "/admin/integrations": "Integrations",
+  "/admin/storage": "Storage",
+  "/admin/bookings": "Bookings",
+  "/admin/payments": "Payments",
+  "/admin/users": "Users",
+};
+
+/** Runtime settings, each group under the page that shows it. */
+function runtimeGroups(): SettingsGroup[] {
   return GROUPS.map((g) => ({
-    id: `advanced-${g.id}`,
-    area: "Advanced settings",
+    id: `runtime-${g.id}`,
+    area: RUNTIME_SETTINGS_AREA[g.page] ?? "Settings",
     title: g.title,
     description: `${g.description} An empty field uses the deployment's environment variable of the same name.`,
-    href: "/admin/advanced",
+    href: `${g.page}#${g.id}`,
     rows: g.fields.map((f) => ({
       name: f.label,
       key: f.env,
@@ -230,8 +240,8 @@ const APPEARANCE: Omit<SettingsGroup, "area" | "href">[] = [
       r("Homepage title", "Up to 70 characters."),
       r("Title separator", "|, ·, — or -."),
       r("Search result preview", "How the homepage may look in Google."),
-      r("Google Search Console verification", "Status; tokens are set in Advanced settings."),
-      r("Bing Webmaster Tools verification", "Status; tokens are set in Advanced settings."),
+      r("Google Search Console verification", "Status; tokens are set in Integrations."),
+      r("Bing Webmaster Tools verification", "Status; tokens are set in Integrations."),
       r("Google Analytics 4", "Status; loads in production only, with Consent Mode."),
       r("Google AdSense", "Status and number of ad slots."),
       r("ads.txt", "Whether /ads.txt is served."),
@@ -256,7 +266,7 @@ const APPEARANCE: Omit<SettingsGroup, "area" | "href">[] = [
       r("Currency"),
       r("Intro call booking link", "Your Cal.com (or other https) booking page. Used by “Book an intro call” and by offers without their own link."),
       r("Open Cal.com links in a pop-up on the page", "Cal.com's scheduler loads only when a visitor clicks Book."),
-      r("Self-hosted Cal.com address (optional)", "Only if you run Cal.com yourself. Bookings reach Admin → Bookings through a webhook (Advanced settings → Cal.com bookings)."),
+      r("Self-hosted Cal.com address (optional)", "Only if you run Cal.com yourself. Bookings reach Admin → Bookings through a webhook (Bookings → Cal.com bookings)."),
       r("Offer paid calls", "Shown only while the page is on, you are taking work, both rates are set and the Razorpay keys are saved."),
       r("Title / Summary", "For the paid call and each offer."),
       r("Price per minute in India (INR)", "e.g. 50 → a 30-minute call costs ₹1,500."),
@@ -386,10 +396,10 @@ export function settingsReference(): SettingsGroup[] {
   return [
     ...APPEARANCE.map((g) => ({ ...g, area: "Appearance & settings", href: `/admin/appearance?section=${g.id === "appearance-hire-me" ? "hireMe" : g.id.replace("appearance-", "")}` })),
     ...INTEGRATIONS,
+    ...runtimeGroups(),
     INVOICES,
     ...seoGroups(),
     mcpGroup(),
-    ...advancedGroups(),
   ];
 }
 

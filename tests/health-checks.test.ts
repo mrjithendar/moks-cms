@@ -41,7 +41,7 @@ describe("system status", () => {
     const unconfigurable = checks.filter((c) => !/href:|env:/.test(c.where)).map((c) => c.name).sort();
     expect(unconfigurable).toEqual(["Breached-password check", "TLS certificate"]); // public services nothing configures
     // The admin pages linked from System status exist.
-    for (const href of new Set(checks.flatMap((c) => [...c.where.matchAll(/href: "([^"?]+)/g)].map((m) => m[1]!)))) {
+    for (const href of new Set(checks.flatMap((c) => [...c.where.matchAll(/href: "([^"?#]+)/g)].map((m) => m[1]!)))) {
       const dir = path.resolve(import.meta.dirname, "..", "src/app", href.replace(/^\/admin/, "admin"));
       const grown = path.resolve(import.meta.dirname, "..", "src/app/admin/(growth)", href.replace(/^\/admin\//, ""));
       expect(fs.existsSync(path.join(dir, "page.tsx")) || fs.existsSync(path.join(grown, "page.tsx")), href).toBe(true);

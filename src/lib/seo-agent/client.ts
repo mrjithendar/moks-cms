@@ -185,3 +185,23 @@ export const lanceUpdate = (table: string, k: LanceKey, values: Record<string, s
   call<{ updated: number; version: number }>("POST", `/lancedb/tables/${encodeURIComponent(table)}/update`, { ...lanceBody(k), values }, deps);
 export const lanceDelete = (table: string, k: LanceKey, deps?: AgentDeps) =>
   call<{ deleted: number; version: number }>("POST", `/lancedb/tables/${encodeURIComponent(table)}/delete`, lanceBody(k), deps);
+
+/**
+ * LLM budgets, owned by the seo-agent (moks-seo-agent/app/llm_budgets.py): an optional daily and monthly limit per
+ * model and per provider, stored and enforced there. Admin → Automation & AI → LLM budgets only shows and edits them.
+ * A null limit is no limit.
+ */
+export type AgentLlmLimit = { daily_usd: number | null; monthly_usd: number | null };
+export type AgentLlmBudgets = { models: Record<string, AgentLlmLimit>; providers: Record<string, AgentLlmLimit> };
+/** GET /llm-budgets: the limits with this month's spend (UTC) by model and provider, today's alongside. */
+export type AgentLlmBudgetsView = {
+  budgets: AgentLlmBudgets;
+  month_start: string;
+  day_resets_at: string;
+  month_resets_at: string;
+  models: { model: string; provider: string; today_usd: number; month_usd: number; calls: number; purposes: string[] }[];
+  providers: { provider: string; today_usd: number; month_usd: number; forecast_usd: number }[];
+};
+export const getLlmBudgets = (deps?: AgentDeps) => call<AgentLlmBudgetsView>("GET", "/llm-budgets", undefined, deps, 8_000);
+/** PUT /llm-budgets: the whole set (what is left out has no limit afterwards), validated by the agent (422 with issues). */
+export const putLlmBudgets = (budgets: AgentLlmBudgets, actor: string, deps?: AgentDeps) => call<{ budgets: AgentLlmBudgets }>("PUT", "/llm-budgets", { ...budgets, actor }, deps, 8_000);

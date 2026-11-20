@@ -142,7 +142,7 @@ export async function resetSocialProvider(actor: Actor, provider: SocialProvider
 
 /** Effective Gemini configuration: the admin entry when saved, otherwise GEMINI_* environment variables. */
 export async function resolveGeminiImageConfig(): Promise<GeminiImageConfig | null> {
-  // Timeout and the other GEMINI_* tuning values can come from Admin → Advanced settings.
+  // Timeout and the other GEMINI_* tuning values can come from Admin → Integrations → Image generation limits.
   const { effectiveEnv } = await import("./runtime-settings");
   const env = await effectiveEnv();
   const stored = (await readStored().catch(() => EMPTY)).gemini;

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Alert, Button } from "@/components/ui/form";
 import { adminActor, actorOf } from "@/lib/admin";
@@ -57,7 +58,7 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
   const plan = sp.plan === "1" && migration.legacy > 0 && s?.verifiedAt && migration.sourceConfigured ? await migrateBatch(actorOf(me), { dryRun: true, limit: 25 }) : null;
   return (
     <>
-      <AdminHeader title="Storage" description="Where media, invoices, backups and the SEO agent's data are stored: Cloudflare R2 or Amazon S3. Keys are encrypted at rest and never shown again. Outgoing email is under Settings → Email." />
+      <AdminHeader title="Storage" description="Where media, invoices, backups and the SEO agent's data are stored: Cloudflare R2 or Amazon S3. Keys are encrypted at rest and never shown again. Also where generated videos can go (Video destinations). Outgoing email is under Settings → Email." />
       <Flash ok={sp.ok} error={sp.error} />
       <div className="space-y-6">
         <Card>
@@ -90,6 +91,8 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
             />
           )}
         </Card>
+
+        <RuntimeSettings ids={["video-destinations"]} />
 
         {(migration.legacy > 0 || migration.migrated > 0) && (
           <Card>

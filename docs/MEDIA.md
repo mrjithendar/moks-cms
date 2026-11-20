@@ -108,7 +108,7 @@ are wrapped in a focusable horizontal scroll region; code blocks scroll inside t
 
 ## Generate video (Veo through the Gemini API)
 
-**Requires manual configuration**: off until a video model is set in **Admin → Advanced settings → Video generation**
+**Requires manual configuration**: off until a video model is set in **Admin → Integrations → Video generation**
 (`GEMINI_VIDEO_MODEL`, a Veo model code from ai.google.dev). It uses the Gemini key from Integrations and needs R2.
 Not yet exercised against the real API (no key in development): request and response shapes follow Google's Veo guide
 as read on 2026-11-12, and the tests use canned responses. Generate one clip after configuring it.
@@ -129,7 +129,7 @@ as read on 2026-11-12, and the tests use canned responses. Generate one clip aft
 - Lifecycle as for images: private preview (`GET /api/admin/videos/generations/{id}`, Range supported) → **Insert
   video** copies it to `media/videos/…`, creates the media row (description required) and inserts `::video`;
   **Discard**/close deletes it; unaccepted clips expire after 1 hour.
-- **Destinations** (`src/lib/video-destinations.ts`; Admin → Advanced settings → Video destinations). An admin switches
+- **Destinations** (`src/lib/video-destinations.ts`; Admin → Storage → Video destinations). An admin switches
   each one on or off; the dialog's "Save the video to" list shows only those that are on and fully filled in (with one,
   there is nothing to choose; with none, Generate video is disabled). **Requires manual configuration**, and none of
   the three services has been exercised with real credentials: the tests use canned responses.

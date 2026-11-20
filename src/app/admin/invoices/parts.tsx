@@ -35,14 +35,14 @@ export function Readiness({ ready }: { ready: Awaited<ReturnType<typeof invoiceR
     todo.push(
       <>
         Razorpay is not connected, so invoices go out without a Pay button. Add the Key ID and Key secret in{" "}
-        <Link href="/admin/advanced" className="link">Advanced settings → Razorpay payments</Link>.
+        <Link href="/admin/payments#razorpay" className="link">Payments → Razorpay payments</Link>.
       </>,
     );
   }
   if (ready.online && !ready.webhook) {
     todo.push(
       <>
-        Add the Razorpay webhook secret in <Link href="/admin/advanced" className="link">Advanced settings</Link> and switch on the events payment_link.paid, payment_link.cancelled and
+        Add the Razorpay webhook secret in <Link href="/admin/payments#razorpay" className="link">Payments → Razorpay payments</Link> and switch on the events payment_link.paid, payment_link.cancelled and
         payment_link.expired for the webhook in Razorpay. Without it a payment is only recorded when the client returns to the invoice page after paying.
       </>,
     );

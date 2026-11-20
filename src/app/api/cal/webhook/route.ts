@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const PLAIN = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" };
 
-/** POST /api/cal/webhook: Cal.com booking events, verified with the secret in Advanced settings → Cal.com bookings. */
+/** POST /api/cal/webhook: Cal.com booking events, verified with the secret in Admin → Bookings → Cal.com bookings. */
 export async function POST(req: Request) {
   // Unauthenticated until the signature is checked: stop reading at the limit, with or without a Content-Length.
   const raw = await readBodyTextOrNull(req, 256 * 1024);

@@ -9,7 +9,9 @@ import { PostError } from "./posts";
 import { seal, unseal, type Sealed } from "./secrets";
 
 /**
- * Admin → Advanced settings: options that used to exist only as environment variables. Each field keeps its
+ * Runtime settings: options that used to exist only as environment variables. There is no page of their own: each
+ * group is shown on the admin page it belongs to (`page`, e.g. Razorpay on Payments, Cal.com on Bookings; rendered by
+ * components/admin/RuntimeSettings.tsx). Each field keeps its
  * environment-variable name, and the code reads it through effectiveEnv(): a value saved in the admin wins, an
  * empty field falls back to the deployment's value. Secrets are sealed with SETTINGS_ENCRYPTION_KEY and never
  * sent back to the browser. Changes apply on every replica at once (Redis invalidation; Better Auth is rebuilt).
@@ -31,13 +33,15 @@ export type Field = {
   max?: number;
   options?: { value: string; label: string }[];
 };
-export type Group = { id: string; title: string; description: string; fields: Field[] };
+/** `page`: the admin page that shows this group; the group's form sits at `${page}#${id}` (see settingHref). */
+export type Group = { id: string; title: string; description: string; page: string; fields: Field[] };
 
 const TOKEN_LIST = /^$|^[A-Za-z0-9_-]{10,100}(\s*,\s*[A-Za-z0-9_-]{10,100})*$/;
 
 export const GROUPS: Group[] = [
   {
     id: "verification",
+    page: "/admin/integrations",
     title: "Search engine verification",
     description: "Proves ownership of jithendar.com in Google Search Console and Bing Webmaster Tools (rendered as <meta> tags). Several tokens: separate with commas.",
     fields: [
@@ -47,6 +51,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "analytics",
+    page: "/admin/integrations",
     title: "Analytics, ads and consent",
     description: "Google Analytics 4 and AdSense load only in production, only on public pages, and only after consent where the law requires it.",
     fields: [
@@ -69,6 +74,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "turnstile",
+    page: "/admin/integrations",
     title: "Human verification (Cloudflare Turnstile)",
     description: "Protects sign-in, sign-up, comments and the contact form. Cloudflare dashboard → Turnstile → your widget. Wrong keys block sign-in: test in a private window after saving.",
     fields: [
@@ -78,6 +84,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "calcom",
+    page: "/admin/bookings",
     title: "Cal.com bookings",
     description:
       "Bookings, reschedules and cancellations from Cal.com appear in Admin → Bookings. In Cal.com: Settings → Developer → Webhooks → New: subscriber URL https://jithendar.com/api/cal/webhook, events Booking created, rescheduled, cancelled, requested and rejected, and a secret. Paste the same secret here; requests without a valid signature are refused.",
@@ -85,6 +92,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "razorpay",
+    page: "/admin/payments",
     title: "Razorpay payments (paid calls and invoices)",
     description:
       "Paid calls on /hire-me (Admin → Appearance → Hire me → Paid calls) and the payment links on invoices (Admin → Invoices). Razorpay Dashboard → Account & Settings → API keys: Key ID and Key secret (use rzp_test_ keys first). Then Webhooks → Add: URL https://jithendar.com/api/razorpay/webhook, events payment.captured, payment.failed and order.paid for paid calls and payment_link.paid, payment_link.cancelled and payment_link.expired for invoices, and a secret; paste the same secret here. Payments in a currency other than INR need International payments enabled on the Razorpay account.",
@@ -96,8 +104,9 @@ export const GROUPS: Group[] = [
   },
   {
     id: "image-limits",
+    page: "/admin/integrations",
     title: "Image generation limits",
-    description: "Caps on Gemini usage (each image costs money). The key and model are in Integrations.",
+    description: "Caps on Gemini usage (each image costs money). The key and model are under Image generation (Gemini).",
     fields: [
       { env: "GEMINI_IMAGE_USER_HOURLY_LIMIT", label: "Images per author per hour", type: "number", min: 0, max: 1000, placeholder: "10" },
       { env: "GEMINI_IMAGE_DAILY_LIMIT", label: "Images per day (whole site)", type: "number", min: 0, max: 10000, placeholder: "50" },
@@ -107,6 +116,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "video-generation",
+    page: "/admin/integrations",
     title: "Video generation",
     description:
       "Short AI clips for articles (editor → Generate → Video), made with a Veo model through the Gemini API using the Gemini key from Integrations. Off until a model is set. Each clip costs far more than an image, so the limits are low.",
@@ -121,6 +131,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "members",
+    page: "/admin/users",
     title: "Members-only articles",
     description:
       "A post marked “Members only” in the editor shows signed-out readers the first part of the article and a prompt to sign in or create an account. This is how much they see by default; a single post can set its own percentage in the editor.",
@@ -128,6 +139,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "video-destinations",
+    page: "/admin/storage",
     title: "Video destinations",
     description:
       "Where a generated video can go when an author inserts it. The editor offers only destinations that are switched on here and fully filled in. This site's own media library (R2) plays the file directly; Cloudflare Stream, Mux and Bunny Stream encode it for adaptive streaming and the article embeds their player (the video then lives in that service's account, not in Admin → Media).",
@@ -147,6 +159,7 @@ export const GROUPS: Group[] = [
   },
   {
     id: "avatars",
+    page: "/admin/users",
     title: "Profile pictures",
     description: "Limits for pictures readers upload on their account page (always re-encoded to 512 px WebP).",
     fields: [
@@ -156,6 +169,13 @@ export const GROUPS: Group[] = [
     ],
   },
 ];
+
+/** Where a group's form is: its page and the group's anchor on it. */
+export function settingHref(groupId: string): string {
+  const g = GROUPS.find((x) => x.id === groupId);
+  if (!g) throw new Error(`Unknown settings group ${groupId}`);
+  return `${g.page}#${g.id}`;
+}
 
 const FIELDS = new Map(GROUPS.flatMap((g) => g.fields.map((f) => [f.env, f] as const)));
 const KEY = "runtime";
@@ -180,7 +200,7 @@ async function readStored(): Promise<Stored> {
 }
 
 /**
- * process.env with every value saved in Advanced settings laid over it. Pass it to the existing env-reading
+ * process.env with every runtime setting saved in the admin laid over it. Pass it to the existing env-reading
  * helpers (integrations(), adsTxt(), avatarLimits(), generationLimits()…). Never throws: with the database
  * unavailable it is just process.env.
  */
@@ -223,7 +243,7 @@ export async function runtimeSummary(): Promise<Record<string, FieldState>> {
  * secret field keeps the stored secret unless "clear" is ticked.
  */
 export async function saveRuntimeGroup(actor: Actor, groupId: string, input: Record<string, string>, clearSecrets: string[] = []) {
-  if (actor.role !== "admin") throw new PostError("Only admins can change advanced settings.", 403);
+  if (actor.role !== "admin") throw new PostError("Only admins can change these settings.", 403);
   const group = GROUPS.find((g) => g.id === groupId);
   if (!group) throw new PostError("Unknown settings group.", 404);
   const stored = await readStored();
@@ -289,12 +309,12 @@ export async function saveRuntimeGroup(actor: Actor, groupId: string, input: Rec
   await audit(actor, "integrations.runtime", groupId, { changed });
 }
 
-/** Analytics, ads, verification and consent with Advanced settings applied (see config/integrations.ts). */
+/** Analytics, ads, verification and consent with the admin's runtime settings applied (see config/integrations.ts). */
 export async function runtimeIntegrations(): Promise<Integrations> {
   return integrations(await effectiveEnv());
 }
 
-/** /ads.txt body with Advanced settings applied. */
+/** /ads.txt body with the admin's runtime settings applied. */
 export async function runtimeAdsTxt(): Promise<string | null> {
   return adsTxt(await effectiveEnv());
 }

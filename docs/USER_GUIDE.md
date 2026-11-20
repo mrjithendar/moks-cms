@@ -45,7 +45,7 @@ filtered link shares the one canonical page. Switching it off removes it from th
 | Guides and FAQ | `src/lib/user-guide.ts` | `tests/user-guide.test.ts`: every admin nav page must be covered by an entry; every entry link must be a real admin route |
 | Pages (contents tree, entry page, print page) | `src/components/guide/` (`GuideSidebar.tsx`, `GuideArticle.tsx`, `parts.tsx`, `GuideBrowser.tsx`), routes `src/app/admin/user-manual/` and `src/app/user-manual/` | `tests/user-guide-pages.test.tsx` renders them; `tests/user-guide.test.ts` "pages of the manual" checks ids, contents, neighbours and related entries |
 | Settings: Automation & AI (SEO agent) | generated from `DEFAULT_SEO_SETTINGS` + `settings-meta.ts` help | generated: a new SEO setting appears automatically |
-| Settings: Advanced settings | generated from `runtime-settings.ts` `GROUPS` | generated |
+| Settings: runtime settings (on Integrations, Bookings, Payments, Storage, Users) | generated from `runtime-settings.ts` `GROUPS`; each group's `page` gives its area and link | generated; `tests/user-guide.test.ts` checks each page renders its groups |
 | Settings: MCP scopes | generated from `mcp-oauth/oauth.ts` `SCOPES` | generated |
 | Settings: Appearance, Integrations, Storage & email | hand-written rows in `src/lib/user-guide-settings.ts` | the test fails when a form label in those pages is not mentioned |
 | Diagrams | `docs/guide/diagrams/*.drawio` → `public/guide/*.drawio.svg` | the test fails when an entry names a diagram whose source or SVG is missing |

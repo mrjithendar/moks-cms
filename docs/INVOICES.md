@@ -96,7 +96,7 @@ on the spot so the client still gets it. A draft's "Preview PDF" is rendered on 
 2. **Storage** must be connected and verified (Admin → Storage & email): sending is refused without it.
 3. **Email** must be working (same page), or the invoice is issued but the client is not told; the invoice page then
    says so and offers "Email again" and the link to copy.
-4. **Razorpay:** the same keys as paid calls (Advanced settings → Razorpay payments). On the existing webhook
+4. **Razorpay:** the same keys as paid calls (Payments → Razorpay payments). On the existing webhook
    (`https://jithendar.com/api/razorpay/webhook`) also switch on **payment_link.paid**, **payment_link.cancelled** and
    **payment_link.expired**. Without the webhook a payment is still recorded when the client returns to the invoice
    page after paying, but not if they close the tab first. Currencies other than INR need International payments

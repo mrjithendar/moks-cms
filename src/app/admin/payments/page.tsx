@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Button } from "@/components/ui/form";
 import { absoluteUrl } from "@/config/site";
@@ -50,7 +51,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Fla
         <Card>
           <p className="text-sm text-fg-muted">
             {!keys.keyId || !keys.keySecret ? "Not connected yet: add the Key ID and Key secret" : "Add the webhook secret"} in{" "}
-            <Link href="/admin/advanced" className="underline">Advanced settings → Razorpay payments</Link>. Webhook URL: <code>{absoluteUrl("/api/razorpay/webhook")}</code> (events
+            <a href="#razorpay" className="underline">Razorpay payments</a> below. Webhook URL: <code>{absoluteUrl("/api/razorpay/webhook")}</code> (events
             payment.captured, payment.failed, order.paid). Then switch on paid calls in <Link href="/admin/appearance?section=hireMe" className="underline">Appearance → Hire me</Link>.
           </p>
         </Card>
@@ -97,6 +98,9 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Fla
             </form>
           </Card>
         ))}
+      </div>
+      <div className="mt-10">
+        <RuntimeSettings ids={["razorpay"]} />
       </div>
     </>
   );

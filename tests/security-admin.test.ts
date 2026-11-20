@@ -334,7 +334,7 @@ describe("IndexNow switch", () => {
   });
 });
 
-describe("advanced settings", () => {
+describe("runtime settings (shown on Integrations, Bookings, Payments, Storage and Users)", () => {
   it("override the deployment, fall back when emptied, validate input and keep secrets encrypted", async () => {
     vi.stubEnv("GA4_MEASUREMENT_ID", "G-DEPLOYED1");
     vi.stubEnv("TURNSTILE_SECRET_KEY", "deployment-secret-0000");

@@ -106,7 +106,7 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
               <span className="font-medium">Add a Razorpay payment link to every invoice</span>
               <span className="block text-fg-muted">
                 The client gets a Pay button and the invoice is marked paid when Razorpay confirms the payment. Uses the keys in{" "}
-                <Link href="/admin/advanced" className="link">Advanced settings → Razorpay payments</Link>. Switch it off to send invoices that are paid by bank transfer only.
+                <Link href="/admin/payments#razorpay" className="link">Payments → Razorpay payments</Link>. Switch it off to send invoices that are paid by bank transfer only.
               </span>
             </span>
           </label>

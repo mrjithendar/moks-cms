@@ -395,7 +395,7 @@ const perMinute = z
   .max(100_000)
   .refine((v) => Math.abs(Math.round(v * 100) - v * 100) < 1e-6, "At most two decimals.");
 const paidCall = z.object({
-  /** Shows the "Book a paid call" card. Also needs the Razorpay keys in Advanced settings. */
+  /** Shows the "Book a paid call" card. Also needs the Razorpay keys (Admin → Payments → Razorpay payments). */
   enabled: z.boolean(),
   title: text(60, 2),
   summary: text(280),
