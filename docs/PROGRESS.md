@@ -1,5 +1,35 @@
 # Progress log — jithendar.com
 
+## Cloudflare purging and purge on publish (2026-11-20, owner request)
+
+Owner: "clear cloudflare cache custom purge purge everything" and "enable setting for delete cache for homepage for
+each update and publish article news pages and all". Builds on the admin bar (#160).
+
+- **Settings:** Admin → Cache → Cloudflare settings (runtime-settings group `cloudflare`, `page: "/admin/cache"`, under
+  the Cloudflare card; #159 moved every group onto its page): `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN` (sealed; permission
+  Zone → Cache Purge → Purge), `CLOUDFLARE_PURGE_ON_PUBLISH` (related = default, everything, off). Nothing reaches
+  Cloudflare until a zone ID and token are saved.
+- **Client** (`src/lib/cloudflare.ts`): purge everything / files / prefixes / hosts / tags in batches of 100, stops at
+  the first refusal with Cloudflare's message (rate limit, token permission, zone), connection test (token verify, then
+  the zone and plan when the token may read it, checked against the site's host). The token never leaves the server.
+- **Purge on publish** (`src/lib/cdn-purge.ts`), on by default as asked: a visible change to a post, news story or
+  project purges it and every page that lists it (home, listing pages, feeds, category, tags, author, sitemaps, search
+  index, llms.txt); Admin → Pages changes purge the page and the home page; Appearance publish and category/tag changes
+  purge everything. Collected for 3 s (after the cache bus has cleared the other replicas) and sent in the background
+  from the replica that made the change. Hooks: `posts.ts afterChange` (covers publish, update, scheduled go-live,
+  unpublish, trash, restore, SEO and news drafts), `site-pages.ts`, `site-config/store.ts`, `taxonomy-admin.ts`.
+- **Admin:** Purge this page and Purge all caches also purge Cloudflare; the bar adds "Cloudflare: purge everything"
+  and "custom purge…"; Admin → Cache has a Cloudflare card (zone, policy, last purge on publish, Test connection,
+  Purge everything, Custom purge). All audit-logged (`cache.cloudflare.*`). `.env.example`, user guide, CONTENT_MODEL.md.
+- Tests: `tests/cloudflare.test.ts` (11: batching, refusals, unreachable API, connection test, custom-purge parsing,
+  related paths, policy, queue → one URL purge, everything). Ran locally: lint, tsc, full vitest (pass; `site-files`
+  needs `SITE_CONFIG_DIR` unset), `npm run build`, `e2e/admin-bar.spec.ts` (4 passed). Not run against a real
+  Cloudflare zone: no token here.
+- **Manual steps:** create the API token (Zone → Cache Purge → Purge, this zone; optionally Zone → Zone → Read), save it
+  and the zone ID in Admin → Cache → Cloudflare settings, press Admin → Cache → Test connection. Recommended in the
+  Cloudflare dashboard: Caching → Configuration → Browser Cache TTL = "Respect Existing Headers" (it currently adds
+  `max-age=3600` to HTML, so browsers keep a page an hour whatever is purged).
+
 ## Admin bar and Admin → Cache (2026-11-20, owner request)
 
 Owner: "need admin menu for moks-cms always on top like wordpress … clear cache and clear cloudflare cache custom

@@ -83,6 +83,28 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "cloudflare",
+    title: "Cloudflare settings",
+    description:
+      "Lets the admin bar's Cache menu, Admin → Cache and publishing purge Cloudflare's copies of your pages, when Cloudflare is in front of the site. Cloudflare dashboard → your domain → Overview: Zone ID. My Profile → API Tokens → Create Token → Custom token: permission Zone → Cache Purge → Purge, zone resources: this domain only (optional: Zone → Zone → Read, to show the zone and plan in Admin → Cache). Then Test connection on the Cloudflare card above.",
+    page: "/admin/cache",
+    fields: [
+      { env: "CLOUDFLARE_ZONE_ID", label: "Zone ID", type: "text", pattern: /^$|^[a-f0-9]{32}$/, placeholder: "32 hexadecimal characters" },
+      { env: "CLOUDFLARE_API_TOKEN", label: "API token", type: "secret", pattern: /^$|^[\x21-\x7e]{20,300}$/, hint: "Only Cache Purge on this zone. Never shown again after saving." },
+      {
+        env: "CLOUDFLARE_PURGE_ON_PUBLISH",
+        label: "Purge Cloudflare when content changes",
+        type: "select",
+        options: [
+          { value: "related", label: "The changed page and the pages that list it (home, listings, feeds, category, tags, author, sitemaps)" },
+          { value: "everything", label: "Everything, on every change" },
+          { value: "off", label: "Off: Cloudflare refreshes pages on its own schedule" },
+        ],
+        hint: "Applies when a post, news story, project or page is published, updated, scheduled to go live, unpublished or deleted. Site-wide changes (Appearance, menus, categories) purge everything unless this is Off. Deployment default: the changed page and the pages that list it.",
+      },
+    ],
+  },
+  {
     id: "calcom",
     page: "/admin/bookings",
     title: "Cal.com bookings",

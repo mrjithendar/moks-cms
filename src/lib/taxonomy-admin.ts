@@ -7,6 +7,7 @@ import { toneNames } from "@/components/categoryStyle";
 import { defaultCategories } from "@/config/taxonomy";
 import { audit } from "./audit";
 import { invalidateCategories } from "./categories";
+import { queueCdnPurge } from "./cdn-purge";
 import { invalidateContent } from "./content";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
@@ -66,6 +67,7 @@ export async function saveCategory(actor: Actor, originalSlug: string | null, ra
   await audit(actor, originalSlug ? "category.update" : "category.create", c.slug, originalSlug && originalSlug !== c.slug ? { from: originalSlug } : undefined);
   invalidateCategories();
   invalidateContent();
+  queueCdnPurge({ everything: true }); // category names and links are on many pages
 }
 
 export async function deleteCategory(actor: Actor, slugToDelete: string) {
@@ -77,6 +79,7 @@ export async function deleteCategory(actor: Actor, slugToDelete: string) {
   await db.delete(schema.category).where(eq(schema.category.slug, slugToDelete));
   await audit(actor, "category.delete", slugToDelete);
   invalidateCategories();
+  queueCdnPurge({ everything: true });
 }
 
 /** All tags in use with counts (any status), for the admin. */
@@ -102,6 +105,7 @@ export async function renameTag(actor: Actor, from: string, to: string) {
     where ${from} = any(tags)`);
   await audit(actor, "tag.rename", from, { to: target });
   invalidateContent();
+  queueCdnPurge({ everything: true });
 }
 
 export async function deleteTag(actor: Actor, tag: string) {
@@ -110,4 +114,5 @@ export async function deleteTag(actor: Actor, tag: string) {
   await db.execute(sql`update post set tags = array_remove(tags, ${tag}) where ${tag} = any(tags)`);
   await audit(actor, "tag.delete", tag);
   invalidateContent();
+  queueCdnPurge({ everything: true });
 }

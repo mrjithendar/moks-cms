@@ -61,6 +61,7 @@ export const RUNTIME_SETTINGS_AREA: Record<string, string> = {
   "/admin/bookings": "Bookings",
   "/admin/payments": "Payments",
   "/admin/users": "Users",
+  "/admin/cache": "Cache",
 };
 
 /** Runtime settings, each group under the page that shows it. */

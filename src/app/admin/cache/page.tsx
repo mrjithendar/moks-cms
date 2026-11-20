@@ -1,13 +1,15 @@
 import { desc, like } from "drizzle-orm";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, Stat, StatusPill, Table, td, th } from "@/components/admin/ui";
-import { Button, Field, Input } from "@/components/ui/form";
+import { Button, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { getDb, schema } from "@/db";
 import { adminActor } from "@/lib/admin";
 import { CACHE_ACTIONS, type CacheAction } from "@/lib/admin-bar";
-import { cacheStatus, runCacheAction } from "@/lib/cache-admin";
+import { cacheStatus, PURGE_KINDS, runCacheAction } from "@/lib/cache-admin";
 import { flash } from "@/lib/flash";
 import { PAGE_REVALIDATE_SECONDS } from "@/lib/page-cache";
+import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
 
 export const metadata = { title: "Cache" };
@@ -21,7 +23,9 @@ async function act(form: FormData) {
   const action = String(form.get("action") ?? "") as CacheAction;
   await flash(BACK, async () => {
     if (!CACHE_ACTIONS.includes(action)) throw new Error("unknown cache action");
-    return runCacheAction(actor, action, form.get("path") ?? undefined);
+    const r = await runCacheAction(actor, action, { path: form.get("path") ?? undefined, kind: form.get("kind") ?? undefined, items: form.get("items") ?? undefined });
+    if (!r.ok) throw new PostError(r.message);
+    return r.message;
   });
 }
 
@@ -30,7 +34,15 @@ const ACTION_LABELS: Record<string, string> = {
   "cache.clear.pages": "Cleared the page cache",
   "cache.clear.data": "Reloaded content & settings",
   "cache.purge.all": "Purged all caches",
+  "cache.cloudflare.purge": "Cloudflare purge",
+  "cache.cloudflare.test": "Cloudflare connection test",
 };
+
+const POLICY_LABELS = {
+  related: "On: the changed page and the pages that list it; site-wide changes purge everything",
+  everything: "On: everything, on every change",
+  off: "Off",
+} as const;
 
 function mb(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -48,7 +60,8 @@ export default async function CachePage({ searchParams }: { searchParams: FlashP
       .orderBy(desc(schema.auditLog.createdAt))
       .limit(15),
   ]);
-  const s = cacheStatus();
+  const s = await cacheStatus();
+  const cf = s.cloudflare;
   const busOk = s.bus.state === "connected";
   const off = Boolean(me.demo);
   return (
@@ -77,6 +90,59 @@ export default async function CachePage({ searchParams }: { searchParams: FlashP
             <ActionCard action="purge-all" title="Purge all caches" text="Everything above, at once." off={off} primary />
           </div>
         </Card>
+
+        <Card>
+          <div id="cloudflare-purge" className="mb-1 flex scroll-mt-24 items-center justify-between gap-3">
+            <h2 className="font-semibold text-fg">Cloudflare</h2>
+            <StatusPill status={cf.configured ? "configured" : "not configured"} />
+          </div>
+          {cf.configured ? (
+            <>
+              <p className="mb-4 text-sm text-fg-muted">
+                Zone <code>{cf.zoneId}</code>. Purge this page and Purge all caches (above and in the admin bar) also purge Cloudflare.{" "}
+                Purge on publish: <strong className="text-fg">{POLICY_LABELS[cf.policy]}</strong>.{" "}
+                <a href="#cloudflare" className="link">Change in Cloudflare settings</a>.
+              </p>
+              {cf.last && (
+                <p className="mb-4 text-sm text-fg-muted">
+                  Last purge on publish from this server: {cf.last.at.slice(0, 16).replace("T", " ")} UTC, {cf.last.what}:{" "}
+                  {cf.last.outcome.ok ? <span className="text-emerald-700 dark:text-emerald-300">done</span> : <span className="text-red-700 dark:text-red-300">{cf.last.outcome.error}</span>}
+                </p>
+              )}
+              <div className="mb-5 flex flex-wrap gap-3">
+                <form action={act}>
+                  <input type="hidden" name="action" value="cf-test" />
+                  <Button type="submit" variant="secondary" disabled={off}>Test connection</Button>
+                </form>
+                <form action={act}>
+                  <input type="hidden" name="action" value="cf-everything" />
+                  <Button type="submit" variant="secondary" disabled={off}>Purge everything at Cloudflare</Button>
+                </form>
+              </div>
+              <form action={act} className="grid gap-4 rounded-lg border border-line p-4 sm:grid-cols-[14rem_minmax(0,1fr)]">
+                <input type="hidden" name="action" value="cf-custom" />
+                <h3 className="font-medium text-fg sm:col-span-2">Custom purge</h3>
+                <Field label="Purge by" htmlFor="kind">
+                  <Select id="kind" name="kind" defaultValue="files">
+                    {PURGE_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="What to purge" htmlFor="items" hint={`One per line. ${PURGE_KINDS.map((k) => `${k.label}: ${k.hint}`).join(" ")} Up to 100 per request; longer lists are sent in several requests.`}>
+                  <Textarea id="items" name="items" rows={5} required className="font-mono text-xs" spellCheck={false} placeholder={"/blog/my-post\n/news/feed.xml"} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Button type="submit" disabled={off}>Purge at Cloudflare</Button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <p className="text-sm text-fg-muted">
+              If Cloudflare is in front of the site, it keeps its own copies of pages. Save its zone ID and an API token (permission Zone → Cache Purge → Purge) in{" "}
+              <a href="#cloudflare" className="link">Cloudflare settings</a> below, and the purges above, purge on publish and a custom purge reach Cloudflare too.
+            </p>
+          )}
+        </Card>
+        <RuntimeSettings ids={["cloudflare"]} />
 
         <section aria-labelledby="this-server">
           <h2 id="this-server" className="mb-1 font-semibold text-fg">This server</h2>

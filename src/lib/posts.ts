@@ -11,6 +11,7 @@ import { recordRedirect } from "./redirects";
 import { imageRefs } from "./images";
 import { resolveImage } from "./media";
 import { toIsoOffset } from "./dates-iso";
+import { queueCdnPurge } from "./cdn-purge";
 import { queueIndexNow } from "./indexnow";
 import { log } from "./log";
 import { clearAutosave, recordRevision } from "./revisions";
@@ -220,8 +221,13 @@ export function visibleChange(before: PostRow, after: PostRow): boolean {
  */
 async function afterChange(before: PostRow | null, after: PostRow | null, opts: { notifySearchEngines?: boolean } = {}) {
   invalidateContent();
+  const visible = !(before && after && !visibleChange(before, after));
+  // Cloudflare's copies of the post and the pages that list it (lib/cdn-purge.ts): when readers could see it before
+  // or can now. In the background; a save never waits for Cloudflare.
+  const live = [before, after].filter((r): r is PostRow => r !== null && visiblePath(r) !== null);
+  if (visible && live.length) queueCdnPurge({ posts: live.map((r) => ({ collection: r.collection, slug: r.slug, category: r.category, tags: r.tags, authorId: r.authorId })) });
   if (opts.notifySearchEngines === false) return;
-  if (before && after && !visibleChange(before, after)) return;
+  if (!visible) return;
   const paths = [before && visiblePath(before), after && visiblePath(after)].filter((p): p is string => Boolean(p));
   if (paths.length) await queueIndexNow(paths).catch((err) => log.warn("IndexNow queueing failed", { err }));
 }

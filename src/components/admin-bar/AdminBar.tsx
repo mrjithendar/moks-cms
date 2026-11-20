@@ -226,7 +226,7 @@ function Bar({ data, pathname, admin, pref, onPreference }: { data: AdminBarData
           <Menu id="cache" open={open} toggle={toggle} label="Cache" icon={<BoltIcon className="h-4 w-4" />}>
             {!data.cache.allowed && <p className="px-3 py-2 text-[#c3c4c7]">Read-only demo: these do nothing.</p>}
             {!admin && (
-              <Action disabled={!data.cache.allowed} onClick={() => cache("purge-page")} hint="This page only, on every server">
+              <Action disabled={!data.cache.allowed} onClick={() => cache("purge-page")} hint={data.cache.cloudflare ? "This page only, on every server and at Cloudflare" : "This page only, on every server"}>
                 Purge this page
               </Action>
             )}
@@ -238,11 +238,31 @@ function Bar({ data, pathname, admin, pref, onPreference }: { data: AdminBarData
             </Action>
             <Action
               disabled={!data.cache.allowed}
-              onClick={() => cache("purge-all", "Clear every cache on every server? Pages are rendered again on their next visit.")}
-              hint="Everything above, at once"
+              onClick={() =>
+                cache(
+                  "purge-all",
+                  data.cache?.cloudflare
+                    ? "Clear every cache on every server and purge everything at Cloudflare? Pages are fetched and rendered again on their next visit."
+                    : "Clear every cache on every server? Pages are rendered again on their next visit.",
+                )
+              }
+              hint={data.cache.cloudflare ? "Everything above, and everything at Cloudflare" : "Everything above, at once"}
             >
               Purge all caches
             </Action>
+            {data.cache.cloudflare && (
+              <>
+                <Sep />
+                <Action
+                  disabled={!data.cache.allowed}
+                  onClick={() => cache("cf-everything", "Purge everything at Cloudflare? Every page is fetched from the site again on its next visit.")}
+                  hint="Cloudflare only"
+                >
+                  Cloudflare: purge everything
+                </Action>
+                <Item href="/admin/cache#cloudflare-purge">Cloudflare: custom purge…</Item>
+              </>
+            )}
             <Sep />
             <Item href="/admin/cache">Cache status &amp; tools</Item>
           </Menu>

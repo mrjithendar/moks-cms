@@ -4,6 +4,7 @@ import { getDb, schema } from "@/db";
 import { audit } from "../audit";
 import { setDateSettings } from "../dates";
 import { broadcastInvalidate, onInvalidate } from "../cache-bus";
+import { queueCdnPurge } from "../cdn-purge";
 import { log } from "../log";
 import { resolveImage } from "../media";
 import type { Actor } from "../posts";
@@ -223,6 +224,8 @@ async function commitPublished(actor: Actor, config: SiteConfig, opts: { reason:
   if (version === null) throw new ConfigConflictError(await getDraft());
   cached = undefined;
   broadcastInvalidate("settings");
+  // Appearance changes every page: Cloudflare's copies go too (lib/cdn-purge.ts; unless purge on publish is Off).
+  queueCdnPurge({ everything: true });
   return version;
 }
 
