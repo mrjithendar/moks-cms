@@ -205,3 +205,40 @@ export type AgentLlmBudgetsView = {
 export const getLlmBudgets = (deps?: AgentDeps) => call<AgentLlmBudgetsView>("GET", "/llm-budgets", undefined, deps, 8_000);
 /** PUT /llm-budgets: the whole set (what is left out has no limit afterwards), validated by the agent (422 with issues). */
 export const putLlmBudgets = (budgets: AgentLlmBudgets, actor: string, deps?: AgentDeps) => call<{ budgets: AgentLlmBudgets }>("PUT", "/llm-budgets", { ...budgets, actor }, deps, 8_000);
+
+// --- Admin-editable agent settings (moks-seo-agent app/admin_settings; GET /admin-settings, PUT /admin-settings/{group}) ---
+
+export type AgentSettingType = "text" | "integer" | "number" | "boolean" | "select" | "list" | "secret";
+export type AgentSettingValue = string | number | boolean | string[] | null;
+export type AgentSettingField = {
+  env: string;
+  label: string;
+  hint: string;
+  type: AgentSettingType;
+  /** "live": applies at once. "restart": stored, and applies when the agent restarts. */
+  apply: "live" | "restart";
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  options: string[];
+  source: "admin" | "deployment" | "default";
+  updated_by: string | null;
+  updated_at: string | null;
+  restart_pending: boolean;
+  /** Not sent for a secret. */
+  value?: AgentSettingValue;
+  default?: AgentSettingValue;
+  /** The deployment's value when its environment variable is set, else null. */
+  deployment?: AgentSettingValue;
+  /** Secrets only: whether one is saved, whether the deployment has one, and whether it can be saved (the agent has its key). */
+  set?: boolean;
+  deployment_set?: boolean;
+  editable?: boolean;
+};
+export type AgentSettingsGroup = { id: string; title: string; description: string; fields: AgentSettingField[]; restart_pending: boolean };
+export type AgentSettingsView = { groups: AgentSettingsGroup[]; secrets_key_set: boolean; refresh_seconds: number; restart_pending: boolean };
+
+export const getAgentSettings = (deps?: AgentDeps) => call<AgentSettingsView>("GET", "/admin-settings", undefined, deps, 8_000);
+/** A field that is not sent stays as it is; null clears it (the deployment's value, then the default, applies). */
+export const putAgentSettings = (group: string, values: Record<string, AgentSettingValue>, actor: string, deps?: AgentDeps) =>
+  call<AgentSettingsView>("PUT", `/admin-settings/${encodeURIComponent(group)}`, { values, actor }, deps, 8_000);

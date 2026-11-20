@@ -476,7 +476,7 @@ const guides: GuideEntry[] = [
     summary: "Data sources, schedules, scoring, drafting, crawler and reports for the SEO agent.",
     href: "/admin/automation",
     adminOnly: true,
-    keywords: ["automation", "seo settings", "schedules", "cron", "scoring", "weights", "thresholds", "budget", "claude", "drafts", "crawler", "reports", "dataforseo", "ai visibility"],
+    keywords: ["automation", "seo settings", "schedules", "cron", "scoring", "weights", "thresholds", "budget", "claude", "drafts", "crawler", "reports", "dataforseo", "ai visibility", "agent limits", "timeout", "turns", "restart pending"],
     body: [
       "Automation & AI shows the search and analytics connections, Claude usage, ML models and Ask the Blog, then the settings by area. Every saved change is audit-logged.",
       "- Data sources: which Google properties are read, how far back and how long data is kept; DataForSEO for search volume, difficulty, live rankings and backlinks.",
@@ -485,6 +485,7 @@ const guides: GuideEntry[] = [
       "- Content & links: keyword opportunities, internal-linking limits and search-engine submission.",
       "- AI & drafts: Claude drafting (always stops at human review), its monthly budget, the optional explanation model and AI visibility.",
       "- Crawler: limits for the technical crawl of your own site. Reports: weekly and monthly report email.",
+      "- Agent limits: how many turns, requests, tokens and seconds a crew or a flow may use, and which documentation sites agents may read. These belong to the SEO agent: it checks and stores them. A value you save wins over the deployment's; empty a field to go back to the deployment's value or the default. Each field says whether it applies now or after the agent restarts, and a banner shows while a restart is pending.",
       "Every field is listed with its default under Settings in this guide.",
     ],
   },

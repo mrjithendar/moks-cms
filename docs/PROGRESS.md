@@ -1,5 +1,35 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P1 (part 1): the SEO agent's own settings in the admin (2026-11-20, owner request)
+
+Owner's plan "Admin settings overhaul" (2026-11-20), prompt P1. The agent half is merged (moks-seo-agent #13: table
+`seo_agent_settings`, registry, `GET /admin-settings`, `PUT /admin-settings/{group}`, first group "Agent limits").
+This is the web app's thin client for it. The rest of P1 (the merged "AI & SEO" menu group, the shared sectioned
+settings shell and Automation & AI split into sections) is **not** in this change.
+
+- `src/lib/seo-agent/client.ts`: `getAgentSettings`, `putAgentSettings` and their types.
+- `src/lib/seo-agent/settings-client.ts`: `loadAgentSettings()`; an agent that is unreachable, or too old to have the
+  route (404), is reported as such and nothing is editable.
+- `src/app/api/admin/seo/agent-settings/route.ts` (GET) and `[group]/route.ts` (PUT): admins only, same-origin,
+  rate-limited (`seoRoute`). Only the shape is checked here; the agent owns the rules and its 422 issues are passed
+  on. Audit action `seo.agent_settings.update` records the field names saved and cleared, never a value (a value may
+  be a secret).
+- `src/components/seo/AgentSettingsGroup.tsx`: draws one group from the agent's schema (text, whole number, number,
+  on/off, choice, list, write-only secret; unit and range; "Applies now" / "Applies after restart"; source chip
+  Admin / Deployment / Default; "Use the deployment's value or the default"; restart-pending banner). Sends only the
+  fields that changed; an emptied field is sent as null, which clears it in the agent.
+- Automation & AI shows the "Agent limits" group after LLM budgets. Nothing else on the page changed.
+- User guide: the Automation & AI guide describes Agent limits (rule 16).
+- Tests: `tests/agent-settings.test.ts` (10). **lint, typecheck, test and build were not run locally** (no
+  `node_modules` in the session that made this change); CI on the pull request is their first run. Not opened in a
+  browser.
+- No migration, no new dependency, no new environment variable in this app.
+- Manual: release and restart the seo-agent (it runs `:latest`; nothing restarts on its own). Until then the card
+  says "needs a newer seo-agent". `SEO_AGENT_SETTINGS_KEY` in the seo-agent Secret is needed only once a group has a
+  secret field (none yet).
+- Open: the agent's documentation allowlist has a second copy in `src/lib/seo-agent/config.ts` ("keep equal"); a list
+  saved in the agent does not change this app's copy.
+
 ## Cloudflare purging and purge on publish (2026-11-20, owner request)
 
 Owner: "clear cloudflare cache custom purge purge everything" and "enable setting for delete cache for homepage for
