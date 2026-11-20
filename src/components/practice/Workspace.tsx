@@ -427,7 +427,7 @@ export function Workspace({ problem, descriptionHtml, roleNames, topicNames, exe
         <div className={mobilePane === "results" ? "min-h-[50dvh] p-4" : "hidden"}>{results}</div>
       </div>
       {/* Desktop: resizable split. */}
-      <div className={`hidden min-h-0 lg:flex ${fullscreen ? "flex-1" : "h-[calc(100dvh-var(--spacing-header)-4rem)] min-h-[36rem]"}`}>
+      <div className={`hidden min-h-0 lg:flex ${fullscreen ? "flex-1" : "h-[calc(100dvh-var(--spacing-chrome)-4rem)] min-h-[36rem]"}`}>
         <div style={{ width: `${split}%` }} className="min-w-0 border-r border-line bg-surface">
           {left}
         </div>

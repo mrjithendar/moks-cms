@@ -1,4 +1,4 @@
-import { count, eq, sql } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -7,7 +7,7 @@ import { AdminSidebar } from "@/components/admin/AdminNav";
 import { SessionGuard } from "@/components/SessionGuard";
 import { Alert } from "@/components/ui/form";
 import { getDb, schema } from "@/db";
-import { rowsOf } from "@/db/rows";
+import { reviewCount } from "@/lib/admin-bar-server";
 import { NAV_PREFS_COOKIE, readNavPrefs, type NavItem } from "@/lib/admin-menu";
 import { moderationCounts } from "@/lib/comments";
 import { requireRole } from "@/lib/session";
@@ -17,15 +17,6 @@ import "./(growth)/seo.css";
 
 export const metadata: Metadata = { title: { default: "Admin", template: "%s · Admin" }, robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
-
-async function reviewCount(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
-  try {
-    const [r] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_drafts where status = 'ready_for_review'`));
-    return Number(r?.n ?? 0);
-  } catch {
-    return 0;
-  }
-}
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await requireRole("admin", "author");
@@ -119,6 +110,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/email", label: "Email", section: "Site settings" },
           { href: "/admin/users", label: "Users", section: "Site settings" },
           { href: "/admin/system", label: "System status", section: "Operations" },
+          { href: "/admin/cache", label: "Cache", section: "Operations" },
           { href: "/admin/sync", label: "Data sync", section: "Operations" },
           { href: "/admin/models", label: "ML models", section: "Operations" },
           { href: "/admin/backups", label: "Backups", section: "Operations" },
@@ -140,7 +132,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   );
 
   return (
-    <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-header))] bg-surface-muted md:grid md:grid-cols-[auto_minmax(0,1fr)]">
+    <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-chrome))] bg-surface-muted md:grid md:grid-cols-[auto_minmax(0,1fr)]">
       {/* The sidebar is the first column and as wide as it draws itself: full, or icons only (components/admin/AdminNav.tsx). */}
       <AdminSidebar items={items} role={user.demo ? "demo" : user.role} account={account} prefs={readNavPrefs(jar.get(NAV_PREFS_COOKIE)?.value)} />
       <div className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">

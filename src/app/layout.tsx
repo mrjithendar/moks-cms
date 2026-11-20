@@ -12,6 +12,8 @@ import { HideOnAdmin } from "@/components/HideOnAdmin";
 import { AskSitewide } from "@/components/ask/AskBlog";
 import { themeScript } from "@/components/theme/script";
 import { PreviewBanner } from "@/components/PreviewBanner";
+import { AdminBar } from "@/components/admin-bar/AdminBar";
+import { adminBarHeadScript } from "@/lib/admin-bar";
 import { getSiteConfig } from "@/lib/site-config";
 import { themeCss } from "@/lib/site-config/css";
 import "./globals.css";
@@ -71,6 +73,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {/* site.json for browser code (config/site-files.ts); first, before any client module reads it. */}
         <script dangerouslySetInnerHTML={{ __html: siteFileScript(siteFile) }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript(config.theme.defaultMode) }} />
+        {/* Reserves the admin bar's space before the first paint for staff (lib/admin-bar.ts); the same for everyone. */}
+        <script dangerouslySetInnerHTML={{ __html: adminBarHeadScript() }} />
         {ann.enabled && ann.dismissible && <script dangerouslySetInnerHTML={{ __html: announcementScript(announcementId(ann.text, ann.href)) }} />}
         {/* Generated from validated tokens only (lib/site-config/css.ts). */}
         <style id="site-theme" dangerouslySetInnerHTML={{ __html: themeCss(config) }} />
@@ -84,6 +88,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         >
           Skip to content
         </a>
+        {/* Staff only, drawn in the browser (cached pages never contain it); position: fixed at the top. */}
+        {!preview && <AdminBar />}
         <AnnouncementBar />
         <SiteHeader />
         <main id="main" tabIndex={-1} className="flex-1 outline-none">

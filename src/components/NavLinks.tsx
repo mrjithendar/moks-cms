@@ -190,7 +190,7 @@ export function NavLinks({
       </div>
 
       {open && (
-        <nav id="mobile-menu" aria-label="Main" className="chrome-reset absolute inset-x-0 top-full max-h-[calc(100dvh-var(--spacing-header))] overflow-y-auto border-b border-line bg-canvas px-4 pb-4 pt-2 shadow-md sm:px-6 md:hidden">
+        <nav id="mobile-menu" aria-label="Main" className="chrome-reset absolute inset-x-0 top-full max-h-[calc(100dvh-var(--spacing-chrome))] overflow-y-auto border-b border-line bg-canvas px-4 pb-4 pt-2 shadow-md sm:px-6 md:hidden">
           <ul className="flex flex-col">
             {items.map((item) => (
               <li key={item.href + item.label}>

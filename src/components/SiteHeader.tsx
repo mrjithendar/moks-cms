@@ -26,7 +26,7 @@ export async function SiteHeader() {
 
   return (
     <header
-      className={`${h.sticky ? "sticky top-0" : "relative"} isolate z-40 border-b border-line ${bg} ${inverse ? "chrome-inverse" : ""}`}
+      className={`${h.sticky ? "sticky top-(--adminbar-h)" : "relative"} isolate z-40 border-b border-line ${bg} ${inverse ? "chrome-inverse" : ""}`}
       style={style}
     >
       {h.background === "image" && <BannerBackground banner={h.image} priority />}

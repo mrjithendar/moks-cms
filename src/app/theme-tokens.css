@@ -89,6 +89,9 @@
   /* Vertical rhythm between page sections. */
   --spacing-section: clamp(3rem, 2.25rem + 3vw, 5rem);
   --spacing-header: 4rem;
+  /* Everything pinned to the top: the site header plus the staff admin bar (--adminbar-h, 0 without it; globals.css).
+     Sticky elements below the header offset by this (top-chrome), not by the header alone. */
+  --spacing-chrome: calc(var(--spacing-header) + var(--adminbar-h, 0px));
 
   /* Admin-configurable presentation (overridden by the site theme, see lib/site-config/css.ts). */
   --radius-control: 0.5rem;

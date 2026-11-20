@@ -266,7 +266,7 @@ export function PostEditor({
   return (
     <div data-editor-focus={focus || undefined} className={focus ? "fixed inset-0 z-50 overflow-y-auto bg-canvas" : ""} style={editorBarOffset(barHidden)}>
       {/* Top bar (slides away while scrolling down, back on scroll up) */}
-      <div className={`sticky top-header z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-line bg-canvas px-4 py-2 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0 sm:px-3 [[data-editor-focus]_&]:top-0 ${focus ? "mx-0" : ""} ${autoHideClass(barHidden)}`}>
+      <div className={`sticky top-chrome z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-line bg-canvas px-4 py-2 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0 sm:px-3 [[data-editor-focus]_&]:top-0 ${focus ? "mx-0" : ""} ${autoHideClass(barHidden)}`}>
         <Link href="/admin/posts" className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-fg-muted hover:bg-surface-sunken hover:text-fg"
           onClick={(e) => { if (dirty && !window.confirm("You have unsaved changes. Leave anyway? (They are autosaved as a recovery copy.)")) e.preventDefault(); }}>
           ← Posts
@@ -338,7 +338,7 @@ export function PostEditor({
         </div>
 
         <aside id="post-settings" aria-label="Post settings"
-          className={`${sidebar ? "fixed inset-0 z-50 overflow-y-auto bg-white p-4 dark:bg-surface-dark" : "hidden"} ${focus ? "" : "xl:static xl:block xl:bg-transparent xl:p-0"} space-y-3 xl:sticky xl:top-24 xl:max-h-[calc(100dvh-7rem)] xl:self-start xl:overflow-y-auto`}>
+          className={`${sidebar ? "fixed inset-0 z-50 overflow-y-auto bg-white p-4 dark:bg-surface-dark" : "hidden"} ${focus ? "" : "xl:static xl:block xl:bg-transparent xl:p-0"} space-y-3 xl:sticky xl:top-[calc(var(--spacing-chrome)+2rem)] xl:max-h-[calc(100dvh-var(--spacing-chrome)-3rem)] xl:self-start xl:overflow-y-auto`}>
           <div className="flex items-center justify-between xl:hidden">
             <h2 className="font-semibold text-fg">Post settings</h2>
             <Button type="button" variant="ghost" onClick={() => setSidebar(false)} aria-label="Close settings">✕</Button>

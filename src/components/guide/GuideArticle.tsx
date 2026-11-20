@@ -79,7 +79,7 @@ export function GuideArticle({
       <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_11rem] xl:gap-8">
         {onThisPage.length > 1 && (
           <nav aria-label="On this page" className="mb-6 text-sm print:hidden xl:order-2 xl:mb-0">
-            <div className="xl:sticky xl:top-[calc(var(--spacing-header)+1.5rem)]">
+            <div className="xl:sticky xl:top-[calc(var(--spacing-chrome)+1.5rem)]">
               <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">On this page</p>
               <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 xl:block xl:space-y-1.5 xl:border-l xl:border-line xl:pl-3">
                 {onThisPage.map((s) => (

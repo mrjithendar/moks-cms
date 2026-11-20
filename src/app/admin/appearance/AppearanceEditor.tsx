@@ -213,7 +213,7 @@ export function AppearanceEditor({
     <EditorContext.Provider value={api}>
       <div className="space-y-6">
         {/* Title and lifecycle actions */}
-        <div className="sticky top-header z-20 -mx-4 border-b border-line bg-canvas px-4 py-3 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0">
+        <div className="sticky top-chrome z-20 -mx-4 border-b border-line bg-canvas px-4 py-3 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <h1 className="text-xl font-semibold tracking-tight text-fg">Appearance &amp; site settings</h1>
@@ -285,7 +285,7 @@ export function AppearanceEditor({
         )}
 
         <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[13rem_minmax(0,1fr)]">
-          <nav aria-label="Settings sections" className="xl:sticky xl:top-[calc(var(--spacing-header)+6rem)] xl:self-start">
+          <nav aria-label="Settings sections" className="xl:sticky xl:top-[calc(var(--spacing-chrome)+6rem)] xl:self-start">
             <label className="block xl:hidden">
               <span className="sr-only">Section</span>
               <select value={section} onChange={(e) => setSection(e.target.value as SectionId)} className={inputClass}>

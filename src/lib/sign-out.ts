@@ -1,5 +1,6 @@
 "use client";
 
+import { barCookie, readBarCookie } from "./admin-bar";
 import { authClient } from "./auth-client";
 import { safeNext } from "./safe-next";
 
@@ -44,6 +45,18 @@ export function signedOutHref(from?: string | null): string {
   return keep ? `/login?signedOut=1&next=${encodeURIComponent(next)}` : "/login?signedOut=1";
 }
 
+/**
+ * The admin bar's hint cookie (lib/admin-bar.ts) says "this browser shows the bar": drop it, so the sign-in page does
+ * not reserve the bar's space. "off" (the person hid the bar on the site) is a preference and stays.
+ */
+export function forgetAdminBar() {
+  try {
+    if (readBarCookie(document.cookie) === "on") document.cookie = barCookie(null, location.protocol === "https:");
+  } catch {
+    /* cookies unavailable */
+  }
+}
+
 let signingOut = false;
 
 /** True while this tab is signing out on purpose (SessionGuard then leaves the redirect to signOutAndLeave). */
@@ -72,6 +85,7 @@ export async function signOutAndLeave(from = typeof window === "undefined" ? nul
     return "Could not sign out. Check your connection and try again.";
   }
   clearPrivateBrowserData();
+  forgetAdminBar();
   window.location.replace(signedOutHref(from));
   return null;
 }

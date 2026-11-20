@@ -77,6 +77,12 @@ Public pages (home, `[page]`, blog, news, projects, categories, tags, authors, f
   the page cache on the replica that made it and, through the cache bus (`src/lib/cache-bus.ts`, `CACHE_BUS_REDIS_URL`),
   on the others. Without the bus, other replicas catch up within 300 s. A raw SQL change bypasses this: wait 300 s or
   restart the pods.
+- **Clearing by hand** (2026-11-20): Admin → Cache and the admin bar's Cache menu purge one address, clear the page
+  cache, reload content and settings, or all of it, on every replica (`src/lib/cache-admin.ts`, `POST
+  /api/admin/cache`, admins only, audit-logged as `cache.*`). One address travels on the cache bus as
+  `{kind: "page", path}` (a public URL path, checked before sending and on arrival); the page cache drops the entry
+  whose key ends in `/$<path>` (`/` is `/index`, Next's route-cache key) and does not store a render of it that was
+  already running.
 - **"SSG" at startup.** The build has no database, so nothing database-backed is prerendered at build time (dynamic
   routes return `[]` from `generateStaticParams`; the few parameterless routes the build renders use the bundled MDX
   and are never served). Instead each pod renders every URL in its sitemap into the cache once it is up, and again

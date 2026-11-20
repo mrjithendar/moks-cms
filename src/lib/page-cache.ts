@@ -1,4 +1,4 @@
-import { onInvalidate, type Kind } from "./cache-bus";
+import { broadcastPagePurge, onInvalidate, onPagePurge, type Kind } from "./cache-bus";
 
 /**
  * The ISR page cache's control side (the store itself is cache-handler.mjs, next.config.ts `cacheHandler`).
@@ -17,7 +17,7 @@ export const PAGE_REVALIDATE_SECONDS = 300;
 export const PAGE_KINDS: readonly Kind[] = ["content", "categories", "settings", "integrations"];
 
 // Shared with cache-handler.mjs through globalThis (same shape as its pageCacheState()).
-type State = { generation: number; entries: Map<string, unknown>; pending: Map<string, number>; bytes: number; hits: number; misses: number };
+type State = { generation: number; entries: Map<string, { bytes: number }>; pending: Map<string, number>; bytes: number; hits: number; misses: number };
 const KEY = Symbol.for("jithendar.pageCache");
 
 function state(): State {
@@ -40,6 +40,39 @@ export function onPageCacheCleared(listener: () => void) {
   listeners.add(listener);
 }
 
+/**
+ * How Next names a page in the cache: `/route-cache/<kind>/<route hash>/$<path>`, with "/" stored as "/index"
+ * (next/dist/server/lib/route-cache-key.js, normalize-page-path.js). Plain paths are matched too (older format, tests).
+ */
+function keyMatcher(path: string): (key: string) => boolean {
+  const suffix = `/$${path === "/" ? "/index" : path}`;
+  return (key) => key === path || key.endsWith(suffix);
+}
+
+/**
+ * Drop one public path from this process's page cache (the admin's "Purge this page"). A render of it that is
+ * already running is not stored either: it may have read the old data. Returns how many entries were dropped.
+ */
+export function dropCachedPath(path: string): number {
+  const s = state();
+  const matches = keyMatcher(path);
+  let dropped = 0;
+  for (const [key, entry] of [...s.entries]) {
+    if (!matches(key)) continue;
+    s.bytes -= entry.bytes;
+    s.entries.delete(key);
+    dropped++;
+  }
+  // cache-handler.mjs stores a render only when it started in the current generation; -1 never is.
+  for (const key of s.pending.keys()) if (matches(key)) s.pending.set(key, -1);
+  return dropped;
+}
+
+/** One public path, or every page (null), on every replica. False when the path is not a public URL path. */
+export function purgePages(path: string | null): boolean {
+  return broadcastPagePurge(path);
+}
+
 export function pageCacheStats() {
   const s = state();
   return { generation: s.generation, entries: s.entries.size, bytes: s.bytes, hits: s.hits, misses: s.misses };
@@ -49,4 +82,8 @@ export function pageCacheStats() {
 if (!gl.__pageCacheWired) {
   gl.__pageCacheWired = true;
   for (const kind of PAGE_KINDS) onInvalidate(kind, clearPageCache);
+  onPagePurge((path) => {
+    if (path === null) clearPageCache();
+    else dropCachedPath(path);
+  });
 }

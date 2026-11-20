@@ -193,6 +193,53 @@ describe("cache bus: two replicas over pub/sub", () => {
   });
 });
 
+describe("cache bus: page purges (admin bar → Cache)", () => {
+  it("carries one public path, or none for every page, to the other replica", async () => {
+    const server = new FakeServer();
+    const a = replica(server, "pod-a");
+    const b = replica(server, "pod-b");
+    const purgedA = vi.fn();
+    const purgedB = vi.fn();
+    a.bus.onPagePurge(purgedA);
+    b.bus.onPagePurge(purgedB);
+    a.bus.listen();
+    b.bus.listen();
+    await until(() => a.bus.status().state === "connected" && b.bus.status().state === "connected");
+
+    expect(a.bus.broadcastPage("/blog/my-post/")).toBe(true);
+    expect(purgedA).toHaveBeenCalledWith("/blog/my-post"); // local, synchronous, trailing slash dropped
+    await until(() => purgedB.mock.calls.length === 1);
+    expect(purgedB).toHaveBeenCalledWith("/blog/my-post");
+    expect(JSON.parse(server.published[0]!)).toEqual({ kind: "page", origin: "pod-a", path: "/blog/my-post" });
+
+    a.bus.broadcastPage(null);
+    await until(() => purgedB.mock.calls.length === 2);
+    expect(purgedB).toHaveBeenLastCalledWith(null);
+    expect(JSON.parse(server.published[1]!)).toEqual({ kind: "page", origin: "pod-a" });
+  });
+
+  it("refuses paths that are not public URL paths, before sending and on arrival", async () => {
+    const server = new FakeServer();
+    const a = replica(server, "pod-a");
+    const purged = vi.fn();
+    a.bus.onPagePurge(purged);
+    a.bus.listen();
+    await until(() => a.bus.status().state === "connected");
+
+    for (const bad of ["blog", "//evil.example/x", "/a/../b", "/x?y=1", "/x#y", `/${"a".repeat(600)}`, "/ü"]) expect(a.bus.broadcastPage(bad)).toBe(false);
+    expect(purged).not.toHaveBeenCalled();
+    expect(server.published).toHaveLength(0);
+
+    const sub = a.conns.subscriber!;
+    sub.emit("message", CHANNEL, JSON.stringify({ kind: "page", origin: "pod-b", path: "/../etc" }));
+    sub.emit("message", CHANNEL, JSON.stringify({ kind: "page", origin: "pod-b", path: 42 }));
+    expect(purged).not.toHaveBeenCalled();
+    sub.emit("message", CHANNEL, JSON.stringify({ kind: "page", origin: "pod-b", path: "/news" }));
+    expect(purged).toHaveBeenCalledWith("/news");
+    expect(renderCacheBus().join("\n")).toContain('kind="page"');
+  });
+});
+
 describe("cache bus: refused SUBSCRIBE", () => {
   it("is not reported connected, retries with backoff on the same connection (no reconnect loop), recovers", async () => {
     vi.spyOn(log, "warn").mockImplementation(() => {});
