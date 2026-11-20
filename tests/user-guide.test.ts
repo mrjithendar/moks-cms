@@ -138,7 +138,7 @@ describe("pages of the manual", () => {
 });
 
 describe("settings reference", () => {
-  it("lists every Automation & AI (SEO agent) setting, Advanced setting and MCP scope", async () => {
+  it("lists every Automation & AI (SEO agent) setting, runtime setting and MCP scope", async () => {
     const { settingsReference, seoSettingPaths } = await import("@/lib/user-guide-settings");
     const { GROUPS } = await import("@/lib/runtime-settings");
     const { SCOPES } = await import("@/lib/mcp-oauth/oauth");
@@ -163,8 +163,25 @@ describe("settings reference", () => {
 
   it("shows defaults only, never a stored value", async () => {
     const { settingsReference } = await import("@/lib/user-guide-settings");
-    const advanced = settingsReference().filter((g) => g.area === "Advanced settings").flatMap((g) => g.rows);
-    expect(advanced.every((r) => r.default === "off" || r.default === "from the environment")).toBe(true);
+    const runtime = settingsReference().filter((g) => g.id.startsWith("runtime-")).flatMap((g) => g.rows);
+    expect(runtime.length).toBeGreaterThan(0);
+    expect(runtime.every((r) => r.default === "off" || r.default === "from the environment")).toBe(true);
+  });
+
+  it("puts every runtime setting under the page that shows it, with no Advanced settings page left", async () => {
+    const { settingsReference, RUNTIME_SETTINGS_AREA } = await import("@/lib/user-guide-settings");
+    const { GROUPS } = await import("@/lib/runtime-settings");
+    const { GUIDE } = await import("@/lib/user-guide");
+    for (const g of GROUPS) {
+      expect(RUNTIME_SETTINGS_AREA[g.page], `${g.id}: ${g.page} needs a guide area`).toBeTruthy();
+      const page = read(`src/app${g.page}/page.tsx`);
+      expect(page, `${g.page} must render the ${g.id} group`).toMatch(new RegExp(`<RuntimeSettings ids=\\{\\[[^\\]]*"${g.id}"`));
+    }
+    const ref = settingsReference().filter((g) => g.id.startsWith("runtime-"));
+    expect(ref.map((g) => g.href)).toEqual(GROUPS.map((g) => `${g.page}#${g.id}`));
+    expect(GUIDE.some((e) => e.href === "/admin/advanced")).toBe(false);
+    expect(read("src/app/admin/layout.tsx")).not.toContain("/admin/advanced");
+    expect(read("src/components/guide/GuideBrowser.tsx")).not.toContain("Advanced settings");
   });
 });
 

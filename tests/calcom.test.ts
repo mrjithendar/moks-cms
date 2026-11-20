@@ -121,7 +121,7 @@ describe("POST /api/cal/webhook", () => {
     await freshDb();
   });
 
-  it("verifies with the secret from Advanced settings and stores the booking", async () => {
+  it("verifies with the secret saved in the admin (Bookings) and stores the booking", async () => {
     vi.doMock("@/lib/runtime-settings", async (orig) => ({ ...(await orig<typeof import("@/lib/runtime-settings")>()), effectiveEnv: async () => ({ CAL_WEBHOOK_SECRET: SECRET }) }));
     const { POST } = await import("@/app/api/cal/webhook/route");
     const body = event("BOOKING_CREATED", booking);

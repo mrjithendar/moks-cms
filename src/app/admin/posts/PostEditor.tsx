@@ -417,7 +417,7 @@ export function PostEditor({
               <span>Members only: readers must sign in or create an account to read the whole article</span>
             </label>
             {v.membersOnly && (
-              <Field label="Public preview (%)" optional htmlFor="previewPercent" hint="How much of this article signed-out readers can read (5–95). Empty uses the site default from Admin → Advanced settings → Members-only articles. The cut falls between paragraphs.">
+              <Field label="Public preview (%)" optional htmlFor="previewPercent" hint="How much of this article signed-out readers can read (5–95). Empty uses the site default from Admin → Users → Members-only articles. The cut falls between paragraphs.">
                 <Input
                   id="previewPercent"
                   type="number"

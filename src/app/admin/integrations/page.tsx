@@ -1,6 +1,7 @@
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Alert, Button, Field, Input, Select } from "@/components/ui/form";
 import { isProductionEnv, siteUrl } from "@/config/site";
@@ -83,6 +84,18 @@ async function indexNowAction(form: FormData) {
   });
 }
 
+/** The page's sections, in order, for the jump links at the top. */
+const SECTIONS = [
+  { id: "social-title", label: "Social sign-in" },
+  { id: "turnstile", label: "Turnstile" },
+  { id: "indexnow-title", label: "IndexNow" },
+  { id: "verification", label: "Search engine verification" },
+  { id: "analytics", label: "Analytics & ads" },
+  { id: "gemini-title", label: "Image generation" },
+  { id: "image-limits", label: "Image limits" },
+  { id: "video-generation", label: "Video generation" },
+];
+
 const SOURCE: Record<string, string> = { admin: "Set here", env: "From environment", none: "Not configured" };
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: FlashParams }) {
@@ -94,13 +107,18 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     <>
       <AdminHeader
         title="Integrations"
-        description="Social sign-in and AI image generation. Secrets are encrypted at rest (SETTINGS_ENCRYPTION_KEY) and never shown again; leave a secret field empty to keep the stored value."
+        description="Sign-in, search engines, analytics and ads, and AI image and video generation. Secrets are encrypted at rest (SETTINGS_ENCRYPTION_KEY) and never shown again; leave a secret field empty to keep the stored value. A value saved here overrides the deployment; an empty field uses the deployment's value."
       />
       <Flash ok={sp.ok} error={sp.error} />
+      <nav aria-label="Sections" className="mb-6 flex flex-wrap gap-2 text-sm">
+        {SECTIONS.map((x) => (
+          <a key={x.id} href={`#${x.id}`} className="rounded-full border border-line px-3 py-1.5 text-fg-muted hover:bg-surface-sunken hover:text-fg">{x.label}</a>
+        ))}
+      </nav>
       <div className="space-y-6">
         <section aria-labelledby="social-title" className="space-y-4">
           <div>
-            <h2 id="social-title" className="text-lg font-semibold text-fg">Social sign-in</h2>
+            <h2 id="social-title" className="scroll-mt-24 text-lg font-semibold text-fg">Social sign-in</h2>
             <p className="mt-1 text-sm text-fg-muted">
               Readers can sign in or register with these providers (registration follows the “Registration” switch in Appearance). Accounts are never linked by matching email;
               people connect providers themselves in Account → Settings. Changes apply to new sign-ins immediately.
@@ -149,9 +167,11 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
           })}
         </section>
 
+        <RuntimeSettings ids={["turnstile"]} layout="section" />
+
         <section aria-labelledby="indexnow-title" className="space-y-4">
           <div>
-            <h2 id="indexnow-title" className="text-lg font-semibold text-fg">IndexNow</h2>
+            <h2 id="indexnow-title" className="scroll-mt-24 text-lg font-semibold text-fg">IndexNow</h2>
             <p className="mt-1 text-sm text-fg-muted">
               Tells Bing, Yandex, Seznam, Naver and other IndexNow search engines as soon as a post is published, updated or removed, so they recrawl it quickly.
               Google does not use IndexNow (it reads the sitemap). Submissions run in the background with retries and only from the production site.
@@ -195,12 +215,14 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
           </Card>
         </section>
 
+        <RuntimeSettings ids={["verification", "analytics"]} layout="section" />
+
         <section aria-labelledby="gemini-title" className="space-y-4">
           <div>
-            <h2 id="gemini-title" className="text-lg font-semibold text-fg">Image generation (Gemini)</h2>
+            <h2 id="gemini-title" className="scroll-mt-24 text-lg font-semibold text-fg">Image generation (Gemini)</h2>
             <p className="mt-1 text-sm text-fg-muted">
-              Powers “✨ Generate image” for cover images in the post and page editors. Results are saved to the media library only when an author accepts them. Per-user and daily
-              limits come from GEMINI_IMAGE_*_LIMIT in the deployment.
+              Powers “✨ Generate image” for cover images in the post and page editors. Results are saved to the media library only when an author accepts them. Per-author and daily
+              limits are under <a href="#image-limits" className="link">Image generation limits</a>; video uses the same key (<a href="#video-generation" className="link">Video generation</a>).
             </p>
           </div>
           <Card>
@@ -257,6 +279,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             </form>
           </Card>
         </section>
+
+        <RuntimeSettings ids={["image-limits", "video-generation"]} layout="section" />
       </div>
       <div className="mt-10">
         <SeoIntegrations />

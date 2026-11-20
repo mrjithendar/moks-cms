@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 const PLAIN = { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" };
 
-/** POST /api/razorpay/webhook: payment events, verified with the secret in Advanced settings → Razorpay payments. */
+/** POST /api/razorpay/webhook: payment events, verified with the secret in Admin → Payments → Razorpay payments. */
 export async function POST(req: Request) {
   // Unauthenticated until the signature is checked: stop reading at the limit, with or without a Content-Length.
   const raw = await readBodyTextOrNull(req, MAX_WEBHOOK_BYTES);

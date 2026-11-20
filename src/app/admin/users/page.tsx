@@ -1,4 +1,5 @@
 import { Flash, type FlashParams } from "@/components/admin/Flash";
+import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Button, Field, Input, Select } from "@/components/ui/form";
 import { adminActor } from "@/lib/admin";
@@ -63,7 +64,7 @@ export default async function UsersPage({ searchParams }: { searchParams: FlashP
   const [rows, sp] = await Promise.all([listUsers(), searchParams]);
   return (
     <>
-      <AdminHeader title="Users" description="Readers, authors, admins and demo accounts. Authors can write and publish their own posts. Demo accounts see the whole admin but cannot change anything." />
+      <AdminHeader title="Users" description="Readers, authors, admins and demo accounts. Authors can write and publish their own posts. Demo accounts see the whole admin but cannot change anything. Members-only articles and profile picture limits are at the end of the page." />
       <Flash ok={sp.ok} error={sp.error} />
       <Card className="mb-6">
         <h2 className="text-base font-semibold text-fg">Invite demo users</h2>
@@ -153,6 +154,9 @@ export default async function UsersPage({ searchParams }: { searchParams: FlashP
           </tr>
         ))}
       </Table>
+      <div className="mt-10 space-y-6">
+        <RuntimeSettings ids={["members", "avatars"]} />
+      </div>
     </>
   );
 }

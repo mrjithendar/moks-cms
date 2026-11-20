@@ -1,5 +1,31 @@
 # Progress log — jithendar.com
 
+## Advanced settings moved onto the pages they configure (2026-11-20, owner request)
+
+Owner: "moks cms setting advance settings move to each page remove advance settings one place."
+
+- No Advanced settings page or menu entry any more. Each group in `src/lib/runtime-settings.ts` has a `page`, and
+  `src/components/admin/RuntimeSettings.tsx` (one shared form, save action in `src/app/admin/_actions/runtime-settings.ts`)
+  draws it there:
+  - **Integrations**: Human verification (Turnstile) after Social sign-in; Search engine verification and Analytics,
+    ads and consent after IndexNow; Image generation limits and Video generation after Gemini. Jump links at the top.
+  - **Bookings**: Cal.com bookings (webhook secret) at the end; the "not connected" note links to it.
+  - **Payments**: Razorpay payments (keys + webhook secret, also used by invoices) at the end.
+  - **Storage**: Video destinations, under Media storage.
+  - **Users**: Members-only articles and Profile pictures at the end.
+- Storage, values, validation, encryption and the audit entry (`integrations.runtime`) are unchanged: nothing to migrate.
+- `/admin/advanced` redirects to Integrations for old bookmarks. Every link and message that named Advanced settings
+  now names the page (dashboard and System status Turnstile links → `/admin/integrations#turnstile`, invoices and
+  Hire me → `/admin/payments#razorpay`, video errors → Storage / Integrations, the post editor's members hint → Users).
+- `flash()` keeps a `#anchor` after the query, so a save scrolls back to its form (the old page put `?ok=` inside the
+  fragment, so its confirmation never showed).
+- User guide: the Advanced settings entry is gone; Integrations, Storage, Users and Messages/bookings/payments describe
+  the moved sections; the settings reference lists each group under its page's area (`RUNTIME_SETTINGS_AREA`).
+- Tests: `tests/runtime-settings-pages.test.tsx` (pages, rendering without secrets, save returns to page#group);
+  `tests/user-guide.test.ts` checks every group is rendered by its page and nothing links to Advanced settings; `tests/health-checks.test.ts`
+  ignores a `#anchor` when it checks that a System status link is a real page. Ran locally: tsc, eslint on the changed
+  files, the whole vitest suite (all pass; site-files needs SITE_CONFIG_DIR unset). `next build` not run locally.
+
 ## CrewAI console, phases 2–3: schedules, Run with parameters, crew versions and Test run, import / export (2026-11-19, owner request)
 
 Owner: "Replace the 15 CronJobs with one dispatcher and schedules stored in the database – Run with parameters from the

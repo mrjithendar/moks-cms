@@ -56,7 +56,7 @@ scheduler over the page (`src/components/hire/BookingLink.tsx`, `calEmbedTarget(
 
 1. Cal.com → Settings → Developer → Webhooks → New: subscriber URL `https://jithendar.com/api/cal/webhook`; events
    *Booking created, rescheduled, cancelled, requested, rejected*; set a secret (16+ characters).
-2. Admin → Advanced settings → **Cal.com bookings**: paste the same secret (stored encrypted).
+2. Admin → Bookings → **Cal.com bookings** (end of the page): paste the same secret (stored encrypted).
 3. Use Cal.com's "Ping test": it answers 200 ("Ignored.") once the secret matches.
 
 Details: the raw body is verified with HMAC-SHA256 against `X-Cal-Signature-256` (constant-time compare); no secret →
@@ -73,7 +73,7 @@ Visitors choose a call length, pay **minutes × your per-minute rate**, then boo
 - **Settings:** Admin → Appearance → Hire me → *Paid calls (Razorpay)*: on/off, title, summary, **price per minute in
   INR** (India) and **in USD** (everyone else), shortest/longest call and step (e.g. 15–120 min in 15s), and the booking
   link shown after payment (empty = the intro call link). Saving with paid calls on requires both rates and a link.
-- **Keys:** Admin → Advanced settings → *Razorpay payments*: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (sealed),
+- **Keys:** Admin → Payments → *Razorpay payments* (end of the page): `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` (sealed),
   `RAZORPAY_WEBHOOK_SECRET` (sealed). Same env names work as deployment variables.
 - **Currency:** decided on the server from Cloudflare's `CF-IPCountry` header: `IN` → INR, anything else or missing →
   USD. Cloudflare overwrites the header on proxied requests, so a visitor cannot pick the cheaper rate. The header is
@@ -110,7 +110,7 @@ Terraform Associate certification (dated June 2026 on the résumé; re-add it in
    `content/pages/privacy-policy.mdx` in Admin → Pages → Privacy policy.
 5. **Paid calls — requires manual configuration:** in Razorpay create API keys (start with `rzp_test_`), add the
    webhook `https://jithendar.com/api/razorpay/webhook` (events payment.captured, payment.failed, order.paid) with a
-   secret, and paste all three in Advanced settings → Razorpay payments. **Enable International payments** on the
+   secret, and paste all three in Payments → Razorpay payments. **Enable International payments** on the
    Razorpay account or USD payments will fail. Set both rates in Appearance → Hire me → Paid calls, switch it on and
    publish. Test with Razorpay's test cards, then swap in `rzp_live_` keys (and a live-mode webhook).
 6. Mention Razorpay as a payment processor in the live privacy policy (Admin → Pages → Privacy policy) and add

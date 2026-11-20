@@ -1,6 +1,6 @@
 /**
  * Where a generated video goes when the author inserts it. Four destinations, each switched on or off by an admin in
- * Admin → Advanced settings → Video destinations; the editor only offers the ones that are on **and** fully
+ * Admin → Storage → Video destinations; the editor only offers the ones that are on **and** fully
  * configured:
  *
  * - r2: this site's media library (Cloudflare R2), played by the native <video> player. On unless switched off.
@@ -86,7 +86,7 @@ async function send(what: string, url: string, init: RequestInit, fetchImpl: typ
   const text = await res.text().catch(() => "");
   if (!res.ok) {
     const detail = `${res.status} ${text.slice(0, 200)}`;
-    if (res.status === 401 || res.status === 403) throw new DestinationError(`${what} rejected the credentials. An admin must check them in Admin → Advanced settings → Video destinations.`, detail);
+    if (res.status === 401 || res.status === 403) throw new DestinationError(`${what} rejected the credentials. An admin must check them in Admin → Storage → Video destinations.`, detail);
     if (res.status === 429) throw new DestinationError(`${what} is rate-limiting uploads. Try again later.`, detail);
     throw new DestinationError(`${what} did not accept the video (HTTP ${res.status}).`, detail);
   }
@@ -105,7 +105,7 @@ export async function publishVideo(id: ExternalDestinationId, input: PublishInpu
   if (id === "cloudflare-stream") {
     const what = DESTINATION_LABELS[id];
     const code = get("CF_STREAM_CUSTOMER_CODE").replace(/^customer-/, "").replace(/\.cloudflarestream\.com$/, "");
-    if (!/^[a-z0-9]{6,40}$/.test(code)) throw new DestinationError("The Cloudflare Stream customer code is not valid. An admin must check it in Admin → Advanced settings → Video destinations.");
+    if (!/^[a-z0-9]{6,40}$/.test(code)) throw new DestinationError("The Cloudflare Stream customer code is not valid. An admin must check it in Admin → Storage → Video destinations.");
     const form = new FormData();
     form.set("file", new Blob([new Uint8Array(input.bytes)], { type: "video/mp4" }), "video.mp4");
     const body = (await send(what, `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(get("CF_STREAM_ACCOUNT_ID"))}/stream`, { method: "POST", headers: { Authorization: `Bearer ${get("CF_STREAM_API_TOKEN")}` }, body: form }, fetchImpl)) as { result?: { uid?: unknown } };
@@ -131,7 +131,7 @@ export async function publishVideo(id: ExternalDestinationId, input: PublishInpu
   }
   const what = DESTINATION_LABELS[id];
   const library = get("BUNNY_STREAM_LIBRARY_ID");
-  if (!/^\d{1,10}$/.test(library)) throw new DestinationError("The Bunny Stream library id is not valid. An admin must check it in Admin → Advanced settings → Video destinations.");
+  if (!/^\d{1,10}$/.test(library)) throw new DestinationError("The Bunny Stream library id is not valid. An admin must check it in Admin → Storage → Video destinations.");
   const headers = { AccessKey: get("BUNNY_STREAM_API_KEY"), Accept: "application/json" };
   const created = (await send(what, `https://video.bunnycdn.com/library/${library}/videos`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ title: input.title }) }, fetchImpl)) as { guid?: unknown };
   const guid = created.guid;
@@ -159,7 +159,7 @@ export async function publishStoredVideo(id: ExternalDestinationId, input: Store
   if (id === "cloudflare-stream") {
     const what = DESTINATION_LABELS[id];
     const code = get("CF_STREAM_CUSTOMER_CODE").replace(/^customer-/, "").replace(/\.cloudflarestream\.com$/, "");
-    if (!/^[a-z0-9]{6,40}$/.test(code)) throw new DestinationError("The Cloudflare Stream customer code is not valid. An admin must check it in Admin → Advanced settings → Video destinations.");
+    if (!/^[a-z0-9]{6,40}$/.test(code)) throw new DestinationError("The Cloudflare Stream customer code is not valid. An admin must check it in Admin → Storage → Video destinations.");
     const body = (await send(
       what,
       `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(get("CF_STREAM_ACCOUNT_ID"))}/stream/copy`,
@@ -172,7 +172,7 @@ export async function publishStoredVideo(id: ExternalDestinationId, input: Store
   }
   const what = DESTINATION_LABELS[id];
   const library = get("BUNNY_STREAM_LIBRARY_ID");
-  if (!/^\d{1,10}$/.test(library)) throw new DestinationError("The Bunny Stream library id is not valid. An admin must check it in Admin → Advanced settings → Video destinations.");
+  if (!/^\d{1,10}$/.test(library)) throw new DestinationError("The Bunny Stream library id is not valid. An admin must check it in Admin → Storage → Video destinations.");
   const headers = { AccessKey: get("BUNNY_STREAM_API_KEY"), Accept: "application/json" };
   const created = (await send(what, `https://video.bunnycdn.com/library/${library}/videos`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ title: input.title }) }, fetchImpl)) as { guid?: unknown };
   const guid = created.guid;

@@ -14,7 +14,7 @@ export function turnstileSecret(env: Env = process.env): string | undefined {
   return env.TURNSTILE_SECRET_KEY || (isProductionEnv() ? undefined : TEST_SECRET);
 }
 
-/** Keys from Admin → Advanced settings, falling back to the deployment (and to Cloudflare's test keys outside production). */
+/** Keys from Admin → Integrations → Turnstile, falling back to the deployment (and to Cloudflare's test keys outside production). */
 export async function turnstileKeys(): Promise<{ siteKey: string | undefined; secret: string | undefined; production: boolean }> {
   const { effectiveEnv } = await import("./runtime-settings");
   const env = await effectiveEnv();
