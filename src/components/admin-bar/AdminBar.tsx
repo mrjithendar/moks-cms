@@ -182,7 +182,7 @@ function Bar({ data, pathname, admin, pref, onPreference }: { data: AdminBarData
                   <Sep />
                   <Item href="/admin/appearance">Appearance &amp; settings</Item>
                   <Item href="/admin/appearance?section=navigation">Menus</Item>
-                  <Item href="/admin/advanced">Advanced settings</Item>
+                  <Item href="/admin/integrations">Integrations</Item>
                   <Item href="/admin/system">System status</Item>
                 </>
               )}

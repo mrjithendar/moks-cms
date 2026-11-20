@@ -31,7 +31,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Appearance | Customise, Menus, Homepage, Typography & colours |
 | Users | All users, Your profile, API keys ("Your account" for someone without the Users page) |
 | Settings | General, Integrations, Storage, Email |
-| System | System status, Backups, Database, Data sync, Audit log |
+| System | System status, Cache, Backups, Database, Data sync, Audit log |
 
 Below the entries: **Help** (the user manual) and **Collapse menu**.
 

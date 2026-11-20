@@ -1,5 +1,32 @@
 # Progress log — jithendar.com
 
+## Admin bar and Admin → Cache (2026-11-20, owner request)
+
+Owner: "need admin menu for moks-cms always on top like wordpress … clear cache and clear cloudflare cache custom
+purge purge everything and many admin options site wide … enable cache setting take recommendations w3 total cache".
+This is the first of the planned changes: the bar and the site's own caches. Cloudflare purging (credentials, purge
+everything / custom purge, purge on publish) and the W3 Total Cache-style settings come in follow-up pull requests.
+
+- **Admin bar** (`src/components/admin-bar/AdminBar.tsx`, `src/lib/admin-bar.ts`, `GET /api/admin/bar`): fixed at the
+  top of every page for staff, public site and admin. Dashboard / Visit site, New, the page's own Edit or View link
+  (`barTarget` + `contextLinks`; authors only for their own posts), Comments / Messages / Review queue counts, Cache
+  (admins; demo sees it disabled), and the account menu with Hide/Show toolbar on the site and Sign out. Drawn in the
+  browser only, so cached HTML stays the same for everyone; a hint cookie `moks-adminbar` and a head script reserve its
+  space before the first paint. Sticky elements offset by the new `--spacing-chrome` (header + `--adminbar-h`).
+- **Cache controls** (`src/lib/cache-admin.ts`, `POST /api/admin/cache`, page `/admin/cache` under System): purge one
+  page, clear the page cache, reload content & settings, purge all, on every replica; audit-logged as `cache.*`.
+  The cache bus gained `{kind: "page", path?}` (`broadcastPagePurge`); `dropCachedPath` in `page-cache.ts` removes the
+  entry whose Next route-cache key ends in `/$<path>` and refuses to store a render of it already in flight.
+- User guide: "The admin bar", "Cache", FAQ "I changed something but the site still shows the old version".
+  Docs: ADMIN_MENU.md (the bar), CONTENT_MODEL.md (clearing by hand).
+- Tests: `tests/admin-bar.test.ts` (targets, paths, cookie, head script in a VM, per-path purge), two cache-bus tests
+  (page messages; refused paths), `e2e/admin-bar.spec.ts` (readers never get it; staff on desktop and phone: no jump,
+  bar above the sticky header, Purge this page, hide/show).
+- Ran locally: `npm run lint` (pass), `tsc --noEmit` (pass), full vitest (pass; `site-files.test.ts` needs
+  `SITE_CONFIG_DIR` unset, as before), `npm run build` (pass), Playwright `e2e/admin-bar.spec.ts` against the
+  production build with a seeded PGlite (4 passed, desktop and mobile).
+- Manual steps: none.
+
 ## Advanced settings moved onto the pages they configure (2026-11-20, owner request)
 
 Owner: "moks cms setting advance settings move to each page remove advance settings one place."
