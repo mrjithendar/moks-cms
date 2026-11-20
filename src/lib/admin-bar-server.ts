@@ -3,6 +3,7 @@ import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { barTarget, type AdminBarData, type BarLink, type BarPreference } from "./admin-bar";
+import { cloudflareConfig } from "./cloudflare";
 import { moderationCounts } from "./comments";
 import type { SessionUser } from "./session";
 
@@ -78,17 +79,18 @@ export async function contextLinks(db: Db, user: Pick<SessionUser, "id" | "role"
 export async function adminBarData(user: SessionUser, pathname: string, preference: BarPreference): Promise<AdminBarData> {
   const db = await getDb();
   const admin = user.role === "admin";
-  const [comments, messages, review, context] = await Promise.all([
+  const [comments, messages, review, context, cloudflare] = await Promise.all([
     moderationCounts(),
     admin ? db.select({ n: count() }).from(schema.contactMessage).where(eq(schema.contactMessage.status, "new")).then(([r]) => Number(r?.n ?? 0)) : 0,
     admin ? reviewCount(db) : 0,
     contextLinks(db, user, pathname),
+    admin ? cloudflareConfig().then(Boolean, () => false) : false,
   ]);
   return {
     user: { name: user.name, email: user.email, image: user.image, role: admin ? "admin" : "author", demo: Boolean(user.demo) },
     badges: { comments: comments.pending + comments.reported, messages, review },
     context,
-    cache: admin ? { allowed: !user.demo } : null,
+    cache: admin ? { allowed: !user.demo, cloudflare } : null,
     preference,
   };
 }

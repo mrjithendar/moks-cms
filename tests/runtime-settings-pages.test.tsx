@@ -36,7 +36,7 @@ describe("runtime settings on their own pages", () => {
   it("every group belongs to a real admin page", async () => {
     const { GROUPS, settingHref } = await import("@/lib/runtime-settings");
     const pages = new Set(GROUPS.map((g) => g.page));
-    expect([...pages].sort()).toEqual(["/admin/bookings", "/admin/integrations", "/admin/payments", "/admin/storage", "/admin/users"]);
+    expect([...pages].sort()).toEqual(["/admin/bookings", "/admin/cache", "/admin/integrations", "/admin/payments", "/admin/storage", "/admin/users"]);
     expect(settingHref("razorpay")).toBe("/admin/payments#razorpay");
     expect(settingHref("calcom")).toBe("/admin/bookings#calcom");
     expect(() => settingHref("nope")).toThrow();

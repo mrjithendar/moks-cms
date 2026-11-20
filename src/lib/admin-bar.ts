@@ -119,14 +119,15 @@ export type AdminBarData = {
   badges: { comments: number; messages: number; review: number };
   /** Links about the page being viewed: Edit / View / Insights / Customize. */
   context: BarLink[];
-  /** Cache tools: admins use them; the read-only demo sees them disabled; authors do not see them. */
-  cache: { allowed: boolean } | null;
+  /** Cache tools: admins use them; the read-only demo sees them disabled; authors do not see them. `cloudflare`: a
+   * zone ID and API token are saved (Admin → Cache → Cloudflare settings), so purges reach Cloudflare too. */
+  cache: { allowed: boolean; cloudflare: boolean } | null;
   /** Whether this person hid the bar on public pages (the admin always shows it). */
   preference: BarPreference;
 };
 
-/** POST /api/admin/cache actions. */
-export const CACHE_ACTIONS = ["purge-page", "clear-pages", "clear-data", "purge-all"] as const;
+/** POST /api/admin/cache actions. The cf-* ones touch Cloudflare only. */
+export const CACHE_ACTIONS = ["purge-page", "clear-pages", "clear-data", "purge-all", "cf-everything", "cf-custom", "cf-test"] as const;
 export type CacheAction = (typeof CACHE_ACTIONS)[number];
 
 /**

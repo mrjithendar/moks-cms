@@ -798,7 +798,7 @@ const guides: GuideEntry[] = [
       "- New: start a post or a page, or open Media. Admins can also start an invoice or add a user.",
       "- Edit: on a post, page, category, tag or your author page, a link to edit it (authors only for their own posts). In the post or page editor it becomes View, once the post is live.",
       "- Comments, Messages and Review queue show how many items are waiting, like the admin menu.",
-      "- Cache (admins): purge this page, clear the page cache, reload content and settings, or purge everything; see Cache.",
+      "- Cache (admins): purge this page, clear the page cache, reload content and settings, or purge everything; with Cloudflare set up, also purge everything at Cloudflare or open the custom purge. See Cache.",
       "- Your name: your profile, account settings, Hide toolbar on the site, and Sign out.",
       "Hide toolbar on the site keeps the bar in the admin only, in this browser; Show toolbar on the site brings it back. Signing out removes the bar at once.",
       "The bar is not shown in the editor's previews, in focus mode, or when you print a page.",
@@ -814,7 +814,7 @@ const guides: GuideEntry[] = [
     summary: "See the page cache and clear it on every server.",
     href: "/admin/cache",
     adminOnly: true,
-    keywords: ["cache", "purge", "clear cache", "flush", "stale", "old page", "refresh", "page cache", "performance", "cache bus"],
+    keywords: ["cache", "purge", "clear cache", "flush", "stale", "old page", "refresh", "page cache", "performance", "cache bus", "cloudflare", "cdn", "purge everything", "custom purge", "purge on publish"],
     body: [
       "Public pages are rendered once and served from memory, so readers get them fast. Each server of the site keeps its own copy; the cache bus (Redis/Valkey) carries every clear to all of them.",
       "Publishing, editing or deleting a post or page, and saving settings, menus, categories or integrations, already clears the cache everywhere, and the site renders its pages again in the background within seconds. Without the cache bus the other servers catch up within five minutes.",
@@ -823,7 +823,9 @@ const guides: GuideEntry[] = [
       "- Reload content & settings: reads posts, pages, categories, menus, appearance and integrations from the database again, and clears the page cache.",
       "- Purge all caches: everything above at once.",
       "The page also shows, for the server that answered, how many pages it holds, the memory they use (PAGE_CACHE_MAX_MB), how often visits were served from the cache, and the last cache actions with who ran them. Every action is also in the Audit log.",
-      "These clear the site's own caches. A CDN in front of the site (such as Cloudflare) keeps its own copies: purge those in its dashboard.",
+      "Cloudflare: when Cloudflare is in front of the site it keeps its own copies of pages. Save its zone ID and an API token (permission Zone → Cache Purge → Purge, this zone only) in Admin → Cache → Cloudflare settings, then press Test connection. From then on Purge this page and Purge all caches also purge Cloudflare, and the Cloudflare card offers Purge everything at Cloudflare and a Custom purge by URLs, prefixes, hostnames or cache tags (one per line).",
+      "Purge on publish: publishing, updating, scheduling live, unpublishing or deleting a post, news story, project or page purges Cloudflare's copy of it and of the pages that list it: the home page, the section's listing pages, feeds, its category, tags and author page, the sitemaps and the search index. Appearance, menu, category and tag changes purge everything. It runs a few seconds after the change, in the background; the Cloudflare card shows the last one and whether Cloudflare accepted it. Admin → Cache → Cloudflare settings → Purge Cloudflare when content changes can switch it to everything, or off.",
+      "Cloudflare limits how often everything, prefixes, hostnames and tags can be purged (a few times a minute on the Free plan); purging addresses is not limited that way. When Cloudflare refuses, the message says why and the site's own caches are still cleared.",
       "Demo accounts see these tools but cannot run them.",
     ],
   },
@@ -1002,7 +1004,7 @@ const faqs: GuideEntry[] = [
     "No. Backups exclude password hashes, sessions, API-key hashes and stored credentials. Choose encryption when you create one if it will leave your machine.",
   ], { href: "/admin/backups", adminOnly: true, keywords: ["backup", "password", "security", "encrypt"] }),
   faq("faq-stale-page", "Operations", "I changed something but the site still shows the old version. What do I do?", [
-    "Reload the page first: saving already clears the site's cache. If it is still old, open the page and choose Cache → Purge this page in the admin bar (or Admin → Cache). If a CDN such as Cloudflare is in front of the site, purge the address there too.",
+    "Reload the page first: saving already clears the site's cache (and Cloudflare's, when it is set up in Admin → Cache → Cloudflare settings). If it is still old, open the page and choose Cache → Purge this page in the admin bar (or Admin → Cache). Your browser may also keep a page for a while: try a private window.",
   ], { href: "/admin/cache", adminOnly: true, keywords: ["old", "stale", "cache", "not updating", "purge", "refresh"] }),
   faq("faq-site-down", "Operations", "Something on the site is broken. Where do I look first?", [
     "Admin → System status runs live checks of every dependency. Then check Data sync for failed runs and the Audit log for recent changes.",

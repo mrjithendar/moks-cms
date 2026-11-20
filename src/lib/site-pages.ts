@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, schema, type Db } from "@/db";
 import type { FeaturedImage } from "@/db/schema";
 import { audit } from "./audit";
+import { queueCdnPurge } from "./cdn-purge";
 import { invalidateContent } from "./content";
 import { isoDateTime, pageFrontmatter } from "./content/schema";
 import { imageRefs } from "./images";
@@ -119,6 +120,8 @@ export async function savePage(actor: Actor, originalSlug: string | null, raw: u
     return row;
   });
   invalidateContent();
+  // Cloudflare's copy of the page (and of its old address after a rename) and the home page (lib/cdn-purge.ts).
+  queueCdnPurge({ paths: [`/${saved.slug}`, ...(originalSlug && originalSlug !== saved.slug ? [`/${originalSlug}`] : []), "/"] });
   return saved;
 }
 
@@ -129,6 +132,7 @@ export async function trashPage(actor: Actor, slug: string) {
   await db.update(schema.page).set({ deletedAt: new Date() }).where(eq(schema.page.slug, slug));
   await audit(actor, "page.trash", slug);
   invalidateContent();
+  queueCdnPurge({ paths: [`/${slug}`, "/"] });
 }
 
 export async function restorePage(actor: Actor, slug: string) {
@@ -137,6 +141,7 @@ export async function restorePage(actor: Actor, slug: string) {
   await db.update(schema.page).set({ deletedAt: null }).where(eq(schema.page.slug, slug));
   await audit(actor, "page.restore", slug);
   invalidateContent();
+  queueCdnPurge({ paths: [`/${slug}`, "/"] });
 }
 
 /** Permanent deletion, only from the trash. */

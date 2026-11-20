@@ -83,6 +83,15 @@ Public pages (home, `[page]`, blog, news, projects, categories, tags, authors, f
   `{kind: "page", path}` (a public URL path, checked before sending and on arrival); the page cache drops the entry
   whose key ends in `/$<path>` (`/` is `/index`, Next's route-cache key) and does not store a render of it that was
   already running.
+- **Cloudflare** (2026-11-20): with `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_API_TOKEN` (Admin → Cache → Cloudflare
+  settings; token permission Zone → Cache Purge → Purge), Purge this page / Purge all also purge Cloudflare, and Admin →
+  Cache adds purge everything, custom purge (URLs, prefixes, hostnames, tags; batches of 100) and a connection test
+  (`src/lib/cloudflare.ts`). **Purge on publish** (`src/lib/cdn-purge.ts`, W3 Total Cache's purge policy): a visible
+  post change purges the post and every page that lists it (home, listing pages up to one past the last, feeds,
+  category, tags, author, sitemaps, search index, llms.txt); a page change purges its address and the home page;
+  Appearance publish and category/tag changes purge everything. Collected for 3 s after the change (so the cache bus has
+  cleared the other replicas first) and sent from the replica that made it, in the background.
+  `CLOUDFLARE_PURGE_ON_PUBLISH`: related (default), everything, off.
 - **"SSG" at startup.** The build has no database, so nothing database-backed is prerendered at build time (dynamic
   routes return `[]` from `generateStaticParams`; the few parameterless routes the build renders use the bundled MDX
   and are never served). Instead each pod renders every URL in its sitemap into the cache once it is up, and again
