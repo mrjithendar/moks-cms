@@ -25,11 +25,11 @@ dependencies = [
   "prometheus-client==0.26.0",
   "opentelemetry-sdk==1.45.2",
   "opentelemetry-exporter-otlp-proto-http==1.45.2",
-  # News desk ML (docs/news/ML.md): CPU-only. scikit-learn (topic classifier, metrics), LightGBM (learned ranker; needs
-  # libgomp1 in the image), datasketch (MinHash LSH near-duplicates). Newest releases ≥ 2 weeks old on 2026-11-10.
+  # SEO-side ML (docs/seo/ML.md): CPU-only. scikit-learn (intent model, query clusters, metrics), LightGBM (priority
+  # model; needs libgomp1 in the image). Newest releases ≥ 2 weeks old on 2026-11-10. The news desk's ML (and
+  # datasketch, its MinHash dedupe) moved to the news agent (mrjithendar/newsroom) on 2026-11-21.
   "scikit-learn==1.9.1",
   "lightgbm==4.7.0",
-  "datasketch==2.0.0",
 ]
 
 [dependency-groups]

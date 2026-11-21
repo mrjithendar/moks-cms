@@ -18,6 +18,11 @@ On each call, for every enabled schedule:
   and last_slot / last_fired_at are the only columns the agent writes (scripts/db-role.sql).
 
 Only flows in CRON_FLOWS can be scheduled: never publish_flow, the drafting flows or the per-story news flows.
+
+Two services dispatch from this one table: the seo-agent and the news agent (moks-seo-agent, mrjithendar/newsroom),
+each from its own CronJob. Each looks only at the rows whose flow it runs (`served`, = the keys of app/flows SPECS) and
+leaves the others untouched (not claimed, no status written, counted as `skipped`), so neither marks the other's
+schedules "cannot be scheduled". The slot claim still makes a time start once if both ever served the same flow.
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from .news.cron import Cron, CronError
+from .cron import Cron, CronError
 from .runs import RunError
 
 log = logging.getLogger("seo_agent.schedules")
@@ -114,12 +119,15 @@ def due_slot(row: dict[str, Any], now: datetime, catchup: timedelta) -> tuple[da
     return due, None
 
 
-async def dispatch(store: ScheduleStore, runner: Any, *, schedulable: frozenset[str], now: datetime | None = None, catchup: timedelta = timedelta(minutes=60)) -> dict[str, Any]:
-    """One tick: start every enabled schedule that is due. Never raises for one schedule; each outcome is reported."""
+async def dispatch(store: ScheduleStore, runner: Any, *, schedulable: frozenset[str], served: frozenset[str] | None = None, now: datetime | None = None, catchup: timedelta = timedelta(minutes=60)) -> dict[str, Any]:
+    """One tick: start every enabled schedule of this service that is due. Never raises for one schedule; each outcome
+    is reported. `served`: the flows this service runs; a row for any other flow is the other service's (skipped
+    before it is claimed). None = every row (tests)."""
     now = (now or datetime.now(UTC)).astimezone(UTC)
     rows = await store.enabled()
-    out: dict[str, Any] = {"at": now.isoformat(), "checked": len(rows), "fired": [], "errors": []}
-    for row in rows:
+    mine = [r for r in rows if served is None or str(r["flow_name"]) in served]
+    out: dict[str, Any] = {"at": now.isoformat(), "checked": len(mine), "skipped": len(rows) - len(mine), "fired": [], "errors": []}
+    for row in mine:
         name, flow = str(row["name"]), str(row["flow_name"])
         due, error = due_slot(row, now, catchup)
         if error:

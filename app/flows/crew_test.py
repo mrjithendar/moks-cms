@@ -7,9 +7,9 @@ produced its output; the run page offers to save them as a new version.
 
 What a test run does and does not do:
 - It reads the source run's state (seo_flow_runs.state_json: the brief, the article context, the report figures, the
-  promotion articles or idea signals) and, for the news crew, the story's items and the job's writing profile.
+  promotion articles or idea signals). The news crew's test runs are the news agent's (mrjithendar/newsroom).
 - It runs the crew with the same limits, budget guard, run history and transcripts as any run.
-- It writes nothing anywhere else: no draft, report, promotion post, idea or news article; its output stays on this
+- It writes nothing anywhere else: no draft, report, promotion post or idea; its output stays on this
   run (outputs.result) for the console to show.
 
 One test run per crew at a time (the lock target is the crew).
@@ -26,15 +26,13 @@ from pydantic import Field, model_validator
 from ..crews import config as crew_config
 from ..crews.report import check_numbers, facts
 from ..llm import BudgetExceeded
-from ..news import desk as nd
 from ..runs import INSTANCE_ONLY
 from ..state import UUID, RunState, _In
 from .base import SeoFlow
-from .news import NewsHelpers
 
 log = logging.getLogger("seo_agent.flows")
 
-CrewId = Literal["editorial", "optimization", "report", "promotion", "news"]
+CrewId = Literal["editorial", "optimization", "report", "promotion"]
 OUTPUT_CHARS = 60_000  # a whole article body fits; anything longer is cut in the run's outputs
 
 
@@ -77,7 +75,7 @@ def _cut(v: Any) -> Any:
 
 
 @persist(INSTANCE_ONLY)
-class CrewTestFlow(NewsHelpers, SeoFlow[CrewTestState]):
+class CrewTestFlow(SeoFlow[CrewTestState]):
     FLOW: ClassVar[str] = "crew_test_flow"
 
     @start()
@@ -117,7 +115,7 @@ class CrewTestFlow(NewsHelpers, SeoFlow[CrewTestState]):
         st: dict[str, Any] = src.get("state_json") or {}
         inputs: dict[str, Any] = src.get("inputs") or {}
         flow = str(src.get("flow_name"))
-        d = self.deps
+        d: Any = self.deps  # the crew factories are set for every run (main._crews)
         untrusted = src.get("triggered_by") == "mcp"
         if crew == "report":
             numbers = st.get("numbers") or {}
@@ -155,27 +153,4 @@ class CrewTestFlow(NewsHelpers, SeoFlow[CrewTestState]):
             rp = await d.promotion_crew().draft_posts(article)
             self.state.add_cost(rp.cost_usd, rp.tokens)
             return {"status": rp.status, "reason": rp.reason, "tokens": rp.tokens, "cost_usd": rp.cost_usd, "article": {k: article.get(k) for k in ("title", "url")}, "posts": rp.posts}
-        if crew == "news":
-            return await self._news(inputs)
         raise ReplayError(f"unknown crew {crew}")
-
-    async def _news(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """The story's items and the job's writing profile, as news_draft_flow and the profile playground read them."""
-        job_id = inputs.get("job_id")
-        cluster_id = inputs.get("cluster_id") or next(iter(inputs.get("cluster_ids") or []), None)
-        if not job_id or not cluster_id:
-            raise ReplayError("the source run names no news job and story")
-        d = await self.desk()
-        job = nd.as_job(await d.store.get_job(str(job_id)) or {"id": str(job_id), "name": "test run"})
-        items = (await d.store.items_by_cluster([str(cluster_id)])).get(str(cluster_id), [])[:12]
-        if not items:
-            raise ReplayError("the story's items are gone (news items are kept for a limited time)")
-        wp = await d.store.writing_profile(job.writing_profile_key, job.config.writing_profile_version) or {"key": job.writing_profile_key, "version": 0, "required_sections": ["Why it matters"], "banned_phrases": []}
-        cluster = await d.store.get_cluster(str(cluster_id)) or {"title": "story"}
-        mode = "digest" if inputs.get("mode") == "digest" else "single"
-        crew = (d.crew_factory or (lambda lm: nd.NewsDeskCrew(d.settings, lm, d.web, d.retriever)))(self.deps.llm)
-        brief = {"mode": mode, "title": cluster.get("title") or "story", "cluster_id": str(cluster_id), "length_words": [job.config.length_min_words, job.config.length_max_words]}
-        r = await crew.run(brief, items=items, writing_profile=wp, image_profile={}, allow_hosts=nd._allowed_hosts(items, d), max_tokens=job.config.budget.max_tokens_per_draft, models=job.config.models)
-        self.state.add_cost(r.cost_usd, r.tokens)
-        dr = r.draft
-        return {"status": r.status, "reason": dr.incomplete_reason, "tokens": r.tokens, "cost_usd": r.cost_usd, "draft": {"title": dr.title, "dek": dr.dek, "meta_description": dr.meta_description, "body_mdx": dr.body_mdx, "sources": [x.model_dump() for x in dr.sources], "flagged": [f.model_dump() for f in dr.fact_check_report.flagged]}}

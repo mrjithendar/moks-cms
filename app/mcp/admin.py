@@ -24,7 +24,6 @@ from ..runs import RunError
 from ..services import review, seo_data
 from ..services.content import ContentError
 from .common import Guard, guarded
-from .news_tools import NEWS_ADMIN_TOOLS, register_admin
 
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 # kickoff_flow writes only a run (and, for drafting flows, a draft awaiting review): not read-only, not destructive.
@@ -50,7 +49,6 @@ ADMIN_TOOLS = (
     "kickoff_flow",
     "reject_draft",
     "add_review_note",
-    *NEWS_ADMIN_TOOLS,
 )
 KickoffName = Literal["optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"]
 Period = Literal["7d", "28d", "90d", "16m"]
@@ -242,8 +240,6 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
         """Add a note to a draft; it is shown in the web diff view next to the changes."""
         key, _, _ = caller()
         return await review.add_review_note(web, site, draft_id, note, f"mcp:{key}")
-
-    register_admin(mcp, c, guard, site, caller)  # news desk tools (read, run a job, reject); no approve/publish
 
     @mcp.prompt(name="triage_review_queue", title="Triage the review queue")
     def triage_review_queue() -> str:

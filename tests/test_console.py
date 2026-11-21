@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.crews import config as crew_config
 from app.crews.report import ReportCrew, facts
-from app.flows import CRON_FLOWS, SPECS, check_kickoff
+from app.flows import CRON_FLOWS, OWNED_FLOWS, SPECS, check_kickoff
 from app.index import MemoryRetriever
 from app.llm import FakeLlm
 from app.main import create_app, memory_container
@@ -79,7 +79,7 @@ async def test_a_due_schedule_starts_its_flow_once() -> None:
 
 async def test_missed_times_catch_up_once_and_only_inside_the_window() -> None:
     store, runner = MemoryScheduleStore(), Runner()
-    store.add(id="a", name="news-dispatch", flow_name="news_dispatch_flow", cron="*/15 * * * *")
+    store.add(id="a", name="ask-gaps", flow_name="ask_gaps_flow", cron="*/15 * * * *")
     # The agent was down from 05:20 to 06:10: of 05:30, 05:45 and 06:00 only the latest runs.
     out = await dispatch(store, runner, schedulable=CRON_FLOWS, now=datetime(2026, 11, 23, 6, 10, tzinfo=UTC))
     assert [f["slot"] for f in out["fired"]] == ["20261123T0600Z"]
@@ -332,7 +332,7 @@ async def test_one_test_run_per_crew_at_a_time(llm: FakeLlm, web: FakeWebApp) ->
     first = await c.runner.kickoff("crew_test_flow", {"crew": "report", "source_run_id": src}, triggered_by="manual")
     second = await c.runner.kickoff("crew_test_flow", {"crew": "report", "source_run_id": src}, triggered_by="manual")
     assert second["existing"] and second["run_id"] == first["run_id"]
-    other = await c.runner.kickoff("crew_test_flow", {"crew": "news", "source_run_id": src}, triggered_by="manual")
+    other = await c.runner.kickoff("crew_test_flow", {"crew": "editorial", "source_run_id": src}, triggered_by="manual")
     assert not other["existing"]  # another crew's test runs alongside
     for r in (first, other):
         await c.runner.cancel(r["run_id"])
@@ -367,13 +367,18 @@ async def test_pg_schedule_store_claims_each_slot_once() -> None:
             await c.execute("update seo_flow_schedules set armed_at = now() - interval '2 days'")
         store = PgScheduleStore(pool)
         rows = await store.enabled()
-        assert len(rows) == 15 and {r["flow_name"] for r in rows} == CRON_FLOWS
+        news = {"news_dispatch_flow", "news_train_flow", "news_style_review_flow"}  # the news agent's rows
+        assert len(rows) == 15 and {r["flow_name"] for r in rows} == CRON_FLOWS | news
         runner = Runner()
         now = datetime.now(UTC).replace(hour=6, minute=10, second=5, microsecond=0)
-        out = await dispatch(store, runner, schedulable=CRON_FLOWS, now=now)
+        out = await dispatch(store, runner, schedulable=CRON_FLOWS, served=OWNED_FLOWS, now=now)
         fired = {f["schedule"] for f in out["fired"]}
         assert "gsc-sync" in fired and all(f["status"] == "started" for f in out["fired"])
-        again = await dispatch(store, runner, schedulable=CRON_FLOWS, now=now + timedelta(seconds=30))
+        assert out["skipped"] == 3 and not news & {f["flow"] for f in out["fired"]}
+        async with pool.connection() as c:
+            untouched = await (await c.execute("select count(*)::int as n from seo_flow_schedules where flow_name like 'news%' and last_slot is null and last_status is null")).fetchone()
+        assert untouched["n"] == 3  # not claimed, not marked "cannot be scheduled": the news agent's dispatcher starts them
+        again = await dispatch(store, runner, schedulable=CRON_FLOWS, served=OWNED_FLOWS, now=now + timedelta(seconds=30))
         assert again["fired"] == []  # the same minute's slots are taken
         async with pool.connection() as c:
             row = await (await c.execute("select last_slot, last_status, last_run_id::text as run, last_error from seo_flow_schedules where name = 'gsc-sync'")).fetchone()
