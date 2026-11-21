@@ -1,6 +1,6 @@
 # seo-agent (docs/seo/FLOWS.md, MCP.md). Multi-stage, non-root, CPU-only: no torch, no CUDA; ONNX Runtime runs the
 # embeddings; ReportLab (pure Python) renders the report PDFs. The one system library is libgomp1 (OpenMP), which the
-# LightGBM wheel links against for the SEO priority model (docs/seo/ML.md); scikit-learn/SciPy wheels bundle their own.
+# LightGBM wheel links against for the news desk ranker (docs/news/ML.md); scikit-learn/SciPy wheels bundle their own.
 # The embeddings model (BAAI/bge-small-en-v1.5, ONNX export, MIT) is baked in at a pinned revision and verified by
 # sha256, so pods never download anything at start-up and the image is reproducible.
 ARG PYTHON_VERSION=3.13

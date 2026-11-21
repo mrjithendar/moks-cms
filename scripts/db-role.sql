@@ -47,7 +47,8 @@ GRANT SELECT ON
   seo_drafts, seo_llm_batches, seo_url_map,
   seo_gsc_daily_totals, seo_gsc_page_daily, seo_gsc_query_daily, seo_ga4_page_pairs,
   seo_recommendations, seo_recommendation_evidence, seo_query_intents, seo_ml_overrides,
-  seo_mcp_tokens
+  seo_mcp_tokens,
+  news_topics, news_image_profiles
   TO seo_agent;
 
 -- The admin MCP server checks a token's owner: whether that user is still an admin and not banned. Three columns, not
@@ -60,19 +61,23 @@ GRANT UPDATE (last_used_at) ON seo_mcp_grants TO seo_agent;
 -- Append only: MCP tool calls are written to the site's audit log and can never be changed or removed from here.
 GRANT INSERT ON audit_log TO seo_agent;
 
--- The news desk's tables (news_*) are the news agent's since 2026-11-21: its own role, mrjithendar/newsroom
--- scripts/db-role.sql. Running this file again revokes what this role had on them.
+-- Configured by an admin in the web app; the agent records run times and fetch state.
+GRANT SELECT, UPDATE ON news_jobs, news_sources TO seo_agent;
 
 -- The agent's working tables.
 GRANT SELECT, INSERT ON
-  seo_llm_usage, seo_rag_eval_runs, seo_ml_labels, seo_ml_query_embeddings
+  seo_llm_usage, seo_rag_eval_runs, seo_ml_labels, seo_ml_query_embeddings,
+  news_feedback, news_labels, news_writing_profiles
   TO seo_agent;
 GRANT SELECT, INSERT, DELETE ON
-  seo_ask_log, seo_ml_decay_signals, seo_ml_intent_predictions, seo_ml_query_clusters, seo_ml_related_articles
+  seo_ask_log, seo_ml_decay_signals, seo_ml_intent_predictions, seo_ml_query_clusters, seo_ml_related_articles,
+  news_run_logs
   TO seo_agent;
 GRANT SELECT, INSERT, UPDATE ON
-  seo_flow_runs, seo_ask_gaps, seo_ml_models, seo_ml_weight_proposals
+  seo_flow_runs, seo_ask_gaps, seo_ml_models, seo_ml_weight_proposals,
+  news_articles, news_clusters, news_images, news_models, news_run_steps, news_runs
   TO seo_agent;
+GRANT SELECT, INSERT, UPDATE, DELETE ON news_candidates, news_items TO seo_agent;
 -- Schedules for the CrewAI console (app/schedules.py; moks-cms migration 0037): an admin edits them in the web app; the
 -- dispatcher reads them and records each fire on the row (these five columns only).
 GRANT SELECT ON seo_flow_schedules TO seo_agent;

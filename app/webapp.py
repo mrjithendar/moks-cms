@@ -63,6 +63,15 @@ class WebApp(Protocol):
     async def promo_save_drafts(self, article_id: str, posts: list[dict[str, Any]], run_id: str | None) -> dict[str, Any]: ...
     async def promo_idea_signals(self) -> dict[str, Any]: ...
     async def promo_save_ideas(self, ideas: list[dict[str, Any]], run_id: str | None) -> dict[str, Any]: ...
+    # News desk (moks-cms/src/lib/news/callbacks.ts)
+    async def news_fetch(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def news_save_draft(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def news_store_media(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def news_generate_image(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def news_update_draft_image(self, draft_id: str, image: dict[str, Any]) -> dict[str, Any]: ...
+    async def news_site_signals(self) -> dict[str, Any]: ...
+    async def news_notify(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def news_collect_performance(self) -> dict[str, Any]: ...
     async def agent_skills(self) -> list[dict[str, Any]]: ...
     async def crew_configs(self) -> list[dict[str, Any]]: ...
     async def run_history_settings(self) -> dict[str, Any]: ...
@@ -207,6 +216,29 @@ class HttpWebApp:
     async def promo_save_ideas(self, ideas: list[dict[str, Any]], run_id: str | None) -> dict[str, Any]:
         return await self._req("POST", "/promotion/ideas", json={"runId": run_id or None, "ideas": ideas})
 
+    # --- news desk ------------------------------------------------------------------------------------------------
+    # The web app fetches (v1 SSRF-safe fetcher, robots.txt, conditional GET), creates the CMS draft post + review draft,
+    # stores covers in the existing media library and sends notifications. The agent itself has no internet egress
+    # except the Anthropic API (and the OpenAI Images API only if that provider is configured).
+
+    async def news_fetch(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", "/news/fetch", json=body, timeout=45)
+
+    async def news_save_draft(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", "/news/drafts", json=body, timeout=120)
+
+    async def news_store_media(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", "/news/media", json=body, timeout=120)
+
+    async def news_generate_image(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", "/news/images/generate", json=body, timeout=300)
+
+    async def news_update_draft_image(self, draft_id: str, image: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", f"/news/drafts/{draft_id}/image", json={"image": image})
+
+    async def news_site_signals(self) -> dict[str, Any]:
+        return await self._req("GET", "/news/site-signals")
+
     async def agent_skills(self) -> list[dict[str, Any]]:
         """The enabled agent skills (D-96, app/crews/skills.py), read before every crew run."""
         return list((await self._req("GET", "/skills")).get("skills") or [])
@@ -219,4 +251,8 @@ class HttpWebApp:
         """Run history settings (app/run_history.py): {"transcripts": bool}, whether model calls' prompts are kept."""
         return dict(await self._req("GET", "/run-history/settings"))
 
+    async def news_notify(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", "/news/notify", json=body)
 
+    async def news_collect_performance(self) -> dict[str, Any]:
+        return await self._req("POST", "/news/performance", json={}, timeout=120)

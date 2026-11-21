@@ -38,6 +38,9 @@ DYNAMIC: dict[str, set[str]] = {
     "seo_ml_query_clusters": {"SELECT", "INSERT", "DELETE"},
     "seo_ml_intent_predictions": {"SELECT", "INSERT", "DELETE"},
     "seo_ml_related_articles": {"SELECT", "INSERT", "DELETE"},
+    # news/store.py _profile(): select one row by key
+    "news_image_profiles": {"SELECT"},
+    "news_writing_profiles": {"SELECT"},
 }
 # The same word as a table, used for something else (mcp/common.py: a key whose value is redacted).
 NOT_A_TABLE = {"api_key"}

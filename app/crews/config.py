@@ -6,7 +6,7 @@ What an admin can change from the CrewAI console (moks-cms /admin/crewai/crews, 
 - each task's instructions and, where the code does not parse it, its expected output.
 
 What stays in code (guardrails): the untrusted-data rule and the skills rule in every system prompt, the data blocks
-a task gets, each task's output contract (JSON shapes, the NEEDS_FACT_CHECK marker), the
+a task gets, each task's output contract (JSON shapes, the NEEDS_FACT_CHECK marker, the news crew's rules), the
 sequential process, no delegation, memory or code execution, the token and wall-clock caps, and which flows run which
 crew. A crew's structure (its agents and tasks, their order and context) is code too.
 
@@ -42,7 +42,7 @@ from .common import AgentDef
 log = logging.getLogger("seo_agent.crews")
 
 FETCH_TIMEOUT_S = 5.0
-CREW_IDS = ("editorial", "optimization", "report", "promotion")  # the news crew is the news agent's (mrjithendar/newsroom)
+CREW_IDS = ("editorial", "optimization", "report", "promotion", "news")
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
 MODEL_RE = r"^claude-[a-z0-9][a-z0-9.-]{2,60}$"
 
@@ -233,7 +233,6 @@ def catalogue(crew: CrewDef) -> dict[str, Any]:
     """GET /crews: what the console's crew editor shows and diffs against."""
     return {
         "crew": crew.crew,
-        "agent": "seo",
         "label": crew.label,
         "description": crew.description,
         "prompt_version": crew.prompt_version,
@@ -247,9 +246,10 @@ def catalogue(crew: CrewDef) -> dict[str, Any]:
 
 def registry() -> dict[str, CrewDef]:
     """Every crew's definition, from the crew modules (imported here, not at module load: they import this one)."""
+    from ..news import crew as news
     from . import editorial, optimization, promotion, report
 
-    return {c.crew: c for c in (editorial.CREW, optimization.CREW, report.CREW, promotion.CREW)}
+    return {c.crew: c for c in (editorial.CREW, optimization.CREW, report.CREW, promotion.CREW, news.CREW)}
 
 
 # --- the configuration a run uses ---------------------------------------------------------------------------------------

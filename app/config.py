@@ -1,6 +1,6 @@
 """seo-agent settings, from environment variables only (docs/seo/AGENTS.md lists them all).
 
-Secrets (ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_NEWS_TOKEN, SEO_AGENT_CALLBACK_TOKEN, DATABASE_URL, SEO_AGENT_DATABASE_URL) come from
+Secrets (ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN, DATABASE_URL, SEO_AGENT_DATABASE_URL) come from
 Kubernetes Secrets and are never logged, returned by an endpoint or put into a prompt.
 """
 
@@ -104,9 +104,6 @@ class Settings:
     database_url: str = ""
     # Next.js admin API → seo-agent (bearer). Required: the service refuses to start without it in production.
     agent_token: str = ""
-    # The news agent → seo-agent (bearer), accepted on POST /search and POST /llm-budget/reserve|settle only (403 on
-    # every other route). Empty = the news agent cannot call this service.
-    news_token: str = ""
     # seo-agent → Next.js internal callback API (bearer), a different secret so one leaked direction is not both.
     callback_token: str = ""
     callback_url: str = "http://jithendar-com-internal.jithendar:9465"
@@ -233,7 +230,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         # Its own, narrower database role when one is configured (scripts/db-role.sql); otherwise the web app's.
         database_url=env.get("SEO_AGENT_DATABASE_URL", "").strip() or env.get("DATABASE_URL", ""),
         agent_token=env.get("SEO_AGENT_TOKEN", ""),
-        news_token=env.get("SEO_AGENT_NEWS_TOKEN", "").strip(),
         callback_token=env.get("SEO_AGENT_CALLBACK_TOKEN", ""),
         callback_url=env.get("SEO_AGENT_CALLBACK_URL", Settings.callback_url).rstrip("/"),
         anthropic_api_key=env.get("ANTHROPIC_API_KEY", ""),

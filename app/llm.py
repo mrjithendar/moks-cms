@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import math
 import os
 import time
@@ -32,7 +31,6 @@ from . import metrics, tracing
 from .llm_budgets import Budget, BudgetSource, MemoryBudget, period_end, period_start
 
 T = TypeVar("T", bound=BaseModel)
-log = logging.getLogger("seo_agent.llm")
 
 # USD per million tokens; identical to moks-cms/src/lib/seo-intel/claude.ts (first-party list prices, 2026-10).
 PRICES: dict[str, dict[str, float]] = {
@@ -133,8 +131,6 @@ class PgSpendStore:
         self.pool = pool
 
     async def month_spend(self, now: datetime) -> float:
-        """The legacy monthly sum (SEO drafts and flows): Ask the Blog and the news desk are left out on purpose. The
-        news agent (mrjithendar/newsroom) still books its rows here with purpose news.*; the one budget counts them."""
         start = datetime(now.year, now.month, 1, tzinfo=UTC)
         async with self.pool.connection() as c:
             cur = await c.execute(
@@ -293,7 +289,6 @@ class Reservation:
     scope: str | None  # "ask_daily" when the call also counts against Ask the Blog's own daily limit
     usd: float
     released: bool = False
-    caller: str | None = None  # a hold taken over the API: who asked ("web" | "news-agent")
 
 
 PROVIDER = "anthropic"  # every call this service makes is a Claude call (seo_llm_usage.provider)
@@ -311,8 +306,8 @@ def used_up(status: dict[str, Any]) -> bool:
 
 class BudgetGuard:
     """Hard caps checked before every call: the one LLM budget (app/llm_budgets.py) for every purpose, and on top of
-    it Ask the Blog's own daily limit for the public assistant. Calls made elsewhere (the web app's own, every call of
-    the news agent) are held against the same budget through hold()/settle() (POST /llm-budget/reserve|settle).
+    it Ask the Blog's own daily limit for the public assistant. The news desk still checks its own caps before its
+    calls (app/news/budget.py); those come on top of the one budget, they do not replace it.
 
     Concurrency: `reserve()` checks the caps and holds the call's upper-bound estimate as pending spend (under an
     asyncio.Lock) until the call has been booked, so N concurrent calls cannot each read the same spend and all pass.
@@ -410,37 +405,18 @@ class BudgetGuard:
         for key in [k for k, (_, until) in self.holds.items() if until <= now]:
             self.release(self.holds.pop(key)[0])
 
-    async def hold(self, max_usd: float, purpose: str, caller: str | None = None) -> str:
+    async def hold(self, max_usd: float, purpose: str) -> str:
         """Checks the caps for a call someone else is about to make and holds its upper bound (the caller's own
         estimate: this service does not know every model's price) until settle(), or for HOLD_SECONDS when the
-        caller never comes back. Returns the hold's id. BudgetExceeded when it does not fit. `caller` (the web app or
-        the news agent, from the token it used) is kept on the hold and logged, so the budget page can say who holds what."""
+        caller never comes back. Returns the hold's id. BudgetExceeded when it does not fit."""
         if len(self.holds) >= MAX_HOLDS:
             self._lapse()
             if len(self.holds) >= MAX_HOLDS:
                 raise BudgetExceeded("llm_holds", "too many LLM calls are being held at once; try again shortly")
-        try:
-            r = await self._admit_usd(max_usd, purpose, hold=True)
-        except BudgetExceeded as e:
-            log.info("llm budget hold refused", extra={"event": "llm_budget_hold", "caller": caller, "purpose": purpose, "usd": round(max_usd, 6), "outcome": "refused", "scope": e.scope})
-            raise
-        r.caller = caller
+        r = await self._admit_usd(max_usd, purpose, hold=True)
         key = uuid.uuid4().hex
         self.holds[key] = (r, self.monotonic() + HOLD_SECONDS)
-        log.info("llm budget hold", extra={"event": "llm_budget_hold", "caller": caller, "purpose": purpose, "usd": round(max_usd, 6), "outcome": "held"})
         return key
-
-    def held_by_caller(self) -> list[dict[str, Any]]:
-        """The holds taken over the API that are still open, per caller: their upper bounds and how many."""
-        self._lapse()
-        out: dict[str, dict[str, Any]] = {}
-        for r, _ in self.holds.values():
-            if r.released:
-                continue
-            g = out.setdefault(r.caller or "unknown", {"caller": r.caller or "unknown", "usd": 0.0, "calls": 0})
-            g["usd"] = round(g["usd"] + r.usd, 6)
-            g["calls"] += 1
-        return sorted(out.values(), key=lambda g: g["caller"])
 
     def settle(self, key: str) -> bool:
         """Lets go of a hold. The caller records its own usage row; from then on that row is the spend. False when
@@ -520,8 +496,8 @@ class CallSpec:
     effort: str | None = None  # output_config.effort; None = the model's default
     run_id: str | None = None  # the flow run this call belongs to (seo_flow_runs.run_id), for usage attribution
     agent: str | None = None  # the crew agent key (e.g. "writer") that made the call
-    # Images for a vision check (media type, bytes), sent before the text. Nothing here sends one since the news desk
-    # (its cover checks) moved to the news agent; kept for the shared shape of CallSpec.
+    # News desk: images for a vision check (media type, bytes), sent before the text. Alt text is written by a model
+    # looking at the final image, never from the generation prompt (docs/news/IMAGES.md).
     images: list[tuple[str, bytes]] = field(default_factory=list)
 
     @property
@@ -542,7 +518,7 @@ class Llm(Protocol):
 class UsageReportingLlm(Llm, Protocol):
     """AnthropicLlm and FakeLlm: `stream(spec, on_usage=cb)` calls `cb` once with the booked usage when the stream
     ends (also on a refusal, a truncation or a client disconnect), so a caller can add the streamed step to its own
-    cost (Ask the Blog). Wrappers that only implement Llm do not take it."""
+    cost (Ask the Blog). Wrappers that only implement Llm (NewsLlm) do not take it."""
 
     def stream(self, spec: CallSpec, *, on_usage: UsageCallback | None = None) -> AsyncIterator[str]: ...
 
