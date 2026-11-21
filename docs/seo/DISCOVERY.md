@@ -13,7 +13,7 @@ Everything below was read from the repository or queried read-only from the `mk4
 | Raw SQL | `db.execute(sql\`…\`)` + `rowsOf()` (normalises postgres.js vs PGlite results) is the common pattern for anything beyond simple CRUD. | `src/db/rows.ts`, `src/lib/jobs.ts` |
 | Package manager | npm (`package-lock.json`), Node ≥ 24 (`/opt/homebrew/bin/node` is v26 on this Mac). | `www/package.json` |
 | Validation | zod 4. | |
-| Tests | Vitest 5 (`tests/**/*.test.ts(x)`), PGlite-backed DB tests via `tests/db-helpers.ts#freshDb()` (one migrated template per worker, cloned per test). happy-dom for component tests. Fixed clock `NOW` in `tests/helpers.ts`. | `www/vitest.config.ts` |
+| Tests | Vitest 5 (`tests/**/*.test.ts(x)`), PGlite-backed DB tests via `tests/db-helpers.ts#freshDb()` (one migrated template per run, built by `tests/db-template.setup.ts`, loaded per test). happy-dom for component tests. Fixed clock `NOW` in `tests/helpers.ts`. | `www/vitest.config.ts` |
 | Lint / types | ESLint 10 (`eslint-config-next`), `next typegen && tsc --noEmit`. | |
 
 ## Auth / RBAC
