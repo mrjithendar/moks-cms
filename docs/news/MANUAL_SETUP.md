@@ -25,9 +25,9 @@ Both sides read `NEWS_DESK_ENABLED`:
 - seo-agent: `kubectl -n jithendar patch configmap seo-agent-config -p '{"data":{"NEWS_DESK_ENABLED":"true"}}'`
   then `kubectl -n jithendar rollout restart deploy/seo-agent`.
 - web app: add `NEWS_DESK_ENABLED=true` to ConfigMap `jithendar-com-public` (or the `jithendar-com-env` Secret), then
-  restart the web Deployment. While it is off, Admin → News desk shows a banner and "Run now" is refused.
+  restart the web Deployment. While it is off, AI & SEO → Jobs says so at the top and every job, Run now included, is skipped.
 
-Pausing later needs no deploy: Admin → News desk → Settings → Paused.
+Pausing later needs no deploy: AI & SEO → Jobs → untick "Jobs on".
 
 ## 4. First job
 

@@ -1,6 +1,6 @@
 # Sources
 
-Admin → News desk → Sources. A source is a feed or official API the desk reads; nothing is hard-coded.
+AI & SEO → Content sources. A source is a feed or official API crew jobs read (for news and for other content); nothing is hard-coded.
 
 ## Types
 

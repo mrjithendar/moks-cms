@@ -1,5 +1,16 @@
 # Progress log — jithendar.com
 
+## Crew jobs: no Newsroom, WordPress-style menu, sectioned settings, content jobs, builder (2026-11-21, owner request)
+
+- The news agent split was reversed (moks-seo-agent #25, moks-cms #178, jithendar.com #16, k8s-deployments #29): the
+  news desk runs in the seo-agent again.
+- No Newsroom: AI & SEO → Jobs (content jobs and system jobs, #179/#182), Content sources, Topics, Profiles &
+  playground, Content analytics with filters (#184, #185); the news settings moved to the pages that own them.
+- The menu follows WordPress's order (#179); every settings page has Settings → General's sectioned layout (#181).
+- A job writes any content (#183, agent #27): news stories or blog articles, from content sources and/or content
+  ideas (the Editorial crew), with its own quality gates. The one dispatcher starts jobs within a minute (agent #26).
+- Custom crews and custom flows are made in the admin (#186, agent #29): allowlisted tools, no publishing step.
+
 ## Admin settings plan, P6 (first part): System status rows link to the right section (2026-11-21, owner request)
 
 - `src/lib/health.ts`: "Claude (AI drafting)" links to AI & SEO → Settings → LLM providers & models; "News desk" to

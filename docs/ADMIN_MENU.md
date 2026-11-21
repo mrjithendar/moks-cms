@@ -2,7 +2,10 @@
 
 Status: reorganised 2026-11-15; regrouped and changed to submenus on 2026-11-18 (owner request: "every menu should
 have a submenu; no expand on desktop or tablet; expand and collapse on mobile"). Checked in Chrome on 2026-11-18 at
-1440, 820 and 390 px against a local build.
+1440, 820 and 390 px against a local build. **WordPress order since 2026-11-21** (owner: "reorganize all the menus in
+wordpress style"; moks-cms #179): Dashboard; the content menus; the plugin-like menus; then Appearance, Users, Tools
+and Settings, with a line between the three parts. There is no Newsroom since the same day: news is one kind of
+content a crew job writes, under AI & SEO.
 
 ## What a person sees
 
@@ -18,19 +21,29 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Entry | Pages |
 |---|---|
 | Dashboard | Home |
-| Posts | All posts, Add new, Categories, Tags |
-| Editorial | Editorial calendar, Review queue, Promotion |
+| — | |
+| Posts | All posts, Add new post, Categories, Tags. **Editorial:** Editorial calendar, Review queue, Promotion |
 | Media | Library |
-| Pages | All pages, Add new, Hire me page |
-| Newsroom | **Desk:** Jobs, Run history. **Setup:** Sources, Topics, Profiles & playground. **Insights:** Analytics. **Settings:** Settings (the news desk) |
-| AI & SEO | **Agent:** CrewAI console, Flow runs, Flows, Schedules, Crews, Skills (the crews' writing and checking guidance, D-96), Import / export. **Models & data:** ML models, LanceDB. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Content:** Keywords, Recommendations, Content audit, Internal linking. **Authority & health:** Backlinks, AI visibility, Technical health. **Settings:** Settings (the Automation & AI page), MCP access |
-| Community | Comments, Messages, Bookings |
+| Pages | All pages, Add new page, Hire me page |
+| Comments | All comments, Messages, Bookings |
+| — | |
+| AI & SEO | **Crew jobs:** CrewAI console, Jobs (content jobs and system jobs), Job runs, Flow runs, Flows (with Custom flows), Crews (with Custom crews), Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP access |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
+| — | |
 | Appearance | Customise, Menus, Homepage, Typography & colours |
-| Users | All users, Your profile, API keys ("Your account" for someone without the Users page) |
-| Settings | General, Integrations, Storage, Email |
-| System | **Status:** System status, Cache. **Data:** Backups, Database, Data sync. **Records:** Audit log |
+| Users | All users, Profile, API keys ("Your account" for someone without the Users page) |
+| Tools | Site health (was System status), Cache, Backups (export / import), Data sync, Database, Audit log |
+| Settings | General, Integrations, Media & storage, Email |
+
+Every settings page (Settings → Integrations, Media & storage, Email, and AI & SEO → Settings) has the sectioned layout
+of Settings → General: the sections on the left (a select on a phone), one at a time, the open one in the address
+(`?section=`; moks-cms #181).
+
+**Crew jobs (2026-11-21).** The Newsroom's pages moved under AI & SEO and old `/admin/news/*` addresses redirect
+(`src/lib/news/old-addresses.ts`): Jobs → `/admin/crewai/jobs`, Run history → Job runs, Sources / Topics / Profiles &
+playground / Analytics → `/admin/content/*`. The news settings page is gone; each value is on the page that owns it
+(`src/lib/news/settings-fields.ts`). The CrewAI console's Schedules page is the System jobs tab of Jobs.
 
 Below the entries: **Help** (the user manual) and **Collapse menu**.
 
@@ -46,7 +59,7 @@ address, so bookmarks and links still work. What moved where:
 | SEO & insights → Traffic, Content, Authority & health | AI & SEO → the same three headings |
 
 A sub-heading is drawn above the first page a person can see under it (`arrangeMenu`), so a heading is not lost when
-the page that declares it is hidden from them. Newsroom and System have sub-headings too.
+the page that declares it is hidden from them. Posts (Editorial) has a sub-heading too.
 
 ## The admin bar (2026-11-20)
 
