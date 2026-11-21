@@ -16,7 +16,7 @@ from pydantic import Field
 
 from ..services import content
 from .common import Guard, guarded
-from .news_tools import NEWS_PUBLIC_TOOLS, register_public
+from .news_search import NEWS_PUBLIC_TOOLS, register_public
 
 READ_OPEN = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 

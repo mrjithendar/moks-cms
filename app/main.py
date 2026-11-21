@@ -27,9 +27,14 @@ Every endpoint except /healthz, /readyz and /metrics needs `Authorization: Beare
     GET  /llm-models                    models that are switched on, of providers that are on (for pickers)
     GET  /admin-settings                settings an admin may change: schema, effective values, source, restart pending
     PUT  /admin-settings/{group}        {values, actor} → one group, validated, all or nothing (app/admin_settings)
+    POST /search                        {q, k} → {hits}: the site's index, for the news agent's site match (read-only)
     GET  /healthz /readyz /metrics
 
 publish_flow cannot be started through /flows/{name}/kickoff (403): only /review/{id}/decision with an approval.
+
+The news agent (mrjithendar/newsroom, the news desk since 2026-11-21) calls this service with its own token,
+SEO_AGENT_NEWS_TOKEN, which is accepted on POST /search, POST /llm-budget/reserve and POST /llm-budget/settle only:
+the one LLM budget and the site's index stay here. Every other route answers 403 to it.
 """
 
 from __future__ import annotations
@@ -66,7 +71,7 @@ from .crews.optimization import OptimizationCrew
 from .crews.promotion import PromotionCrew
 from .crews.report import ReportCrew
 from .embeddings import HashEmbeddings
-from .flows import CRON_FLOWS, SPECS, check_kickoff
+from .flows import CRON_FLOWS, OWNED_FLOWS, SPECS, check_kickoff
 from .flows import catalogue as flow_catalogue
 from .flows.base import Deps
 from .index import MemoryRetriever, PgVectorIndex
@@ -82,7 +87,7 @@ from .llm_providers import overview as providers_overview
 from .llm_providers.discover import CannotDiscover
 from .llm_providers.discover import discover as discover_models
 from .logs import configure_logging
-from .news.store import MemoryNewsStore, PgNewsStore
+from .mcp.news_search import MemoryPublishedNews, PgPublishedNews
 from .run_history import MemoryHistorySink, PgHistorySink, RecordingLlm, RunHistory
 from .run_history import install as install_run_log
 from .run_history import uninstall as uninstall_run_log
@@ -129,6 +134,12 @@ class FlowInputs(BaseModel):
 class CrewConfigBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class SearchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    q: str = Field(min_length=1, max_length=500)
+    k: int = Field(default=6, ge=1, le=10)
 
 
 class Decision(BaseModel):
@@ -211,21 +222,6 @@ def _ml(deps: Deps, store: Any, embeddings: Any) -> None:
     deps.extra.setdefault("ml_embed_model", getattr(embeddings, "name", "unknown"))
 
 
-def _news(deps: Deps, store: Any, embeddings: Any) -> None:
-    """News desk dependencies (app/flows/news.py). Tests may pre-set any of these in deps.extra."""
-
-    async def embed(texts: list[str]) -> list[list[float]]:
-        return await embeddings.embed(texts)
-
-    # Which model makes these vectors, and their size, travel with the function: stale stored vectors are re-embedded
-    # and the cosine cutoffs follow the model (app/news/desk.py "The embeddings model", app/calibration.py). An embed
-    # function put in its place without them (tests) keeps the behaviour from before.
-    embed.model = embeddings.name  # type: ignore[attr-defined]
-    embed.dim = embeddings.dim  # type: ignore[attr-defined]
-    deps.extra.setdefault("news_store", store)
-    deps.extra.setdefault("news_embed", embed)
-
-
 async def build_container(settings: Settings) -> Container:
     from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool, ConnectionPool
@@ -260,10 +256,10 @@ async def build_container(settings: Settings) -> Container:
             reasons.append(index.reason)
     except Exception as e:
         reasons.append(f"vector index: {type(e).__name__}")
-    store = PgRunStore(pool)
+    store = PgRunStore(pool, OWNED_FLOWS)  # this service's flows only: the news agent shares the table
     deps = Deps(settings=settings, llm=llm, web=web, retriever=index, store=store, history=history)
     _crews(deps)
-    _news(deps, PgNewsStore(pool), index.emb)
+    deps.extra.setdefault("published_news", PgPublishedNews(pool))  # the public MCP search_news tool
     _ml(deps, PgMlStore(pool), index.emb)
     runner = FlowRunner(SPECS, store, PgAdvisoryLocks(settings.database_url), lambda: PgFlowPersistence().bind(sync_pool), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
     deps.runner = runner
@@ -280,7 +276,7 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
     """Everything in memory (tests): fake LLM and web app, in-memory runs/locks/persistence. `history=True` records
     the run history in a MemoryHistorySink (container.history.sink) and wraps the model with RecordingLlm."""
     retriever = retriever or MemoryRetriever()
-    store = MemoryRunStore()
+    store = MemoryRunStore(flows=OWNED_FLOWS)
     run_history = RunHistory(MemoryHistorySink(runs=store.rows), getattr(web, "run_history_settings", None)) if history else None
     if run_history is not None:
         llm = RecordingLlm(llm, run_history)
@@ -290,7 +286,7 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
 
     deps = Deps(settings=settings, llm=llm, web=web, retriever=retriever, store=store, sleep=no_sleep, verify_delays=verify_delays, history=run_history, **crews)
     _crews(deps)
-    _news(deps, MemoryNewsStore(), HashEmbeddings())
+    deps.extra.setdefault("published_news", MemoryPublishedNews())
     _ml(deps, MemoryMlStore(), HashEmbeddings())
     runner = FlowRunner(SPECS, store, MemoryLocks(), lambda: MemoryFlowPersistence().bind(store), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
     deps.runner = runner
@@ -301,35 +297,6 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
     c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=retriever, guard=guard, ready=True, history=run_history, budgets=budgets)
     deps.reindex = c.reindex
     return c
-
-
-async def _news_gauges(conn: Any) -> None:
-    """Restart-safe alert inputs for the news desk (like D-18): computed from the tables, not process counters."""
-    try:
-        cur = await conn.execute(
-            """select j.id::text as job,
-                 (select count(*) from (select status from news_runs r where r.job_id = j.id and r.kind = 'job' and not r.dry_run and r.status not in ('queued', 'running') order by started_at desc limit 5) x
-                  where x.status = 'failed')::int as recent_failed,
-                 (select status from news_runs r where r.job_id = j.id and r.kind = 'job' and not r.dry_run and r.status not in ('queued', 'running') order by started_at desc limit 1) as last_status,
-                 (select status from news_runs r where r.job_id = j.id and r.kind = 'job' and not r.dry_run and r.status not in ('queued', 'running') order by started_at desc offset 1 limit 1) as prev_status,
-                 extract(epoch from (select max(created_at) from news_articles a where a.job_id = j.id and a.status in ('ready_for_review', 'published')))::float8 as last_draft
-               from news_jobs j where j.deleted_at is null and j.enabled limit 25"""
-        )
-        for r in await cur.fetchall():
-            consecutive = 2 if r["last_status"] == "failed" and r["prev_status"] == "failed" else (1 if r["last_status"] == "failed" else 0)
-            metrics.NEWS_JOB_CONSECUTIVE_FAILURES.labels(news_job=r["job"]).set(consecutive)
-            metrics.NEWS_JOB_LAST_DRAFT.labels(news_job=r["job"]).set(float(r["last_draft"] or 0))
-        cur = await conn.execute(
-            "select count(*) filter (where status = 'failed_quality')::float8 / nullif(count(*) filter (where status in ('failed_quality', 'ready_for_review', 'published', 'rejected', 'incomplete')), 0) as ratio from news_articles where created_at > now() - interval '7 days'"
-        )
-        row = await cur.fetchone()
-        metrics.NEWS_QUALITY_FAILURE_RATIO.set(float(row["ratio"] or 0))
-        cur = await conn.execute(
-            "select coalesce(max(extract(epoch from (now() - coalesce(last_success_at, created_at)))), 0)::float8 as s from news_sources where enabled and deleted_at is null and consecutive_errors > 0"
-        )
-        metrics.NEWS_SOURCE_FAILING_SINCE.set(float((await cur.fetchone())["s"] or 0))
-    except Exception:  # noqa: S110 - the news tables may not exist yet (migration 0017 not applied)
-        pass
 
 
 async def _ml_gauges(conn: Any) -> None:
@@ -368,10 +335,12 @@ async def _gauges(c: Container) -> None:
                 async with c.pool.connection() as conn:
                     cur = await conn.execute("select count(*)::int as n from seo_drafts where status = 'ready_for_review'")
                     metrics.DRAFTS_AWAITING.set(int((await cur.fetchone())["n"]))
-                    cur = await conn.execute("select flow_name, extract(epoch from max(finished_at))::float8 as t from seo_flow_runs where status = 'succeeded' group by flow_name")
+                    cur = await conn.execute(
+                        "select flow_name, extract(epoch from max(finished_at))::float8 as t from seo_flow_runs where status = 'succeeded' and flow_name = any(%s) group by flow_name",
+                        (sorted(OWNED_FLOWS),),
+                    )
                     for r in await cur.fetchall():
                         metrics.LAST_SUCCESS.labels(flow=metrics.flow_label(r["flow_name"])).set(float(r["t"] or 0))
-                    await _news_gauges(conn)
                     await _ml_gauges(conn)
             if isinstance(c.ask.log, PgAskLog):
                 await c.ask.log.prune(c.settings.ask_retention_days)
@@ -448,11 +417,24 @@ def create_app(container: Container | None = None) -> FastAPI:
     def ctr(request: Request) -> Container:
         return request.app.state.c
 
+    def _is(got: str, token: str) -> bool:
+        return bool(token) and hmac.compare_digest(got.encode(), f"Bearer {token}".encode())
+
     def auth(request: Request) -> None:
+        """The service token (the web app, the trigger CronJobs). The news agent's token is refused here (403)."""
         c: Container = request.app.state.c
-        token = c.settings.agent_token
         got = request.headers.get("authorization", "")
-        if not token or not hmac.compare_digest(got.encode(), f"Bearer {token}".encode()):
+        if _is(got, c.settings.agent_token):
+            return
+        if _is(got, c.settings.news_token):
+            raise HTTPException(403, "the news agent's token may call only /search and /llm-budget/reserve|settle")
+        raise HTTPException(401, "unauthorized")
+
+    def auth_or_news(request: Request) -> None:
+        """The service token, or the news agent's (SEO_AGENT_NEWS_TOKEN): /search and the LLM budget's holds."""
+        c: Container = request.app.state.c
+        got = request.headers.get("authorization", "")
+        if not (_is(got, c.settings.agent_token) or _is(got, c.settings.news_token)):
             raise HTTPException(401, "unauthorized")
 
     @app.exception_handler(RunError)
@@ -510,7 +492,7 @@ def create_app(container: Container | None = None) -> FastAPI:
 
         c = ctr(request)
         try:
-            out = await dispatch_schedules(c.schedules, c.runner, schedulable=CRON_FLOWS, now=c.clock() if c.clock else None, catchup=timedelta(minutes=c.settings.schedule_catchup_min))
+            out = await dispatch_schedules(c.schedules, c.runner, schedulable=CRON_FLOWS, served=OWNED_FLOWS, now=c.clock() if c.clock else None, catchup=timedelta(minutes=c.settings.schedule_catchup_min))
         except SchedulesUnavailable as e:
             return JSONResponse({"error": str(e)}, status_code=503)
         return JSONResponse(out)
@@ -616,10 +598,11 @@ def create_app(container: Container | None = None) -> FastAPI:
         log.info("llm budget saved", extra={"event": "llm_budget_saved", "daily_usd": saved.daily_usd, "monthly_usd": saved.monthly_usd})
         return {"budget": saved.out()}
 
-    @app.post("/llm-budget/reserve", dependencies=[Depends(auth)])
+    @app.post("/llm-budget/reserve", dependencies=[Depends(auth_or_news)])
     async def reserve_llm_budget(request: Request) -> Any:
-        """For LLM calls made outside this service (the web app's own): check the one budget and hold the call's
-        upper bound until it is settled. 402 with the reason when it does not fit; the caller then does not call."""
+        """For LLM calls made outside this service (the web app's own, and every call of the news agent): check the one
+        budget and hold the call's upper bound until it is settled. 402 with the reason when it does not fit; the caller
+        then does not call."""
         try:
             body = await request.json()
         except ValueError:
@@ -635,7 +618,7 @@ def create_app(container: Container | None = None) -> FastAPI:
         except BudgetExceeded as e:
             return JSONResponse({"error": e.detail, "scope": e.scope}, status_code=402)
 
-    @app.post("/llm-budget/settle", dependencies=[Depends(auth)])
+    @app.post("/llm-budget/settle", dependencies=[Depends(auth_or_news)])
     async def settle_llm_budget(request: Request) -> Any:
         try:
             body = await request.json()
@@ -645,6 +628,16 @@ def create_app(container: Container | None = None) -> FastAPI:
         if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{32}", key):
             return JSONResponse({"error": "id is the hold's id from /llm-budget/reserve"}, status_code=422)
         return {"released": ctr(request).guard.settle(key)}
+
+    @app.post("/search", dependencies=[Depends(auth_or_news)])
+    async def search(body: SearchBody, request: Request) -> Any:
+        """The site's index for the news agent (site match and its crew's site search): the same retriever as Ask the
+        Blog and the crews. Read-only: no model call, no usage row. 503 while the index is not ready."""
+        c = ctr(request)
+        if not getattr(c.index, "available", False) or getattr(c.index, "rebuilding", False):
+            return JSONResponse({"error": "the site index is not ready"}, status_code=503)
+        hits = await c.index.search(body.q, k=body.k)
+        return {"hits": [{"article_id": h.article_id, "title": h.title, "path": h.path, "heading": h.heading_path, "anchor": h.anchor, "content": h.content[:1200], "score": round(float(h.score), 4), "category": h.category} for h in hits[: body.k]]}
 
     @app.get("/llm-budgets", dependencies=[Depends(auth)])
     async def llm_budgets(request: Request) -> dict[str, Any]:
@@ -724,6 +717,8 @@ async def serve() -> None:
     settings = load_settings()
     if settings.production and (len(settings.agent_token) < 32 or len(settings.callback_token) < 32):
         raise RuntimeError("SEO_AGENT_TOKEN and SEO_AGENT_CALLBACK_TOKEN must be set (≥ 32 characters)")
+    if settings.production and settings.news_token and (len(settings.news_token) < 32 or settings.news_token == settings.agent_token):
+        raise RuntimeError("SEO_AGENT_NEWS_TOKEN must be at least 32 characters and differ from SEO_AGENT_TOKEN")
     setup_tracing(settings.otel_endpoint, settings.service_name, VERSION)
     c = await build_container(settings)
     await startup(c)

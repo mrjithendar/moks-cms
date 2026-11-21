@@ -131,6 +131,8 @@ class PgSpendStore:
         self.pool = pool
 
     async def month_spend(self, now: datetime) -> float:
+        """The legacy monthly sum (SEO drafts and flows): Ask the Blog and the news desk are left out on purpose. The
+        news agent (mrjithendar/newsroom) still books its rows here with purpose news.*; the one budget counts them."""
         start = datetime(now.year, now.month, 1, tzinfo=UTC)
         async with self.pool.connection() as c:
             cur = await c.execute(
@@ -306,8 +308,8 @@ def used_up(status: dict[str, Any]) -> bool:
 
 class BudgetGuard:
     """Hard caps checked before every call: the one LLM budget (app/llm_budgets.py) for every purpose, and on top of
-    it Ask the Blog's own daily limit for the public assistant. The news desk still checks its own caps before its
-    calls (app/news/budget.py); those come on top of the one budget, they do not replace it.
+    it Ask the Blog's own daily limit for the public assistant. Calls made elsewhere (the web app's own, every call of
+    the news agent) are held against the same budget through hold()/settle() (POST /llm-budget/reserve|settle).
 
     Concurrency: `reserve()` checks the caps and holds the call's upper-bound estimate as pending spend (under an
     asyncio.Lock) until the call has been booked, so N concurrent calls cannot each read the same spend and all pass.
@@ -496,8 +498,8 @@ class CallSpec:
     effort: str | None = None  # output_config.effort; None = the model's default
     run_id: str | None = None  # the flow run this call belongs to (seo_flow_runs.run_id), for usage attribution
     agent: str | None = None  # the crew agent key (e.g. "writer") that made the call
-    # News desk: images for a vision check (media type, bytes), sent before the text. Alt text is written by a model
-    # looking at the final image, never from the generation prompt (docs/news/IMAGES.md).
+    # Images for a vision check (media type, bytes), sent before the text. Nothing here sends one since the news desk
+    # (its cover checks) moved to the news agent; kept for the shared shape of CallSpec.
     images: list[tuple[str, bytes]] = field(default_factory=list)
 
     @property
@@ -518,7 +520,7 @@ class Llm(Protocol):
 class UsageReportingLlm(Llm, Protocol):
     """AnthropicLlm and FakeLlm: `stream(spec, on_usage=cb)` calls `cb` once with the booked usage when the stream
     ends (also on a refusal, a truncation or a client disconnect), so a caller can add the streamed step to its own
-    cost (Ask the Blog). Wrappers that only implement Llm (NewsLlm) do not take it."""
+    cost (Ask the Blog). Wrappers that only implement Llm do not take it."""
 
     def stream(self, spec: CallSpec, *, on_usage: UsageCallback | None = None) -> AsyncIterator[str]: ...
 

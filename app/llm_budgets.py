@@ -10,8 +10,9 @@ Ask the Blog and the web app's own calls.
 - Checked by BudgetGuard (app/llm.py) before every call of every purpose. Spend is every row of seo_llm_usage plus
   legacy batches in flight, by UTC day and month. Callers outside this process (the web app) hold their upper-bound
   estimate against the same budget with `POST /llm-budget/reserve` and let go of it with `POST /llm-budget/settle`.
-- Still apart: Ask the Blog's own daily limit (a guard against readers, not the admin, running up spend) and, until
-  the news desk moves over, the news desk's own caps (app/news/budget.py).
+- Still apart: Ask the Blog's own daily limit (a guard against readers, not the admin, running up spend). The news
+  desk is a caller outside this process since 2026-11-21 (the news agent, mrjithendar/newsroom): it holds each call's
+  upper bound with `POST /llm-budget/reserve` (its own token, SEO_AGENT_NEWS_TOKEN) and books its rows in seo_llm_usage.
 
 Before 2026-11-21 there was a limit per model and per provider instead (table `seo_agent_llm_budgets`). Those rows
 are not enforced any more. They are left in place and shown read-only (`legacy_limits`), so the owner can see what

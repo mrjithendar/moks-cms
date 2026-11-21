@@ -73,15 +73,6 @@ async def test_every_client_call_hits_a_server_route() -> None:
     await web.promo_save_drafts(UUID, [], "run-1")
     await web.promo_idea_signals()
     await web.promo_save_ideas([], "run-1")
-    # news desk
-    await web.news_fetch({"url": "https://e.org/f", "purpose": "feed"})
-    await web.news_save_draft({})
-    await web.news_store_media({})
-    await web.news_generate_image({})
-    await web.news_update_draft_image(UUID, {})
-    await web.news_site_signals()
-    await web.news_notify({})
-    await web.news_collect_performance()
     await web.close()
     called = {m for m in dir(HttpWebApp) if not m.startswith("_") and m != "close"}
     assert len(seen) >= len(called), "a client method is not exercised by this contract test"

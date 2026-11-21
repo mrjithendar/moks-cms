@@ -6,14 +6,14 @@ and changing EMBEDDINGS_PROVIDER / OLLAMA_EMBED_MODEL must change the cutoffs wi
 
 - ask_min_score: Ask the Blog's floor (ASK_BLOG_MIN_SCORE overrides it): the highest cosine that loses no expected
   answer of the evaluation set (scripts/rag_eval.py "calibrated floor"; moks-cms docs/seo/RAG.md "Score calibration").
-- cluster_join_cosine / cluster_entity_cosine: the news desk's clusterer (app/news/cluster.py): an item joins a
+- cluster_join_cosine / cluster_entity_cosine: the news desk's clusterer (the news agent's copy of this file reads them: mrjithendar/newsroom app/news/cluster.py): an item joins a
   cluster on cosine alone, or on the lower cosine when it also shares entities.
 - dedupe_semantic_cosine: the news deduper's "semantic" duplicate (a syndicated or lightly reworded copy; dedupe.py).
 - paragraph_cosine: the news quality gate's paraphrase check (Quality.max_paragraph_cosine; an admin value other than
   bge-small's default 0.93 wins, see effective_paragraph_cosine).
 
 bge-small's numbers are the ones the code used before this table existed. A model that is not listed (hash, api,
-nomic-embed-text) keeps them, as it did then. How the other rows were measured is in scripts/calibrate_embeddings.py.
+nomic-embed-text) keeps them, as it did then. How the other rows were measured is in the news agent's scripts/calibrate_embeddings.py (mrjithendar/newsroom).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class Calibration:
 
 BGE_SMALL = Calibration(ask_min_score=0.66, cluster_join_cosine=0.80, cluster_entity_cosine=0.66, dedupe_semantic_cosine=0.95, paragraph_cosine=0.93)
 
-# bge-m3:567m on mk4's Ollama, measured 2026-11-19 with scripts/calibrate_embeddings.py: 189 items from the desk's seven
+# bge-m3:567m on mk4's Ollama, measured 2026-11-19 with mrjithendar/newsroom scripts/calibrate_embeddings.py: 189 items from the desk's seven
 # default feeds, 17,766 item pairs + 189 item/reworded-copy pairs, Spearman 0.770 between the two models' cosines.
 # Each bge-small cutoff keeps its share of pairs (agreement F1 with bge-small's decision in brackets):
 #   cluster_entity 0.66 → 0.523 (0.68) · cluster_join 0.80 → 0.699 (0.87) · paragraph 0.93 → 0.916 (0.98) ·
