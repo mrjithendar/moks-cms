@@ -39,6 +39,10 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["POST", /^\/news\/performance$/, () => news.newsCollectPerformance()],
   // Crew jobs whose intake includes the content ideas: put the best matching ideas on the calendar and draft them.
   ["POST", /^\/jobs\/ideas$/, (_m, b) => news.jobsDraftIdeas(b)],
+  // Custom crews and flows made in the admin (crew-jobs plan PR 6): the enabled specs, and a flow's draft step.
+  ["GET", /^\/custom-crews$/, async () => (await import("../crewai/custom")).servedCustom("crew")],
+  ["GET", /^\/custom-flows$/, async () => (await import("../crewai/custom")).servedCustom("flow")],
+  ["POST", /^\/custom\/drafts$/, (_m, b) => news.customSaveDraft(b)],
   // Promotion (docs/seo/PROMOTION.md): channel opportunities, drafted posts and content ideas. Never posting.
   ["POST", /^\/promotion\/collect$/, (_m, b) => promo.promoCollect(b)],
   ["POST", /^\/promotion\/articles\/([^/]+)\/drafts$/, (m, b) => promo.promoSaveDrafts(m[1]!, b)],

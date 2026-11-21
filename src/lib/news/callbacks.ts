@@ -331,3 +331,52 @@ export async function newsCollectPerformance(now = new Date()) {
   }
   return { rows };
 }
+
+// --- custom flows (crew-jobs plan PR 6) ------------------------------------------------------------------------------
+
+/**
+ * POST /internal/seo-agent/custom/drafts {title, description, body, collection, category, flow, runId}: a custom flow's
+ * draft step (moks-seo-agent app/flows/custom.py). A CMS draft post (never published) and its review draft, checked like
+ * every new article (validateNewArticle: a title another article uses is refused). A person reviews and approves it.
+ */
+export async function customSaveDraft(body: unknown) {
+  const b = parse(
+    z.object({
+      title: z.string().trim().min(1).max(200),
+      description: z.string().max(400).default(""),
+      body: z.string().min(1).max(120_000),
+      collection: z.enum(["blog", "news"]).default("blog"),
+      category: z.string().max(60).nullable().default(null),
+      flow: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/),
+      runId: z.string().max(80).nullable().default(null),
+    }),
+    body,
+  );
+  const db = await getDb();
+  const doc: Record<string, unknown> = { title: b.title, meta_description: b.description, body_mdx: b.body, slug_suggestion: b.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) };
+  const v = await validateNewArticle(db, "00000000-0000-0000-0000-000000000000", doc);
+  if (v.errors.length) return { errors: v.errors, flags: v.flags };
+  const [cat] = b.category ? rowsOf<{ slug: string }>(await db.execute(sql`select slug from category where slug = ${b.category}`)) : [];
+  const [fallback] = cat ? [cat] : rowsOf<{ slug: string }>(await db.execute(sql`select slug from category order by sort limit 1`));
+  const actor = await deskActor(db, null);
+  const post = await createPost(
+    actor,
+    {
+      collection: b.collection,
+      slug: `${String(doc.slug_suggestion) || "draft"}-${Date.now().toString(36).slice(-4)}`,
+      title: b.title.slice(0, 110),
+      description: b.description,
+      body: b.body,
+      category: (cat ?? fallback)?.slug ?? "devops-sre",
+      tags: [],
+      contentType: b.collection === "news" ? "news" : "tutorial",
+      status: "draft",
+    },
+    { incompleteDrafts: true },
+  );
+  const base = await loadBase(db, post.id);
+  const d = await reserveDraft(db, post.id, base, "custom", { kind: "new_article", threadManaged: true });
+  await saveDraft(d.id, { kind: "new_article", document: doc, changes: [], flags: v.flags.slice(0, 60), summary: `Custom flow ${b.flow}: ${b.title.slice(0, 200)}`, model: null, promptVersion: `custom-${b.flow}`, threadId: d.id });
+  log.info("custom flow draft saved", { operation: "custom_save_draft", outcome: "ready_for_review" });
+  return { draftId: d.id, postId: post.id, errors: [], flags: v.flags };
+}
