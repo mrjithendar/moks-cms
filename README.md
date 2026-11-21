@@ -33,30 +33,11 @@ choice), so run them locally before merging a change that touches the database, 
 The Postgres tests need `SEO_AGENT_TEST_DATABASE_URL` (pgvector, PostgreSQL 18) or Docker for testcontainers. The CronJob test reads jithendar.com's
 `kubernetes/seo-agent-*.yaml` (`$SEO_AGENT_K8S_DIR` or `../jithendar.com`): one dispatcher CronJob, every minute.
 
-## The news agent
-
-The news desk (news flows, the News Desk crew, its ML, quality gates and covers) left this service on 2026-11-21: it is
-the news agent, [mrjithendar/newsroom](https://github.com/mrjithendar/newsroom), image `news-agent:latest`. What is
-left here for it:
-
-- **Shared tables.** Both services write `seo_flow_runs` (+ the run history) and dispatch from `seo_flow_schedules`.
-  Each reads, counts, recovers after a restart, cancels and dispatches **only its own flows** (`app/runs.py`
-  `PgRunStore(pool, flows)`, `app/schedules.py dispatch(served=...)`): a restart here never fails a news run, and the
-  `news-*` schedules are left for the news agent's own dispatcher.
-- **Its token**, `SEO_AGENT_NEWS_TOKEN` (optional; ≥ 32 characters and not `SEO_AGENT_TOKEN`), is accepted on
-  `POST /search` (the site's index, for site match and its crew's site search), `POST /llm-budget/reserve` and
-  `POST /llm-budget/settle` only. Every other route answers it 403. Each hold records who took it (`news-agent` or
-  `web`, from the token): a log line per hold, and `GET /llm-budget` lists the open holds per caller (`holds`).
-- `OPENAI_API_KEY` stays in `seo-agent-env`: the OpenAI provider (app/llm_providers/catalog.py) falls back to it.
-- **Publishing** news articles is still `publish_flow` here, after a person approves the draft in the web app.
-- The public MCP tool `search_news` (published news posts) stays here (`app/mcp/news_search.py`); the admin MCP news
-  tools are gone.
-
 ## The LLM budget
 
 One budget for everything (`app/llm_budgets.py`): an optional daily limit and an optional monthly limit in USD, by UTC
-day and month. It counts every provider, model and purpose together (drafts, crews, Ask the Blog, the web app's own
-calls, and the news agent's). An empty limit is no limit, and **nothing is preset**: until a budget is saved, only the
+day and month. It counts every provider, model and purpose together (drafts, crews, the news desk, Ask the Blog, and
+the web app's own calls). An empty limit is no limit, and **nothing is preset**: until a budget is saved, only the
 provider's own spend limit stops spending.
 
 - `GET /llm-budget?scope=day|month`: spent, limit, remaining, calls in flight, a month-end forecast, and the period's
@@ -64,10 +45,10 @@ provider's own spend limit stops spending.
   `{daily_usd, monthly_usd, actor}` saves it.
 - `BudgetGuard` checks it before every call and holds the call's upper-bound estimate while it runs, so concurrent
   calls cannot overspend together.
-- The web app's own LLM calls, and every call of the news agent, use `POST /llm-budget/reserve` `{max_usd, purpose}`
-  (402 when it does not fit) and `POST /llm-budget/settle` `{id}`. A hold that is never settled lapses after 15 minutes.
-- Still apart: Ask the Blog's own daily limit (`ASK_BLOG_DAILY_BUDGET_USD`, a guard against readers running up spend).
-  The news desk's image caps are the news agent's.
+- The web app's own LLM calls use `POST /llm-budget/reserve` `{max_usd, purpose}` (402 when it does not fit) and
+  `POST /llm-budget/settle` `{id}`. A hold that is never settled lapses after 15 minutes.
+- Still apart: Ask the Blog's own daily limit (`ASK_BLOG_DAILY_BUDGET_USD`, a guard against readers running up spend)
+  and, until the news desk moves over, the news desk's own caps.
 - Gone: `SEO_LLM_MONTHLY_BUDGET_USD` (ignored if still set) and the limits per model and per provider. Their rows in
   `seo_agent_llm_budgets` are left in place and shown read-only as `legacy_limits`; `GET /llm-budgets` still answers
   an older web app with spend and no limits, and `PUT /llm-budgets` answers 409.

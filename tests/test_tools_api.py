@@ -262,17 +262,14 @@ def test_the_default_schedules_name_flows_a_schedule_may_start() -> None:
     import json
     import re
 
-    from app.cron import Cron
     from app.flows import CRON_FLOWS, SPECS
+    from app.news.cron import Cron
     from tests.moks_cms import www
 
     sql = www("src/db/migrations/0037_crewai_schedules_crews.sql").read_text()
     rows = re.findall(r"\('([a-z0-9-]+)', '([a-z0-9_]+_flow)', '(?:[^']|'')*', '([^']+)', '(\{[^']*\})'\)", sql)
     assert len(rows) == 15, rows
-    mine = [r for r in rows if r[1] in SPECS]
-    # The three news_* rows are the news agent's (mrjithendar/newsroom checks them); its dispatcher starts them.
-    assert {flow for _, flow, _, _ in rows} - {flow for _, flow, _, _ in mine} == {"news_dispatch_flow", "news_train_flow", "news_style_review_flow"}
-    assert {flow for _, flow, _, _ in mine} == CRON_FLOWS
-    for _name, flow, cron, inputs in mine:
+    assert {flow for _, flow, _, _ in rows} == CRON_FLOWS
+    for _name, flow, cron, inputs in rows:
         Cron(cron, "Etc/UTC")
         SPECS[flow].input_model.model_validate(json.loads(inputs))

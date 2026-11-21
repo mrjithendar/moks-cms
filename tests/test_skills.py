@@ -17,11 +17,15 @@ from app.crews.optimization import AGENTS as OPT_AGENTS
 from app.crews.promotion import AGENTS as PROMO_AGENTS
 from app.crews.report import AGENTS as REPORT_AGENTS
 from app.index import MemoryRetriever
-from app.llm import FakeLlm
+from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+from app.news.crew import AGENTS as NEWS_AGENTS
+from app.news.crew import NewsDeskCrew
 from app.webapp import WebAppError
 from tests.conftest import FakeWebApp, hits, settings
 from tests.moks_cms import www
+from tests.news_fixtures import NewsWeb, good_draft
 from tests.test_crews import BRIEF, final_json, scripted
+from tests.test_news_crew import ITEM, PRIMARY, script
 
 SKILLS_TS = "src/lib/seo-agent/skills.ts"
 
@@ -40,7 +44,7 @@ SKILLS = [
     row("writer-comparison", ["editorial.writer"], ["intent:comparison"]),
     row("cluster-coverage", ["editorial.writer", "editorial.seo_editor"], ["source:ml"]),
     row("whole-crew", ["editorial.*"], version=3),
-    row("news-only", ["news.writer"]),  # another service's crew: never given to an SEO agent
+    row("news-only", ["news.writer"]),
 ]
 
 
@@ -83,6 +87,23 @@ async def test_an_unreachable_web_app_runs_the_crew_without_skills(llm: FakeLlm,
     assert any(getattr(rec, "event", None) == "crew_skills_unavailable" for rec in caplog.records)
 
 
+async def test_news_crew_skills_follow_the_story(monkeypatch: pytest.MonkeyPatch) -> None:
+    web = NewsWeb()
+    web.feeds[PRIMARY] = "<html><title>Kubernetes v1.35</title><main>Release notes for 1.35.</main></html>"
+
+    async def agent_skills() -> list[dict[str, Any]]:
+        return [row("release-coverage", ["news.writer"], ["release"]), row("security-advisory", ["news.writer"], ["cve"]), row("art", ["news.art_director"])]
+
+    monkeypatch.setattr(web, "agent_skills", agent_skills, raising=False)
+    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1))
+    llm.queue("news.crew", *script(good_draft([ITEM["url"], PRIMARY])))
+    r = await NewsDeskCrew(settings(), llm, web, None).run({"mode": "single", "title": "Kubernetes 1.35"}, items=[ITEM], writing_profile={"key": "news-default", "version": 1}, image_profile={"style_prompt": "flat"}, allow_hosts=("kubernetes.io", "blog.example.org"), max_tokens=100_000)
+    assert r.status == "completed"
+    by_agent = {c.agent: system_of(c) for c in llm.calls}
+    assert '<skill name="release-coverage">' in by_agent["writer"] and '<skill name="security-advisory">' not in by_agent["writer"]
+    assert '<skill name="art">' in by_agent["art_director"] and "<skill" not in by_agent["researcher"]
+
+
 def test_run_tags_come_from_the_ml_and_search_console_signals() -> None:
     assert sk.editorial_tags({"intent": "troubleshooting", "source": "ml", "supportingQueries": ["a", "b", "c"], "currentDraft": "## Old"}) == {"intent:troubleshooting", "source:ml", "queries:many", "revise"}
     # The ML intent model's "informational" is split by the main query: what/why → explainer, otherwise how-to.
@@ -91,6 +112,9 @@ def test_run_tags_come_from_the_ml_and_search_console_signals() -> None:
     assert sk.editorial_tags({"intent": "How to", "supportingQueries": ["a", " "]}) == {"intent:how-to"}
     assert sk.editorial_tags({}) == set()
     assert sk.optimization_tags([{"category": "low_ctr", "categories": ["striking_distance"]}, {"category": "content_decay"}]) == {"category:low_ctr", "category:striking_distance", "category:content_decay"}
+    assert sk.news_tags({"mode": "digest", "topics": ["security", "Kubernetes"], "title": "This week"}, [{"title": "Patch for CVE-2026-12345 in runc"}]) == {"mode:digest", "topic:security", "topic:kubernetes", "cve"}
+    assert sk.news_tags({"title": "Istio 1.28 is generally available"}) == {"mode:single", "release"}
+    assert sk.news_tags({"title": "Cloud outage post-mortem"}, [{"title": "x", "clean_text": "no ids here"}]) == {"mode:single"}
     assert sk.report_tags({"type": "monthly"}) == {"report:monthly"} and sk.report_tags({}) == {"report:weekly"}
 
 
@@ -138,9 +162,8 @@ def test_the_web_apps_agent_list_matches_the_crews() -> None:
     src = www(SKILLS_TS).read_text()
     block = src[src.index("export const CREW_AGENTS") : src.index("];", src.index("export const CREW_AGENTS"))]
     ts_agents = set(_ts_list(block, "key"))
-    crews = {"editorial": ED_AGENTS, "optimization": OPT_AGENTS, "promotion": PROMO_AGENTS, "report": REPORT_AGENTS}
-    # news.* agents are the news agent's crew (mrjithendar/newsroom checks them against this list)
-    assert {a for a in ts_agents if not a.startswith("news.")} == {f"{crew}.{a.key}" for crew, agents in crews.items() for a in agents}
+    crews = {"editorial": ED_AGENTS, "optimization": OPT_AGENTS, "promotion": PROMO_AGENTS, "report": REPORT_AGENTS, "news": NEWS_AGENTS}
+    assert ts_agents == {f"{crew}.{a.key}" for crew, agents in crews.items() for a in agents}
 
 
 def test_every_default_skill_targets_real_agents_and_tags_a_run_can_have() -> None:
@@ -150,9 +173,8 @@ def test_every_default_skill_targets_real_agents_and_tags_a_run_can_have() -> No
     agents = {a for line in re.findall(r"agents: \[([^\]]*)\]", body) for a in re.findall(r'"([^"]+)"', line)}
     tags = {t for line in re.findall(r"tags: \[([^\]]*)\]", body) for t in re.findall(r'"([^"]+)"', line)}
     assert len(names) == len(set(names)) >= 20 and all(sk.NAME_RE.match(n) for n in names)
-    crews = {"editorial": ED_AGENTS, "optimization": OPT_AGENTS, "promotion": PROMO_AGENTS, "report": REPORT_AGENTS}
+    crews = {"editorial": ED_AGENTS, "optimization": OPT_AGENTS, "promotion": PROMO_AGENTS, "report": REPORT_AGENTS, "news": NEWS_AGENTS}
     real = {f"{crew}.{a.key}" for crew, agents_ in crews.items() for a in agents_}
-    agents = {a for a in agents if not a.startswith("news.")}  # the news agent's crew: checked there
     assert agents <= real
     assert real <= agents, "every crew agent has at least one default skill"
     producible = re.compile(r"^(intent:(how-to|explainer|comparison|troubleshooting|reference|commercial|informational|navigational)|source:(ml|analytics|ask|promotion|manual)|queries:many|revise|category:(low_ctr|striking_distance|content_decay|content_gap|internal_links|outdated_tech|quality)|topic:[a-z0-9-]+|mode:(single|digest)|cve|release|report:(weekly|monthly))$")

@@ -5,11 +5,11 @@ skills at GET /internal/seo-agent/skills: the shipped defaults (which an admin m
 `run_crew` reads them once per run (`fetch`) and `build_agents` gives each agent the ones that match it (`select`).
 
 Which skills a run gets is decided here, in code, never by the model. A skill names its agents ("editorial.writer",
-or "editorial.*" for a whole crew) and, optionally, tags: without tags it applies to every run of its agents; with tags,
+or "news.*" for a whole crew) and, optionally, tags: without tags it applies to every run of its agents; with tags,
 when the run has any one of them. Each crew derives its run's tags from the ML and Search Console signals it already
-carries (`editorial_tags`, `optimization_tags`, `report_tags`): the brief's intent (the editorial idea's, or the ML
-intent model's for the item's queries), the calendar idea's source (ML query clusters, Google Analytics, Ask the Blog),
-the recommendation categories. The news crew's (`news.*`) are the news agent's (mrjithendar/newsroom).
+carries (`editorial_tags`, `optimization_tags`, `news_tags`, `report_tags`): the brief's intent (the editorial idea's,
+or the ML intent model's for the item's queries), the calendar idea's source (ML query clusters, Google Analytics, Ask
+the Blog), the recommendation categories, the news classifier's topics.
 
 Skills are passed to CrewAI already activated (INSTRUCTIONS level), so CrewAI renders their full text into the agent's
 system prompt, which ClaudeCrewLLM sends as the cached system block. That means no `load_skill` tool: it would sit
@@ -170,6 +170,24 @@ def optimization_tags(recommendations: Iterable[Mapping[str, Any]]) -> set[str]:
     return tags
 
 
+_CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.I)
+_VERSION_RE = re.compile(r"\bv?\d+\.\d+(?:\.\d+)?\b")
+_RELEASE_RE = re.compile(r"\b(?:releases?|released|generally available|launch(?:es|ed)?)\b", re.I)
+
+
+def news_tags(brief: Mapping[str, Any], items: Iterable[Mapping[str, Any]] = ()) -> set[str]:
+    """mode:<single|digest>, topic:<slug> (the news classifier's topics for the cluster), cve (a CVE id in the story),
+    release (a version number or a release word in a story title)."""
+    tags = {f"mode:{_v(brief.get('mode') or 'single')}"}
+    tags |= {f"topic:{_v(t)}" for t in (brief.get("topics") or []) if t and _v(t)}
+    items = list(items)
+    titles = [str(brief.get("title") or ""), *(str(s.get("title") or "") for s in (brief.get("digest_stories") or []) if isinstance(s, Mapping)), *(str(i.get("title") or "") for i in items)]
+    texts = titles + [str(i.get("clean_text") or i.get("excerpt") or "")[:3000] for i in items]
+    if any(_CVE_RE.search(t) for t in texts):
+        tags.add("cve")
+    if any(_VERSION_RE.search(t) or _RELEASE_RE.search(t) or re.search(r"\bGA\b", t) for t in titles):
+        tags.add("release")
+    return tags
 
 
 def report_tags(report: Mapping[str, Any]) -> set[str]:

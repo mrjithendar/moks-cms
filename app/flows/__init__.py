@@ -7,9 +7,6 @@
 - `MCP_KICKOFF_ALLOWLIST`: what the admin MCP `kickoff_flow` tool may start. Never publish_flow.
 - `CRON_FLOWS`: what a schedule may start (app/schedules.py, the CrewAI console's Schedules).
 - `crew_test_flow`: the console's Test run of a crew configuration (app/flows/crew_test.py); started by an admin only.
-- The news desk's flows (news_*) are not here: they run in the news agent (mrjithendar/newsroom) since 2026-11-21. The
-  keys of SPECS are also what this service owns in the shared `seo_flow_runs` and `seo_flow_schedules` tables: it
-  recovers, lists, cancels and dispatches only these (app/runs.py, app/schedules.py), and the news agent its own.
 """
 
 from __future__ import annotations
@@ -35,13 +32,22 @@ from .jobs import Ga4SyncFlow, GscSyncFlow, TechAuditFlow
 from .maintenance import AskGapsFlow, InternalLinkingFlow, ReindexFlow
 from .ml import SeoMlFlow
 from .new_article import NewArticleFlow
+from .news import (
+    NEWS_INPUTS,
+    NewsDispatchFlow,
+    NewsDraftFlow,
+    NewsImageFlow,
+    NewsIngestFlow,
+    NewsJobFlow,
+    NewsPlaygroundFlow,
+    NewsStyleReviewFlow,
+    NewsTrainFlow,
+)
 from .optimize_article import OptimizeArticleFlow
 from .promotion import ContentIdeasFlow, PromotionFlow
 from .publish import PublishFlow
 from .report import ReportFlow
 from .weekly import WeeklyRecommendationsFlow
-
-AGENT = "seo"  # GET /flows and GET /crews tag every entry with it: moks-cms merges this catalogue with the news agent's
 
 
 def _site(_i: dict[str, Any]) -> str:
@@ -73,15 +79,24 @@ SPECS: dict[str, FlowSpec] = {
     # Promotion (docs/seo/PROMOTION.md): one run per article (or one site-wide run); ideas are site-wide.
     "promotion_flow": FlowSpec("promotion_flow", PromotionFlow.create, PromotionInput, lambda i: str(i.get("article_id") or "site")),
     "content_ideas_flow": FlowSpec("content_ideas_flow", ContentIdeasFlow.create, NoInput, _site),
+    # News desk (docs/news/ARCHITECTURE.md). Lock targets: one active run per job; one per job + story for drafts.
+    "news_dispatch_flow": FlowSpec("news_dispatch_flow", NewsDispatchFlow.create, NEWS_INPUTS["news_dispatch_flow"], _site),
+    "news_job_flow": FlowSpec("news_job_flow", NewsJobFlow.create, NEWS_INPUTS["news_job_flow"], lambda i: f"job:{i['job_id']}"),
+    "news_draft_flow": FlowSpec("news_draft_flow", NewsDraftFlow.create, NEWS_INPUTS["news_draft_flow"], lambda i: f"{i['job_id']}:{i['cluster_ids'][0]}:{i.get('mode', 'single')}"),
+    "news_ingest_flow": FlowSpec("news_ingest_flow", NewsIngestFlow.create, NEWS_INPUTS["news_ingest_flow"], _site),
+    "news_image_flow": FlowSpec("news_image_flow", NewsImageFlow.create, NEWS_INPUTS["news_image_flow"], lambda i: str(i["article_id"])),
+    "news_train_flow": FlowSpec("news_train_flow", NewsTrainFlow.create, NEWS_INPUTS["news_train_flow"], _site),
+    "news_style_review_flow": FlowSpec("news_style_review_flow", NewsStyleReviewFlow.create, NEWS_INPUTS["news_style_review_flow"], _site),
+    "news_playground_flow": FlowSpec("news_playground_flow", NewsPlaygroundFlow.create, NEWS_INPUTS["news_playground_flow"], lambda i: f"{i['job_id']}:{i['cluster_id']}"),
     # CrewAI console (D-98): a crew configuration's test run on an earlier run's inputs. One at a time per crew.
     "crew_test_flow": FlowSpec("crew_test_flow", CrewTestFlow.create, CrewTestInput, lambda i: f"crew:{i['crew']}"),
 }
-OWNED_FLOWS = frozenset(SPECS)
+NEWS_FLOWS = frozenset(n for n in SPECS if n.startswith("news_"))
 
 APPROVAL_ONLY = frozenset({"publish_flow"})
 DRAFTING_FLOWS = ("optimize_article_flow", "new_article_flow")
-MCP_KICKOFF_ALLOWLIST = frozenset({"optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"})
-CRON_FLOWS = frozenset({"gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "promotion_flow", "content_ideas_flow"})
+MCP_KICKOFF_ALLOWLIST = frozenset({"news_job_flow", "optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"})
+CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "promotion_flow", "content_ideas_flow"})
 
 
 MANUAL_ONLY = frozenset({"crew_test_flow"})  # started by a person in the console: never by a schedule, a flow or MCP
@@ -114,7 +129,6 @@ def catalogue() -> list[dict[str, Any]]:
     return [
         {
             "name": name,
-            "agent": AGENT,
             "inputs_schema": spec.input_model.model_json_schema(),
             "approval_only": name in APPROVAL_ONLY,
             "schedulable": name in CRON_FLOWS,
