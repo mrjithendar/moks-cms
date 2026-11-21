@@ -1,7 +1,7 @@
 name: RAG eval (manual)
 
 # The real retrieval evaluation (moks-cms docs/seo/RAG.md "Evaluation"): the eval set in
-# tests/fixtures/rag_eval.yaml against the blog's MDX files (tests/fixtures/rag_corpus), with the production embedding model
+# app/data/rag_eval.yaml against the blog's MDX files (tests/fixtures/rag_corpus), with the production embedding model
 # (bge-small-en-v1.5 ONNX at the image's pinned revision and checksums) and Postgres full-text search (pgvector
 # service; the vector list is exact cosine in numpy). Run it after changing the chunker, retrieval or the eval set.
 # The reports are written to the job summary; commit the ones worth keeping under moks-cms docs/seo/rag-eval/.
