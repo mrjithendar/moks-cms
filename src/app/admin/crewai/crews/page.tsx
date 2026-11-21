@@ -6,12 +6,15 @@ import { crewSummaries } from "@/lib/crewai/crews";
 import { flowInfo } from "@/lib/crewai/flows";
 import { hasSchedules } from "@/lib/crewai/schedules";
 import { CREWS } from "@/lib/seo-agent/skills";
+import { buttonClass } from "@/components/ui/form";
+import { listCustom, usedBy, type CustomRow } from "@/lib/crewai/custom";
 
 export const metadata = { title: "Crews" };
 
 /** The SEO agent's crews: which configuration each one runs (a saved version or the code's defaults). */
 export default async function CrewaiCrewsPage() {
-  const [crews, ready] = await Promise.all([agentCrews(), hasSchedules().catch(() => false)]);
+  const [crews, ready, customCrews, customFlows] = await Promise.all([agentCrews(), hasSchedules().catch(() => false), listCustom("crew").catch(() => []), listCustom("flow").catch(() => [])]);
+  const users = new Map(customCrews.map((c) => [c.key, usedBy(c.key, customFlows).map((f) => f.label)]));
   const summaries = ready ? await crewSummaries() : new Map();
   const list = crews ?? Object.entries(CREWS).map(([crew, label]) => ({ crew, label, description: "", agents: [], tasks: [], replay_flows: [], default_hash: "", prompt_version: "" }));
   return (
@@ -45,6 +48,39 @@ export default async function CrewaiCrewsPage() {
           );
         })}
       </Table>
+      <CustomList kind="crews" rows={customCrews} users={users} />
     </>
+  );
+}
+
+function CustomList({ kind, rows, users }: { kind: "crews" | "flows"; rows: CustomRow[]; users?: Map<string, string[]> }) {
+  const one = kind === "crews" ? "crew" : "flow";
+  return (
+    <section aria-labelledby={`custom-${kind}`} className="mt-10">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id={`custom-${kind}`} className="text-base font-semibold text-fg">Custom {kind}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-fg-muted">{kind === "crews" ? "Crews you make here: agents with tools from the allowlist and tasks in order. They run in your custom flows, with the same rules as the built-in crews." : "Flows you make here: your custom crews, conditions on their output and drafts for the review queue. They never publish; start one by hand or from a system job."}</p>
+        </div>
+        <Link href={`/admin/crewai/${kind}/custom/new`} className={buttonClass("primary", "sm")}>New {one}</Link>
+      </div>
+      {rows.length === 0 ? (
+        <Card><p className="text-sm text-fg-muted">No custom {kind} yet.</p></Card>
+      ) : (
+        <Table head={<tr><th className={th}>{kind === "crews" ? "Crew" : "Flow"}</th><th className={th}>Version</th><th className={th}>{kind === "crews" ? "Used by" : "Steps"}</th><th className={th}>Changed</th></tr>}>
+          {rows.map((r) => (
+            <tr key={r.key} className={r.enabled ? "" : "opacity-70"}>
+              <td className={td}>
+                <Link href={`/admin/crewai/${kind}/custom/${r.key}`} className="font-medium text-fg hover:underline">{r.label}</Link>
+                <p className="text-xs text-fg-subtle"><code>{r.key}</code>{r.enabled ? "" : " · switched off"}</p>
+              </td>
+              <td className={`${td} tabular-nums`}>v{r.version}</td>
+              <td className={`${td} text-xs`}>{kind === "crews" ? (users?.get(r.key) ?? []).join(", ") || "no flow yet" : ((r.spec.steps as { kind: string }[] | undefined) ?? []).map((s) => s.kind).join(" → ")}</td>
+              <td className={`${td} text-xs`}><Ago iso={r.updated_at} />{r.updated_by ? ` by ${r.updated_by}` : ""}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </section>
   );
 }

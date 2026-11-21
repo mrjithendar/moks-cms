@@ -13,11 +13,11 @@
  * - "news": per-story news runs; retry them from the news run page.
  */
 
-export type FlowGroup = "Content" | "Insights" | "Data sync" | "Promotion" | "News desk" | "Maintenance" | "Other";
+export type FlowGroup = "Content" | "Insights" | "Data sync" | "Promotion" | "News desk" | "Maintenance" | "Custom" | "Other";
 export type Rerun = "yes" | "review" | "approval" | "cron" | "news" | "no";
 export type FlowInfo = { name: string; label: string; group: FlowGroup; description: string; rerun: Rerun };
 
-export const FLOW_GROUPS: FlowGroup[] = ["Content", "Insights", "Data sync", "Promotion", "News desk", "Maintenance", "Other"];
+export const FLOW_GROUPS: FlowGroup[] = ["Content", "Insights", "Data sync", "Promotion", "News desk", "Maintenance", "Custom", "Other"];
 
 const F = (name: string, label: string, group: FlowGroup, rerun: Rerun, description: string): FlowInfo => ({ name, label, group, rerun, description });
 
@@ -34,6 +34,7 @@ export const FLOWS: FlowInfo[] = [
   F("ga4_sync_flow", "GA4 sync", "Data sync", "yes", "Imports Google Analytics 4 data."),
   F("promotion_flow", "Promotion", "Promotion", "yes", "The Promotion crew scores where to share new articles and drafts the posts."),
   F("content_ideas_flow", "Content ideas", "Promotion", "yes", "Turns community and search signals into article ideas for the calendar."),
+  F("custom_flow", "Custom flow", "Custom", "yes", "Runs a flow you made (Flows → Custom flows): its custom crews, conditions and drafts for review. It never publishes."),
   F("news_dispatch_flow", "Crew jobs housekeeping", "News desk", "cron", "Daily clean-up and the gauges of the crew jobs; the jobs themselves start on their own times (the one dispatcher)."),
   F("news_job_flow", "News job", "News desk", "yes", "Fetches, ranks and drafts the stories of one news job."),
   F("news_ingest_flow", "News ingest", "News desk", "yes", "Fetches and stores items from the news sources."),
@@ -60,6 +61,7 @@ export const CREW_OF_FLOW: Record<string, string> = {
 
 /** Flows a schedule may start: moks-seo-agent app/flows/__init__.py CRON_FLOWS (the agent refuses any other). */
 export const SCHEDULABLE_FLOWS: readonly string[] = [
+  "custom_flow",
   "gsc_sync_flow",
   "ga4_sync_flow",
   "tech_audit_flow",

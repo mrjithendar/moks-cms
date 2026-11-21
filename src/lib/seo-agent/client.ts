@@ -45,7 +45,7 @@ export type Decision = { decision: "approve" | "reject" | "regenerate"; approval
 
 /** Flows a person or a schedule may start with POST /flows/{name}/kickoff. publish_flow is not one of them.
  * crew_test_flow is the CrewAI console's crew Test run (moks-seo-agent/app/flows/crew_test.py), started by an admin only. */
-export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | NewsFlowName;
+export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | "custom_flow" | NewsFlowName;
 /** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
 export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
 
@@ -124,6 +124,10 @@ export type AgentCrew = {
 export const flowCatalogue = (deps?: AgentDeps) => call<{ items: AgentFlow[] }>("GET", "/flows", undefined, deps, 8_000);
 export const validateFlowInputs = (flow: string, inputs: Record<string, unknown>, deps?: AgentDeps) => call<{ inputs: Record<string, unknown> }>("POST", `/flows/${encodeURIComponent(flow)}/validate`, { inputs }, deps, 8_000);
 export const crewCatalogue = (deps?: AgentDeps) => call<{ items: AgentCrew[] }>("GET", "/crews", undefined, deps, 8_000);
+/** POST /custom/validate: the agent's one check of a custom crew or flow spec (moks-seo-agent app/crews/custom.py,
+ * app/flows/custom.py); 422 with the issues. `crews`: the custom crews a flow may name. */
+export const validateCustomSpec = (kind: "crew" | "flow", spec: Record<string, unknown>, crews?: string[], deps?: AgentDeps) =>
+  call<{ spec: Record<string, unknown> }>("POST", "/custom/validate", { kind, spec, ...(crews ? { crews } : {}) }, deps, 8_000);
 export const validateCrewConfig = (crew: string, config: Record<string, unknown>, deps?: AgentDeps) =>
   call<{ config: Record<string, unknown>; default_hash: string; prompt_version: string }>("POST", `/crews/${encodeURIComponent(crew)}/validate`, { config }, deps, 8_000);
 
