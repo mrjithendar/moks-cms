@@ -302,3 +302,46 @@ async def test_ai_visibility_answers_are_untrusted(llm, web) -> None:
     assert r["prompt"]["text"]["untrusted_content"] is True
     assert r["answers"][0]["answer"]["untrusted_content"] is True and r["answers"][0]["sources"][0]["title"]["untrusted_content"] is True
     assert r["answers"][0]["cited"] is True
+
+
+# --- P3: tools an admin switched off, and the kickoff choice that only narrows ----------------------------------------
+
+
+async def test_a_tool_switched_off_at_start_is_not_listed_and_not_callable(llm, web) -> None:
+    _c, app, _audit, _v = edge(llm, web, mcp_public_tools_off=("ask_blog", "not_a_tool"), mcp_admin_tools_off=("reject_draft",))
+    async with create_connected_server_and_client_session(app.state.public) as s:
+        names = {t.name for t in (await s.list_tools()).tools}
+        assert "ask_blog" not in names and names == set(PUBLIC_TOOLS) - {"ask_blog"}
+        assert (await s.call_tool("ask_blog", {"question": "What is a ClusterIssuer?"})).isError
+        assert not (await s.call_tool("list_topics", {})).isError  # the others still answer
+    async with as_admin(["seo:read", "seo:flows", "seo:review:reject"]), create_connected_server_and_client_session(app.state.admin) as s:
+        names = {t.name for t in (await s.list_tools()).tools}
+        assert names == set(ADMIN_TOOLS) - {"reject_draft"}
+        assert (await s.call_tool("reject_draft", {"draft_id": DRAFT, "reason": "x"})).isError
+
+
+async def test_switching_a_tool_off_while_running_refuses_the_next_call(llm, web) -> None:
+    c, app, audit, _v = edge(llm, web)
+    async with as_admin(["seo:read"]), create_connected_server_and_client_session(app.state.admin) as s:
+        assert not (await s.call_tool("get_overview", {})).isError
+        object.__setattr__(c.settings, "mcp_admin_tools_off", ("get_overview",))  # what a saved setting does (apply_live)
+        r = await s.call_tool("get_overview", {})
+        assert r.isError and "switched off" in r.content[0].text
+        object.__setattr__(c.settings, "mcp_admin_tools_off", ())
+        assert not (await s.call_tool("get_overview", {})).isError
+    assert [e["status"] for e in audit.rows if e["tool"] == "get_overview"] == ["ok", "disabled", "ok"]
+
+
+async def test_the_kickoff_setting_only_narrows_the_allowlist(llm, web) -> None:
+    # A flow the code does not allow stays refused whatever the setting says; a flow it allows can be taken away.
+    c, app, _audit, _v = edge(llm, web, mcp_kickoffs_off=("tech_audit_flow",))
+    assert "tech_audit_flow" in MCP_KICKOFF_ALLOWLIST and "publish_flow" not in MCP_KICKOFF_ALLOWLIST
+    async with as_admin(["seo:read", "seo:flows"]), create_connected_server_and_client_session(app.state.admin) as s:
+        off = await s.call_tool("kickoff_flow", {"flow_name": "tech_audit_flow", "inputs": {}})
+        assert off.isError and "switched off" in off.content[0].text
+        assert (await s.call_tool("kickoff_flow", {"flow_name": "publish_flow", "inputs": {"draft_id": DRAFT, "approval_id": "a", "accepted_change_ids": ["c1"]}})).isError
+    assert all(x["flow_name"] not in ("tech_audit_flow", "publish_flow") for x in c.store.rows.values())
+    from app.admin_settings import GROUPS
+
+    registered = {f.env for g in GROUPS for f in g.fields}
+    assert "MCP_KICKOFFS_OFF" in registered and not {e for e in registered if "ALLOW" in e and "KICKOFF" in e}  # no setting adds a flow

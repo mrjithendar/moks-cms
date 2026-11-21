@@ -344,3 +344,64 @@ async def test_an_outage_keeps_the_last_known_values_and_never_read_means_the_de
     store = PgSettingsStore(Broken(), ttl_s=0)
     store._value = rows(CREW_MAX_ITER=9)
     assert (await store.load())["CREW_MAX_ITER"].value == 9
+
+
+# --- P3: embeddings, retrieval and MCP groups ---------------------------------------------------------------------------
+
+
+def _group(gid: str) -> Group:
+    return next(g for g in GROUPS if g.id == gid)
+
+
+def test_the_p3_groups_exist_and_say_what_applies_live() -> None:
+    assert [g.id for g in GROUPS][:4] == ["agent-limits", "embeddings", "retrieval", "mcp"]
+    live = {f.env for g in GROUPS for f in g.fields if f.apply == "live"}
+    # Read on every request or by the hourly prune: live. Everything built once at start-up waits for a restart.
+    assert {"ASK_BLOG_TOP_K", "ASK_BLOG_MIN_SCORE", "ASK_BLOG_RETENTION_DAYS", "PUBLIC_MCP_ENABLED", "ADMIN_MCP_ENABLED"} <= live
+    for env in ("LANCEDB_ARTICLE_INDEX", "PUBLIC_MCP_RPM_PER_IP", "ADMIN_MCP_KICKOFFS_PER_HOUR", "MCP_ALLOWED_HOSTS", "OLLAMA_URL", "EMBEDDINGS_API_KEY", "EMBEDDINGS_TIMEOUT_SECONDS"):
+        assert env not in live, env
+    assert _group("embeddings").field("EMBEDDINGS_API_KEY").secret  # type: ignore[union-attr]
+
+
+def test_what_would_invalidate_the_index_or_belongs_elsewhere_is_not_editable() -> None:
+    registered = {f.env for g in GROUPS for f in g.fields}
+    # Changing the embeddings provider or model needs a guarded re-embed, which does not exist yet.
+    assert not registered & {"EMBEDDINGS_PROVIDER", "EMBEDDINGS_MODEL_DIR", "OLLAMA_EMBED_MODEL", "OLLAMA_EMBED_DIM"}
+    # Set in Ask the Blog (the web app's runtime options): one place per knob.
+    assert not registered & {"ASK_BLOG_ENABLED", "ASK_BLOG_DAILY_BUDGET_USD", "ASK_BLOG_CACHE_TTL_SECONDS"}
+    # Owned by the code, never a setting.
+    assert not registered & {"MCP_KICKOFF_ALLOWLIST"}
+
+
+def test_p3_precedence_and_ranges() -> None:
+    assert effective({}, {"ASK_BLOG_TOP_K": "4"}).ask_top_k == 4
+    assert effective(rows(ASK_BLOG_TOP_K=9), {"ASK_BLOG_TOP_K": "4"}).ask_top_k == 9
+    assert effective(rows(ASK_BLOG_MIN_SCORE=0.3), {}).ask_min_score == 0.3
+    assert effective(rows(PUBLIC_MCP_ENABLED=True), {"PUBLIC_MCP_ENABLED": "false"}).public_mcp_enabled is True
+    assert effective(rows(ADMIN_MCP_ENABLED=False), {"ADMIN_MCP_ENABLED": "true"}).admin_mcp_enabled is False
+    assert effective(rows(MCP_ALLOWED_HOSTS=["jithendar.com", "localhost:8081"]), {}).mcp_allowed_hosts == ("jithendar.com", "localhost:8081")
+    assert effective(rows(LANCEDB_ARTICLE_INDEX=False), {}).lancedb_article_index is False
+    retrieval, mcp, emb = _group("retrieval"), _group("mcp"), _group("embeddings")
+    for field_, bad in (
+        (retrieval.field("ASK_BLOG_TOP_K"), 13),
+        (retrieval.field("ASK_BLOG_TOP_K"), 0),
+        (retrieval.field("ASK_BLOG_MIN_SCORE"), 0.99),
+        (mcp.field("PUBLIC_MCP_RPM_PER_IP"), 0),
+        (mcp.field("MCP_ALLOWED_HOSTS"), ["https://jithendar.com"]),
+        (mcp.field("MCP_ALLOWED_HOSTS"), ["bad host"]),
+        (emb.field("OLLAMA_URL"), "ollama:11434"),
+        (emb.field("OLLAMA_URL"), "http://user:pw@ollama:11434"),
+        (emb.field("EMBEDDINGS_TIMEOUT_SECONDS"), 5),
+    ):
+        assert field_ is not None
+        with pytest.raises(Invalid):
+            clean(field_, bad)
+    assert clean(emb.field("OLLAMA_URL"), "http://ollama.ai.svc.cluster.local:11434") == "http://ollama.ai.svc.cluster.local:11434"  # type: ignore[arg-type]
+
+
+def test_switching_an_mcp_server_is_live_and_its_limits_wait_for_a_restart() -> None:
+    running = load_settings({"PUBLIC_MCP_ENABLED": "true"})
+    changed = apply_live(running, rows(PUBLIC_MCP_ENABLED=False, PUBLIC_MCP_RPM_PER_IP=5, ASK_BLOG_TOP_K=3), {"PUBLIC_MCP_ENABLED": "true"})
+    assert sorted(changed) == ["ASK_BLOG_TOP_K", "PUBLIC_MCP_ENABLED"]
+    assert running.public_mcp_enabled is False and running.ask_top_k == 3
+    assert running.public_mcp_rpm_per_ip == Settings.public_mcp_rpm_per_ip  # built into the server at start-up

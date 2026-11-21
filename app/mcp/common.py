@@ -18,7 +18,7 @@ import logging
 import time
 import uuid
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -138,6 +138,29 @@ class Guard:
     audit: Any = None
     caller: Callable[[], tuple[str, str | None, list[str]]] | None = None  # → (key, subject, scopes)
     extra_limits: dict[str, tuple[int, float]] = field(default_factory=dict)  # tool → (limit, window_s)
+    # Tools an admin switched off, read on every call so a change applies at once (settings group "mcp").
+    off: Callable[[], Collection[str]] = tuple
+
+
+def hide_switched_off(server: Any, off: Collection[str]) -> list[str]:
+    """Leaves tools that are switched off out of the server's tool list. Done once, when the server is built, so a
+    tool switched off later is refused at once (guarded) and disappears from the list at the next restart. Returns the
+    names it removed. If the SDK offers no way to remove a tool it stays listed; calls are refused all the same."""
+    remove = getattr(server, "remove_tool", None)
+    registry = getattr(getattr(server, "_tool_manager", None), "_tools", None)  # SDKs before remove_tool existed
+    removed: list[str] = []
+    for name in off:
+        try:
+            if remove is not None:
+                remove(name)
+            elif isinstance(registry, dict) and name in registry:
+                del registry[name]
+            else:
+                continue
+            removed.append(name)
+        except Exception:  # noqa: S112 - an unknown name is not an error: the setting may name a tool that no longer exists
+            continue
+    return removed
 
 
 def guarded(g: Guard, tool: str, *, scope: str | None = None) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
@@ -150,6 +173,9 @@ def guarded(g: Guard, tool: str, *, scope: str | None = None) -> Callable[[Calla
             status = "ok"
             key, subject, scopes = g.caller() if g.caller else (f"ip:{CLIENT_IP.get()}", None, [])
             try:
+                if tool in g.off():
+                    status = "disabled"
+                    raise ToolError(f"{tool} is switched off by the site's admin")
                 if scope and scope not in scopes:
                     status = "forbidden"
                     raise ToolError(f"insufficient_scope: this tool needs the {scope} scope")
