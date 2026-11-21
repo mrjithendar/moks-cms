@@ -11,7 +11,10 @@
   decided it.
 - **Manual step, not done:** remove `NEWS_DESK_ENABLED` from the ConfigMaps (a jithendar.com change the owner
   applies). Until then nothing breaks: `true` keeps working as today.
-- **Not done yet in P5:** removing the news LLM caps, default sources seeded disabled, topics review, the sectioned
+- **News LLM caps removed** (second part): the seo-agent no longer enforces the global or per-job news LLM caps; the
+  one LLM budget does. The fields are gone from Newsroom → Settings and the job editor's Budget tab (the keys stay
+  in the schemas so saved rows still load). Image caps are unchanged. `docs/news/COSTS.md` is **not** updated yet.
+- **Not done yet in P5:** default sources seeded disabled, topics review, the sectioned
   Newsroom settings, docs under `docs/news/`.
 - Tests: `tests/news-desk-switch.test.ts` (new, 4). **Nothing was run** in the session.
 

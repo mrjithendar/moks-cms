@@ -33,9 +33,8 @@ export function NewsSettingsForm({ initial, desk, envProvider }: { initial: S; d
       </section>
       <section className="space-y-4">
         <h2 className="text-sm font-semibold">Global caps</h2>
+        <p className="text-sm text-fg-muted">News LLM spend has no cap of its own: it counts in the one LLM budget under <a className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</a>. Image spend keeps the caps below.</p>
         <div className="grid gap-4 sm:grid-cols-3">
-          {num("llm_daily_usd", "LLM per day (USD)", 0.05)}
-          {num("llm_monthly_usd", "LLM per month (USD)", 0.5)}
           {num("image_daily_usd", "Images per day (USD)", 0.05)}
           {num("image_monthly_usd", "Images per month (USD)", 0.5)}
           {num("max_drafts_per_day", "Drafts per day (all jobs)")}

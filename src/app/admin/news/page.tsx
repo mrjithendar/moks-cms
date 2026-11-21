@@ -36,7 +36,7 @@ export default async function NewsJobsPage() {
       />
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <Stat label="Drafts today" value={today} hint={`global cap ${s.max_drafts_per_day}`} />
-        <Stat label="Month-to-date cost" value={`$${month.toFixed(2)}`} hint={`caps: LLM $${s.llm_monthly_usd} · images $${s.image_monthly_usd}`} />
+        <Stat label="Month-to-date cost" value={`$${month.toFixed(2)}`} hint={`LLM spend counts in the LLM budget · image cap $${s.image_monthly_usd}`} />
         <Stat label="Jobs" value={jobs.length} hint={`${jobs.filter((j) => j.enabled).length} enabled`} />
       </div>
       {jobs.length === 0 ? (
@@ -70,7 +70,7 @@ export default async function NewsJobsPage() {
                       )}
                     </td>
                     <td className={`${td} tabular-nums`}>{j.drafts_today} / {j.config.max_articles_per_day}</td>
-                    <td className={`${td} tabular-nums`}>${j.month_cost.toFixed(2)} <span className="text-xs text-fg-subtle">/ ${(j.config.budget.llm_monthly_usd + j.config.budget.image_monthly_usd).toFixed(0)}</span></td>
+                    <td className={`${td} tabular-nums`}>${j.month_cost.toFixed(2)} <span className="text-xs text-fg-subtle">· image cap ${j.config.budget.image_monthly_usd.toFixed(0)}</span></td>
                     <td className={td}>{actions(j.id, j.enabled)}</td>
                   </tr>
                 );

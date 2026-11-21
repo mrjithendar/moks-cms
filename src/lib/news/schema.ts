@@ -144,6 +144,7 @@ export const newsSettingsSchema = z
   .object({
     enabled: z.boolean().optional(),
     paused: z.boolean().default(false),
+    // Not enforced since the one LLM budget (plan P5): kept so rows saved before still load. No form shows them.
     llm_daily_usd: z.number().min(0).max(100).default(2),
     llm_monthly_usd: z.number().min(0).max(1000).default(20),
     image_daily_usd: z.number().min(0).max(100).default(1),
