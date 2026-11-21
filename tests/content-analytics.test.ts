@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import type { Actor } from "@/lib/posts";
+import { renderToStaticMarkup } from "react-dom/server";
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ "user-agent": "vitest" }), cookies: async () => ({ getAll: () => [] }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }), usePathname: () => "/admin/content/profiles" }));
 
 const svc = await import("@/lib/news/service");
 const { filterFrom } = await import("@/lib/news/analytics-filter");
@@ -65,5 +67,17 @@ describe("content analytics filters", () => {
     const id = "0b6e6a0e-6f3c-4c55-9f0e-3c1d2a9f8b11";
     expect(filterFrom({ days: "30", job: id, output: "article", category: "kubernetes", topic: "cloud-native", source: id })).toEqual({ days: 30, jobId: id, output: "article", category: "kubernetes", topic: "cloud-native", sourceId: id });
     expect(filterFrom({ days: "12", job: "1; drop table", output: "podcast", category: "Bad Slug!", topic: "'x'", source: "nope" })).toEqual({ days: 90, jobId: null, output: null, category: null, topic: null, sourceId: null });
+  });
+});
+
+describe("content profiles & playground (crew-jobs plan PR 5)", () => {
+  it("says which jobs write with each profile, and what they write", async () => {
+    const { default: ProfilesPage } = await import("@/app/admin/(growth)/content/profiles/page");
+    await svc.createJob(admin, { name: "Daily news" });
+    await svc.createJob(admin, { name: "Weekly article", config: { output: "article" } });
+    const html = renderToStaticMarkup(await ProfilesPage());
+    expect(html).toContain("Which jobs write with each profile");
+    expect(html).toContain("news-default</code><span class=\"text-fg-muted\"> · Daily news (news stories), Weekly article (blog articles)");
+    expect(html).toContain("Weekly article (writes blog articles)</option>");
   });
 });
