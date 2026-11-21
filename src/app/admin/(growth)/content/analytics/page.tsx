@@ -1,7 +1,7 @@
 import { AdminHeader, Card, Stat, Table, td, th } from "@/components/admin/ui";
 import { analytics } from "@/lib/news/service";
 
-export const metadata = { title: "Analytics" };
+export const metadata = { title: "Content analytics" };
 
 type Rate = { name?: string; topic?: string; approved: number; rejected: number };
 
@@ -38,7 +38,7 @@ export default async function NewsAnalyticsPage() {
   const review = a.review as { hours: number | null; n: number } | null;
   return (
     <>
-      <AdminHeader title="News analytics" description="Last 90 days. These numbers come from your own review decisions and Search Console / GA4 data for published news." />
+      <AdminHeader title="Content analytics" description="What crew jobs drafted in the last 90 days and how it did: your own review decisions, and Search Console / GA4 data once it is published." />
       <div className="mb-8 grid gap-4 sm:grid-cols-4">
         <Stat label="Approved articles" value={a.approved} />
         <Stat label="Cost per approved article" value={a.costPerApproved === null ? "—" : `$${a.costPerApproved.toFixed(3)}`} hint={`total spend $${a.spend.toFixed(2)} (LLM + images, incl. rejected and failed drafts)`} />

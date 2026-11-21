@@ -11,7 +11,7 @@ import { getJob, jobVersions, listProfiles, listSources, listTopics } from "@/li
 export const metadata = { title: "Job" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** /admin/news/jobs/new and /admin/news/jobs/{id}: the tabbed job editor with versions, diff and rollback. */
+/** /admin/crewai/jobs/new and /admin/crewai/jobs/{id}: the tabbed job editor with versions, diff and rollback. */
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const isNew = id === "new";
@@ -27,7 +27,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : { name: "", description: "", enabled: false, cron: "0 7 * * *", timezone: "Asia/Kolkata", mode: "single_stories", writing_profile_key: "news-default", image_profile_key: "cover-template", review_priority: 50, config: jobConfigSchema.parse({}) as unknown as JobForm["config"] };
   return (
     <>
-      <AdminHeader title={job ? job.name : "New news job"} description={job ? <>Version {job.version}. Every save creates a new version; runs record the version they used. <Link href={`/admin/news/runs?job=${job.id}`} className="underline">Runs of this job</Link></> : "Start disabled, try a dry run, then enable it."} />
+      <AdminHeader title={job ? job.name : "New job"} description={job ? <>Version {job.version}. Every save creates a new version; runs record the version they used. <Link href={`/admin/crewai/jobs/runs?job=${job.id}`} className="underline">Runs of this job</Link></> : "Start disabled, try a dry run, then enable it."} />
       <JobEditor
         id={job?.id ?? null}
         initial={initial}

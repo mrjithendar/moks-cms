@@ -60,7 +60,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
         router.refresh();
       } else {
         const r = await api<{ job: { id: string } }>("/api/admin/news/jobs", "POST", f);
-        router.push(`/admin/news/jobs/${r.job.id}`);
+        router.push(`/admin/crewai/jobs/${r.job.id}`);
       }
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -76,7 +76,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
     try {
       const r = await api<{ run_id?: string; job?: { id: string } }>(`/api/admin/news/jobs/${id}/actions`, "POST", body);
       if (r.run_id) setMsg({ ok: true, text: `Started run ${r.run_id.slice(0, 8)}… (Run history shows it live).` });
-      if (body.action === "clone" && r.job) router.push(`/admin/news/jobs/${r.job.id}`);
+      if (body.action === "clone" && r.job) router.push(`/admin/crewai/jobs/${r.job.id}`);
       if (body.action === "rollback") router.refresh();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -135,7 +135,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
           {tab === "Sources" && (
             <>
               <p className="text-sm text-fg-muted">No selection = every enabled source. Sources are fetched once per interval and shared by all jobs.</p>
-              {checks("source_ids", sources, "No sources yet (Sources tab of the news desk).")}
+              {checks("source_ids", sources, "No content sources yet (AI & SEO → Content sources).")}
             </>
           )}
           {tab === "Selection & ML" && (
@@ -265,7 +265,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               onClick={async () => {
                 if (!window.confirm("Delete this job? Its runs and drafts stay in history.")) return;
                 await api(`/api/admin/news/jobs/${id}`, "DELETE");
-                router.push("/admin/news");
+                router.push("/admin/crewai/jobs");
               }}
             >
               Delete

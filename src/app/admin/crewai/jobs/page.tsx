@@ -3,7 +3,9 @@ import Link from "next/link";
 import { AdminHeader, Card, Stat, Table, td, th } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { StatusBadge } from "@/components/seo/badges";
-import { getNewsSettings, listJobs } from "@/lib/news/service";
+import { JobsSwitch } from "@/components/news/JobsSwitch";
+import { newsDeskState, newsDeskStateText } from "@/lib/news/schema";
+import { ensureNewsDefaults, getNewsSettings, listJobs } from "@/lib/news/service";
 
 export const metadata = { title: "Jobs" };
 
@@ -15,8 +17,14 @@ const ago = (iso: unknown) => {
 
 type LastRun = { id: string; status: string; started_at: string; counters: Record<string, number> } | null;
 
-export default async function NewsJobsPage() {
+/**
+ * AI & SEO → Jobs: the crew jobs (news is one kind of content a job writes; there is no Newsroom since 2026-11-21),
+ * their switch, and what each did today. A job's settings open in its editor.
+ */
+export default async function CrewJobsPage() {
+  await ensureNewsDefaults().catch(() => undefined);
   const [jobs, s] = await Promise.all([listJobs(), getNewsSettings()]);
+  const desk = newsDeskState(s);
   const today = jobs.reduce((n, j) => n + j.drafts_today, 0);
   const month = jobs.reduce((n, j) => n + j.month_cost, 0);
   const actions = (id: string, enabled: boolean) => (
@@ -30,18 +38,24 @@ export default async function NewsJobsPage() {
   return (
     <>
       <AdminHeader
-        title="News desk"
-        description="Jobs discover stories from trusted sources, rank them, and draft source-grounded news for your review. Nothing publishes without your approval."
-        actions={<Link href="/admin/news/jobs/new" className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-semibold text-white">New job</Link>}
+        title="Jobs"
+        description="Crew jobs find stories and ideas in your content sources, rank them and draft source-grounded content for your review. Nothing publishes without your approval."
+        actions={
+          <>
+            <Link href="/admin/crewai/jobs/runs" className="inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-semibold text-fg hover:bg-surface-muted">Job runs</Link>
+            <Link href="/admin/crewai/jobs/new" className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-semibold text-white">New job</Link>
+          </>
+        }
       />
+      <JobsSwitch desk={{ on: desk.on, by: desk.by, text: newsDeskStateText(desk) }} />
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <Stat label="Drafts today" value={today} hint={`global cap ${s.max_drafts_per_day}`} />
+        <Stat label="Drafts today" value={today} hint={<>all jobs: at most {s.max_drafts_per_day} (<Link className="underline" href="/admin/automation?section=agent-limits#job-settings-limits">limits</Link>)</>} />
         <Stat label="Month-to-date cost" value={`$${month.toFixed(2)}`} hint={`LLM spend counts in the LLM budget · image cap $${s.image_monthly_usd}`} />
         <Stat label="Jobs" value={jobs.length} hint={`${jobs.filter((j) => j.enabled).length} enabled`} />
       </div>
       {jobs.length === 0 ? (
         <Card>
-          <p className="text-sm text-fg-muted">No jobs yet. Add sources first (Sources → Add source), then create a job and try a dry run.</p>
+          <p className="text-sm text-fg-muted">No jobs yet. Add content sources first (AI & SEO → Content sources), then create a job and try a dry run.</p>
         </Card>
       ) : (
         <>
@@ -52,7 +66,7 @@ export default async function NewsJobsPage() {
                 return (
                   <tr key={j.id} className="border-t border-line">
                     <td className={td}>
-                      <Link href={`/admin/news/jobs/${j.id}`} className="font-semibold text-fg hover:underline">{j.name}</Link>
+                      <Link href={`/admin/crewai/jobs/${j.id}`} className="font-semibold text-fg hover:underline">{j.name}</Link>
                       <p className="text-xs text-fg-subtle">{j.enabled ? "enabled" : "paused"} · v{j.version} · {j.mode.replace(/_/g, " ")}</p>
                     </td>
                     <td className={td}>
@@ -62,7 +76,7 @@ export default async function NewsJobsPage() {
                     <td className={td}>
                       {run ? (
                         <>
-                          <Link href={`/admin/news/runs/${run.id}`} className="hover:underline"><StatusBadge status={run.status} /></Link>
+                          <Link href={`/admin/crewai/jobs/runs/${run.id}`} className="hover:underline"><StatusBadge status={run.status} /></Link>
                           <p className="text-xs text-fg-subtle">{ago(run.started_at)} · {run.counters?.drafted ?? 0} drafted</p>
                         </>
                       ) : (
@@ -81,7 +95,7 @@ export default async function NewsJobsPage() {
             {jobs.map((j) => (
               <li key={j.id}>
                 <Card>
-                  <Link href={`/admin/news/jobs/${j.id}`} className="font-semibold text-fg">{j.name}</Link>
+                  <Link href={`/admin/crewai/jobs/${j.id}`} className="font-semibold text-fg">{j.name}</Link>
                   <p className="mt-1 text-xs text-fg-subtle">{j.enabled ? "enabled" : "paused"} · {j.cron} ({j.timezone}) · today {j.drafts_today}/{j.config.max_articles_per_day} · ${j.month_cost.toFixed(2)} this month</p>
                   <div className="mt-3">{actions(j.id, j.enabled)}</div>
                 </Card>

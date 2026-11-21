@@ -87,18 +87,20 @@ afterEach(() => {
 describe("how the menu is arranged (lib/admin-menu.ts)", () => {
   it("puts pages into groups, in order, with their short names, sub-headings and badge totals", () => {
     const { groups, help } = arrangeMenu(ITEMS);
-    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "editorial", "media", "ai", "community", "appearance", "settings", "more-operations"]);
+    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "media", "comments", "ai", "appearance", "settings", "more-operations"]);
+    // WordPress style: a line above the content menus, the plugin-like menus (AI & SEO…) and the site menus.
+    expect(groups.filter((g) => g.separator).map((g) => g.id)).toEqual(["posts", "ai", "appearance", "more-operations"]);
     const by = Object.fromEntries(groups.map((g) => [g.id, g]));
-    expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new", "Categories"]);
-    expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories"]);
-    expect(by.editorial!.items.map((i) => i.title)).toEqual(["Review queue"]);
-    // AI & SEO: the agent, what it measures, then its settings; a sub-heading sits on the first page under it.
+    expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new post", "Categories", "Review queue"]);
+    expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories", "Review queue"]);
+    expect(by.posts!.items.map((i) => i.heading)).toEqual([undefined, undefined, undefined, "Editorial"]); // the editorial pages sit under Posts
+    // AI & SEO: the crew jobs, content, what the site measures, then its settings; a sub-heading sits on the first page under it.
     expect(by.ai!.label).toBe("AI & SEO");
-    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Agent"], ["Search performance", "Traffic"], ["Keywords", "Content"], ["Settings", "Settings"], ["MCP access", undefined]]);
-    expect(by.community!.items.map((i) => i.title)).toEqual(["Comments", "Messages", "Bookings"]);
+    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Crew jobs"], ["Keywords", "Content"], ["Search performance", "Traffic"], ["Settings", "Settings"], ["MCP access", undefined]]);
+    expect(by.comments!.items.map((i) => i.title)).toEqual(["All comments", "Messages", "Bookings"]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
     expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);
-    expect([by.editorial!.badge, by.community!.badge, by.media!.badge]).toEqual([3, 6, 0]);
+    expect([by.posts!.badge, by.comments!.badge, by.media!.badge]).toEqual([3, 6, 0]);
     // The manual is help, drawn at the foot of the menu.
     expect(help?.href).toBe(HELP_HREF);
     expect(groups.flatMap((g) => g.items).some((i) => i.href === HELP_HREF)).toBe(false);
@@ -118,7 +120,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
       { href: "/admin/api-keys", label: "API keys", section: "Account" },
     ]);
     expect(author.groups.map((g) => g.label)).toEqual(["Dashboard", "Posts", "Your account"]);
-    expect(author.groups.at(-1)!.items.map((i) => i.title)).toEqual(["Your profile", "API keys"]);
+    expect(author.groups.at(-1)!.items.map((i) => i.title)).toEqual(["Profile", "API keys"]);
     expect(arrangeMenu([...ITEMS, { href: "/admin/users", label: "Users", section: "Site settings" }]).groups.find((g) => g.id === "users")?.label).toBe("Users");
   });
 
@@ -152,7 +154,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(found("key")).toEqual(["Keywords"]);
     expect(found("add new")).toEqual(["New post"]);
     expect(found("traffic")).toEqual(["Search performance"]);
-    expect(found("community")).toEqual(["Comments", "Messages", "Bookings"]);
+    expect(found("comments")).toEqual(["Comments", "Messages", "Bookings"]);
     expect(found("HELP")).toEqual(["User manual"]);
     expect(found("  ")).toEqual([]);
     expect(found("zzz")).toEqual([]);
@@ -172,7 +174,7 @@ describe("admin sidebar", () => {
   it("beside the page (tablet and larger), every group opens a submenu panel beside the sidebar; nothing expands in place", () => {
     render();
     // Every group is a button with a submenu, even one with a single page; none is open until it is asked for.
-    for (const id of ["dashboard", "posts", "editorial", "media", "ai", "community", "appearance", "settings"]) {
+    for (const id of ["dashboard", "posts", "media", "comments", "ai", "appearance", "settings"]) {
       expect(header(id).getAttribute("aria-controls"), id).toBe(list(id).id);
       expect(header(id).getAttribute("aria-expanded"), id).toBe("false");
       expect(list(id).hidden, id).toBe(true);
@@ -187,21 +189,21 @@ describe("admin sidebar", () => {
     expect(list("posts").hidden).toBe(false);
     expect(list("posts").className).toContain("md:fixed");
     expect(list("posts").textContent).toContain("Posts"); // the panel names its group
-    act(() => header("community").click());
+    act(() => header("comments").click());
     expect(list("posts").hidden).toBe(true);
-    expect(list("community").hidden).toBe(false);
-    act(() => header("community").click());
-    expect(list("community").hidden).toBe(true);
-    act(() => header("community").click());
+    expect(list("comments").hidden).toBe(false);
+    act(() => header("comments").click());
+    expect(list("comments").hidden).toBe(true);
+    act(() => header("comments").click());
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
-    expect(list("community").hidden).toBe(true);
-    act(() => header("community").click());
+    expect(list("comments").hidden).toBe(true);
+    act(() => header("comments").click());
     act(() => {
       document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     });
-    expect(list("community").hidden).toBe(true);
+    expect(list("comments").hidden).toBe(true);
     expect(container.querySelector(`a[href="${HELP_HREF}"]`)!.textContent).toBe("Help");
     expect(group("pinned")).toBeNull();
   });
@@ -225,19 +227,19 @@ describe("admin sidebar", () => {
   it("server and first browser render agree (no hydration mismatch)", () => {
     const html = renderToStaticMarkup(<AdminSidebar items={ITEMS} role="admin" />);
     expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
-    expect((html.match(/ hidden=""/g) ?? []).length).toBe(8); // every group but the current one (AI & SEO)
+    expect((html.match(/ hidden=""/g) ?? []).length).toBe(7); // every group but the current one (AI & SEO)
     expect(html).not.toContain("data-rail");
     expect(renderToStaticMarkup(<AdminSidebar items={ITEMS} prefs={{ rail: true, pins: ["/admin/posts"] }} />)).toContain("data-rail");
   });
 
   it("a group shows the total of its badges while its pages are not shown", () => {
     render();
-    expect(header("editorial").textContent).toContain("3");
-    expect(header("community").textContent).toContain("6");
-    act(() => header("community").click());
-    expect(header("community").textContent).not.toContain("6");
-    expect(list("community").textContent).toContain("4");
-    expect(list("community").textContent).toContain("2");
+    expect(header("posts").textContent).toContain("3");
+    expect(header("comments").textContent).toContain("6");
+    act(() => header("comments").click());
+    expect(header("comments").textContent).not.toContain("6");
+    expect(list("comments").textContent).toContain("4");
+    expect(list("comments").textContent).toContain("2");
   });
 
   it("on a phone, opening and closing a group is remembered in this browser", () => {
@@ -254,9 +256,9 @@ describe("admin sidebar", () => {
 
   it("on a phone, applies saved choices after mounting, but always opens the current page's group", () => {
     wideScreen = false;
-    localStorage.setItem(NAV_STORE_KEY, JSON.stringify(["community", "no-such-group"]));
+    localStorage.setItem(NAV_STORE_KEY, JSON.stringify(["comments", "no-such-group"]));
     render();
-    expect(list("community").hidden).toBe(false);
+    expect(list("comments").hidden).toBe(false);
     expect(list("posts").hidden).toBe(true);
     expect(list("ai").hidden).toBe(false);
   });
@@ -264,10 +266,10 @@ describe("admin sidebar", () => {
   it("on a phone, navigating to a page in another group opens it", () => {
     wideScreen = false;
     render();
-    expect(list("community").hidden).toBe(true);
+    expect(list("comments").hidden).toBe(true);
     pathname = "/admin/bookings";
     render();
-    expect(list("community").hidden).toBe(false);
+    expect(list("comments").hidden).toBe(false);
     expect(currentLink()!.textContent).toBe("Bookings");
     pathname = "/admin/automation/mcp";
     render();
@@ -347,9 +349,9 @@ describe("admin sidebar", () => {
     act(() => header("posts").click());
     expect(list("posts").hidden).toBe(false);
     expect(list("posts").className).toContain("md:fixed");
-    act(() => header("community").click());
+    act(() => header("comments").click());
     expect(list("posts").hidden).toBe(true);
-    expect(list("community").hidden).toBe(false);
+    expect(list("comments").hidden).toBe(false);
 
     act(() => button("Expand menu").click());
     expect(container.querySelector("aside")!.hasAttribute("data-rail")).toBe(false);

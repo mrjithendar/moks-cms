@@ -137,7 +137,8 @@ export const qualitySchema = z
   .strict();
 
 /**
- * Setting row `news`. `enabled` is the news desk's switch (Newsroom → Settings). It is absent until an admin first
+ * Setting row `news`: the crew jobs' shared settings (where each is edited: lib/news/settings-fields.ts). `enabled` is the
+ * jobs' switch (AI & SEO → Jobs; it was the news desk's switch in the Newsroom). It is absent until an admin first
  * saves it; until then the deployment's NEWS_DESK_ENABLED decides, as before (see newsDeskState). `paused` is the
  * earlier pause box: it is still honoured when a row has it, and the form now writes it as false.
  */
@@ -188,10 +189,10 @@ export function newsDeskState(settings: Pick<NewsSettings, "enabled" | "paused">
   return { on: false, by: "default", envValue };
 }
 
-/** What the admin sees for a state: one sentence, and whether the switch can change it. */
+/** What the admin sees for a state (AI & SEO → Jobs): one sentence, and whether the switch can change it. */
 export function newsDeskStateText(st: NewsDeskState): string {
-  if (st.by === "deployment_off") return "Switched off by the deployment: NEWS_DESK_ENABLED is false. Remove NEWS_DESK_ENABLED from the ConfigMaps to control the news desk here.";
-  if (st.by === "admin") return st.on ? "The news desk is on." : "The news desk is off.";
-  if (st.by === "deployment_legacy") return st.on ? "The news desk is on because NEWS_DESK_ENABLED is true in the deployment. Save the switch here to control it from the admin." : "The news desk is paused.";
-  return "The news desk is off. Switch it on here.";
+  if (st.by === "deployment_off") return "Switched off by the deployment: NEWS_DESK_ENABLED is false. Remove NEWS_DESK_ENABLED from the ConfigMaps to control crew jobs here.";
+  if (st.by === "admin") return st.on ? "Crew jobs are on." : "Crew jobs are switched off.";
+  if (st.by === "deployment_legacy") return st.on ? "Crew jobs are on because NEWS_DESK_ENABLED is true in the deployment. Use the switch here to control them from the admin." : "Crew jobs are paused.";
+  return "Crew jobs are off. Switch them on here.";
 }

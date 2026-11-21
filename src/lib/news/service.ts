@@ -73,10 +73,16 @@ export async function getNewsSettings(db?: Db): Promise<NewsSettings> {
   return v.success ? v.data : newsSettingsSchema.parse({});
 }
 
+/**
+ * Saves part of the row: the given fields are merged into what is saved (`quality` field by field), because each
+ * group is edited on its own page (lib/news/settings-fields.ts). Unknown fields are refused, as before.
+ */
 export async function saveNewsSettings(actor: Actor, raw: unknown) {
-  const s = parse(newsSettingsSchema, raw);
   const db = await getDb();
   const before = await getNewsSettings(db);
+  const patch = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const quality = patch.quality && typeof patch.quality === "object" ? { ...before.quality, ...(patch.quality as Record<string, unknown>) } : before.quality;
+  const s = parse(newsSettingsSchema, { ...before, ...patch, quality });
   await db.execute(sql`insert into setting (key, value, updated_at, updated_by) values ('news', ${j(s)}::jsonb, now(), ${actor.label}) on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by`);
   await audit(actor, "news.settings.save", "news", { before, after: s });
   return s;

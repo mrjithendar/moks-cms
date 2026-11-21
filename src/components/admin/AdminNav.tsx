@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { ChevronDown, CloseIcon, MenuIcon, SearchIcon } from "@/components/icons";
 import { arrangeMenu, currentOf, filterMenu, MAX_PINS, NAV_PREFS_COOKIE, writeNavPrefs, type MenuEntry, type MenuGroup, type NavItem, type NavPrefs } from "@/lib/admin-menu";
 import { MenuGlyph } from "./menu-icons";
@@ -275,7 +275,9 @@ export function AdminSidebar({ items, role, account, prefs }: { items: NavItem[]
                   const isOpen = listed(g) || (wide ? floating : expanded.has(g.id));
                   const holdsCurrent = g.id === here || (g.id === PINNED && g.items.some((i) => i === current));
                   return (
-                    <li key={g.id} data-group={g.id} className="relative" onMouseEnter={(e) => onHover(g, e.currentTarget)} onMouseLeave={onLeave}>
+                    <Fragment key={g.id}>
+                    {g.separator && <li aria-hidden="true" data-separator className="col-span-full my-1.5 border-t border-line" />}
+                    <li data-group={g.id} className="relative" onMouseEnter={(e) => onHover(g, e.currentTarget)} onMouseLeave={onLeave}>
                       <button type="button" onClick={(e) => onGroup(g, e.currentTarget)} aria-expanded={isOpen} aria-controls={id} title={rail ? g.label : undefined} className={`${row} ${holdsCurrent ? "text-fg hover:bg-surface-sunken md:bg-accent-soft md:text-accent-text" : IDLE}`}>
                         <MenuGlyph name={g.icon} className="h-5 w-5 shrink-0" />
                         <span className={`min-w-0 flex-1 truncate ${label}`}>{g.label}</span>
@@ -322,6 +324,7 @@ export function AdminSidebar({ items, role, account, prefs }: { items: NavItem[]
                         })}
                       </ul>
                     </li>
+                    </Fragment>
                   );
                 })}
               </ul>
