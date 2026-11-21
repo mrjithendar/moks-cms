@@ -9,6 +9,7 @@ Every endpoint except /healthz, /readyz and /metrics needs `Authorization: Beare
     POST /schedules/dispatch            start every schedule and crew job that is due (one CronJob, every minute; app/schedules.py, app/news/dispatch.py)
     GET  /crews                         each crew's editable configuration as the code defines it (app/crews/config.py)
     POST /crews/{crew}/validate         {config} → {config} as it would be stored (only what differs), or 422
+    POST /custom/validate               {kind: crew|flow, spec} → {spec} as it would run, or 422 {issues} (custom crews and flows)
     GET  /flows/runs                    ?flow=&status=&draft_id=&limit=
     GET  /flows/runs/{run_id}           status, current step, outputs, errors, cost
     POST /flows/runs/{run_id}/cancel
@@ -531,6 +532,25 @@ def create_app(container: Container | None = None) -> FastAPI:
     @app.get("/crews", dependencies=[Depends(auth)])
     async def crews() -> dict[str, Any]:
         return {"items": [crew_config.catalogue(c) for c in crew_config.registry().values()]}
+
+    @app.post("/custom/validate", dependencies=[Depends(auth)])
+    async def custom_validate(request: Request) -> JSONResponse:
+        """{kind: crew|flow, spec, crews?: [keys]} → {spec} as it would run, or 422 {issues}: the one check the web app
+        runs before it saves a custom crew or flow (app/crews/custom.py, app/flows/custom.py)."""
+        from .crews.custom import SpecError, validate_crew
+        from .flows.custom import validate_flow
+
+        body = await request.json()
+        kind = body.get("kind") if isinstance(body, dict) else None
+        try:
+            if kind == "crew":
+                return JSONResponse({"spec": validate_crew(body.get("spec")).model_dump()})
+            if kind == "flow":
+                crews = body.get("crews")
+                return JSONResponse({"spec": validate_flow(body.get("spec"), set(crews) if isinstance(crews, list) else None).model_dump()})
+        except SpecError as e:
+            return JSONResponse({"error": "invalid spec", "issues": e.issues}, status_code=422)
+        return JSONResponse({"error": "kind is crew or flow"}, status_code=422)
 
     @app.post("/crews/{crew}/validate", dependencies=[Depends(auth)])
     async def validate_crew(crew: str, body: CrewConfigBody) -> JSONResponse:

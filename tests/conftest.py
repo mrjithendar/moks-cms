@@ -57,6 +57,10 @@ class FakeWebApp:
     fail_publish_transient: int = 0
     jobs: list[tuple[str, str | None, str]] = field(default_factory=list)
     job_status: str = "succeeded"
+    # Custom crews and flows (app/crews/custom.py, app/flows/custom.py): what GET /custom-crews|flows serve.
+    custom_crew_rows: list[dict[str, Any]] = field(default_factory=list)
+    custom_flow_rows: list[dict[str, Any]] = field(default_factory=list)
+    custom_drafts: list[dict[str, Any]] = field(default_factory=list)
     rejected: list[tuple[str, str | None]] = field(default_factory=list)
     notes: list[tuple[str, str]] = field(default_factory=list)
     reports: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -135,6 +139,17 @@ class FakeWebApp:
     async def submit(self, draft_id: str) -> dict[str, Any]:
         self.submitted.append(draft_id)
         return {"indexnow": "queued", "sitemaps": ["queued"]}
+
+    async def custom_crews(self) -> list[dict[str, Any]]:
+        return list(self.custom_crew_rows)
+
+    async def custom_flows(self) -> list[dict[str, Any]]:
+        return list(self.custom_flow_rows)
+
+    async def custom_save_draft(self, body: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(("custom_save_draft", body.get("title")))
+        self.custom_drafts.append(body)
+        return {"draftId": f"00000000-0000-4000-8000-{len(self.custom_drafts):012d}", "postId": "p", "errors": []}
 
     async def read_article(self, ref: str) -> dict[str, Any]:
         self.calls.append(("read_article", ref))

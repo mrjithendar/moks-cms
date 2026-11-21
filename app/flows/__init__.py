@@ -28,6 +28,7 @@ from ..state import (
     WeeklyInput,
 )
 from .crew_test import CrewTestFlow, CrewTestInput
+from .custom import CustomFlow, CustomFlowInput
 from .jobs import Ga4SyncFlow, GscSyncFlow, TechAuditFlow
 from .maintenance import AskGapsFlow, InternalLinkingFlow, ReindexFlow
 from .ml import SeoMlFlow
@@ -90,13 +91,15 @@ SPECS: dict[str, FlowSpec] = {
     "news_playground_flow": FlowSpec("news_playground_flow", NewsPlaygroundFlow.create, NEWS_INPUTS["news_playground_flow"], lambda i: f"{i['job_id']}:{i['cluster_id']}"),
     # CrewAI console (D-98): a crew configuration's test run on an earlier run's inputs. One at a time per crew.
     "crew_test_flow": FlowSpec("crew_test_flow", CrewTestFlow.create, CrewTestInput, lambda i: f"crew:{i['crew']}"),
+    # Custom flows made in the admin (crew-jobs plan PR 6): one interpreter, one active run per custom flow.
+    "custom_flow": FlowSpec("custom_flow", CustomFlow.create, CustomFlowInput, lambda i: f"custom:{i['flow']}"),
 }
 NEWS_FLOWS = frozenset(n for n in SPECS if n.startswith("news_"))
 
 APPROVAL_ONLY = frozenset({"publish_flow"})
 DRAFTING_FLOWS = ("optimize_article_flow", "new_article_flow")
 MCP_KICKOFF_ALLOWLIST = frozenset({"news_job_flow", "optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"})
-CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "promotion_flow", "content_ideas_flow"})
+CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "promotion_flow", "content_ideas_flow", "custom_flow"})
 
 
 MANUAL_ONLY = frozenset({"crew_test_flow"})  # started by a person in the console: never by a schedule, a flow or MCP
