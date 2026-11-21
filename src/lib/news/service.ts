@@ -439,20 +439,45 @@ export async function recordCategoryCorrection(actor: Actor, draftId: string, ca
 
 // --- analytics ------------------------------------------------------------------------------------------------------
 
-export async function analytics(days = 90) {
+/** Content analytics filters (AI & SEO → Content analytics), from the address. Every one is optional. */
+export type AnalyticsFilter = { days: number; jobId?: string | null; output?: "news" | "article" | null; category?: string | null; topic?: string | null; sourceId?: string | null };
+export const ANALYTICS_PERIODS = [7, 30, 90, 365] as const;
+
+/**
+ * What crew jobs drafted and how it did, over every job's drafts (news stories and blog articles alike), narrowed by
+ * the filters: period, job, what it writes, category, topic, source. The same filter applies to every number, so a
+ * filtered page never mixes in the rest. Drafts the Editorial crew wrote from content ideas are counted apart (they
+ * are calendar drafts, not news_articles rows): per job, sent and published.
+ */
+export async function analytics(f: AnalyticsFilter | number = 90) {
+  const filter: AnalyticsFilter = typeof f === "number" ? { days: f } : f;
   const db = await getDb();
-  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const since = new Date(Date.now() - filter.days * 86_400_000).toISOString();
   const q = <T>(s: ReturnType<typeof sql>) => db.execute(s).then((r) => rowsOf<T>(r));
-  const [byJob, bySource, byTopic, editTrend, review, perf, cost, models] = await Promise.all([
-    q<Record<string, unknown>>(sql`select coalesce(j.name, 'deleted job') as name, count(*) filter (where a.review_outcome in ('approved', 'scheduled'))::int as approved, count(*) filter (where a.review_outcome = 'rejected')::int as rejected from news_articles a left join news_jobs j on j.id = a.job_id where a.created_at >= ${since} group by 1 order by 1`),
-    q<Record<string, unknown>>(sql`select s.name, count(distinct a.id) filter (where a.review_outcome in ('approved', 'scheduled'))::int as approved, count(distinct a.id) filter (where a.review_outcome = 'rejected')::int as rejected from news_articles a join news_items i on i.cluster_id = a.cluster_id join news_sources s on s.id = i.source_id where a.created_at >= ${since} group by 1 order by 1`),
-    q<Record<string, unknown>>(sql`select t->>'slug' as topic, count(*) filter (where a.review_outcome in ('approved', 'scheduled'))::int as approved, count(*) filter (where a.review_outcome = 'rejected')::int as rejected from news_articles a join news_clusters c on c.id = a.cluster_id cross join lateral jsonb_array_elements(c.topics) t where a.created_at >= ${since} group by 1 order by 1`),
-    q<Record<string, unknown>>(sql`select date_trunc('week', reviewed_at)::date::text as week, avg(edit_distance)::float8 as avg, count(*)::int as n from news_articles where edit_distance is not null and reviewed_at >= ${since} group by 1 order by 1`),
-    q<Record<string, unknown>>(sql`select avg(extract(epoch from (reviewed_at - created_at)) / 3600)::float8 as hours, count(*)::int as n from news_articles where reviewed_at >= ${since}`),
-    q<Record<string, unknown>>(sql`select payload->>'window' as window, avg((payload->>'clicks')::float8)::float8 as clicks, avg((payload->>'engagementRate')::float8)::float8 as engagement, count(*)::int as n from news_feedback where kind = 'performance' and at >= ${since} group by 1 order by 1`),
-    q<Record<string, unknown>>(sql`select (select coalesce(sum(cost_usd + image_cost_usd), 0)::float8 from news_runs where started_at >= ${since}) as spend, (select count(*)::int from news_articles where review_outcome in ('approved', 'scheduled') and created_at >= ${since}) as approved`),
+  // One condition on news_articles a (and its job j), used by every query below.
+  const parts = [sql`a.created_at >= ${since}`];
+  if (filter.jobId) parts.push(sql`a.job_id = ${filter.jobId}`);
+  if (filter.output) parts.push(sql`coalesce(j.config->>'output', 'news') = ${filter.output}`);
+  if (filter.category) parts.push(sql`exists (select 1 from post p where p.id = a.post_id and p.category = ${filter.category})`);
+  if (filter.topic) parts.push(sql`exists (select 1 from news_clusters c2 cross join lateral jsonb_array_elements(c2.topics) t2 where c2.id = a.cluster_id and t2->>'slug' = ${filter.topic})`);
+  if (filter.sourceId) parts.push(sql`exists (select 1 from news_items i2 where i2.cluster_id = a.cluster_id and i2.source_id = ${filter.sourceId})`);
+  const where = sql.join(parts, sql` and `);
+  const from = sql`news_articles a left join news_jobs j on j.id = a.job_id`;
+  const ok = sql`a.review_outcome in ('approved', 'scheduled')`;
+  const no = sql`a.review_outcome = 'rejected'`;
+  const runJobs = filter.jobId ? sql`and r.job_id = ${filter.jobId}` : filter.output ? sql`and r.job_id in (select id from news_jobs where coalesce(config->>'output', 'news') = ${filter.output})` : sql``;
+  const [byJob, bySource, byTopic, byCategory, editTrend, review, perf, cost, ideas, models] = await Promise.all([
+    q<Record<string, unknown>>(sql`select coalesce(j.name, 'deleted job') as name, count(*) filter (where ${ok})::int as approved, count(*) filter (where ${no})::int as rejected from ${from} where ${where} group by 1 order by 1`),
+    q<Record<string, unknown>>(sql`select s.name, count(distinct a.id) filter (where ${ok})::int as approved, count(distinct a.id) filter (where ${no})::int as rejected from ${from} join news_items i on i.cluster_id = a.cluster_id join news_sources s on s.id = i.source_id where ${where} group by 1 order by 1`),
+    q<Record<string, unknown>>(sql`select t->>'slug' as topic, count(*) filter (where ${ok})::int as approved, count(*) filter (where ${no})::int as rejected from ${from} join news_clusters c on c.id = a.cluster_id cross join lateral jsonb_array_elements(c.topics) t where ${where} group by 1 order by 1`),
+    q<Record<string, unknown>>(sql`select coalesce(p.category, 'not saved') as name, count(*) filter (where ${ok})::int as approved, count(*) filter (where ${no})::int as rejected from ${from} left join post p on p.id = a.post_id where ${where} group by 1 order by 1`),
+    q<Record<string, unknown>>(sql`select date_trunc('week', a.reviewed_at)::date::text as week, avg(a.edit_distance)::float8 as avg, count(*)::int as n from ${from} where ${where} and a.edit_distance is not null and a.reviewed_at is not null group by 1 order by 1`),
+    q<Record<string, unknown>>(sql`select avg(extract(epoch from (a.reviewed_at - a.created_at)) / 3600)::float8 as hours, count(*)::int as n from ${from} where ${where} and a.reviewed_at is not null`),
+    q<Record<string, unknown>>(sql`select f.payload->>'window' as window, avg((f.payload->>'clicks')::float8)::float8 as clicks, avg((f.payload->>'engagementRate')::float8)::float8 as engagement, count(*)::int as n from news_feedback f join ${from} on a.id = f.article_id where f.kind = 'performance' and f.at >= ${since} and ${where} group by 1 order by 1`),
+    q<Record<string, unknown>>(sql`select (select coalesce(sum(r.cost_usd + r.image_cost_usd), 0)::float8 from news_runs r where r.started_at >= ${since} ${runJobs}) as spend, (select count(*)::int from ${from} where ${where} and ${ok}) as approved`),
+    q<Record<string, unknown>>(sql`select coalesce(j.name, 'deleted job') as name, count(*)::int as sent, count(*) filter (where p.status = 'published')::int as published from seo_content_ideas i join news_runs r on r.id::text = i.run_id left join news_jobs j on j.id = r.job_id left join seo_editorial_calendar cal on cal.id = i.calendar_id left join post p on p.id = cal.post_id where i.status = 'sent' and i.updated_at >= ${since} ${runJobs} group by 1 order by 1`).catch(() => []),
     q<Record<string, unknown>>(sql`select kind, version, active, metrics, n_samples, trained_at, notes from news_models order by trained_at desc limit 20`),
   ]);
   const c = cost[0] ?? { spend: 0, approved: 0 };
-  return { byJob, bySource, byTopic, editTrend, review: review[0] ?? null, perf, costPerApproved: Number(c.approved) ? Number(c.spend) / Number(c.approved) : null, spend: Number(c.spend ?? 0), approved: Number(c.approved ?? 0), models: models.map((m) => ({ ...m, metrics: asJson(m.metrics, {}) })) };
+  return { byJob, bySource, byTopic, byCategory, editTrend, review: review[0] ?? null, perf, ideas, costPerApproved: Number(c.approved) ? Number(c.spend) / Number(c.approved) : null, spend: Number(c.spend ?? 0), approved: Number(c.approved ?? 0), models: models.map((m) => ({ ...m, metrics: asJson(m.metrics, {}) })) };
 }

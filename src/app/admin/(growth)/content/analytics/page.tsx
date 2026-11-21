@@ -1,5 +1,10 @@
+import { sql } from "drizzle-orm";
+import Link from "next/link";
 import { AdminHeader, Card, Stat, Table, td, th } from "@/components/admin/ui";
-import { analytics } from "@/lib/news/service";
+import { getDb } from "@/db";
+import { rowsOf } from "@/db/rows";
+import { filterFrom } from "@/lib/news/analytics-filter";
+import { analytics, ANALYTICS_PERIODS, listJobs, listSources, listTopics } from "@/lib/news/service";
 
 export const metadata = { title: "Content analytics" };
 
@@ -30,15 +35,53 @@ function RateTable({ rows, label }: { rows: Rate[]; label: string }) {
   );
 }
 
-/** Approval rates, edit-distance trend (falling = drafts match your style), time to review, performance, cost, models. */
-export default async function NewsAnalyticsPage() {
-  const a = await analytics(90);
+const sel = "min-h-11 rounded-lg border border-line bg-surface px-3 text-sm text-fg";
+
+/**
+ * AI & SEO → Content analytics: what every crew job drafted (news stories and blog articles) and how it did, filtered
+ * as you need (period, job, what it writes, category, topic, source; all in the address, so a view can be bookmarked):
+ * approval rates, edit-distance trend (falling = drafts match your style), time to review, performance, cost, models.
+ */
+export default async function ContentAnalyticsPage({ searchParams }: { searchParams?: Promise<Record<string, string | undefined>> } = {}) {
+  const f = filterFrom((await searchParams) ?? {});
+  const db = await getDb();
+  const [a, jobs, topics, sources, categories] = await Promise.all([
+    analytics(f),
+    listJobs(),
+    listTopics(),
+    listSources(),
+    db.execute(sql`select slug, label from category order by sort, slug`).then((r) => rowsOf<{ slug: string; label: string }>(r)),
+  ]);
+  const filtered = Boolean(f.jobId || f.output || f.category || f.topic || f.sourceId) || f.days !== 90;
+  const ideas = a.ideas as { name: string; sent: number; published: number }[];
   const trend = a.editTrend as { week: string; avg: number; n: number }[];
   const max = Math.max(0.01, ...trend.map((t) => Number(t.avg)));
   const review = a.review as { hours: number | null; n: number } | null;
   return (
     <>
-      <AdminHeader title="Content analytics" description="What crew jobs drafted in the last 90 days and how it did: your own review decisions, and Search Console / GA4 data once it is published." />
+      <AdminHeader title="Content analytics" description={`What crew jobs drafted in the last ${f.days} days and how it did: your own review decisions, and Search Console / GA4 data once it is published.`} />
+      <form method="get" className="mb-8 flex flex-wrap items-end gap-3" aria-label="Filters">
+        <label className="grid gap-1 text-xs text-fg-subtle">Period
+          <select name="days" defaultValue={String(f.days)} className={sel}>{ANALYTICS_PERIODS.map((d) => <option key={d} value={d}>{d === 365 ? "Last year" : `Last ${d} days`}</option>)}</select>
+        </label>
+        <label className="grid gap-1 text-xs text-fg-subtle">Job
+          <select name="job" defaultValue={f.jobId ?? ""} className={sel}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
+        </label>
+        <label className="grid gap-1 text-xs text-fg-subtle">Writes
+          <select name="output" defaultValue={f.output ?? ""} className={sel}><option value="">News and articles</option><option value="news">News stories</option><option value="article">Blog articles</option></select>
+        </label>
+        <label className="grid gap-1 text-xs text-fg-subtle">Category
+          <select name="category" defaultValue={f.category ?? ""} className={sel}><option value="">All categories</option>{categories.map((c) => <option key={c.slug} value={c.slug}>{c.label}</option>)}</select>
+        </label>
+        <label className="grid gap-1 text-xs text-fg-subtle">Topic
+          <select name="topic" defaultValue={f.topic ?? ""} className={sel}><option value="">All topics</option>{topics.map((t) => <option key={String(t.slug)} value={String(t.slug)}>{String(t.label)}</option>)}</select>
+        </label>
+        <label className="grid gap-1 text-xs text-fg-subtle">Source
+          <select name="source" defaultValue={f.sourceId ?? ""} className={sel}><option value="">All sources</option>{sources.map((x) => <option key={String(x.id)} value={String(x.id)}>{String(x.name)}</option>)}</select>
+        </label>
+        <button type="submit" className="min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-white">Apply</button>
+        {filtered && <Link href="/admin/content/analytics" className="inline-flex min-h-11 items-center text-sm text-fg-muted underline">Clear filters</Link>}
+      </form>
       <div className="mb-8 grid gap-4 sm:grid-cols-4">
         <Stat label="Approved articles" value={a.approved} />
         <Stat label="Cost per approved article" value={a.costPerApproved === null ? "—" : `$${a.costPerApproved.toFixed(3)}`} hint={`total spend $${a.spend.toFixed(2)} (LLM + images, incl. rejected and failed drafts)`} />
@@ -49,10 +92,21 @@ export default async function NewsAnalyticsPage() {
         <section aria-labelledby="j" className="min-w-0"><h2 id="j" className="mb-3 text-sm font-semibold">By job</h2><RateTable rows={a.byJob as Rate[]} label="Job" /></section>
         <section aria-labelledby="t" className="min-w-0"><h2 id="t" className="mb-3 text-sm font-semibold">By topic</h2><RateTable rows={a.byTopic as Rate[]} label="Topic" /></section>
         <section aria-labelledby="s" className="min-w-0"><h2 id="s" className="mb-3 text-sm font-semibold">By source</h2><RateTable rows={a.bySource as Rate[]} label="Source" /></section>
+        <section aria-labelledby="c" className="min-w-0"><h2 id="c" className="mb-3 text-sm font-semibold">By category</h2><RateTable rows={a.byCategory as Rate[]} label="Category" /></section>
+        <section aria-labelledby="i" className="min-w-0">
+          <h2 id="i" className="mb-3 text-sm font-semibold">From content ideas (Editorial crew)</h2>
+          {ideas.length === 0 ? (
+            <Card><p className="text-sm text-fg-muted">No content ideas sent by a job in this period. Jobs that start from content ideas send them to the editorial calendar.</p></Card>
+          ) : (
+            <Table head={<tr><th className={th}>Job</th><th className={th}>Ideas sent</th><th className={th}>Published</th></tr>}>
+              {ideas.map((r) => <tr key={r.name} className="border-t border-line"><td className={td}>{r.name}</td><td className={`${td} tabular-nums`}>{r.sent}</td><td className={`${td} tabular-nums`}>{r.published}</td></tr>)}
+            </Table>
+          )}
+        </section>
         <section aria-labelledby="e" className="min-w-0">
           <h2 id="e" className="mb-3 text-sm font-semibold">Edit distance per week</h2>
           {trend.length === 0 ? (
-            <Card><p className="text-sm text-fg-muted">No published news with recorded edits yet.</p></Card>
+            <Card><p className="text-sm text-fg-muted">No reviewed drafts with recorded edits{filtered ? " for these filters" : ""} yet.</p></Card>
           ) : (
             <figure>
               <svg role="img" aria-labelledby="et" viewBox={`0 0 ${trend.length * 40} 120`} className="h-32 w-full">
@@ -68,7 +122,7 @@ export default async function NewsAnalyticsPage() {
           )}
         </section>
         <section aria-labelledby="p" className="min-w-0">
-          <h2 id="p" className="mb-3 text-sm font-semibold">Performance of published news</h2>
+          <h2 id="p" className="mb-3 text-sm font-semibold">Performance once published</h2>
           {(a.perf as unknown[]).length === 0 ? (
             <Card><p className="text-sm text-fg-muted">Collected 7 and 28 days after publishing (needs Search Console / GA4 sync).</p></Card>
           ) : (
