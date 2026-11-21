@@ -62,7 +62,7 @@ describe("settings page", () => {
     const { AI_SEO_SECTIONS } = await import("@/app/admin/(growth)/automation/sections");
     for (const s of AI_SEO_SECTIONS) expect(html, s.id).toContain(`href="/admin/automation?section=${s.id}"`);
     expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*>Overview/);
-    expect(html).not.toContain("Google properties");
+    expect(html).not.toContain("All changes saved"); // no settings form: that is another section
     expect(html).not.toContain("pk-secret-value");
     expect(html).not.toContain("sk-ant-secret-value");
   });
