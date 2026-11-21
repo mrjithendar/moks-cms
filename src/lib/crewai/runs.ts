@@ -3,10 +3,12 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { getSeoSettings, type SeoSettings } from "../seo-intel/settings";
+import { agentOfFlow, type AgentId } from "./agent-of";
 import { ACTIVE_STATUSES, RUN_STATUSES, TRIGGERS } from "./flows";
 
 /**
- * The CrewAI console's reads (/admin/crewai): runs of the SEO agent's flows (seo_flow_runs, migration 0016) with the
+ * The CrewAI console's reads (/admin/crewai): runs of both agents' flows, the seo-agent's and the news agent's
+ * (seo_flow_runs, migration 0016; `agent` says whose, lib/crewai/agent-of.ts), with the
  * run numbers, steps, log lines and model-call transcripts the agent records (migration 0036,
  * moks-seo-agent/app/run_history.py), and the cost per agent and model (seo_llm_usage, migration 0022). The web app
  * only reads these tables, apart from the retention job (purgeRunHistory); starting and cancelling runs goes through
@@ -24,6 +26,8 @@ const obj = (v: unknown): Record<string, unknown> => {
 export type RunRow = {
   runId: string;
   flow: string;
+  /** The agent that runs it: news_* flows and the news crew's test runs are the news agent's. */
+  agent: AgentId;
   number: number | null;
   targetId: string;
   draftId: string | null;
@@ -40,12 +44,13 @@ export type RunRow = {
   finishedAt: string | null;
 };
 
-const RUN_COLS = sql`r.run_id, r.flow_name, r.run_number, r.target_id, r.draft_id, r.status, r.current_step, r.outputs->>'outcome' as outcome, r.error, r.tokens, r.cost_usd, r.triggered_by, r.actor, r.correlation_id, r.started_at, r.finished_at`;
+const RUN_COLS = sql`r.run_id, r.flow_name, r.inputs->>'crew' as crew, r.run_number, r.target_id, r.draft_id, r.status, r.current_step, r.outputs->>'outcome' as outcome, r.error, r.tokens, r.cost_usd, r.triggered_by, r.actor, r.correlation_id, r.started_at, r.finished_at`;
 
 function toRun(r: Record<string, unknown>): RunRow {
   return {
     runId: String(r.run_id),
     flow: String(r.flow_name),
+    agent: agentOfFlow(String(r.flow_name), r.crew ? { crew: String(r.crew) } : null),
     number: r.run_number == null ? null : Number(r.run_number),
     targetId: String(r.target_id ?? ""),
     draftId: r.draft_id ? String(r.draft_id) : null,
@@ -72,7 +77,10 @@ export async function hasRunHistory(db?: Db): Promise<boolean> {
 
 // --- Runs ---------------------------------------------------------------------------------------------------------------
 
-export type RunFilter = { flow?: string | null; status?: string | null; trigger?: string | null; q?: string | null; before?: string | null; limit?: number };
+export type RunFilter = { flow?: string | null; agent?: string | null; status?: string | null; trigger?: string | null; q?: string | null; before?: string | null; limit?: number };
+
+/** The same rule as agentOfFlow, as SQL over seo_flow_runs r. */
+const NEWS_RUN = sql`(r.flow_name like 'news\_%' or (r.flow_name = 'crew_test_flow' and r.inputs->>'crew' = 'news'))`;
 
 /** Newest first, `limit` per page; `before` is the last row's startedAt. `q`: "#12" (run number), a run id, or text
  * in the target, actor or error. */
@@ -80,6 +88,8 @@ export async function listRuns(f: RunFilter = {}, db?: Db): Promise<RunRow[]> {
   const d = db ?? (await getDb());
   const where: SQL[] = [sql`true`];
   if (f.flow && /^[a-z][a-z0-9_]{2,60}$/.test(f.flow)) where.push(sql`r.flow_name = ${f.flow}`);
+  if (f.agent === "news") where.push(NEWS_RUN);
+  if (f.agent === "seo") where.push(sql`not ${NEWS_RUN}`);
   if (f.status && (RUN_STATUSES as readonly string[]).includes(f.status)) where.push(sql`r.status = ${f.status}`);
   if (f.status === "active") where.push(sql`r.status = any(${pgText(ACTIVE_STATUSES)}::text[])`);
   if (f.trigger && (TRIGGERS as readonly string[]).includes(f.trigger)) where.push(sql`r.triggered_by = ${f.trigger}`);

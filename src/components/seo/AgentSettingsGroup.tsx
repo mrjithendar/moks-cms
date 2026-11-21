@@ -81,11 +81,16 @@ function Chip({ children, tone = "plain" }: { children: string; tone?: "plain" |
 }
 
 /**
- * One group of the seo-agent's own settings, drawn from the schema the agent sends (its registry decides the
- * fields, labels, units and ranges; moks-seo-agent/app/admin_settings). This card only reads and writes the agent's
+ * One group of an agent's own settings (the seo-agent's, or the news agent's with `agent`), drawn from the schema the
+ * agent sends (its registry decides the fields, labels, units and ranges; app/admin_settings in each agent). This card only reads and writes the agent's
  * API: it keeps no value, and when the agent cannot be reached or is too old it says so and shows nothing editable.
  */
-export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettingsLoad; groupId: string; title: string }) {
+/** Which agent keeps the settings (both run the same settings store: moks-seo-agent and mrjithendar/newsroom). */
+export type SettingsAgent = { name: string; endpoint: string; keyEnv: string };
+export const SEO_AGENT_SETTINGS: SettingsAgent = { name: "SEO agent", endpoint: "/api/admin/seo/agent-settings", keyEnv: "SEO_AGENT_SETTINGS_KEY" };
+export const NEWS_AGENT_SETTINGS: SettingsAgent = { name: "news agent", endpoint: "/api/admin/news/agent-settings", keyEnv: "NEWS_AGENT_SETTINGS_KEY" };
+
+export function AgentSettingsGroup({ load, groupId, title, agent = SEO_AGENT_SETTINGS }: { load: AgentSettingsLoad; groupId: string; title: string; agent?: SettingsAgent }) {
   const router = useRouter();
   const [view, setView] = useState<AgentSettingsView | null>(load.view);
   const group = useMemo(() => view?.groups.find((g) => g.id === groupId) ?? null, [view, groupId]);
@@ -112,7 +117,7 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
     setBusy(true);
     setMsg(null);
     try {
-      const res = await fetch(`/api/admin/seo/agent-settings/${encodeURIComponent(groupId)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values }) });
+      const res = await fetch(`${agent.endpoint}/${encodeURIComponent(groupId)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values }) });
       const body = (await res.json().catch(() => ({}))) as { error?: string; issues?: string[]; reference?: string; view?: AgentSettingsView };
       if (!res.ok) setMsg({ ok: false, text: (body.error ?? `HTTP ${res.status}`) + (body.reference ? ` (ref ${body.reference})` : ""), issues: body.issues });
       else {
@@ -122,7 +127,7 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
           setDrafts(draftsOf(next));
           setClearSecrets([]);
         }
-        setMsg({ ok: true, text: next?.restart_pending ? "Saved in the SEO agent. Some of it applies after the agent restarts." : "Saved in the SEO agent. It applies now." });
+        setMsg({ ok: true, text: next?.restart_pending ? `Saved in the ${agent.name}. Some of it applies after the agent restarts.` : `Saved in the ${agent.name}. It applies now.` });
         router.refresh();
       }
     } catch {
@@ -138,11 +143,11 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
       {group ? (
         <>
           <p className="mt-1 text-sm text-fg-muted">
-            {group.description} These belong to the SEO agent. A value saved here wins over the deployment&apos;s; an empty field uses the deployment&apos;s value, or the default when there is none.
+            {group.description} These belong to the {agent.name}. A value saved here wins over the deployment&apos;s; an empty field uses the deployment&apos;s value, or the default when there is none.
           </p>
           {group.restart_pending && (
             <div className="mt-4">
-              <Alert tone="info">A saved value is waiting for a restart of the SEO agent. Until then the agent runs with the earlier one.</Alert>
+              <Alert tone="info">A saved value is waiting for a restart of the {agent.name}. Until then the agent runs with the earlier one.</Alert>
             </div>
           )}
           <form onSubmit={save} className="mt-4 space-y-5">
@@ -196,7 +201,7 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
                         />
                       )}
                     </Field>
-                    {f.type === "secret" && f.editable === false && <p className="mt-1 text-sm text-fg-subtle">Requires manual configuration: the SEO agent has no settings key (SEO_AGENT_SETTINGS_KEY), so it cannot store a secret.</p>}
+                    {f.type === "secret" && f.editable === false && <p className="mt-1 text-sm text-fg-subtle">Requires manual configuration: the {agent.name} has no settings key ({agent.keyEnv}), so it cannot store a secret.</p>}
                     {f.type === "secret" && f.set && f.editable !== false && (
                       <label className="mt-2 flex items-center gap-2 text-sm text-fg-muted">
                         <input type="checkbox" checked={clearSecrets.includes(f.env)} onChange={(e) => setClearSecrets((c) => (e.target.checked ? [...c, f.env] : c.filter((k) => k !== f.env)))} />
@@ -224,14 +229,14 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
             )}
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={busy}>{busy ? "Saving…" : `Save ${group.title.toLowerCase()}`}</Button>
-              <span className="text-sm text-fg-subtle">Checked and stored by the SEO agent. Every save is in the audit log.</span>
+              <span className="text-sm text-fg-subtle">Checked and stored by the {agent.name}. Every save is in the audit log.</span>
             </div>
           </form>
         </>
       ) : (
         <div className="mt-4">
           <Alert tone={load.tooOld || view ? "info" : "error"}>
-            {view ? "This needs a newer seo-agent: the one running does not have these settings yet." : (load.error ?? "The SEO agent could not be asked.")} These settings are kept by the SEO agent, so they can be seen and changed only while
+            {view ? `This needs a newer ${agent.name}: the one running does not have these settings yet.` : (load.error ?? `The ${agent.name} could not be asked.`)} These settings are kept by the {agent.name}, so they can be seen and changed only while
             it is reachable.
           </Alert>
         </div>

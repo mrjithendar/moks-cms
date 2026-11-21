@@ -5,6 +5,7 @@ import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
 import { RunFilters } from "@/components/crewai/RunFilters";
 import { RunStatusIcon } from "@/components/crewai/RunStatusIcon";
+import { AGENT_IDS, AGENT_LABEL } from "@/lib/crewai/agent-of";
 import { FLOW_GROUPS, FLOWS, flowInfo, RUN_STATUSES, STATUS_LABELS, TRIGGER_LABELS, TRIGGERS } from "@/lib/crewai/flows";
 import { formatDuration, formatTokens, formatUsd, runDurationMs } from "@/lib/crewai/format";
 import { flowsWithRuns, listRuns } from "@/lib/crewai/runs";
@@ -12,15 +13,17 @@ import { flowsWithRuns, listRuns } from "@/lib/crewai/runs";
 export const metadata = { title: "Runs" };
 const PAGE = 50;
 
-/** All runs, newest first (GitHub Actions' "All workflows"): filter by flow, status, trigger or text; 50 a page. */
+/** All runs of both agents, newest first (GitHub Actions' "All workflows"): filter by flow, agent, status, trigger or
+ * text; 50 a page. Each row says which agent ran it. */
 export default async function CrewaiRunsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
-  const filter = { flow: sp.flow ?? null, status: sp.status ?? null, trigger: sp.trigger ?? null, q: sp.q ?? null };
+  const filter = { flow: sp.flow ?? null, agent: sp.agent === "seo" || sp.agent === "news" ? sp.agent : null, status: sp.status ?? null, trigger: sp.trigger ?? null, q: sp.q ?? null };
   const [runs, seen] = await Promise.all([listRuns({ ...filter, before: sp.before ?? null, limit: PAGE }), flowsWithRuns()]);
   const names = [...new Set([...FLOWS.map((f) => f.name), ...seen])];
   const flows = FLOW_GROUPS.map((group) => ({ group, options: names.filter((n) => flowInfo(n).group === group).map((n) => ({ value: n, label: flowInfo(n).label })) })).filter((g) => g.options.length);
   const statuses = [{ value: "active", label: "Queued or in progress" }, ...RUN_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] ?? s }))];
   const triggers = TRIGGERS.map((t) => ({ value: t, label: TRIGGER_LABELS[t] ?? t }));
+  const agents = AGENT_IDS.map((a) => ({ value: a, label: AGENT_LABEL[a] }));
   const older = () => {
     const p = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => Boolean(e[1])));
     p.set("before", runs[runs.length - 1]!.startedAt);
@@ -33,14 +36,14 @@ export default async function CrewaiRunsPage({ searchParams }: { searchParams: P
       <AutoRefresh active={live} />
       <AdminHeader
         title={title}
-        description={filter.flow ? (flowInfo(filter.flow).description || <code>{filter.flow}</code>) : "Every run of every SEO agent flow, newest first. Open one for its steps, log, inputs, outputs and cost."}
+        description={filter.flow ? (flowInfo(filter.flow).description || <code>{filter.flow}</code>) : "Every run of every flow of both agents (the SEO agent and the news agent), newest first. Open one for its steps, log, inputs, outputs and cost."}
       />
       <Suspense>
-        <RunFilters flows={flows} statuses={statuses} triggers={triggers} />
+        <RunFilters flows={flows} statuses={statuses} triggers={triggers} agents={agents} />
       </Suspense>
       {runs.length === 0 ? (
         <Card>
-          <p className="text-sm text-fg-muted">{Object.values(filter).some(Boolean) || sp.before ? "No runs match these filters." : "No runs yet. Runs appear as soon as the SEO agent starts a flow."}</p>
+          <p className="text-sm text-fg-muted">{Object.values(filter).some(Boolean) || sp.before ? "No runs match these filters." : "No runs yet. Runs appear as soon as an agent starts a flow."}</p>
         </Card>
       ) : (
         <div className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -70,6 +73,7 @@ export default async function CrewaiRunsPage({ searchParams }: { searchParams: P
                   </div>
                   <div className="flex shrink-0 items-center gap-4 pl-8 text-xs text-fg-subtle sm:pl-0">
                     <span className="hidden rounded-full border border-line px-2 py-0.5 md:inline">{info.group}</span>
+                    <span className="rounded-full border border-line px-2 py-0.5" title="The agent that ran it">{AGENT_LABEL[r.agent]}</span>
                     <span className="w-24 tabular-nums" title="Tokens · model cost">{r.tokens || r.costUsd ? `${formatTokens(r.tokens)} · ${formatUsd(r.costUsd)}` : "no model calls"}</span>
                     <span className="w-28 text-right">
                       <Ago iso={r.startedAt} />

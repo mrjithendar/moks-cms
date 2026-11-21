@@ -9,7 +9,7 @@ type Option = { value: string; label: string };
  * Filters for the runs list, kept in the URL (shareable, back button works). Selects apply at once; the search box
  * applies on Enter or after a pause. Works without JavaScript too: it is a GET form.
  */
-export function RunFilters({ flows, statuses, triggers }: { flows: { group: string; options: Option[] }[]; statuses: Option[]; triggers: Option[] }) {
+export function RunFilters({ flows, statuses, triggers, agents = [] }: { flows: { group: string; options: Option[] }[]; statuses: Option[]; triggers: Option[]; agents?: Option[] }) {
   const router = useRouter();
   const path = usePathname();
   const params = useSearchParams();
@@ -30,7 +30,7 @@ export function RunFilters({ flows, statuses, triggers }: { flows: { group: stri
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const select = "min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-fg";
-  const any = params.get("flow") || params.get("status") || params.get("trigger") || params.get("q");
+  const any = params.get("flow") || params.get("agent") || params.get("status") || params.get("trigger") || params.get("q");
   return (
     <form method="get" role="search" aria-label="Filter runs" className="mb-4 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); apply("q", q.trim()); }}>
       <label className="min-w-0 flex-1 basis-56">
@@ -48,6 +48,15 @@ export function RunFilters({ flows, statuses, triggers }: { flows: { group: stri
           ))}
         </select>
       </label>
+      {agents.length > 0 && (
+        <label>
+          <span className="sr-only">Agent</span>
+          <select name="agent" className={select} value={params.get("agent") ?? ""} onChange={(e) => apply("agent", e.target.value)}>
+            <option value="">Both agents</option>
+            {agents.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+      )}
       <label>
         <span className="sr-only">Status</span>
         <select name="status" className={select} value={params.get("status") ?? ""} onChange={(e) => apply("status", e.target.value)}>

@@ -27,7 +27,7 @@ export const CREWS = {
   optimization: "Optimization crew (existing articles)",
   promotion: "Promotion crew (posts and article ideas)",
   report: "Report crew (weekly and monthly briefing)",
-  news: "News desk crew",
+  news: "News desk crew (runs in the news agent)",
 } as const;
 export type CrewId = keyof typeof CREWS;
 

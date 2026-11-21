@@ -57,7 +57,7 @@ export function RunFlowButton({ flow, label, schema, initial = {}, blocked = nul
   const disabled = Boolean(blocked) || !schema;
   return (
     <>
-      <Button type="button" size={size} variant={variant} disabled={disabled} title={blocked ?? (schema ? undefined : "The SEO agent is off: its flows cannot be started.")} onClick={() => { setError(null); setOpen(true); }}>
+      <Button type="button" size={size} variant={variant} disabled={disabled} title={blocked ?? (schema ? undefined : "Its agent is off: this flow cannot be started.")} onClick={() => { setError(null); setOpen(true); }}>
         Run with parameters
       </Button>
       <Dialog

@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { context, propagation } from "@opentelemetry/api";
+import { auditSafe } from "../audit";
 import { log } from "../log";
 import { withSpan } from "../trace";
 import { DraftError } from "../seo-intel/drafts";
@@ -25,6 +26,8 @@ import { callbackPort, callbackToken } from "./config";
  * - NEWS_AGENT_CALLBACK_TOKEN (the news agent, mrjithendar/newsroom): NEWS_AGENT_ROUTES only, 403 for the rest. It can
  *   fetch, save news drafts and covers, notify, and read what every crew run reads; it cannot touch other drafts,
  *   publish, or run reports.
+ * A refused call is written to the audit log (agent.callback_forbidden, warning) with the caller and route: a token
+ * calling what it may not is either a bug or a stolen token.
  */
 export type CallbackResponse = { status: number; body: unknown };
 export type CallbackHeaders = Record<string, string | string[] | undefined>;
@@ -150,6 +153,8 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
   const path = url.pathname.slice(PREFIX.length);
   if (!allowed(caller, method, path)) {
     log.warn("agent callback refused for this token", { event: "agent_callback_forbidden", caller, method, route: path.slice(0, 80) });
+    const ua = headers["user-agent"];
+    await auditSafe({ label: caller }, "agent.callback_forbidden", `${method} ${path.slice(0, 120)}`, { caller }, { severity: "warning", request: { ip: null, userAgent: (Array.isArray(ua) ? ua[0] : ua)?.slice(0, 200) ?? null } });
     const why = caller === "news-agent" ? "This token may call the news desk's routes only." : "The news desk's routes are the news agent's (NEWS_AGENT_CALLBACK_TOKEN).";
     return { status: 403, body: { error: why, code: "forbidden" } };
   }

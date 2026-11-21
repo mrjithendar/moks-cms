@@ -1,5 +1,8 @@
 import "server-only";
-import { AgentError, type AgentCrew, type AgentFlow, type RunView } from "../seo-agent/client";
+import { AgentError } from "../agent-error";
+import type { AgentCrew, AgentFlow, AgentSettingsView, AgentSettingValue, RunView } from "../seo-agent/client";
+
+export { AgentError };
 import { newsAgentToken } from "./config";
 import { newsAgentBaseUrl, type NewsEndpointDeps } from "./endpoint";
 
@@ -60,3 +63,8 @@ export const getRun = (runId: string, deps?: NewsAgentDeps) => call<RunView>("GE
 export const cancelRun = (runId: string, deps?: NewsAgentDeps) => call<{ status: string }>("POST", `/flows/runs/${encodeURIComponent(runId)}/cancel`, {}, deps);
 /** GET /readyz: the news agent is up, reaches its database, and whether it reaches the seo-agent's site search. */
 export const newsAgentReady = (deps?: NewsAgentDeps) => call<{ status: string; site_search?: boolean; notes?: unknown }>("GET", "/readyz", undefined, deps, 4_000);
+/** The news agent's admin-editable settings (mrjithendar/newsroom app/admin_settings): the same API as the seo-agent's. */
+export const getNewsAgentSettings = (deps?: NewsAgentDeps) => call<AgentSettingsView>("GET", "/admin-settings", undefined, deps, 8_000);
+/** A field that is not sent stays as it is; null clears it (the deployment's value, then the default, applies). */
+export const putNewsAgentSettings = (group: string, values: Record<string, AgentSettingValue>, actor: string, deps?: NewsAgentDeps) =>
+  call<AgentSettingsView>("PUT", `/admin-settings/${encodeURIComponent(group)}`, { values, actor }, deps, 8_000);

@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { Ago } from "@/components/crewai/Ago";
 import { CrewEditor, VersionActions, type SourceRun } from "@/components/crewai/CrewEditor";
-import { agentCrews } from "@/lib/crewai/catalogue";
+import { agentOfCrew } from "@/lib/crewai/agent-of";
+import { bothCrews } from "@/lib/crewai/agents";
 import { CREW_ID, listVersions } from "@/lib/crewai/crews";
 import { flowInfo } from "@/lib/crewai/flows";
 import { listRuns } from "@/lib/crewai/runs";
@@ -26,9 +27,10 @@ export default async function CrewaiCrewPage({ params, searchParams }: { params:
   const { crew: id } = await params;
   const sp = await searchParams;
   if (!CREW_ID.test(id)) notFound();
-  const [crews, ready] = await Promise.all([agentCrews(), hasSchedules().catch(() => false)]);
-  const crew = crews?.find((c) => c.crew === id) ?? null;
-  if (crews && !crew) notFound();
+  const [{ crews, reachable }, ready] = await Promise.all([bothCrews(), hasSchedules().catch(() => false)]);
+  const crew = crews.find((c) => c.crew === id) ?? null;
+  // Unknown only when the agent that would own it answered without it; its agent being down shows the page read-only.
+  if (!crew && reachable[agentOfCrew(id)]) notFound();
   const versions = ready ? await listVersions(id) : [];
   const active = versions.find((v) => v.active) ?? null;
   const want = sp.version ? versions.find((v) => v.version === Number(sp.version)) : null;
