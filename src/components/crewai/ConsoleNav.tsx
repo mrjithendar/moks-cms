@@ -11,7 +11,7 @@ const TABS = [
   { href: "/admin/crewai/crews", label: "Crews" },
   { href: "/admin/crewai/config", label: "Import / export" },
   { href: "/admin/automation/skills", label: "Skills ↗" },
-  { href: "/admin/automation#tab-runs", label: "Settings ↗" },
+  { href: "/admin/automation?section=runs", label: "Settings ↗" },
 ];
 
 export type AgentPill = { enabled: boolean; version: string | null; reason: string };

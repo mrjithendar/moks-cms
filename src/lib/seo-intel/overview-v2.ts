@@ -97,12 +97,12 @@ export async function onboarding(db: Db, gsc: SourceStatus): Promise<Step[]> {
   const [dr] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_drafts`));
   return [
     { key: "sa", label: "Add the Google service account", done: Boolean(readServiceAccount(process.env)), href: "/admin/integrations", hint: "GOOGLE_SEO_SERVICE_ACCOUNT_JSON in the jithendar-com-env Secret (MANUAL_SETUP.md)." },
-    { key: "gsc", label: "Set the Search Console property", done: Boolean(s.google.gscProperty), href: "/admin/automation", hint: "sc-domain:jithendar.com or the URL-prefix property." },
+    { key: "gsc", label: "Set the Search Console property", done: Boolean(s.google.gscProperty), href: "/admin/automation?section=data", hint: "sc-domain:jithendar.com or the URL-prefix property." },
     { key: "sync", label: "Run the first sync", done: gsc.state === "ok" || gsc.state === "stale", href: "/admin/sync", hint: gsc.state === "never_synced" ? "Configured but not synced yet: start a backfill." : gsc.message },
-    { key: "ga4", label: "Set the GA4 property (optional)", done: Boolean(s.google.ga4PropertyId), href: "/admin/automation", hint: "Numeric property id, not the G- measurement id." },
-    { key: "claude", label: "Add the Anthropic API key", done: Boolean(claudeConfig(s).apiKey), href: "/admin/automation", hint: "ANTHROPIC_API_KEY secret + SEO_LLM_MONTHLY_BUDGET_USD. Without it nothing is drafted." },
-    { key: "digest", label: "Choose who gets the review digest", done: s.drafts.digest.recipients.length > 0, href: "/admin/automation", hint: "Settings → Drafts → digest recipients." },
-    { key: "submit", label: "Search-engine submission", done: submissionEnabled(), href: "/admin/automation", hint: "On in production by default; SEO_SUBMISSION_ENABLED=false turns it off." },
+    { key: "ga4", label: "Set the GA4 property (optional)", done: Boolean(s.google.ga4PropertyId), href: "/admin/automation?section=data", hint: "Numeric property id, not the G- measurement id." },
+    { key: "claude", label: "Add the Anthropic API key", done: Boolean(claudeConfig(s).apiKey), href: "/admin/automation?section=ai", hint: "ANTHROPIC_API_KEY secret + SEO_LLM_MONTHLY_BUDGET_USD. Without it nothing is drafted." },
+    { key: "digest", label: "Choose who gets the review digest", done: s.drafts.digest.recipients.length > 0, href: "/admin/automation?section=ai", hint: "Settings → Drafts → digest recipients." },
+    { key: "submit", label: "Search-engine submission", done: submissionEnabled(), href: "/admin/automation?section=content", hint: "On in production by default; SEO_SUBMISSION_ENABLED=false turns it off." },
     { key: "draft", label: "First draft generated", done: Number(dr?.n ?? 0) > 0, href: "/admin/review", hint: "Approve a recommendation for drafting, or wait for the weekly run." },
   ];
 }

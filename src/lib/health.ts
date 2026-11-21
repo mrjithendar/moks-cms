@@ -184,7 +184,7 @@ export async function failingFlows(): Promise<{ flow: string; at: string; error:
 /** The checks added on 2026-11-18 (owner request: "add all the required checks", each with its settings page). */
 function extraChecks(): Promise<Check>[] {
   return [
-    timed("SEO agent (CrewAI flows)", { group: "SEO & AI", href: "/admin/automation" }, async () => {
+    timed("SEO agent (CrewAI flows)", { group: "SEO & AI", href: "/admin/automation?section=overview" }, async () => {
       const { agentStatus } = await import("./seo-agent/endpoint");
       const { agentToken } = await import("./seo-agent/config");
       const s = await agentStatus();
@@ -197,7 +197,7 @@ function extraChecks(): Promise<Check>[] {
       if (failing.length) return { status: "degraded", detail: `ready · latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} (${f.at} UTC: ${f.error})`).join("; ")}` };
       return { status: "ok", detail: "ready · no flow's latest run failed in the last 24 h" };
     }),
-    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation" }, async () => {
+    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=ai" }, async () => {
       const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
       const c = claudeConfig(await getSeoSettings());
       if (!c.apiKey) return { status: "not configured", detail: "ANTHROPIC_API_KEY is not set: drafting, Improve and reviews use rules only" };

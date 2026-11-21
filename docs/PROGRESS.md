@@ -1,5 +1,34 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P1 (part 3): the sectioned settings shell; AI & SEO settings in sections (2026-11-21, owner request)
+
+This completes prompt P1 of the owner's plan in this repository.
+
+- `src/components/admin/SettingsSections.tsx` (new): the section list + panel layout of Appearance & site settings as
+  a shared component. Left list on a wide screen, a select on a narrow one, `?section=<id>` in the address, `#field`
+  links that scroll to and focus the field, and an unsaved-changes guard (`useUnsavedChanges(dirty)`; leaving a
+  section or the page asks first). Two modes: `onSelect` (sections kept in the browser, with `useSettingsSection`)
+  and `basePath` (each section its own server render).
+- Appearance (`AppearanceEditor.tsx`) uses it with the same markup and classes; its draft, preview, publish and
+  history are untouched.
+- `/admin/automation` is now "AI & SEO settings" (menu: AI & SEO → Settings; the address is unchanged). One file
+  per section under `src/app/admin/(growth)/automation/sections/`, listed in `sections/index.ts`: overview,
+  llm-providers (states what exists today), llm-budget, agent-limits, ask-the-blog, ml, mcp (summary and link), and
+  one per area of the SEO settings (data, schedules, scoring, content, ai, crawler, reports, runs). Only the open
+  section is rendered and loads data.
+- Each SEO area saves only its own fields: `SettingsForm` takes `only`, sends that area's sections with
+  `only: [...]`, and `saveSeoSettings` lays them over the stored document before validating (`documentToSave`).
+  Without `only` the API takes the whole document as before. **No setting's value or meaning changed.**
+- Old links: `/admin/automation` opens Overview; an old `#tab-<id>` link is sent on to `?section=<id>`. System
+  status, the SEO setup checklist and the CrewAI console link to the exact section.
+- Renamed in the interface: "Automation & AI" → "AI & SEO settings". Left as it is: the settings reference in the
+  user guide still groups these under the area name "Automation & AI" (`user-guide-settings.ts`, `GuideBrowser`),
+  and code comments.
+- Tests: `tests/settings-sections.test.tsx` (new, 9), `tests/seo-settings-ui.test.tsx` (page and form tests rewritten,
+  single-area save and section registry added). lint, typecheck, test and build were not run locally (no
+  `node_modules`); CI on the pull request runs them. **Not opened in a browser.**
+- No migration, no new dependency, no new environment variable.
+
 ## Admin settings plan, P1 (part 2): one "AI & SEO" menu entry (2026-11-21, owner request)
 
 - `src/lib/admin-menu.ts`: groups `ai` ("AI room") and `insights` ("SEO & insights") are one group, `ai`, labelled

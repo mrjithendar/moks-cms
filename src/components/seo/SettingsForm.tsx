@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useUnsavedChanges } from "@/components/admin/SettingsSections";
 import { Card } from "@/components/admin/ui";
 import { Alert, Button } from "@/components/ui/form";
 import type { PublicSeoSettings } from "@/lib/seo-intel/settings";
@@ -28,6 +29,17 @@ function setIn(obj: Json, path: string[], value: Json): Json {
   const [h, ...rest] = path;
   const o = (obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {}) as Record<string, Json>;
   return { ...o, [h!]: setIn(o[h!] ?? null, rest, value) };
+}
+
+/**
+ * What a save sends: the whole document, or (for one area on its own) only that area's sections with their names in
+ * `only`, which the server lays over the stored document. The API key travels only with the section that shows it.
+ */
+export function saveBody(value: Json, sections: string[] | null, llmApiKey: string, clearLlmKey: boolean): Record<string, unknown> {
+  const doc = value as Record<string, Json>;
+  if (!sections) return { ...doc, ...(llmApiKey ? { llmApiKey } : {}), clearLlmKey };
+  const withKey = sections.includes("llm");
+  return { ...Object.fromEntries(sections.filter((s) => s in doc).map((s) => [s, doc[s]])), only: sections, ...(withKey && llmApiKey ? { llmApiKey } : {}), ...(withKey ? { clearLlmKey } : {}) };
 }
 
 type Ctx = { changed: Set<string>; defaults: Json; issues: Record<string, string[]>; onChange: (path: string[], v: Json) => void };
@@ -128,7 +140,12 @@ function Field({ path, value, ctx }: { path: string[]; value: Json; ctx: Ctx }) 
   );
 }
 
-export function SettingsForm({ initial, defaults }: { initial: PublicSeoSettings; defaults?: PublicSeoSettings }) {
+/**
+ * `only`: one area (a tab id from settings-meta.ts) on its own, as a section of AI & SEO settings. It shows that area
+ * without the tab strip and saves just that area's sections: the server lays them over the stored document, so two
+ * admins working in different areas do not overwrite each other.
+ */
+export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSettings; defaults?: PublicSeoSettings; only?: string }) {
   const router = useRouter();
   const { llmKeySet, ...editableInitial } = initial;
   const saved = editableInitial as unknown as Json;
@@ -145,15 +162,17 @@ export function SettingsForm({ initial, defaults }: { initial: PublicSeoSettings
   const tabs = useMemo(() => {
     const known = SETTINGS_TABS.map((t) => ({ ...t, sections: t.sections.filter((s) => sections.includes(s)) })).filter((t) => t.sections.length);
     const other = sections.filter((s) => tabOf(s) === "other");
-    return other.length ? [...known, { id: "other", label: "Other", sections: other, description: "" }] : known;
-  }, [sections]);
+    const all = other.length ? [...known, { id: "other", label: "Other", sections: other, description: "" }] : known;
+    return only ? all.filter((t) => t.id === only) : all;
+  }, [sections, only]);
   // The open tab: the one clicked, else #tab-<id> from the URL (shareable link), else the first.
   const hashTab = useSyncExternalStore(subscribeHash, () => window.location.hash.replace(/^#tab-/, ""), () => "");
   const [picked, setPicked] = useState<string | null>(null);
-  const tab = picked ?? (tabs.some((t) => t.id === hashTab) ? hashTab : (tabs[0]?.id ?? "data"));
+  const tab = only ?? picked ?? (tabs.some((t) => t.id === hashTab) ? hashTab : (tabs[0]?.id ?? "data"));
 
   const changed = useMemo(() => new Set(changedPaths(saved, value)), [saved, value]);
   const dirty = changed.size > 0 || Boolean(llmApiKey) || clearLlmKey;
+  useUnsavedChanges(dirty);
   const issues = useMemo(() => issuesByPath(result?.ok === false ? (result.issues ?? []) : []), [result]);
   const countIn = (t: { sections: string[] }, paths: Iterable<string>) => [...paths].filter((p) => t.sections.includes(p.split(".")[0]!)).length;
   const unplaced = Object.entries(issues).filter(([p]) => !p || !sections.includes(p.split(".")[0]!)).flatMap(([p, m]) => m.map((x) => (p ? `${p}: ${x}` : x)));
@@ -179,7 +198,7 @@ export function SettingsForm({ initial, defaults }: { initial: PublicSeoSettings
         e.preventDefault();
         setBusy(true);
         setResult(null);
-        const res = await fetch("/api/admin/seo/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(value as object), ...(llmApiKey ? { llmApiKey } : {}), clearLlmKey }) }).catch(() => null);
+        const res = await fetch("/api/admin/seo/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(saveBody(value, only ? (tabs[0]?.sections ?? []) : null, llmApiKey, clearLlmKey)) }).catch(() => null);
         const data = (await res?.json().catch(() => ({}))) as { error?: string; issues?: string[] } | undefined;
         setBusy(false);
         if (res?.ok) {
@@ -190,35 +209,37 @@ export function SettingsForm({ initial, defaults }: { initial: PublicSeoSettings
         } else {
           setResult({ ok: false, text: data?.error ?? "Could not save.", issues: data?.issues });
           const first = (data?.issues ?? []).map((i) => i.split(".")[0]!).find((s) => sections.includes(s));
-          if (first) choose(tabOf(first) === "other" ? "other" : tabOf(first));
+          if (first && !only) choose(tabOf(first) === "other" ? "other" : tabOf(first));
         }
       }}
     >
-      <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-1 border-b border-line">
-        {tabs.map((t) => {
-          const nChanged = countIn(t, changed);
-          const nIssues = countIn(t, Object.keys(issues));
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`tab-${t.id}`}
-              aria-selected={t.id === active?.id}
-              aria-controls={`panel-${t.id}`}
-              onClick={() => choose(t.id)}
-              className={`-mb-px rounded-t-md border-b-2 px-3 py-2 text-sm ${t.id === active?.id ? "border-accent font-semibold text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
-            >
-              {t.label}
-              {nIssues > 0 && <span className="ml-1.5 rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">{nIssues}</span>}
-              {nIssues === 0 && nChanged > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white" aria-label={`${nChanged} unsaved`}>{nChanged}</span>}
-            </button>
-          );
-        })}
-      </div>
+      {!only && (
+        <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-1 border-b border-line">
+          {tabs.map((t) => {
+            const nChanged = countIn(t, changed);
+            const nIssues = countIn(t, Object.keys(issues));
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`tab-${t.id}`}
+                aria-selected={t.id === active?.id}
+                aria-controls={`panel-${t.id}`}
+                onClick={() => choose(t.id)}
+                className={`-mb-px rounded-t-md border-b-2 px-3 py-2 text-sm ${t.id === active?.id ? "border-accent font-semibold text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
+              >
+                {t.label}
+                {nIssues > 0 && <span className="ml-1.5 rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">{nIssues}</span>}
+                {nIssues === 0 && nChanged > 0 && <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white" aria-label={`${nChanged} unsaved`}>{nChanged}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {active && (
-        <div role="tabpanel" id={`panel-${active.id}`} aria-labelledby={`tab-${active.id}`} className="space-y-4">
+        <div role={only ? undefined : "tabpanel"} id={`panel-${active.id}`} aria-labelledby={only ? undefined : `tab-${active.id}`} className="space-y-4">
           {active.description && <p className="text-sm text-fg-muted">{active.description}</p>}
           {active.sections.map((section) => (
             <Card key={section}>

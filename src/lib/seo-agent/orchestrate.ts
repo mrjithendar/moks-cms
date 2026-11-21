@@ -100,7 +100,7 @@ export const IMPROVE_FEEDBACK =
  * scheduled post goes back to draft first: the person reviews the improved text and schedules it again.
  */
 export async function improveCalendarDraft(calendarId: string, actor: Actor, instructions: string | null, deps: AgentDeps = {}) {
-  if ((await orchestrator(deps)) === "legacy") throw new CalendarError("Improve needs the SEO agent, and it is disabled (Automation & AI → SEO agent).", 409);
+  if ((await orchestrator(deps)) === "legacy") throw new CalendarError("Improve needs the SEO agent, and it is disabled (AI & SEO → Settings → SEO agent).", 409);
   const item = await getItem(calendarId);
   if (!item) throw new CalendarError("Calendar item not found.", 404);
   if (item.draft === "published") throw new CalendarError("This item is already published. Improve published articles from the review queue.", 409);

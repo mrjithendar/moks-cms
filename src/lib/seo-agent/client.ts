@@ -49,7 +49,7 @@ export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "
 /** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
 export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
 
-export const DISABLED_MESSAGE = "The SEO agent is disabled: none was found. Add its endpoint under Admin → Automation & AI → SEO agent.";
+export const DISABLED_MESSAGE = "The SEO agent is disabled: none was found. Add its endpoint under Admin → AI & SEO → Settings → Overview.";
 
 async function call<T>(method: string, path: string, body: unknown, deps: AgentDeps = {}, timeoutMs = 15_000): Promise<T> {
   const token = agentToken(deps.env);

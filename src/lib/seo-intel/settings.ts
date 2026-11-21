@@ -365,9 +365,25 @@ export class SettingsError extends Error {
   }
 }
 
+/**
+ * The document a save validates. A body with `only: [section, …]` (one area of AI & SEO settings saving on its own)
+ * is those sections laid over the stored document, which is what the whole-document form would have sent had it
+ * been loaded just now; any other body is the whole document, as before.
+ */
+async function documentToSave(raw: unknown): Promise<SeoSettingsInput> {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(body.only)) return body as SeoSettingsInput;
+  const { llmKeySet: _flag, ...stored } = publicSettings(await getSeoSettings()) as unknown as Record<string, unknown>;
+  const names = body.only.filter((s): s is string => typeof s === "string" && s in stored);
+  if (names.length === 0 || names.length !== body.only.length) throw new SettingsError("The settings are not valid.", ["only: name the sections to save"]);
+  const missing = names.filter((n) => body[n] === undefined || body[n] === null);
+  if (missing.length) throw new SettingsError("The settings are not valid.", missing.map((n) => `${n}: send the section named in only`));
+  return { ...stored, ...Object.fromEntries(names.map((n) => [n, body[n]])), llmApiKey: body.llmApiKey, clearLlmKey: body.clearLlmKey } as unknown as SeoSettingsInput;
+}
+
 /** Validate and save. Returns the before/after (without secrets) for the audit log. */
 export async function saveSeoSettings(raw: unknown, actorId: string): Promise<{ before: PublicSeoSettings; after: PublicSeoSettings }> {
-  const input = (raw ?? {}) as SeoSettingsInput;
+  const input = await documentToSave(raw);
   const parsed = settingsSchema.safeParse(input);
   if (!parsed.success) throw new SettingsError("The settings are not valid.", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   const v = parsed.data;
