@@ -277,7 +277,11 @@ def test_the_api_reads_the_schema_and_saves_one_group() -> None:
     client, c = _client()
     with client:
         view = client.get("/admin-settings", headers=AUTH).json()
-        assert [g["id"] for g in view["groups"]] == [g.id for g in GROUPS] and view["restart_pending"] is False
+        assert [g["id"] for g in view["groups"]] == [g.id for g in GROUPS]
+        # Nothing is saved, so nothing waits for a restart. The one exception is the test's own container: it is built
+        # with host names for the test client (conftest.settings), which differ from what the environment gives.
+        pending = {f["env"] for g in view["groups"] for f in g["fields"] if f["restart_pending"]}
+        assert pending == {"MCP_ALLOWED_HOSTS"} and next(g for g in view["groups"] if g["id"] == "agent-limits")["restart_pending"] is False
         before = c.settings.crew_max_iter
         bad = client.put("/admin-settings/agent-limits", headers=AUTH, json={"values": {"CREW_MAX_ITER": 0, "CREW_MAX_RPM": 7}, "actor": "admin"})
         assert bad.status_code == 422 and bad.json()["issues"] == ["Turns per agent: at least 1"]
