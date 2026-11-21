@@ -411,12 +411,11 @@ describe("Ask the Blog", () => {
 });
 
 describe("budgets", () => {
-  it("Ask-the-Blog spend never counts against the admin (v2 + v3 drafting) budget", async () => {
+  it("Ask-the-Blog spend is left out of the LLM usage card's figure", async () => {
     const { budgetState } = await import("@/lib/seo-intel/claude");
     await db.execute(sql`insert into seo_llm_usage (provider, model, purpose, prompt_version, outcome, cost_usd) values ('anthropic', 'claude-sonnet-5-5', 'ask_answer', 'ask-blog-v1', 'ok', 9.5), ('anthropic', 'claude-sonnet-5-5', 'draft', 'seo-draft-v3', 'ok', 0.4)`);
-    const b = await budgetState(db, { monthlyBudgetUsd: 10 });
+    const b = await budgetState(db);
     expect(b.spentUsd).toBeCloseTo(0.4);
-    expect(b.paused).toBe(false);
   });
 
   it("v5: per-flow breakdown from seo_flow_runs; news excluded; the rest is 'outside flows'", async () => {
@@ -428,7 +427,7 @@ describe("budgets", () => {
       (gen_random_uuid(), 'optimize_article_flow', 'd1', 'succeeded', 'cron', 0.9, 1000), (gen_random_uuid(), 'optimize_article_flow', 'd2', 'succeeded', 'cron', 0.3, 500),
       (gen_random_uuid(), 'new_article_flow', 'd3', 'failed', 'manual', 0.3, 300), (gen_random_uuid(), 'news_job_flow', 'job:x', 'succeeded', 'cron', 4, 9000),
       (gen_random_uuid(), 'gsc_sync_flow', 'site', 'succeeded', 'cron', 0, 0)`);
-    const b = await budgetState(db, { monthlyBudgetUsd: 15 });
+    const b = await budgetState(db);
     const f = await flowCostBreakdown(db, b.spentUsd);
     expect(f.flows.map((x) => x.flow)).toEqual(["optimize_article_flow", "new_article_flow", "gsc_sync_flow"]);
     expect(f.flows[0]).toMatchObject({ runs: 2 });

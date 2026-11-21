@@ -12,6 +12,7 @@ import { dataBlock, safeQueries } from "./llm";
 import { claudeConfig, getSeoSettings, type DraftCategory, type SeoSettings } from "./settings";
 import { STYLE_GUIDE } from "./style-guide";
 import { siteOrigin } from "./urls";
+import type { LlmGate } from "./llm-gate";
 
 /**
  * v2 Phase 1: recommendations → Claude change set → validators → draft (ready_for_review) → review queue.
@@ -205,7 +206,7 @@ export function renumber(changes: Change[]): Change[] {
   return changes.map((c, i) => ({ ...c, id: `c${i + 1}`, flags: c.flags.map((f) => ({ ...f, changeId: `c${i + 1}` })) }));
 }
 
-export type GenerateOpts = { mode?: "auto" | "regenerate"; recommendationIds?: string[]; extra?: ExtraTask[]; trigger?: "manual" | "weekly" | "fix" | "merge"; actor?: string; fetchImpl?: typeof fetch; now?: Date };
+export type GenerateOpts = { mode?: "auto" | "regenerate"; recommendationIds?: string[]; extra?: ExtraTask[]; trigger?: "manual" | "weekly" | "fix" | "merge"; actor?: string; fetchImpl?: typeof fetch; gate?: LlmGate; now?: Date };
 export type GenerateResult = { draftId: string | null; status: string; changes: number; reason?: string };
 
 /**
@@ -255,6 +256,7 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
         check: checker(base, vctx, keep.length + 1, keep),
         draftId: draft.id,
         fetchImpl: opts.fetchImpl,
+        gate: opts.gate,
         now: opts.now,
       });
       if (res.ok) {
@@ -298,7 +300,7 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
 // --- Queue jobs ----------------------------------------------------------------------------------------------
 
 /** Queue a synchronous (re)generation in the background; the request returns at once. */
-export async function queueDraft(articleId: string, opts: Omit<GenerateOpts, "fetchImpl" | "now"> = {}): Promise<boolean> {
+export async function queueDraft(articleId: string, opts: Omit<GenerateOpts, "fetchImpl" | "now" | "gate"> = {}): Promise<boolean> {
   return enqueue(DRAFT_JOB_KIND, { articleId, ...opts }, { dedupeKey: `seo_draft:${articleId}:${opts.mode ?? "auto"}`, maxAttempts: 2 });
 }
 
@@ -317,7 +319,7 @@ export const draftJobHandler = async (payload: Record<string, unknown>) => {
  * Weekly bulk generation through the Message Batches API: the highest-priority articles with eligible
  * recommendations, both new drafts and merges into open ones. Results arrive later (drafts_poll).
  */
-export async function weeklyBatch(deps: { fetchImpl?: typeof fetch; now?: Date } = {}): Promise<{ submitted: number; batchId: string | null; skipped: string | null }> {
+export async function weeklyBatch(deps: { fetchImpl?: typeof fetch; now?: Date; gate?: LlmGate } = {}): Promise<{ submitted: number; batchId: string | null; skipped: string | null }> {
   const db = await getDb();
   const s = await getSeoSettings();
   const cfg = claudeConfig(s);
@@ -351,7 +353,7 @@ export async function weeklyBatch(deps: { fetchImpl?: typeof fetch; now?: Date }
   if (!requests.length) return { submitted: 0, batchId: null, skipped: "nothing_to_do" };
   const batch = await submitBatch(db, cfg, cfg.draftModel, requests, deps);
   if (!batch) {
-    for (const r of requests) if (!r.merge) await db.execute(sql`update seo_drafts set status = 'generation_failed', failure_reason = 'Paused: the monthly LLM budget would be exceeded.', updated_at = now() where id = ${r.draftId}`);
+    for (const r of requests) if (!r.merge) await db.execute(sql`update seo_drafts set status = 'generation_failed', failure_reason = 'Paused: the LLM budget has no room for this batch.', updated_at = now() where id = ${r.draftId}`);
     return { submitted: 0, batchId: null, skipped: "budget" };
   }
   for (const r of requests) {

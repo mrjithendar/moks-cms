@@ -3,6 +3,7 @@ import type { z } from "zod";
 import type { Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { log } from "../log";
+import { agentGate, type LlmGate } from "./llm-gate";
 import { recordSeoLlm } from "../metrics";
 import { anthropicClient, mapAnthropicError, messageParams, resultOf } from "../practice/ai/anthropic";
 import { callModel, ProviderError, type ModelCall, type ModelResult } from "../practice/ai/providers";
@@ -61,21 +62,21 @@ export async function logUsage(db: Db, u: UsageRow): Promise<number> {
   return cost;
 }
 
-export type BudgetState = { budgetUsd: number; spentUsd: number; reservedUsd: number; remainingUsd: number; paused: boolean; monthStart: string; byModel: { model: string; costUsd: number; calls: number; cacheReadTokens: number; inputTokens: number }[] };
+export type BudgetState = { spentUsd: number; reservedUsd: number; monthStart: string; byModel: { model: string; costUsd: number; calls: number; cacheReadTokens: number; inputTokens: number }[] };
 
-/** Month-to-date spend (UTC calendar month) plus the estimated cost of batches still in flight. */
-export async function budgetState(db: Db, cfg: Pick<ClaudeConfig, "monthlyBudgetUsd">, now = new Date()): Promise<BudgetState> {
+/**
+ * Month-to-date LLM spend this web app can see (UTC calendar month) plus the estimated cost of batches still in
+ * flight. A usage figure only: the limit is the one LLM budget in the seo-agent (llm-gate.ts), not anything here.
+ * Ask the Blog (purpose "ask…") and the news desk (purpose "news…") are left out of this card's figure; the budget
+ * itself counts every row.
+ */
+export async function budgetState(db: Db, now = new Date()): Promise<BudgetState> {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   const byModel = rowsOf<{ model: string; cost: number; calls: number; cr: number; inp: number }>(
-    // v3: Ask the Blog (purpose "ask…") has its own daily cap in the seo-agent and never counts against this budget.
-    // News desk: purpose "news…" has its own per-job and global caps (docs/news/COSTS.md), so it never pauses SEO drafting.
     await db.execute(sql`select model, sum(cost_usd)::float8 as cost, count(*)::int as calls, sum(cache_read_tokens)::float8 as cr, sum(input_tokens)::float8 as inp from seo_llm_usage where at >= ${monthStart} and purpose not like 'ask%' and purpose not like 'news%' group by model order by cost desc`),
   ).map((r) => ({ model: r.model, costUsd: Number(r.cost), calls: Number(r.calls), cacheReadTokens: Number(r.cr), inputTokens: Number(r.inp) }));
   const [res] = rowsOf<{ n: number | null }>(await db.execute(sql`select sum(estimated_cost_usd)::float8 as n from seo_llm_batches where status = 'in_progress'`));
-  const spentUsd = byModel.reduce((s, r) => s + r.costUsd, 0);
-  const reservedUsd = Number(res?.n ?? 0);
-  const remainingUsd = Math.max(0, cfg.monthlyBudgetUsd - spentUsd - reservedUsd);
-  return { budgetUsd: cfg.monthlyBudgetUsd, spentUsd, reservedUsd, remainingUsd, paused: spentUsd + reservedUsd >= cfg.monthlyBudgetUsd, monthStart: monthStart.slice(0, 10), byModel };
+  return { spentUsd: byModel.reduce((s, r) => s + r.costUsd, 0), reservedUsd: Number(res?.n ?? 0), monthStart: monthStart.slice(0, 10), byModel };
 }
 
 export type FlowCost = { flow: string; runs: number; costUsd: number; tokens: number; share: number };
@@ -119,6 +120,8 @@ export type ClaudeJsonOpts<T> = {
   draftId?: string | null;
   fetchImpl?: typeof fetch;
   now?: Date;
+  /** The one LLM budget. Default: the seo-agent's (llm-gate.ts). */
+  gate?: LlmGate;
 };
 export type ClaudeJsonResult<T> = { ok: true; value: T; attempts: number; requestIds: string[]; costUsd: number } | { ok: false; reason: "not_configured" | "budget" | "invalid" | "error" | "refusal"; detail: string; attempts: number; costUsd: number };
 
@@ -133,20 +136,21 @@ export function parseJsonText(text: string): unknown {
 /**
  * One validated structured call with at most one retry: schema or semantic failure → retry with the problems listed
  * → still invalid → `{ ok: false, reason: "invalid" }` (the caller marks the draft generation_failed). Refuses before
- * calling when the estimated cost would cross the monthly cap.
+ * calling when the one LLM budget (llm-gate.ts) has no room for the call's upper bound.
  */
 export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts<T>): Promise<ClaudeJsonResult<T>> {
   if (!cfg.apiKey) return { ok: false, reason: "not_configured", detail: "ANTHROPIC_API_KEY is not set.", attempts: 0, costUsd: 0 };
   let feedback = "";
   let spent = 0;
   const requestIds: string[] = [];
+  const gate = o.gate ?? agentGate();
   for (let attempt = 1; attempt <= 2; attempt++) {
     const user = feedback ? `${o.call.user}\n\n<feedback>Your previous answer was rejected by the validator:\n${feedback}\nAnswer again with the complete JSON object, fixing every problem.</feedback>` : o.call.user;
     const chars = user.length + o.call.system.length + (o.call.cachedSystem ?? []).join("").length;
-    const state = await budgetState(db, cfg, o.now);
-    if (state.paused || estimateCostUsd(o.model, chars, o.call.maxTokens) > state.remainingUsd) {
-      log.warn("seo llm budget cap reached", { operation: "seo_llm", outcome: "budget", model: o.model });
-      return { ok: false, reason: "budget", detail: `Monthly budget of $${cfg.monthlyBudgetUsd.toFixed(2)} reached ($${state.spentUsd.toFixed(2)} spent).`, attempts: attempt - 1, costUsd: spent };
+    const held = await gate.reserve(estimateCostUsd(o.model, chars, o.call.maxTokens), o.purpose);
+    if (!held.ok) {
+      log.warn("seo llm call refused by the budget", { operation: "seo_llm", outcome: "budget", model: o.model });
+      return { ok: false, reason: "budget", detail: held.detail, attempts: attempt - 1, costUsd: spent };
     }
     const started = performance.now();
     let res: ModelResult;
@@ -156,6 +160,7 @@ export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts
       const err = e instanceof ProviderError ? e : mapAnthropicError(e);
       const refusal = /declined/.test(err.message);
       await logUsage(db, { model: o.model, purpose: o.purpose, promptVersion: o.promptVersion, mode: "sync", inputTokens: 0, outputTokens: 0, latencyMs: Math.round(performance.now() - started), outcome: refusal ? "refusal" : "error", errorCode: err.code, draftId: o.draftId });
+      await gate.settle(held.id);
       log.warn("seo claude call failed", { operation: "seo_llm", outcome: "error", errorCode: err.code, model: o.model, attempt });
       if (!err.retryable || attempt === 2) return { ok: false, reason: refusal ? "refusal" : "error", detail: err.message, attempts: attempt, costUsd: spent };
       continue;
@@ -164,6 +169,7 @@ export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts
     const parsed = o.schema.safeParse(parseJsonText(res.text));
     const issues = parsed.success ? (o.check?.(parsed.data) ?? []) : parsed.error.issues.slice(0, 15).map((i) => `${i.path.join(".") || "root"}: ${i.message}`);
     spent += await logUsage(db, { model: res.model ?? o.model, purpose: o.purpose, promptVersion: o.promptVersion, mode: "sync", requestId: res.requestId, inputTokens: res.inputTokens, outputTokens: res.outputTokens, cacheReadTokens: res.cacheReadTokens, cacheWriteTokens: res.cacheWriteTokens, latencyMs: Math.round(performance.now() - started), outcome: issues.length ? "invalid" : "ok", draftId: o.draftId });
+    await gate.settle(held.id);
     log.info("seo claude call", { operation: "seo_llm", outcome: issues.length ? "invalid" : "ok", model: o.model, attempt, inputTokens: res.inputTokens, outputTokens: res.outputTokens, cacheReadTokens: res.cacheReadTokens, promptVersion: o.promptVersion });
     if (parsed.success && !issues.length) return { ok: true, value: parsed.data, attempts: attempt, requestIds, costUsd: spent };
     feedback = issues.map((i) => `- ${i}`).join("\n");
@@ -175,12 +181,16 @@ export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts
 
 export type BatchRequest = { customId: string; call: Omit<ModelCall, "signal"> };
 
-/** Create a batch after reserving its estimated cost against the budget. Returns null when it would cross the cap. */
-export async function submitBatch(db: Db, cfg: ClaudeConfig, model: string, requests: BatchRequest[], deps: { fetchImpl?: typeof fetch; now?: Date } = {}): Promise<{ id: string; estimatedCostUsd: number } | null> {
+/**
+ * Create a batch after holding its estimated cost against the one LLM budget (llm-gate.ts). Returns null when it
+ * does not fit. The hold is let go once the batch row exists: from then on the in-flight row is what is counted.
+ */
+export async function submitBatch(db: Db, cfg: ClaudeConfig, model: string, requests: BatchRequest[], deps: { fetchImpl?: typeof fetch; now?: Date; gate?: LlmGate } = {}): Promise<{ id: string; estimatedCostUsd: number } | null> {
   if (!requests.length) return null;
   const estimate = requests.reduce((s, r) => s + estimateCostUsd(model, r.call.user.length + (r.call.cachedSystem ?? []).join("").length, r.call.maxTokens, "batch"), 0);
-  const state = await budgetState(db, cfg, deps.now);
-  if (estimate > state.remainingUsd) {
+  const gate = deps.gate ?? agentGate();
+  const held = await gate.reserve(estimate, "draft_batch");
+  if (!held.ok) {
     log.warn("seo batch refused by budget", { operation: "seo_llm_batch", outcome: "budget", requests: requests.length });
     return null;
   }
@@ -192,6 +202,8 @@ export async function submitBatch(db: Db, cfg: ClaudeConfig, model: string, requ
     return { id: batch.id, estimatedCostUsd: estimate };
   } catch (e) {
     throw mapAnthropicError(e);
+  } finally {
+    await gate.settle(held.id);
   }
 }
 

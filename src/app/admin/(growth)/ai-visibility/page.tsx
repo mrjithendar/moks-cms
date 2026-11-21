@@ -37,13 +37,13 @@ export default async function AiVisibilityPage() {
         description={`Each week the prompts below are asked to the enabled AI assistants with web search on; a prompt is "cited" when a source in the answer is on ${o.host}, "mentioned" when the answer names the site. These are API answers: the consumer apps can differ (models, memory, location), so read them as a trend for the same prompts.`}
         actions={
           s.aiVisibility.enabled && active.length ? (
-            <ApiButton url="/api/admin/seo/ai-visibility" body={{ action: "run" }} label="Run now" confirm={`Ask ${o.prompts.filter((p) => p.active).length} prompt(s) to ${active.length} assistant(s)? Spend so far this month: $${o.spentUsd.toFixed(2)} of $${s.aiVisibility.monthlyBudgetUsd}. Answers already collected today are not bought again.`} />
+            <ApiButton url="/api/admin/seo/ai-visibility" body={{ action: "run" }} label="Run now" confirm={`Ask ${o.prompts.filter((p) => p.active).length} prompt(s) to ${active.length} assistant(s)? Spend so far this month: $${o.spentUsd.toFixed(2)}; it counts against the LLM budget. Answers already collected today are not bought again.`} />
           ) : undefined
         }
       />
       <Card className="mb-4 !p-4 text-sm">
         <p className="text-fg">
-          {s.aiVisibility.enabled ? "On" : "Off"} · weekly run on weekday {s.aiVisibility.weekday} at {String(s.aiVisibility.hourUtc).padStart(2, "0")}:00 UTC · up to {s.aiVisibility.maxPrompts} prompts · ${o.spentUsd.toFixed(2)} of ${s.aiVisibility.monthlyBudgetUsd} this month
+          {s.aiVisibility.enabled ? "On" : "Off"} · weekly run on weekday {s.aiVisibility.weekday} at {String(s.aiVisibility.hourUtc).padStart(2, "0")}:00 UTC · up to {s.aiVisibility.maxPrompts} prompts · ${o.spentUsd.toFixed(2)} this month, counted in the LLM budget
         </p>
         <ul className="mt-2 flex flex-wrap gap-2 text-xs">
           {ready.map((r) => (

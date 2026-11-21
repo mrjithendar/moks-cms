@@ -38,7 +38,6 @@ export const SECTION_LABELS: Record<string, string> = {
 /** One line of help per field that isn't self-explanatory, keyed by its dotted path. */
 export const FIELD_HELP: Record<string, string> = {
   "aiVisibility.enabled": "Master switch for the weekly run. Each assistant also needs its switch below and its API key.",
-  "aiVisibility.monthlyBudgetUsd": "Hard cap per calendar month (UTC) across all assistants; the run stops before a call that would cross it.",
   "aiVisibility.costPerAnswerUsd": "ChatGPT, Perplexity and Gemini do not return a price: each answer is counted at this estimate. Set it from their pricing.",
   "aiVisibility.brandNames": "Names that count as a mention besides the site name and host, e.g. the author's name.",
   "aiVisibility.models.claude": "Anthropic model id (web search needs a current model).",
@@ -82,7 +81,6 @@ export const FIELD_HELP: Record<string, string> = {
   "thresholds.bandMedium": "Score at or above this is “medium”.",
   "thresholds.brandTerms": "Queries containing these are excluded from low-CTR and gap rules.",
   "crawler.requestsPerSecond": "Politeness limit against your own site.",
-  "drafts.monthlyBudgetUsd": "0 = SEO_LLM_MONTHLY_BUDGET_USD (default $15). The environment value is a ceiling this cannot raise.",
   "drafts.maxRewriteRatio": "A draft may change at most this share of the article's text.",
   "llm.dailyRequestLimit": "Requests per day for the optional explanation model; 0 = none.",
   "llm.baseUrl": "Only for OpenAI-compatible endpoints (e.g. Ollama in the cluster).",

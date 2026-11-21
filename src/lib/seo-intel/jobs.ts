@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { LlmGate } from "./llm-gate";
 import { sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
@@ -31,7 +32,8 @@ export type JobPayload = { type: JobType; trigger: Trigger; slot?: string; start
 export type RunOutcome = { status: "succeeded" | "partial" | "failed" | "skipped"; rows: number; error?: string; errorCode?: string; detail?: Record<string, unknown>; window?: { start: string; end: string } };
 
 /** Test seams: fake Google, no real sleeping, fixed clock. */
-export type RunDeps = { fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void>; now?: () => Date; env?: Record<string, string | undefined> };
+/** `gate`: the one LLM budget for the LLM calls a job makes itself (llm-gate.ts); the seo-agent's when left out. */
+export type RunDeps = { fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void>; now?: () => Date; env?: Record<string, string | undefined>; gate?: LlmGate };
 
 const LEASE_MS = 10 * 60_000;
 /** A backfill job stops taking new windows after this long and re-enqueues the remainder. */
