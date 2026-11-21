@@ -73,8 +73,9 @@ describe("finding the news agent", () => {
     const noToken = await newsAgentStatus({ env: { NEWS_AGENT_URL: "http://news:8080" }, fetchImpl: health({ status: "ok", version: "1", agent: "news" }) as unknown as typeof fetch, readAdminUrl: async () => null });
     expect(noToken).toMatchObject({ enabled: false });
     expect(noToken.reason).toContain("NEWS_AGENT_TOKEN");
-    const none = await newsAgentStatus({ env: { NEWS_AGENT_TOKEN: "t".repeat(40) }, fetchImpl: health({}, 503) as unknown as typeof fetch, readAdminUrl: async () => null });
-    expect(none).toMatchObject({ enabled: false, tried: ["http://news-agent:8080"] });
+    // POD_NAMESPACE set: discovery also tries the namespaced name (CI runs in a pod, so the namespace is always known there).
+    const none = await newsAgentStatus({ env: { NEWS_AGENT_TOKEN: "t".repeat(40), POD_NAMESPACE: "jithendar" }, fetchImpl: health({}, 503) as unknown as typeof fetch, readAdminUrl: async () => null });
+    expect(none).toMatchObject({ enabled: false, tried: ["http://news-agent:8080", "http://news-agent.jithendar.svc.cluster.local:8080"] });
   });
 });
 
