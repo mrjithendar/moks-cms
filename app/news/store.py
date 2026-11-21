@@ -62,6 +62,7 @@ class NewsStore(Protocol):
     async def get_cluster(self, cluster_id: str) -> dict[str, Any] | None: ...
     async def save_cluster(self, row: dict[str, Any]) -> None: ...
     async def create_run(self, row: dict[str, Any]) -> tuple[dict[str, Any], bool]: ...
+    async def slot_ran(self, job_id: str, slot: str) -> bool: ...
     async def update_run(self, run_id: str, **fields: Any) -> None: ...
     async def get_run(self, run_id: str) -> dict[str, Any] | None: ...
     async def add_run_cost(self, run_id: str, *, usd: float = 0.0, tokens: int = 0, image_usd: float = 0.0) -> None: ...
@@ -247,6 +248,10 @@ class PgNewsStore:
             return r, True
         existing = await self._one("select * from news_runs where job_id::text = %s and slot = %s", (row.get("job_id"), row.get("slot")))
         return existing or {}, False
+
+    async def slot_ran(self, job_id: str, slot: str) -> bool:
+        """Whether this job already has a run for this time slot (the dispatcher asks before it starts one)."""
+        return await self._one("select 1 as one from news_runs where job_id::text = %s and slot = %s", (job_id, slot)) is not None
 
     async def update_run(self, run_id: str, **fields: Any) -> None:
         f = {k: (json.dumps(v) if k == "counters" else v) for k, v in fields.items() if k in _RUN_UPDATABLE}
@@ -616,6 +621,9 @@ class MemoryNewsStore:
         r = {"status": "running", "counters": {}, "tokens": 0, "cost_usd": 0.0, "image_cost_usd": 0.0, "started_at": self.now(), "finished_at": None, "dry_run": False, "llm_enabled": True, **row}
         self.runs[row["id"]] = r
         return dict(r), True
+
+    async def slot_ran(self, job_id: str, slot: str) -> bool:
+        return any(r.get("job_id") == job_id and r.get("slot") == slot for r in self.runs.values())
 
     async def update_run(self, run_id: str, **fields: Any) -> None:
         self.runs[run_id].update({k: v for k, v in fields.items() if k in _RUN_UPDATABLE})

@@ -2,7 +2,7 @@
 tests/test_news_config.py and the web test news-desk.test.ts both parse docs/news/fixtures/job-config.json so the two
 stay in step.
 
-The switch is the admin's (setting row `news`.enabled, Newsroom → Settings). NEWS_DESK_ENABLED=false in the
+The switch is the admin's (setting row `news`.enabled, AI & SEO → Jobs: "Jobs on"). NEWS_DESK_ENABLED=false in the
 deployment is an emergency override that forces the desk off. Until the admin first saves the switch,
 NEWS_DESK_ENABLED=true keeps the desk on, as before the switch existed.
 """
