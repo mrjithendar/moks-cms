@@ -362,7 +362,7 @@ function mcpGroup(): SettingsGroup {
     area: "MCP access",
     title: "MCP servers and scopes",
     description: "No scope can approve, publish, roll back or submit to search engines.",
-    href: "/admin/automation/mcp",
+    href: "/admin/automation?section=mcp-access",
     rows: [
       r("Admin server", "OAuth 2.1 with PKCE; switch ADMIN_MCP_ENABLED.", "off"),
       r("Public server", "Read-only, published articles only, no sign-in; switch PUBLIC_MCP_ENABLED.", "off"),

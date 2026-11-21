@@ -19,7 +19,7 @@ export default async function McpSection() {
         </p>
         <p className="mt-3 text-sm text-fg-muted">No MCP tool can approve, publish, roll back or submit content, and the flows a client may start are fixed in the agent&apos;s code. The settings below cannot widen that.</p>
         <p className="mt-4">
-          <Link href="/admin/automation/mcp" className={buttonClass("secondary")}>
+          <Link href="/admin/automation?section=mcp-access" className={buttonClass("secondary")}>
             Open MCP access
           </Link>
         </p>

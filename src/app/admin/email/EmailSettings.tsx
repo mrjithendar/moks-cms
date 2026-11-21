@@ -13,7 +13,11 @@ const LABELS: Record<Provider, string> = { disabled: "Disabled", smtp: "SMTP", m
  * Admin → Settings → Email. One provider selector; only the selected provider's fields are shown and
  * submitted. Stored secrets are never sent to the browser: the page only knows whether one is saved.
  */
-export function EmailSettings({ initial, adminEmail }: { initial: EmailSummary; adminEmail: string }) {
+/**
+ * `part`: the Email page's sections (the sectioned layout of Settings → General): "provider" draws the provider form,
+ * "test" the test message for the saved provider; "all" both, as before.
+ */
+export function EmailSettings({ initial, adminEmail, part = "all" }: { initial: EmailSummary; adminEmail: string; part?: "all" | "provider" | "test" }) {
   const [state, save, saving] = useActionState<EmailFormState, FormData>(saveEmailAction, {});
   const [testState, test, testing] = useActionState<EmailFormState, FormData>(testEmailAction, {});
   const summary = state.summary ?? initial;
@@ -41,6 +45,7 @@ export function EmailSettings({ initial, adminEmail }: { initial: EmailSummary; 
         {summary.active !== "disabled" && <ProviderStatus s={summary.providers[summary.active as SendingProvider]} />}
       </div>
 
+      {part !== "test" && (
       <form onSubmit={submitWith(save)} className="space-y-5" noValidate key={summary.active + JSON.stringify(summary.providers[provider === "disabled" ? "smtp" : provider].fields)}>
         <Field label="Email provider" htmlFor="email-provider" hint="Only the selected provider sends email. Settings of the others are kept; there is no automatic failover.">
           <Select id="email-provider" name="provider" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>
@@ -161,9 +166,13 @@ export function EmailSettings({ initial, adminEmail }: { initial: EmailSummary; 
           {saving ? "Saving…" : provider === "disabled" ? "Turn email off" : `Save and use ${LABELS[provider]}`}
         </Button>
       </form>
+      )}
 
-      {provider !== "disabled" && summary.providers[provider].configured && (
-        <form onSubmit={submitWith(test)} className="space-y-4 border-t border-line pt-6">
+      {part === "test" && (provider === "disabled" || !summary.providers[provider].configured) && (
+        <p className="text-sm text-fg-muted">Save a provider first (the Provider section); then send a test with its saved settings here.</p>
+      )}
+      {part !== "provider" && provider !== "disabled" && summary.providers[provider].configured && (
+        <form onSubmit={submitWith(test)} className={`space-y-4 ${part === "all" ? "border-t border-line pt-6" : ""}`}>
           <input type="hidden" name="provider" value={provider} />
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold text-fg">Test {LABELS[provider]}</h3>

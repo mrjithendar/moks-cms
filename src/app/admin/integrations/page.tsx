@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
+import { SettingsSections } from "@/components/admin/SettingsSections";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Alert, Button, Field, Input, Select } from "@/components/ui/form";
 import { isProductionEnv, siteUrl } from "@/config/site";
@@ -20,6 +22,8 @@ import { storageReady } from "@/lib/storage";
 export const metadata = { title: "Integrations" };
 
 const BACK = "/admin/integrations";
+/** Where a save returns: the section it was made in (flash adds ?ok= / ?error= after the query). */
+const backTo = (section: string) => `${BACK}?section=${section}`;
 
 const CONSOLE: Record<SocialProvider, { href: string; label: string; steps: string }> = {
   google: {
@@ -38,7 +42,7 @@ async function saveProvider(form: FormData) {
   "use server";
   const actor = await adminActor();
   const provider = String(form.get("provider")) as SocialProvider;
-  await flash(BACK, async () => {
+  await flash(backTo("social"), async () => {
     if (form.get("intent") === "reset") {
       await resetSocialProvider(actor, provider);
       return `${providerLabels[provider]} now follows the deployment's environment variables.`;
@@ -51,7 +55,7 @@ async function saveProvider(form: FormData) {
 async function saveImageGeneration(form: FormData) {
   "use server";
   const actor = await adminActor();
-  await flash(BACK, async () => {
+  await flash(backTo("gemini"), async () => {
     if (form.get("intent") === "reset") {
       await removeGeminiKey(actor);
       return "Gemini settings removed. Environment variables apply again, if set.";
@@ -73,7 +77,7 @@ async function indexNowAction(form: FormData) {
   "use server";
   const actor = await adminActor();
   const intent = String(form.get("intent"));
-  await flash(BACK, async () => {
+  await flash(backTo("indexnow"), async () => {
     if (intent === "submit-all") {
       const { queued, total } = await queueSitemapForIndexNow();
       await audit(actor, "integrations.indexnow.submit", undefined, { queued, total });
@@ -84,17 +88,25 @@ async function indexNowAction(form: FormData) {
   });
 }
 
-/** The page's sections, in order, for the jump links at the top. */
+/**
+ * The page's sections, in order: the same sectioned layout as Settings → General (components/admin/SettingsSections),
+ * one section at a time at /admin/integrations?section=<id>. The ids of the shared runtime-settings groups
+ * (lib/runtime-settings) are their section ids, so an old #turnstile link maps onto ?section=turnstile.
+ */
 const SECTIONS = [
-  { id: "social-title", label: "Social sign-in" },
+  { id: "social", label: "Social sign-in" },
   { id: "turnstile", label: "Turnstile" },
-  { id: "indexnow-title", label: "IndexNow" },
+  { id: "indexnow", label: "IndexNow" },
   { id: "verification", label: "Search engine verification" },
   { id: "analytics", label: "Analytics & ads" },
-  { id: "gemini-title", label: "Image generation" },
+  { id: "search-console", label: "Search Console & GA4" },
+  { id: "gemini", label: "Image generation" },
   { id: "image-limits", label: "Image limits" },
   { id: "video-generation", label: "Video generation" },
-];
+] as const;
+type SectionId = (typeof SECTIONS)[number]["id"];
+/** Old jump links (#social-title, #indexnow-title, #gemini-title) and the runtime groups' own anchors. */
+const OLD_ANCHORS: Record<string, SectionId> = { "social-title": "social", "indexnow-title": "indexnow", "gemini-title": "gemini" };
 
 const SOURCE: Record<string, string> = { admin: "Set here", env: "From environment", none: "Not configured" };
 
@@ -102,6 +114,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   await requireRole("admin");
   const [social, gemini, indexNow, storage, sp] = await Promise.all([socialSummary(), geminiSummary(), indexNowSummary(), storageReady(), searchParams]);
   const origin = siteUrl();
+  const asked = sp.section ?? "";
+  const section: SectionId = SECTIONS.find((x) => x.id === asked)?.id ?? OLD_ANCHORS[asked] ?? "social";
 
   return (
     <>
@@ -109,13 +123,9 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         title="Integrations"
         description="Sign-in, search engines, analytics and ads, and AI image and video generation. Secrets are encrypted at rest (SETTINGS_ENCRYPTION_KEY) and never shown again; leave a secret field empty to keep the stored value. A value saved here overrides the deployment; an empty field uses the deployment's value."
       />
-      <Flash ok={sp.ok} error={sp.error} />
-      <nav aria-label="Sections" className="mb-6 flex flex-wrap gap-2 text-sm">
-        {SECTIONS.map((x) => (
-          <a key={x.id} href={`#${x.id}`} className="rounded-full border border-line px-3 py-1.5 text-fg-muted hover:bg-surface-sunken hover:text-fg">{x.label}</a>
-        ))}
-      </nav>
-      <div className="space-y-6">
+      <SettingsSections sections={SECTIONS} current={section} basePath={BACK} label={"Integrations sections"}>
+        <Flash ok={sp.ok} error={sp.error} />
+        {section === "social" && (
         <section aria-labelledby="social-title" className="space-y-4">
           <div>
             <h2 id="social-title" className="scroll-mt-24 text-lg font-semibold text-fg">Social sign-in</h2>
@@ -166,9 +176,11 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             );
           })}
         </section>
+        )}
 
-        <RuntimeSettings ids={["turnstile"]} layout="section" />
+        {section === "turnstile" && <RuntimeSettings ids={["turnstile"]} layout="section" />}
 
+        {section === "indexnow" && (
         <section aria-labelledby="indexnow-title" className="space-y-4">
           <div>
             <h2 id="indexnow-title" className="scroll-mt-24 text-lg font-semibold text-fg">IndexNow</h2>
@@ -214,15 +226,19 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             )}
           </Card>
         </section>
+        )}
 
-        <RuntimeSettings ids={["verification", "analytics"]} layout="section" />
+        {section === "verification" && <RuntimeSettings ids={["verification"]} layout="section" />}
+        {section === "analytics" && <RuntimeSettings ids={["analytics"]} layout="section" />}
+        {section === "search-console" && <SeoIntegrations />}
 
+        {section === "gemini" && (
         <section aria-labelledby="gemini-title" className="space-y-4">
           <div>
             <h2 id="gemini-title" className="scroll-mt-24 text-lg font-semibold text-fg">Image generation (Gemini)</h2>
             <p className="mt-1 text-sm text-fg-muted">
               Powers “✨ Generate image” for cover images in the post and page editors. Results are saved to the media library only when an author accepts them. Per-author and daily
-              limits are under <a href="#image-limits" className="link">Image generation limits</a>; video uses the same key (<a href="#video-generation" className="link">Video generation</a>).
+              limits are under <Link href={`${BACK}?section=image-limits`} className="link">Image limits</Link>; video uses the same key (<Link href={`${BACK}?section=video-generation`} className="link">Video generation</Link>).
             </p>
           </div>
           <Card>
@@ -235,7 +251,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             </div>
             {!storage && (
               <div className="mb-4">
-                <Alert tone="info">Media storage (Cloudflare R2) must be configured in Settings → Storage before generated images can be saved.</Alert>
+                <Alert tone="info">Media storage (Cloudflare R2) must be configured in Settings → Media & storage before generated images can be saved.</Alert>
               </div>
             )}
             {gemini.lastError && (
@@ -279,12 +295,11 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             </form>
           </Card>
         </section>
+        )}
 
-        <RuntimeSettings ids={["image-limits", "video-generation"]} layout="section" />
-      </div>
-      <div className="mt-10">
-        <SeoIntegrations />
-      </div>
+        {section === "image-limits" && <RuntimeSettings ids={["image-limits"]} layout="section" />}
+        {section === "video-generation" && <RuntimeSettings ids={["video-generation"]} layout="section" />}
+      </SettingsSections>
     </>
   );
 }

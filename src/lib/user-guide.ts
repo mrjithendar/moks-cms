@@ -613,7 +613,7 @@ const guides: GuideEntry[] = [
     section: "SEO agent, AI & ML",
     title: "MCP access",
     summary: "Connect Claude or MCP Inspector to the SEO tools, choose scopes and revoke access.",
-    href: "/admin/automation/mcp",
+    href: "/admin/automation?section=mcp-access",
     adminOnly: true,
     keywords: ["mcp", "model context protocol", "claude connector", "oauth", "scopes", "revoke", "assistant", "inspector", "public mcp"],
     diagram: { name: "mcp-access", alt: "Claude adds the admin MCP server as a connector, the admin signs in on the consent page and picks scopes, and the token reaches the admin server. It can read, start flows and reject, but never approve, publish, roll back or submit. Admins revoke clients on MCP access. Readers' assistants use the public server without signing in." },
@@ -1023,7 +1023,7 @@ const faqs: GuideEntry[] = [
   ], { href: "/admin/models", adminOnly: true, keywords: ["ml", "model", "disable", "override", "rule"] }),
   faq("faq-mcp-revoke", "SEO agent, AI & ML", "How do I disconnect Claude from the admin?", [
     "Admin → MCP access → Revoke on its row. The token stops working at once. To switch the whole admin MCP server off, the operator sets ADMIN_MCP_ENABLED=false.",
-  ], { href: "/admin/automation/mcp", adminOnly: true, keywords: ["mcp", "revoke", "disconnect", "claude"] }),
+  ], { href: "/admin/automation?section=mcp-access", adminOnly: true, keywords: ["mcp", "revoke", "disconnect", "claude"] }),
   faq("faq-seo-budget", "SEO agent, AI & ML", "How much does the SEO agent spend on AI?", [
     "There is one LLM budget for everything: AI & SEO → Settings → LLM budget, a daily limit, a monthly limit, or both. Agent flows, drafts, keyword intents and AI visibility all count against it, and a call that would cross it is not made. No limit is set until you save one. Ask the Blog keeps its own daily limit on top. DataForSEO is not an LLM and keeps its own monthly cap.",
   ], { href: "/admin/automation", adminOnly: true, keywords: ["cost", "budget", "spend", "claude", "dataforseo"] }),

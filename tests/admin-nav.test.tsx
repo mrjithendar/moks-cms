@@ -36,7 +36,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
   { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
   { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
-  { href: "/admin/automation/mcp", label: "MCP access", section: "Site settings" },
+  { href: "/admin/automation?section=mcp-access", label: "MCP access", section: "Site settings" },
   { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
   { href: "/admin/somewhere-new", label: "Brand new page", section: "Operations" },
 ];
@@ -136,7 +136,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
   });
 
   it("the current page is the longest matching link, and a link with a query only matches that query", () => {
-    expect(currentOf(ITEMS, "/admin/automation/mcp")?.label).toBe("MCP access");
+    expect(currentOf(ITEMS, "/admin/automation", new URLSearchParams("section=mcp-access"))?.label).toBe("MCP access");
     expect(currentOf(ITEMS, "/admin/automation/skills")?.label).toBe("Skills");
     expect(currentOf(ITEMS, "/admin/automation")?.label).toBe("Automation & AI");
     expect(currentOf(ITEMS, "/admin")?.label).toBe("Dashboard");
@@ -271,7 +271,8 @@ describe("admin sidebar", () => {
     render();
     expect(list("comments").hidden).toBe(false);
     expect(currentLink()!.textContent).toBe("Bookings");
-    pathname = "/admin/automation/mcp";
+    pathname = "/admin/automation";
+    search = "section=mcp-access";
     render();
     expect(list("ai").hidden).toBe(false);
     expect(currentLink()!.textContent).toBe("MCP access");

@@ -4,6 +4,7 @@ import AskTheBlogSection from "./ask-the-blog";
 import LlmBudgetSection from "./llm-budget";
 import LlmProvidersSection from "./llm-providers";
 import McpSection from "./mcp";
+import McpAccessSection from "./mcp-access";
 import MlSection from "./ml";
 import OverviewSection from "./overview";
 import SeoAiSection from "./seo-ai";
@@ -33,6 +34,7 @@ export const AI_SEO_SECTIONS: AiSeoSection[] = [
   { id: "ask-the-blog", label: "Ask the Blog", render: AskTheBlogSection },
   { id: "ml", label: "ML & retrieval", render: MlSection },
   { id: "mcp", label: "MCP", render: McpSection },
+  { id: "mcp-access", label: "MCP access", render: McpAccessSection },
   { id: "data", label: "Data sources", render: SeoDataSection },
   { id: "schedules", label: "Schedules", render: SeoSchedulesSection },
   { id: "scoring", label: "Scoring & rules", render: SeoScoringSection },

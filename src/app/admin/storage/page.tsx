@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
 import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
+import { SettingsSections } from "@/components/admin/SettingsSections";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Alert, Button } from "@/components/ui/form";
 import { adminActor, actorOf } from "@/lib/admin";
@@ -13,10 +14,23 @@ import { StorageForm } from "./StorageForm";
 
 export const metadata = { title: "Storage" };
 
+const BACK = "/admin/storage";
+
+/**
+ * The page's sections: the same sectioned layout as Settings → General (components/admin/SettingsSections), one at a
+ * time at /admin/storage?section=<id>. "Move media to R2" is listed only while there is something to move or undo.
+ */
+const ALL_SECTIONS = [
+  { id: "media", label: "Media storage" },
+  { id: "video-destinations", label: "Video destinations" },
+  { id: "move", label: "Move media to R2" },
+] as const;
+type SectionId = (typeof ALL_SECTIONS)[number]["id"];
+
 async function saveStorage(form: FormData) {
   "use server";
   const actor = await adminActor();
-  await flash("/admin/storage", async () => {
+  await flash(`${BACK}?section=media`, async () => {
     const provider = form.get("provider") === "s3" ? "s3" : "r2";
     const r = await saveStorageConfig(actor, {
       provider,
@@ -35,7 +49,7 @@ async function saveStorage(form: FormData) {
 async function migrate() {
   "use server";
   const actor = await adminActor();
-  await flash("/admin/storage", async () => {
+  await flash(`${BACK}?section=move`, async () => {
     const { entries, remaining } = await migrateBatch(actor, { dryRun: false, limit: 25 });
     const failed = entries.filter((e) => e.status.startsWith("failed"));
     if (failed.length) throw new PostError(`${entries.length - failed.length} copied, ${failed.length} failed (${failed[0]!.status}). ${remaining} still on S3. Run again to retry.`);
@@ -46,7 +60,7 @@ async function migrate() {
 async function rollback() {
   "use server";
   const actor = await adminActor();
-  await flash("/admin/storage", async () => `${await rollbackMigration(actor)} file(s) now read from the legacy S3 bucket again.`);
+  await flash(`${BACK}?section=move`, async () => `${await rollbackMigration(actor)} file(s) now read from the legacy S3 bucket again.`);
 }
 
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
@@ -56,11 +70,14 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
   const [s, migration, sp] = await Promise.all([storageSummary(), migrationStatus(), searchParams]);
   const fromEnv = s?.source === "env";
   const plan = sp.plan === "1" && migration.legacy > 0 && s?.verifiedAt && migration.sourceConfigured ? await migrateBatch(actorOf(me), { dryRun: true, limit: 25 }) : null;
+  const sections = ALL_SECTIONS.filter((x) => x.id !== "move" || migration.legacy > 0 || migration.migrated > 0);
+  const section: SectionId = sections.find((x) => x.id === sp.section)?.id ?? "media";
   return (
     <>
-      <AdminHeader title="Storage" description="Where media, invoices, backups and the SEO agent's data are stored: Cloudflare R2 or Amazon S3. Keys are encrypted at rest and never shown again. Also where generated videos can go (Video destinations). Outgoing email is under Settings → Email." />
-      <Flash ok={sp.ok} error={sp.error} />
-      <div className="space-y-6">
+      <AdminHeader title="Media & storage" description="Where media, invoices, backups and the SEO agent's data are stored: Cloudflare R2 or Amazon S3. Keys are encrypted at rest and never shown again. Also where generated videos can go (Video destinations). Outgoing email is under Settings → Email." />
+      <SettingsSections sections={sections} current={section} basePath={BACK} label={"Media & storage sections"}>
+        <Flash ok={sp.ok} error={sp.error} />
+        {section === "media" && (
         <Card>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold text-fg">Media storage{s ? ` (${PROVIDER_LABEL[s.provider]})` : ""}</h2>
@@ -91,10 +108,11 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
             />
           )}
         </Card>
+        )}
 
-        <RuntimeSettings ids={["video-destinations"]} />
+        {section === "video-destinations" && <RuntimeSettings ids={["video-destinations"]} />}
 
-        {(migration.legacy > 0 || migration.migrated > 0) && (
+        {section === "move" && (
           <Card>
             <h2 className="font-semibold text-fg">Move existing media from S3 to R2</h2>
             <p className="mt-2 text-sm text-fg-muted">
@@ -104,7 +122,7 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
             {!migration.sourceConfigured && <div className="mt-4"><Alert>The legacy S3 configuration is missing, so files cannot be copied or rolled back.</Alert></div>}
             <div className="mt-4 flex flex-wrap gap-2">
               {migration.legacy > 0 && (
-                <Link href="/admin/storage?plan=1" className="inline-flex items-center rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold">
+                <Link href={`${BACK}?section=move&plan=1`} className="inline-flex items-center rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold">
                   Dry run
                 </Link>
               )}
@@ -140,8 +158,7 @@ export default async function StoragePage({ searchParams }: { searchParams: Flas
             )}
           </Card>
         )}
-
-      </div>
+      </SettingsSections>
     </>
   );
 }

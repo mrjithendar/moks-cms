@@ -116,7 +116,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/models", { group: "ai", heading: "Models & data" }],
   ["/admin/lancedb", { group: "ai" }],
   ["/admin/automation", { group: "ai", title: "Settings", heading: "Settings" }],
-  ["/admin/automation/mcp", { group: "ai" }],
+  ["/admin/automation?section=mcp-access", { group: "ai", title: "MCP access" }],
 
   ["/admin/invoices", { group: "billing" }],
   ["/admin/payments", { group: "billing" }],
@@ -227,7 +227,7 @@ type Query = { get(name: string): string | null } | null | undefined;
 /**
  * How well a menu link fits the address: -1 when it does not. A link with a query (?section=theme) fits only that
  * exact page and query, and then beats the plain link to the same page; otherwise the longest path wins, so
- * /admin/automation/mcp does not also light up Automation.
+ * /admin/automation/skills does not also light up Automation.
  */
 function fit(item: NavItem, pathname: string, query: Query): number {
   const [path = "", search = ""] = item.href.split("?");
