@@ -1,5 +1,15 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P6 (first part): System status rows link to the right section (2026-11-21, owner request)
+
+- `src/lib/health.ts`: "Claude (AI drafting)" links to AI & SEO → Settings → LLM providers & models; "News desk" to
+  its switch; "Payments (Razorpay)" to `/admin/payments` (it was listed as a deployment setting).
+- New row **LLM budget** (SEO & AI): degraded when no daily or monthly limit is saved, or when the monthly limit is
+  reached; links to the LLM budget section. With the agent unreachable it says so.
+- **Not done yet in P6:** the practice settings page and AI hints on the shared LLM set-up, start-up settings with
+  "restart pending", and the Configuration tab.
+- Tests: `tests/health-checks.test.ts` already checks that every linked page exists; not changed. **Nothing was run.**
+
 ## Admin settings plan, P5 (first part): the news desk switch is in the admin (2026-11-21, owner request)
 
 - Newsroom → Settings has one switch, "News desk on". The rule (`newsDeskState` in `src/lib/news/schema.ts`, the same
