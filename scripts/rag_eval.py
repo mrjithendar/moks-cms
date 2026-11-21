@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the retrieval evaluation (tests/fixtures/rag_eval.yaml) against one or more retriever configurations over the
+"""Run the retrieval evaluation (app/data/rag_eval.yaml) against one or more retriever configurations over the
 blog's MDX files, and write docs/seo/rag-eval/<date>-<config>.md (+ <date>-summary.md comparing them).
 
   # real run (ONNX bge-small; Postgres full text in a scratch database; no pgvector needed: exact cosine in numpy)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mine candidate eval questions from real Ask-the-Blog traffic, for a person to label (docs/seo/RAG.md "Evaluation").
 
-Reads (read-only) seo_ask_log and seo_ask_gaps and writes YAML entries in the shape of tests/fixtures/rag_eval.yaml,
+Reads (read-only) seo_ask_log and seo_ask_gaps and writes YAML entries in the shape of app/data/rag_eval.yaml,
 with `type`, `slugs` and `anchors` left for the labeller: nothing is labelled automatically (the retriever's own
 answer is exactly what the eval must not trust). Each entry carries a `mined` block (why it was picked, how often it
 was asked, the best cosine, what retrieval returned) as a labelling hint; delete it when the question moves into the
@@ -79,7 +79,7 @@ def render(entries: list[dict[str, Any]]) -> str:
     head = (
         "# Candidate eval questions mined from Ask-the-Blog traffic (scripts/rag_mine_eval.py). NOT LABELLED.\n"
         "# For each: read the articles, set type / slugs / anchors by hand (or drop it), delete `mined`, and give it a\n"
-        "# unique id before moving it into tests/fixtures/rag_eval.yaml. Never copy the retrieved URLs as labels.\n"
+        "# unique id before moving it into app/data/rag_eval.yaml. Never copy the retrieved URLs as labels.\n"
     )
     return head + yaml.safe_dump({"questions": entries}, sort_keys=False, allow_unicode=True, width=120)
 

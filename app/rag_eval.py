@@ -1,4 +1,4 @@
-"""Retrieval evaluation (docs/seo/RAG.md "Evaluation"): the fixed question set in tests/fixtures/rag_eval.yaml run
+"""Retrieval evaluation (docs/seo/RAG.md "Evaluation"): the fixed question set in app/data/rag_eval.yaml run
 against a retriever configuration.
 
 Metrics (k = 6, the Ask-the-Blog top-k):
@@ -42,8 +42,10 @@ from .index import HYBRID_DDL, TEXT_QUERY_CTE, Hit, to_hit
 from .retrieval import Bm25, Candidate, MemoryRow, RetrievalConfig, candidates_from_lists, diversify, fuse, text_terms
 
 K = 6
-EVAL_PATH = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "rag_eval.yaml"
-# The articles the eval set (tests/fixtures/rag_eval.yaml) is labelled against: a frozen copy of jithendar.com's blog
+# The question set ships with the app (app/data): the weekly seo_ml_flow runs it against the live index in the pod,
+# where tests/ is not in the image (.dockerignore). It was tests/fixtures/rag_eval.yaml until 2026-11-22.
+EVAL_PATH = Path(__file__).resolve().parent / "data" / "rag_eval.yaml"
+# The articles the eval set (app/data/rag_eval.yaml) is labelled against: a frozen copy of jithendar.com's blog
 # (tests/fixtures/rag_corpus, copied from the site on 2026-11-16 when the site moved to its own repository,
 # moks-tech/jithendar.com). RAG_EVAL_BLOG_DIR points it at another folder, e.g. that repository's content/blog.
 BLOG_DIR = Path(os.environ.get("RAG_EVAL_BLOG_DIR") or Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "rag_corpus")
