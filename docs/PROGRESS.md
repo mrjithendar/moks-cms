@@ -1,5 +1,26 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P2 part B (web app, first half): LLM providers & models section (2026-11-21, owner request)
+
+Thin client of the seo-agent's `GET/PUT /llm-providers` and `GET /llm-models` (moks-seo-agent branch
+`feat/llm-provider-catalog`). With an agent from before that change the section says "needs a newer seo-agent".
+
+- AI & SEO → Settings → LLM providers & models (`sections/llm-providers.tsx`, `components/seo/LlmProvidersCard.tsx`)
+  replaces the placeholder: one form per provider (name, on/off, status pills, endpoint fields for its kind, a
+  **write-only** API key with "remove the saved key"), its models (id, label, on/off, prices per million tokens,
+  free, capabilities, cache prices and limits) and "Add a provider" from the agent's catalog. Saved one provider at
+  a time. An empty price stays empty: nothing is preset.
+- `src/lib/llm-providers-view.ts`, `GET/PUT /api/admin/seo/llm-providers`, `GET /api/admin/seo/llm-models` (admins
+  only). Audit action `seo.llm_provider.update` records names only: whether the key was set, removed or left, never
+  the key.
+- `components/seo/ModelPicker.tsx`: a reusable picker of the models that are switched on (value
+  `<provider id>/<model id>`), for the model-for-each-job table and later parts of the plan. Not used by a page yet.
+- **Not in this change:** "Test", "Fetch models" and the "Model for each job" table (the agent does not have them
+  yet). Every job still calls Anthropic; the section says so.
+- User guide: the settings reference line for this section.
+- Tests: `tests/llm-providers.test.ts` (new, 10). **Nothing was run** in the session (no `node_modules`); the new
+  files only passed a syntax-level `tsc` without the project's packages. Not viewed in a browser.
+
 ## Admin settings plan, P2 part A (web app, first half): the one LLM budget section (2026-11-21, owner request)
 
 Thin client of moks-seo-agent #14 (one budget for every provider, model and purpose; `GET/PUT /llm-budget`).
