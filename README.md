@@ -45,7 +45,9 @@ left here for it:
   `news-*` schedules are left for the news agent's own dispatcher.
 - **Its token**, `SEO_AGENT_NEWS_TOKEN` (optional; ≥ 32 characters and not `SEO_AGENT_TOKEN`), is accepted on
   `POST /search` (the site's index, for site match and its crew's site search), `POST /llm-budget/reserve` and
-  `POST /llm-budget/settle` only. Every other route answers it 403.
+  `POST /llm-budget/settle` only. Every other route answers it 403. Each hold records who took it (`news-agent` or
+  `web`, from the token): a log line per hold, and `GET /llm-budget` lists the open holds per caller (`holds`).
+- `OPENAI_API_KEY` stays in `seo-agent-env`: the OpenAI provider (app/llm_providers/catalog.py) falls back to it.
 - **Publishing** news articles is still `publish_flow` here, after a person approves the draft in the web app.
 - The public MCP tool `search_news` (published news posts) stays here (`app/mcp/news_search.py`); the admin MCP news
   tools are gone.

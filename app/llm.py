@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import os
 import time
@@ -31,6 +32,7 @@ from . import metrics, tracing
 from .llm_budgets import Budget, BudgetSource, MemoryBudget, period_end, period_start
 
 T = TypeVar("T", bound=BaseModel)
+log = logging.getLogger("seo_agent.llm")
 
 # USD per million tokens; identical to moks-cms/src/lib/seo-intel/claude.ts (first-party list prices, 2026-10).
 PRICES: dict[str, dict[str, float]] = {
@@ -291,6 +293,7 @@ class Reservation:
     scope: str | None  # "ask_daily" when the call also counts against Ask the Blog's own daily limit
     usd: float
     released: bool = False
+    caller: str | None = None  # a hold taken over the API: who asked ("web" | "news-agent")
 
 
 PROVIDER = "anthropic"  # every call this service makes is a Claude call (seo_llm_usage.provider)
@@ -407,18 +410,37 @@ class BudgetGuard:
         for key in [k for k, (_, until) in self.holds.items() if until <= now]:
             self.release(self.holds.pop(key)[0])
 
-    async def hold(self, max_usd: float, purpose: str) -> str:
+    async def hold(self, max_usd: float, purpose: str, caller: str | None = None) -> str:
         """Checks the caps for a call someone else is about to make and holds its upper bound (the caller's own
         estimate: this service does not know every model's price) until settle(), or for HOLD_SECONDS when the
-        caller never comes back. Returns the hold's id. BudgetExceeded when it does not fit."""
+        caller never comes back. Returns the hold's id. BudgetExceeded when it does not fit. `caller` (the web app or
+        the news agent, from the token it used) is kept on the hold and logged, so the budget page can say who holds what."""
         if len(self.holds) >= MAX_HOLDS:
             self._lapse()
             if len(self.holds) >= MAX_HOLDS:
                 raise BudgetExceeded("llm_holds", "too many LLM calls are being held at once; try again shortly")
-        r = await self._admit_usd(max_usd, purpose, hold=True)
+        try:
+            r = await self._admit_usd(max_usd, purpose, hold=True)
+        except BudgetExceeded as e:
+            log.info("llm budget hold refused", extra={"event": "llm_budget_hold", "caller": caller, "purpose": purpose, "usd": round(max_usd, 6), "outcome": "refused", "scope": e.scope})
+            raise
+        r.caller = caller
         key = uuid.uuid4().hex
         self.holds[key] = (r, self.monotonic() + HOLD_SECONDS)
+        log.info("llm budget hold", extra={"event": "llm_budget_hold", "caller": caller, "purpose": purpose, "usd": round(max_usd, 6), "outcome": "held"})
         return key
+
+    def held_by_caller(self) -> list[dict[str, Any]]:
+        """The holds taken over the API that are still open, per caller: their upper bounds and how many."""
+        self._lapse()
+        out: dict[str, dict[str, Any]] = {}
+        for r, _ in self.holds.values():
+            if r.released:
+                continue
+            g = out.setdefault(r.caller or "unknown", {"caller": r.caller or "unknown", "usd": 0.0, "calls": 0})
+            g["usd"] = round(g["usd"] + r.usd, 6)
+            g["calls"] += 1
+        return sorted(out.values(), key=lambda g: g["caller"])
 
     def settle(self, key: str) -> bool:
         """Lets go of a hold. The caller records its own usage row; from then on that row is the spend. False when
