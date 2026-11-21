@@ -7,21 +7,28 @@ name: moks-cms
 #
 # check   → pull requests (opened, updated) and manual runs: lint and typecheck, against the test fixture site
 #           (tests/fixtures/site; scripts/use-site.mjs). The production build is the `image` job's.
-# test    → the same events: the test suite in 4 parallel shards.
-# image   → pull requests: the production build packaged as the arm64 image (Dockerfile.ci) and smoke-tested; not pushed
+# test    → the same events, after `check` has passed: the test suite in 2 shards.
+# image   → pull requests, after `check` and `test` have passed: the production build packaged as the arm64 image
+#           (Dockerfile.ci) and smoke-tested; not pushed.
 # release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #           in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
 #           same image and smoke test, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
 #           (:manual-<run number> for manual runs) and :latest (the same image). Nothing else: no site is told,
 #           each site pulls the image it names.
-#           `release` pushes only after lint, typecheck and the tests have passed. When `scope` finds that the pull
-#           request's head commit passed `check` and every `test` shard in an earlier run, that is enough. Otherwise
-#           (merged while a check was red, still running or cancelled, or a manual run, which has no pull request)
-#           `check` and `test` run again on the merge commit, at the same time as `release` builds the image, and
-#           `release` waits for them right before it pushes (scripts/wait-for-jobs.sh): a failure pushes nothing.
-#           The workflow has to check this itself: the repository is private on GitHub Free, which has no branch
-#           protection or required status checks, so nothing else stops a pull request from being merged before its
-#           checks pass.
+#           `release` builds only after lint, typecheck and the tests have passed. When `scope` finds that the pull
+#           request's head commit passed `check` and every `test` shard in an earlier run, that is enough; a pull
+#           request merged while its own run was still going is waited for first. Otherwise (merged while a check was
+#           red or cancelled, or a manual run, which has no pull request) `check` and `test` run again on the merge
+#           commit, and `release` starts only once they have passed. The workflow has to check this itself: the
+#           repository is private on GitHub Free, which has no branch protection or required status checks, so nothing
+#           else stops a pull request from being merged before its checks pass.
+#
+# One stage at a time, on purpose: the mk4 workers have 4 cores and 8 GiB each, a runner pod reserves 0.5 core and
+# 1 GiB but a test shard or the production build uses 1.5–3 GiB and 2–3 cores. On 2026-11-21 one merge started 7 such
+# pods at once (lint, 4 test shards and the release build next to each other); w3 ran out of memory, killed cluster
+# components and 5 of the jobs ("The self-hosted runner lost communication"), and the retried shards timed out in
+# PGlite set-up. Now a push needs at most 2 runner pods at a time, and a failed lint or typecheck, or a newer push
+# (which cancels the run), stops the run before the tests and the build start.
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds nothing.
 #
@@ -58,7 +65,7 @@ jobs:
   check:
     # Pull requests from forks never run CI here (nothing in it needs them). Branches of this repository,
     # including Dependabot's, still run. On a merge it runs again only when `scope` could not verify the pull
-    # request's head commit (then `release` waits for it).
+    # request's head commit (then `test` and `release` wait for it).
     needs: scope
     if: >-
       !cancelled() && (github.event_name != 'pull_request' ||
@@ -83,9 +90,16 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
 
-  # The release image, built and smoke-tested exactly as `release` does, without pushing it.
+  # The release image, built and smoke-tested exactly as `release` does, without pushing it. Last, after lint, typecheck
+  # and the tests have passed: the build is the heaviest job (up to ~3 GiB), and a pull request that fails those, or is
+  # pushed to again meanwhile, never builds. The result checks are spelled out: `check` needs the skipped `scope`, and a
+  # bare condition would skip this job too.
   image:
-    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [check, test]
+    if: >-
+      !cancelled() && needs.check.result == 'success' && needs.test.result == 'success' &&
+      github.event_name == 'pull_request' && github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: mk4
     timeout-minutes: 25
     steps:
@@ -107,21 +121,21 @@ jobs:
       - name: Smoke-test the image
         run: scripts/smoke-site-image.sh moks-cms:ci "$GITHUB_SHA"
 
-  # The test suite (~1300 tests, ~7.5 min on one 2-worker runner) split by file across 4 parallel runners (with 3, the
-  # slowest shard took ~6 min). Same events as `check`, including a merge `scope` could not verify.
+  # The test suite split by file over 2 runners, once `check` has passed (so it runs on the same events as `check`,
+  # including a merge `scope` could not verify). Each shard runs 2 vitest workers with a PGlite each (vitest.config.ts)
+  # and uses ~1.5 GiB and 2+ cores. With 4 shards next to the build and lint, the pods outgrew their worker
+  # (see the top of the file); 2 shards do the same work with half the set-up (checkout, npm ci) and half the peak.
+  # Keep the shard count in step with TEST_SHARDS in `scope`.
   test:
-    needs: scope
-    if: >-
-      !cancelled() && (github.event_name != 'pull_request' ||
-      (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (needs.scope.outputs.image == 'true' && needs.scope.outputs.verified != 'true'))
+    needs: [scope, check]
+    if: ${{ !cancelled() && needs.check.result == 'success' }}
     runs-on: mk4
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
-    name: test (${{ matrix.shard }}/4)
+        shard: [1, 2]
+    name: test (${{ matrix.shard }}/2)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,18 +148,20 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run site -- --copy
-      - run: npm test -- --shard=${{ matrix.shard }}/4
+      - run: npm test -- --shard=${{ matrix.shard }}/2
 
   # Did the merged pull request change anything that is in the image? Notes and READMEs are not (.dockerignore: docs,
   # *.md), so merging only those must not build or push a new image.
   scope:
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: mk4
-    timeout-minutes: 5
+    # Mostly the wait for the pull request's own run (WAIT_MINUTES below).
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: read
-      # The step "Did the pull request's head commit pass check and test?" reads this workflow's runs and their jobs.
+      # The steps "Wait for…" and "Did the pull request's head commit pass check and test?" read this workflow's runs
+      # and their jobs.
       actions: read
     outputs:
       image: ${{ steps.files.outputs.image }}
@@ -171,6 +187,39 @@ jobs:
           done < "$RUNNER_TEMP/files.txt"
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "Pull request #$PR changes the image: $image" >> "$GITHUB_STEP_SUMMARY"
+      # A pull request merged while its own run (lint, the tests, the image build) was still going: wait for that run
+      # instead of running lint and the tests on the merge commit as well, next to it. The merge has its own
+      # concurrency group, so the merge does not cancel that run. It is the whole run, not only `check` and `test`, so
+      # the pull request's image build is not running beside the release build either. Never fails the job: after
+      # WAIT_MINUTES, or when the runs cannot be listed, the next step decides as usual (and `release` runs lint and
+      # the tests itself if nothing passed yet).
+      - name: Wait for the pull request's own run to finish
+        if: steps.files.outputs.image == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          THIS_RUN: ${{ github.run_id }}
+          WAIT_MINUTES: 40
+        run: |
+          set -uo pipefail
+          deadline=$((SECONDS + WAIT_MINUTES * 60))
+          last=""
+          while :; do
+            if ! open="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci-moks-cms.yml/runs?head_sha=$HEAD_SHA&per_page=30" \
+                  --jq ".workflow_runs[] | select(.id != $THIS_RUN and .status != \"completed\") | .id")"; then
+              echo "::warning::The runs for head commit ${HEAD_SHA:0:7} could not be listed; not waiting."
+              break
+            fi
+            open="${open//$'\n'/ }"
+            [[ -n "$open" ]] || break
+            [[ "$open" == "$last" ]] || echo "Waiting for run $open (head commit ${HEAD_SHA:0:7}) to finish."
+            last="$open"
+            if ((SECONDS >= deadline)); then
+              echo "::warning::Run $open was still not finished after $WAIT_MINUTES minutes; deciding without it."
+              break
+            fi
+            sleep 30
+          done
       # `release` skips lint and the tests only when this says "true": the pull request's head commit passed `check`
       # and every `test` shard in an earlier run of this workflow. Nothing else guarantees it (no branch protection
       # on this plan, see the top of the file): a pull request can be merged while a check is red, still running or
@@ -184,7 +233,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           THIS_RUN: ${{ github.run_id }}
           # The number of `test` shards. Keep in step with the matrix of the `test` job.
-          TEST_SHARDS: 4
+          TEST_SHARDS: 2
         run: |
           set -uo pipefail
           verified=false
@@ -226,19 +275,20 @@ jobs:
           fi
 
   release:
-    needs: scope
-    # scope is skipped on manual runs, so !cancelled() keeps this job from being skipped with it. Manual runs
-    # release only from the default branch.
+    # Starts after `check` and `test` when they run (a merge `scope` could not verify, or a manual run), and only when
+    # both passed; when `scope` verified the head commit they are skipped and this starts at once. scope is skipped on
+    # manual runs, so !cancelled() keeps this job from being skipped with it. Manual runs release only from the
+    # default branch.
+    needs: [scope, check, test]
     if: >-
       !cancelled() && (needs.scope.outputs.image == 'true' ||
-      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch))
+      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch)) &&
+      (needs.scope.outputs.verified == 'true' || (needs.check.result == 'success' && needs.test.result == 'success'))
     # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
     runs-on: mk4
     timeout-minutes: 20
     permissions:
       contents: read
-      # scripts/wait-for-jobs.sh reads this run's `check` and `test` jobs.
-      actions: read
     # Releases go one at a time, in the order the pull requests were merged.
     concurrency:
       group: moks-cms-release
@@ -282,13 +332,6 @@ jobs:
       # Never push an image that cannot start or optimise images.
       - name: Smoke-test the image
         run: scripts/smoke-site-image.sh "$REGISTRY_IMAGE:latest" "$RELEASE_SHA"
-      # Unless `scope` verified the pull request's head commit, `check` (lint, typecheck) and the 4 `test` shards run on
-      # the merge commit while this job builds (a manual run: always). Nothing is pushed until all of them have passed.
-      - name: Wait for check and the test shards
-        if: needs.scope.outputs.verified != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/wait-for-jobs.sh 5 check 'test (*'
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
