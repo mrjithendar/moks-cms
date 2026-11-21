@@ -3,14 +3,16 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { AgentError, kickoff, type AgentDeps, type NewsFlowName } from "../seo-agent/client";
 import { NewsError } from "./service";
-import { newsDeskEnabled } from "./schema";
+import { newsDeskState, newsDeskStateText } from "./schema";
+import { getNewsSettings } from "./service";
 
 /**
  * Admin actions that start news flows in the seo-agent. Same client and token as the SEO flows; the agent re-validates
- * inputs, enforces one active run per job and the budgets, and refuses everything when NEWS_DESK_ENABLED is off.
+ * inputs, enforces one active run per job and the budgets, and refuses everything while the news desk is off (the admin switch, or NEWS_DESK_ENABLED=false in the deployment).
  */
 async function start(flow: NewsFlowName, inputs: Record<string, unknown>, actor: string, deps?: AgentDeps) {
-  if (!newsDeskEnabled(deps?.env)) throw new NewsError("The news desk is switched off (NEWS_DESK_ENABLED=false). See docs/news/MANUAL_SETUP.md.", 409);
+  const state = newsDeskState(await getNewsSettings().catch(() => null), deps?.env);
+  if (!state.on) throw new NewsError(newsDeskStateText(state), 409);
   try {
     return await kickoff(flow, inputs, { actor }, deps);
   } catch (e) {

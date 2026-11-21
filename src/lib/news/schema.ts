@@ -135,9 +135,14 @@ export const qualitySchema = z
   })
   .strict();
 
-/** Setting row `news`. The environment switch NEWS_DESK_ENABLED is authoritative; this can only pause. */
+/**
+ * Setting row `news`. `enabled` is the news desk's switch (Newsroom → Settings). It is absent until an admin first
+ * saves it; until then the deployment's NEWS_DESK_ENABLED decides, as before (see newsDeskState). `paused` is the
+ * earlier pause box: it is still honoured when a row has it, and the form now writes it as false.
+ */
 export const newsSettingsSchema = z
   .object({
+    enabled: z.boolean().optional(),
     paused: z.boolean().default(false),
     llm_daily_usd: z.number().min(0).max(100).default(2),
     llm_monthly_usd: z.number().min(0).max(1000).default(20),
@@ -162,4 +167,29 @@ export const newsSettingsSchema = z
   .strict();
 export type NewsSettings = z.output<typeof newsSettingsSchema>;
 
-export const newsDeskEnabled = (env: Record<string, string | undefined> = process.env) => ["1", "true", "yes", "on"].includes((env.NEWS_DESK_ENABLED ?? "").trim().toLowerCase());
+const ENV_ON = ["1", "true", "yes", "on"];
+const ENV_OFF = ["0", "false", "no", "off"];
+
+/**
+ * Whether the news desk runs, and who decided. The same rule as the seo-agent (moks-seo-agent app/news/config.py):
+ * - NEWS_DESK_ENABLED set to false in the deployment: forced off, whatever the admin switch says (emergency override).
+ * - Otherwise the admin switch decides once it has been saved (`enabled` in the row), together with the old `paused`.
+ * - Never saved: NEWS_DESK_ENABLED=true keeps the desk on as before this switch existed; anything else is off.
+ */
+export type NewsDeskState = { on: boolean; by: "deployment_off" | "admin" | "deployment_legacy" | "default"; envValue: "true" | "false" | "unset" };
+export function newsDeskState(settings: Pick<NewsSettings, "enabled" | "paused"> | null, env: Record<string, string | undefined> = process.env): NewsDeskState {
+  const raw = (env.NEWS_DESK_ENABLED ?? "").trim().toLowerCase();
+  const envValue = ENV_ON.includes(raw) ? "true" : ENV_OFF.includes(raw) ? "false" : "unset";
+  if (envValue === "false") return { on: false, by: "deployment_off", envValue };
+  if (settings && settings.enabled !== undefined) return { on: settings.enabled && !settings.paused, by: "admin", envValue };
+  if (envValue === "true") return { on: !settings?.paused, by: "deployment_legacy", envValue };
+  return { on: false, by: "default", envValue };
+}
+
+/** What the admin sees for a state: one sentence, and whether the switch can change it. */
+export function newsDeskStateText(st: NewsDeskState): string {
+  if (st.by === "deployment_off") return "Switched off by the deployment: NEWS_DESK_ENABLED is false. Remove NEWS_DESK_ENABLED from the ConfigMaps to control the news desk here.";
+  if (st.by === "admin") return st.on ? "The news desk is on." : "The news desk is off.";
+  if (st.by === "deployment_legacy") return st.on ? "The news desk is on because NEWS_DESK_ENABLED is true in the deployment. Save the switch here to control it from the admin." : "The news desk is paused.";
+  return "The news desk is off. Switch it on here.";
+}

@@ -1,5 +1,20 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P5 (first part): the news desk switch is in the admin (2026-11-21, owner request)
+
+- Newsroom → Settings has one switch, "News desk on". The rule (`newsDeskState` in `src/lib/news/schema.ts`, the same
+  in the seo-agent's `app/news/config.py`): `NEWS_DESK_ENABLED=false` in the deployment forces the desk off; else the
+  admin's switch decides once saved; never saved, `NEWS_DESK_ENABLED=true` keeps the desk on as before. So this
+  release changes nothing until someone saves the settings. The old "Paused" box is gone from the form (a saved
+  pause is still honoured, and a save clears it).
+- The banner on every Newsroom page, the health check and the "start a flow" guard use the same state and say who
+  decided it.
+- **Manual step, not done:** remove `NEWS_DESK_ENABLED` from the ConfigMaps (a jithendar.com change the owner
+  applies). Until then nothing breaks: `true` keeps working as today.
+- **Not done yet in P5:** removing the news LLM caps, default sources seeded disabled, topics review, the sectioned
+  Newsroom settings, docs under `docs/news/`.
+- Tests: `tests/news-desk-switch.test.ts` (new, 4). **Nothing was run** in the session.
+
 ## Admin settings plan, P3 (web app, first part): Retrieval, Embeddings and MCP settings (2026-11-21, owner request)
 
 - AI & SEO → Settings → ML & retrieval now also shows the SEO agent's groups **Retrieval** and **Embeddings**; MCP

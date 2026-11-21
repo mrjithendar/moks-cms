@@ -220,8 +220,10 @@ function extraChecks(): Promise<Check>[] {
       return { status: days > 45 ? "degraded" : "ok", detail: `${rows.length} active (${rows.map((r) => r.kind).join(", ")}) · oldest trained ${days} day(s) ago` };
     }),
     timed("News desk", { group: "Publishing", href: "/admin/news/settings" }, async () => {
-      const { newsDeskEnabled } = await import("./news/schema");
-      if (!newsDeskEnabled()) return { status: "not configured", detail: "switched off (NEWS_DESK_ENABLED)" };
+      const { newsDeskState } = await import("./news/schema");
+      const { getNewsSettings } = await import("./news/service");
+      const desk = newsDeskState(await getNewsSettings().catch(() => null));
+      if (!desk.on) return { status: "not configured", detail: desk.by === "deployment_off" ? "switched off by the deployment (NEWS_DESK_ENABLED=false)" : "switched off (Newsroom → Settings)" };
       const db = await getDb();
       const [r] = rowsOf<{ total: number; failed: number }>(await db.execute(sql`select count(*)::int as total, count(*) filter (where status = 'failed')::int as failed from news_runs where created_at > now() - interval '24 hours'`));
       const total = Number(r?.total ?? 0);

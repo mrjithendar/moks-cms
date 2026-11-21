@@ -257,7 +257,7 @@ const guides: GuideEntry[] = [
       "- News topics: map news topics to the CMS's categories; your corrections train the classifier weekly.",
       "- News profiles & playground: versioned writing and image styles; proposed versions need your approval.",
       "- News run history and News analytics: every run with its cost and errors, and how published news performs.",
-      "- News settings: global spending caps on top of each job's own budget.",
+      "- News settings: the news desk's switch (\"News desk on\") and global spending caps on top of each job's own budget. Off means no job runs; sources, jobs and profiles stay as they are. If the page says the desk is switched off by the deployment, NEWS_DESK_ENABLED is set to false there and must be removed before the switch works.",
     ],
   },
   {
