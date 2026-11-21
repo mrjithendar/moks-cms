@@ -23,7 +23,7 @@ import SeoScoringSection from "./seo-scoring";
  * The ids of the eight SEO areas are the tab ids of lib/seo-intel/settings-meta.ts, so an old #tab-<id> link maps
  * straight onto ?section=<id>.
  */
-export type AiSeoSection = { id: string; label: string; /** Called by the page (not drawn as an element), so it may be async and must not nest another async component. */ render: () => ReactNode | Promise<ReactNode> };
+export type AiSeoSection = { id: string; label: string; /** Called by the page with the address's query (not drawn as an element), so it may be async and must not nest another async component. */ render: (params: Record<string, string | undefined>) => ReactNode | Promise<ReactNode> };
 
 export const AI_SEO_SECTIONS: AiSeoSection[] = [
   { id: "overview", label: "Overview", render: OverviewSection },

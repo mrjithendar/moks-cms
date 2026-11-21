@@ -479,7 +479,7 @@ const guides: GuideEntry[] = [
     body: [
       "AI & SEO → Settings (called Automation & AI until November 2026; old links still open it) has a list of sections on the left, like Appearance & site settings. On a phone the list is a drop-down above the section. Each section saves on its own, so a change in one never overwrites another, and every saved change is audit-logged. If you leave a section with unsaved changes, you are asked first.",
       "- Overview: the search and analytics connections, and the SEO agent (on or off, and its endpoint).",
-      "- LLM providers & models: which provider and models are in use today. LLM budget: Claude usage this month and the budgets the SEO agent enforces.",
+      "- LLM providers & models: which provider and models are in use today. LLM budget: one budget for every provider, model and purpose together. A Daily | Monthly switch shows that period's spend against its limit, the one field that sets it (empty means no limit) and where the spend went by provider, model and purpose; LLM usage for this month is below it.",
       "- Ask the Blog, ML & retrieval, MCP: the assistant's settings, the SEO models and retrieval check, and the way to MCP access.",
       "- Data sources: which Google properties are read, how far back and how long data is kept; DataForSEO for search volume, difficulty, live rankings and backlinks.",
       "- Schedules: when each job runs (UTC; weekday 0 = Sunday).",
@@ -977,7 +977,7 @@ const faqs: GuideEntry[] = [
     "The one automatic change is internal linking, when its weekly job is switched on, and it works within strict limits.",
   ], { keywords: ["ai", "automatic", "publish", "claude", "safety", "approve"] }),
   faq("faq-ai-cost", "Editorial & AI", "How is AI spending kept under control?", [
-    "The news desk has global caps on top of each job's budget, and AI & SEO → Settings → LLM budget shows Claude usage. AI and paid calls are always explicit actions, never triggered by just viewing a page.",
+    "The news desk has global caps on top of each job's budget, and AI & SEO → Settings → LLM budget sets one limit for all LLM spend and shows usage. AI and paid calls are always explicit actions, never triggered by just viewing a page.",
   ], { keywords: ["cost", "budget", "spend", "money", "ai"] }),
   faq("faq-stale-data", "Insights", "The search or analytics numbers look out of date. Why?", [
     "Search Console data is usually two to three days behind. Check Admin → Data sync for the latest run and its errors; queued runs start within about 30 seconds.",

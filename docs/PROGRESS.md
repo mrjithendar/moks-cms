@@ -1,5 +1,31 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P2 part A (web app, first half): the one LLM budget section (2026-11-21, owner request)
+
+Thin client of moks-seo-agent #14 (one budget for every provider, model and purpose; `GET/PUT /llm-budget`).
+
+- AI & SEO → Settings → LLM budget (`sections/llm-budget.tsx`, `components/seo/LlmBudgetCard.tsx`): a Daily | Monthly
+  switch (`&scope=day|month` in the address); the chosen period's spend, limit, what is left, a bar, the calls in
+  flight, the month-end forecast (Monthly) and when it resets; **one** limit field for that period (empty = no
+  limit); one line for the other period; read-only spend by provider, by model and by purpose; the limits that still
+  apply on their own (Ask the Blog public usage limit, the news desk's caps, with links); and the earlier per-model
+  and per-provider limits, read-only, when the agent still has any.
+- `src/lib/llm-budget-view.ts`, `GET/PUT /api/admin/seo/llm-budget` (admins only; audit action
+  `seo.llm_budget.update`). An unreachable agent, or one from before the one budget, is reported and nothing is
+  editable.
+- Removed: the per-model / per-provider card (`LlmBudgetsCard`), its "Feature caps" block, `llm-budgets-view.ts` and
+  `/api/admin/seo/llm-budgets`.
+- "Claude usage this month" is titled "LLM usage this month". A section's `render` now receives the address's query.
+- **Not in this change** (P2 part A, items 3 and 4): this app still has its own monthly cap for its own Claude calls
+  (`drafts` settings / `SEO_LLM_MONTHLY_BUDGET_USD` in `seo-intel/claude.ts`), which the LLM usage card shows, and AI
+  visibility still has its own cap and does not reserve against the one budget. Both change what stops spending in
+  this app and were left until CI runs again.
+- Tests: `tests/llm-budget.test.ts` (new, 7; replaces `tests/llm-budgets.test.ts`). **Nothing was run**: no
+  `node_modules` in the session, and GitHub Actions did not start (account billing). The new files were only checked
+  for syntax with a bare `tsc`. Not opened in a browser.
+- Manual: release and restart the seo-agent, then set the budget here. Until a budget is saved nothing limits the
+  agent's LLM spend (nothing is preset; the old $15 monthly default is gone from the agent).
+
 ## Admin settings plan, P1 (part 3): the sectioned settings shell; AI & SEO settings in sections (2026-11-21, owner request)
 
 This completes prompt P1 of the owner's plan in this repository.
