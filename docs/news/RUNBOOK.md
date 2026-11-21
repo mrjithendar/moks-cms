@@ -2,7 +2,7 @@
 
 ## Where to look
 
-- **Run history** (Admin → News desk → Run history) and **run detail**: timeline, live log, candidates with reasons,
+- **Job runs** (AI & SEO → Job runs) and **run detail**: timeline, live log, candidates with reasons,
   drafts, errors. Every run, including dry runs, image regenerations, training and style reviews.
 - **Grafana** "Jithendar.com · News desk" (`grafana/jithendar-com-news.json` in `moks-tech/jithendar.com`).
 - **Loki**: `{app="seo-agent"} | json | operation=~"news_.*"` (log lines carry `operation=news_<step>` and `outcome`;
@@ -11,7 +11,7 @@
 
 ## Kill switch and rollback
 
-1. Fastest: Admin → News desk → Settings → **Paused** (no deploy). The dispatcher and every job skip.
+1. Fastest: AI & SEO → Jobs → untick **Jobs on** (no deploy). The dispatcher and every job skip.
 2. `NEWS_DESK_ENABLED=false` in ConfigMap `seo-agent-config` (and the web app's `jithendar-com-public`), restart.
 3. Suspend the CronJobs: `kubectl -n jithendar patch cronjob news-dispatch -p '{"spec":{"suspend":true}}'`
    (same for `news-train`, `news-style-review`).

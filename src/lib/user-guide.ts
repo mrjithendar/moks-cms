@@ -680,6 +680,7 @@ const guides: GuideEntry[] = [
       "- The run is a manual run in your name and opens at once; if a run of the same flow for the same target is already going, that one opens instead.",
       "- Not started from here: New article and Optimize article (regenerate them from the review queue), Publish (only from an approval) and per-story news runs (retry them from the news run page). The news dispatcher runs on its schedule; use Run now on its schedule to start it by hand.",
       "The button is greyed out while the SEO agent is off; the list and history stay readable.",
+      "Custom flows (New flow): steps in order. A crew step runs one of your custom crews with inputs from the flow ({input.name}) and earlier steps ({steps.name}); a condition checks a value (contains, does not contain, at least N characters) and otherwise stops the flow or skips the next step; a draft step puts a draft in the review queue (blog or news). There is no step that publishes: a person approves every draft. Test run runs everything except the draft step; Run now creates the draft. To run one on a schedule, add a system job for the Custom flow with its inputs (AI & SEO → Jobs → System jobs). Deleting a flow removes its schedules.",
     ],
   },
   {
@@ -690,7 +691,7 @@ const guides: GuideEntry[] = [
     summary: "When each built-in flow runs, on AI & SEO → Jobs next to the crew jobs: cron and time zone, inputs, pause, run now, reset.",
     href: "/admin/crewai/jobs?kind=system",
     adminOnly: true,
-    keywords: ["schedule", "schedules", "system jobs", "jobs", "cron", "cronjob", "dispatcher", "time zone", "timezone", "pause", "resume", "run now", "weekly", "daily", "monthly"],
+    keywords: ["schedule", "schedules", "system jobs", "jobs", "custom flow", "cron", "cronjob", "dispatcher", "time zone", "timezone", "pause", "resume", "run now", "weekly", "daily", "monthly"],
     body: [
       "AI & SEO → Jobs lists every job: content jobs (crew jobs that write news or other content) and system jobs, the built-in flows on their schedules (until November 2026 the CrewAI console's Schedules page). System jobs shows only the second kind.",
       "Each system job starts one flow at the times its cron expression gives, in its time zone, with the inputs you set (for example report-monthly runs the Report flow with period monthly on the 2nd at 08:00 UTC). One dispatcher checks them and the crew jobs every minute and starts what is due; the run's trigger is Schedule and it names the schedule (schedule:report-monthly).",
@@ -720,6 +721,7 @@ const guides: GuideEntry[] = [
       "- Test run runs the crew once with the prompts on screen, saved or not, on the inputs of an earlier finished run you choose (a New article run for the Editorial crew, a Report run for the Report crew, and so on). It saves nothing anywhere: the test run opens in the console with its log, transcripts, cost and output, and Save as new version there keeps exactly the prompts it ran. Replay with edited prompts on a run's page opens the editor with that run chosen.",
       "- Versions: Open in the editor loads any version; Activate makes it the one the crew runs (also a rollback); Use the code's defaults stops using saved versions. A version written for older code defaults is marked, because the agent was updated since.",
       "Every model call records which version produced it (the prompt version in the transcript and cost tables ends in +v3, or +test for a test run). Test runs cost model tokens like any run and count against the monthly budget.",
+      "Custom crews (New crew): make your own crew from agents and tasks. Each agent has a role, goal and backstory, tools from the allowlist only (search the site, read an article, Search Console queries for a topic, the style guide, official documentation) and an optional model; tasks run in order, each with instructions that may use {input} names and {today}, an expected output, and the earlier tasks it reads (none ticked: the task just before it). The SEO agent checks a crew when you save it; the rules every crew follows (untrusted data stays data, no delegation or code, the token and time caps, the one LLM budget) are added by its code. A custom crew runs in your custom flows; one a flow uses cannot be switched off or deleted.",
     ],
   },
   {
