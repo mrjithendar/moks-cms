@@ -217,3 +217,79 @@ def test_routes(monkeypatch: pytest.MonkeyPatch) -> None:
         assert ok.json()["saved"] == {"id": "openai", "created": True, "enabled": True, "key_changed": True, "models": 1}
         models = client.get("/llm-models", headers=auth).json()["models"]
         assert {"openai"} <= {m["provider_id"] for m in models} and secret not in client.get("/llm-providers", headers=auth).text
+
+
+# --- Fetch models ---------------------------------------------------------------------------------------------
+
+
+def _client(handler: Any) -> Any:
+    import httpx
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_fetch_models_openai_compatible_marks_what_is_already_listed() -> None:
+    import httpx
+
+    from app.llm_providers.discover import discover
+
+    store = MemoryProviderStore()
+    secret = "sk-test-not-a-real-key-discover"
+    await save_provider(store, body(api_key=secret, models=[{"model_id": "b", "enabled": True, "input_usd": 1, "output_usd": 2}]), KEY)
+    seen: list[Any] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"object": "list", "data": [{"id": "b"}, {"id": "a"}]})
+
+    out = await discover(store, "openai", KEY, _client(handler))
+    assert out == {"provider_id": "openai", "count": 2, "models": [{"model_id": "a", "label": "", "listed": False, "enabled": False}, {"model_id": "b", "label": "", "listed": True, "enabled": True}]}
+    assert str(seen[0].url) == "https://api.openai.com/v1/models" and seen[0].headers["authorization"] == f"Bearer {secret}"
+    assert [k[1] for k in store.m] == ["b"]  # nothing was saved or switched on
+
+
+async def test_fetch_models_anthropic_pages_and_uses_the_environment_key() -> None:
+    import httpx
+
+    from app.llm_providers.discover import discover
+
+    pages = [
+        {"data": [{"id": "claude-b", "display_name": "Claude B", "type": "model"}], "has_more": True, "last_id": "claude-b"},
+        {"data": [{"id": "claude-a", "display_name": "Claude A", "type": "model"}], "has_more": False, "last_id": "claude-a"},
+    ]
+    seen: list[Any] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=pages[len(seen) - 1])
+
+    out = await discover(MemoryProviderStore(), "anthropic", {"ANTHROPIC_API_KEY": "sk-ant-env"}, _client(handler))
+    assert [m["model_id"] for m in out["models"]] == ["claude-a", "claude-b"] and out["models"][0]["label"] == "Claude A"
+    assert seen[0].headers["x-api-key"] == "sk-ant-env" and seen[0].headers["anthropic-version"] == "2023-06-01"
+    assert "after_id=claude-b" in str(seen[1].url) and len(seen) == 2
+
+
+async def test_fetch_models_says_why_it_cannot() -> None:
+    import httpx
+
+    from app.llm_providers.discover import CannotDiscover, discover
+
+    store = MemoryProviderStore()
+    with pytest.raises(LookupError):
+        await discover(store, "nope", NO_ENV)
+    await save_provider(store, body(), NO_ENV)
+    with pytest.raises(CannotDiscover, match="API key first"):
+        await discover(store, "openai", NO_ENV)
+    await save_provider(store, ProviderIn.model_validate({"id": "aws", "kind": "bedrock", "name": "Bedrock"}), NO_ENV)
+    with pytest.raises(CannotDiscover, match="not available yet"):
+        await discover(store, "aws", NO_ENV)
+    await save_provider(store, ProviderIn.model_validate({"id": "vllm", "kind": "custom", "name": "vLLM"}), NO_ENV)
+    with pytest.raises(CannotDiscover, match="base URL first"):
+        await discover(store, "vllm", NO_ENV)
+    secret = "sk-test-not-a-real-key-denied"
+    await save_provider(store, body(api_key=secret), KEY)
+    with pytest.raises(CannotDiscover) as e:
+        await discover(store, "openai", KEY, _client(lambda r: httpx.Response(401, json={"error": {"message": "Incorrect API key provided", "code": "invalid_api_key"}})))
+    assert e.value.status == 502 and secret not in str(e.value)
+    with pytest.raises(CannotDiscover, match="cannot be read"):
+        await discover(store, "openai", {secrets.KEY_ENV: "z" * 40})  # sealed with another key
