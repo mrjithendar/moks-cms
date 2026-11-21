@@ -46,7 +46,7 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
     async def list_news_jobs() -> dict[str, Any]:
         """News desk jobs: schedule, mode, version, enabled, last/next run."""
         rows = await store.list_jobs(enabled_only=False)
-        return {"jobs": [_clean(j, ("id", "name", "enabled", "cron", "timezone", "mode", "version", "last_run_at", "next_run_at")) for j in rows], "admin_url": f"{site}/admin/news"}
+        return {"jobs": [_clean(j, ("id", "name", "enabled", "cron", "timezone", "mode", "version", "last_run_at", "next_run_at")) for j in rows], "admin_url": f"{site}/admin/crewai/jobs"}
 
     @mcp.tool(name="get_news_job", title="News job", annotations=READ)
     @guarded(guard, "get_news_job", scope="seo:read")
@@ -55,7 +55,7 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
         j = await store.get_job(job_id)
         if not j:
             raise ContentError("job not found")
-        return {**_clean(j, ("id", "name", "description", "enabled", "cron", "timezone", "mode", "writing_profile_key", "image_profile_key", "review_priority", "version")), "config": j.get("config"), "edit_url": f"{site}/admin/news/jobs/{job_id}"}
+        return {**_clean(j, ("id", "name", "description", "enabled", "cron", "timezone", "mode", "writing_profile_key", "image_profile_key", "review_priority", "version")), "config": j.get("config"), "edit_url": f"{site}/admin/crewai/jobs/{job_id}"}
 
     @mcp.tool(name="list_news_runs", title="News runs", annotations=READ)
     @guarded(guard, "list_news_runs", scope="seo:read")
@@ -77,7 +77,7 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
             "run": _clean(r, ("id", "job_id", "kind", "trigger", "status", "dry_run", "counters", "tokens", "cost_usd", "image_cost_usd", "error_summary", "started_at", "finished_at")),
             "steps": [_clean(s, ("step", "status", "input_count", "output_count", "error", "started_at", "finished_at")) for s in steps],
             "logs": content.untrusted("\n".join(f"{_iso(x.get('at'))} {x.get('level')} [{x.get('step') or '-'}] {x.get('message')}" for x in logs)),
-            "run_url": f"{site}/admin/news/runs/{run_id}",
+            "run_url": f"{site}/admin/crewai/jobs/runs/{run_id}",
         }
 
     @mcp.tool(name="get_news_candidates", title="News candidates", annotations=READ)
@@ -123,7 +123,7 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
             r = await c.runner.kickoff("news_job_flow", {"job_id": job_id, "dry_run": dry_run, "trigger": "mcp", "actor": f"mcp:{key}"}, triggered_by="mcp", actor=f"mcp:{key}")
         except RunError as e:
             raise ContentError(str(e)) from None
-        return {**r, "runs_url": f"{site}/admin/news/runs?job={job_id}"}
+        return {**r, "runs_url": f"{site}/admin/crewai/jobs/runs?job={job_id}"}
 
     @mcp.tool(name="reject_news_draft", title="Reject a news draft", annotations=CLOSE)
     @guarded(guard, "reject_news_draft", scope="seo:review:reject")

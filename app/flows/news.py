@@ -29,7 +29,6 @@ from ..llm import BudgetExceeded, used_up
 from ..news import desk as nd
 from ..news.budget import NewsBudget, NewsLlm
 from ..news.config import Job, load_news_settings
-from ..news.cron import Cron, CronError
 from ..news.runlog import RunRecorder
 from ..runs import INSTANCE_ONLY
 from ..state import UUID, RunState, _In
@@ -220,7 +219,7 @@ class NewsJobFlow(NewsHelpers, SeoFlow[NewsJobState]):
             s.result = {"reason": f"slot {s.slot} already ran (run {s.news_run_id})"}
             return
         if not d.news.enabled:
-            rec.log("warning", "news desk is switched off (Newsroom → Settings, or NEWS_DESK_ENABLED=false in the deployment); nothing ran", outcome="disabled")
+            rec.log("warning", "crew jobs are switched off (AI & SEO → Jobs, or NEWS_DESK_ENABLED=false in the deployment); nothing ran", outcome="disabled")
             await self.close_run(d, rec, "skipped", "news desk disabled", job, started)
             s.outcome = "skipped"
             return
@@ -367,28 +366,16 @@ class NewsDispatchFlow(NewsHelpers, SeoFlow[NewsDispatchState]):
 
     @start()
     async def dispatch(self) -> None:
+        """The crew jobs' daily housekeeping and gauges. The jobs themselves are started by the one dispatcher since
+        2026-11-21 (POST /schedules/dispatch → app/news/dispatch.py), within a minute of their time."""
         s = self.state
         d = await self.desk()
         now = d.clock()
-        s.result = {"due": [], "skipped": [], "housekeeping": None}
+        s.result = {"skipped": [], "housekeeping": None}
         if not d.news.enabled:
-            s.result["skipped"].append("news desk disabled")
+            s.result["skipped"].append("crew jobs are switched off")
             s.outcome = "skipped"
             return
-        for row in await d.store.list_jobs(enabled_only=True):
-            job = nd.as_job(row)
-            try:
-                cron = Cron(job.cron, job.timezone)
-            except CronError as e:
-                s.errors.append(f"{job.name}: {e}")
-                continue
-            due = cron.last_due(now, timedelta(minutes=16))
-            await d.store.set_job_schedule(job.id, next_run_at=cron.next_after(now))
-            if due is None:
-                continue
-            slot = due.strftime("%Y%m%dT%H%MZ")
-            r = await self.deps.runner.kickoff("news_job_flow", {"job_id": job.id, "slot": slot, "trigger": "cron"}, triggered_by="flow", correlation_id=s.id)
-            s.result["due"].append({"job": job.id, "slot": slot, "run_id": r.get("run_id"), "existing": r.get("existing")})
         if now.hour == 3 and now.minute < 15:  # once a day (UTC)
             s.result["housekeeping"] = await housekeeping(d)
         await gauges(d)

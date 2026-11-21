@@ -103,8 +103,8 @@ class Cron:
         raise CronError("no fire time within a year")
 
     def last_due(self, now: datetime, window: timedelta) -> datetime | None:
-        """The latest fire time in (now - window, now], or None. The dispatcher runs every 15 minutes with a window
-        slightly larger than that, and the run's slot (job id + this time) makes a double fire a no-op."""
+        """The latest fire time in (now - window, now], or None. The one dispatcher runs every minute with the schedules'
+        catch-up window (app/news/dispatch.py) and skips a slot (job id + this time) that already has a run."""
         t = self.next_after(now - window - timedelta(minutes=1))
         last = None
         while t <= now:

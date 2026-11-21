@@ -235,19 +235,55 @@ async def test_retry_only_redrafts_the_failed_stories(llm: Any) -> None:
     assert len(web.saved) == 1 and news_run(store, retry)["parent_run_id"] == rid
 
 
-async def test_dispatcher_starts_due_jobs_once_per_slot(llm: Any) -> None:
+async def test_the_one_dispatcher_starts_due_jobs_once_per_slot(llm: Any) -> None:
+    # Since 2026-11-21 POST /schedules/dispatch (every minute) starts the crew jobs itself (app/news/dispatch.py).
+    from datetime import timedelta
+
+    from app.news.dispatch import dispatch_jobs
+    from tests.news_fixtures import NOW
+
     llm.queue("news.vision", SAFE)
     c, _web, store = setup(llm)
     store.jobs[JOB]["cron"] = "0 6 * * *"
     store.jobs[JOB]["timezone"] = "UTC"
-    d1 = await run(c, "news_dispatch_flow", {})
-    due = d1["state_json"]["result"]["due"]
-    assert len(due) == 1 and due[0]["slot"] == "20261110T0600Z"
-    await c.runner.wait(due[0]["run_id"], 60)
-    d2 = await run(c, "news_dispatch_flow", {})
-    child = await c.runner.wait(d2["state_json"]["result"]["due"][0]["run_id"], 60)
-    assert child["outputs"]["outcome"] == "skipped"  # same slot: the second dispatch is a no-op
+    hour = timedelta(minutes=60)
+    d1 = await dispatch_jobs(store, c.runner, enabled=True, now=NOW + timedelta(minutes=1), catchup=hour)
+    assert d1["checked"] == 1 and [f["slot"] for f in d1["fired"]] == ["20261110T0600Z"] and not d1["fired"][0]["error"]
+    await c.runner.wait(d1["fired"][0]["run_id"], 60)
+    flow_runs = len(c.store.rows)
+    # Every later tick inside the catch-up window sees that the slot ran: no new flow run, not even a skipped one.
+    for minutes in (2, 30, 59):
+        assert (await dispatch_jobs(store, c.runner, enabled=True, now=NOW + timedelta(minutes=minutes), catchup=hour))["fired"] == []
+    assert len(c.store.rows) == flow_runs
     assert store.jobs[JOB]["next_run_at"] is not None
+    # Switched off: nothing is started; a broken cron is reported, the other jobs still run.
+    assert (await dispatch_jobs(store, c.runner, enabled=False, now=NOW, catchup=hour))["skipped"]
+    store.jobs[JOB]["cron"] = "not a cron"
+    bad = await dispatch_jobs(store, c.runner, enabled=True, now=NOW, catchup=hour)
+    assert bad["fired"] == [] and bad["errors"][0]["job"] == JOB
+
+
+async def test_the_dispatch_endpoint_starts_crew_jobs_too(llm: Any) -> None:
+    from datetime import timedelta
+
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+    from tests.news_fixtures import NOW
+    from tests.test_console import AUTH
+
+    llm.queue("news.vision", SAFE)
+    c, _web, store = setup(llm)
+    store.jobs[JOB]["cron"] = "0 6 * * *"
+    store.jobs[JOB]["timezone"] = "UTC"
+    c.clock = lambda: NOW + timedelta(minutes=1)
+    app = create_app(c)
+    async with app.router.lifespan_context(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        r = (await client.post("/schedules/dispatch", headers=AUTH)).json()
+        assert r["jobs"]["checked"] == 1 and r["jobs"]["fired"][0]["slot"] == "20261110T0600Z"
+        await c.runner.wait(r["jobs"]["fired"][0]["run_id"], 60)
+    d = await run(c, "news_dispatch_flow", {})
+    assert d["outputs"]["outcome"] == "done" and "due" not in d["state_json"]["result"]  # housekeeping and gauges only
 
 
 async def test_regenerate_cover_from_review(llm: Any) -> None:
