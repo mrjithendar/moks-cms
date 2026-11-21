@@ -51,6 +51,9 @@ class ImageOptions(BaseModel):
     variants: int | None = Field(default=None, ge=1, le=4)
 
 
+Intake = Literal["sources", "ideas"]
+
+
 class JobConfig(BaseModel):
     """Everything a job can change. Unknown keys are refused so a typo never silently does nothing."""
 
@@ -83,6 +86,15 @@ class JobConfig(BaseModel):
     expiry_days: int | None = Field(default=None, ge=1, le=3650)
     publishing_slots: list[str] = Field(default_factory=list, max_length=12)
     notify: bool = True
+    # Crew-jobs plan PR 3 (2026-11-21): a job writes any kind of content, news being one. `output`: a news article
+    # (collection news, NewsArticle) or a blog article (collection blog, Article). `intake`: where its candidates come
+    # from: the content sources (ingest → dedupe → rank, drafted by the News Desk crew) and/or the content ideas
+    # (Promotion's ideas with an audience; the web app puts the best matching ones on the editorial calendar and the
+    # Editorial crew writes them). `quality`: this job's own quality-gate values, by field; a field left out uses the
+    # shared value (AI & SEO → Settings → AI & drafts → Quality gates). Rows saved before keep news from sources.
+    output: Literal["news", "article"] = "news"
+    intake: list[Intake] = Field(default_factory=lambda: list[Intake](["sources"]), min_length=1, max_length=2)
+    quality: dict[str, float] = Field(default_factory=dict)
 
     @field_validator("weights")
     @classmethod
@@ -113,6 +125,26 @@ class JobConfig(BaseModel):
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", s):
                 raise ValueError(f"publishing slot {s!r} is not HH:MM")
         return sorted(set(v))
+
+    @field_validator("intake")
+    @classmethod
+    def _intake(cls, v: list[str]) -> list[str]:
+        if len(set(v)) != len(v):
+            raise ValueError("intake lists sources and ideas at most once each")
+        return v
+
+    @field_validator("quality")
+    @classmethod
+    def _quality(cls, v: dict[str, float]) -> dict[str, float]:
+        bad = [k for k in v if k not in Quality.model_fields]
+        if bad:
+            raise ValueError(f"unknown quality gates: {', '.join(bad)}")
+        Quality.model_validate(v)  # each value within the gate's own range
+        return v
+
+    def effective_quality(self, shared: Quality) -> Quality:
+        """The shared quality gates with this job's own values on top."""
+        return Quality.model_validate({**shared.model_dump(), **self.quality}) if self.quality else shared
 
     def effective_weights(self) -> dict[str, float]:
         w = {**DEFAULT_WEIGHTS, **self.weights}

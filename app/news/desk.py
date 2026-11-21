@@ -214,9 +214,10 @@ def _centroid(c: dict[str, Any], members: list[dict[str, Any]], by_id: dict[str,
     return mean / n if n > 0 else None
 
 
-def _quality(d: DeskDeps) -> Any:
-    """The quality-gate settings with the paraphrase cutoff of the current embeddings model (calibration.py)."""
-    q = d.news.quality
+def _quality(d: DeskDeps, job: Job | None = None) -> Any:
+    """The quality-gate settings (the shared ones with the job's own values on top) with the paraphrase cutoff of the
+    current embeddings model (calibration.py)."""
+    q = job.config.effective_quality(d.news.quality) if job is not None else d.news.quality
     cut = effective_paragraph_cosine(q.max_paragraph_cosine, _embedding_model(d))
     return q if cut == q.max_paragraph_cosine else q.model_copy(update={"max_paragraph_cosine": cut})
 
@@ -645,6 +646,7 @@ async def _draft_body(d: DeskDeps, rec: RunRecorder, job: Job, cluster_ids: list
         "suggested_categories": cats,
         "suggested_tags": tags,
         "length_words": [job.config.length_min_words, job.config.length_max_words],
+        "output": job.config.output,
         "today": now.date().isoformat(),
         "digest_stories": [{"cluster_id": str(c["id"]), "title": c["title"]} for c in clusters] if mode == "digest" else [],
     }
@@ -669,7 +671,7 @@ async def _draft_body(d: DeskDeps, rec: RunRecorder, job: Job, cluster_ids: list
     report_dict: dict[str, Any] = {}
     if not draft.incomplete:
         async with rec.step("quality") as o:
-            rep = await run_gates(draft, sources=sources, facts=r.facts, cfg=job.config, q=_quality(d), banned=list(wp.get("banned_phrases") or []), required=list(wp.get("required_sections") or ["Why it matters"]), allowed_hosts=set(_allowed_hosts(items, d)), embed=d.embed, duplicate_reason=None)
+            rep = await run_gates(draft, sources=sources, facts=r.facts, cfg=job.config, q=_quality(d, job), banned=list(wp.get("banned_phrases") or []), required=list(wp.get("required_sections") or ["Why it matters"]), allowed_hosts=set(_allowed_hosts(items, d)), embed=d.embed, duplicate_reason=None)
             report_dict = rep.as_dict()
             for g in rep.failed_gates:
                 metrics.NEWS_QUALITY_FAILURES.labels(gate=g).inc()
@@ -703,7 +705,7 @@ async def _draft_body(d: DeskDeps, rec: RunRecorder, job: Job, cluster_ids: list
             for w in g.get("warnings", [])[:5]:
                 flags.append({"code": f"quality_{gname}", "severity": "warning", "message": w[:500]})
         try:
-            saved = await d.web.news_save_draft({"articleId": article_id, "jobId": job.id, "jobName": job.name, "reviewPriority": job.review_priority, "author": job.config.author, "document": document, "flags": flags[:60], "categories": draft.categories, "tags": draft.tags, "image": image, "runId": rec.run_id, "model": d.news.writer_model, "promptVersion": "news-crew-v1"})
+            saved = await d.web.news_save_draft({"articleId": article_id, "jobId": job.id, "jobName": job.name, "output": job.config.output, "reviewPriority": job.review_priority, "author": job.config.author, "document": document, "flags": flags[:60], "categories": draft.categories, "tags": draft.tags, "image": image, "runId": rec.run_id, "model": d.news.writer_model, "promptVersion": "news-crew-v1"})
         except Exception as e:
             await d.store.update_article(article_id, status="failed_quality", generated_doc=document, **{**common, "quality": {**report_dict, "passed": False, "failed": [*report_dict.get("failed", []), "web_validation"], "web_error": str(e)[:500]}})
             metrics.NEWS_QUALITY_FAILURES.labels(gate="web_validation").inc()

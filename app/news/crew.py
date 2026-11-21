@@ -58,6 +58,14 @@ SEO_TASK = (
 )
 ART_TASK = "Write the cover image brief as JSON matching ImageBrief: subject, composition, style_notes, avoid (always include people, faces, logos, trademarks, text). Use image_profile."
 DIGEST_NOTE = "Digest: one section per story with a short summary, why it matters, and its sources."
+# A job whose output is a blog article (JobConfig.output "article"): the same grounded facts, written as an evergreen
+# article rather than a dated news story. Appended by code, so an edited crew configuration keeps it.
+ARTICLE_WRITE_NOTE = (
+    "\n\nThis job writes a blog article, not a news story: an evergreen, practical article for engineers on the subject of "
+    "the story, built only from the fact sheet. Explain what it is, why it matters and what to do, with steps or commands "
+    "when a source shows them. No dated news framing (no 'today', 'this week', 'announced')."
+)
+ARTICLE_SEO_NOTE = "\n\nThis job writes a blog article: schema_jsonld uses @type Article (not NewsArticle)."
 _RULES = "Starts with the crew's rules (CREW_RULES: sources only, no copying, no invented facts, a Why it matters section, no Sources section)."
 # The crew's editable configuration (crews/config.py, CrewAI console → Crews). The crew rules, the story, sources and
 # writing-profile blocks, the output schemas and the quality gates after the crew stay in code. The writing and image
@@ -120,7 +128,8 @@ class NewsDeskCrew:
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
             agents = build_agents(cfg.agents(), settings, self.llm, loop, run, ctx, draft_id=None, purpose="news.crew", prompt_version=cfg.prompt_version, crew="news", models=models or {}, default_model=default_model)
-            story = data_block("story", {k: brief.get(k) for k in ("mode", "title", "cluster_id", "topics", "suggested_categories", "suggested_tags", "length_words", "today", "digest_stories")})
+            story = data_block("story", {k: brief.get(k) for k in ("mode", "output", "title", "cluster_id", "topics", "suggested_categories", "suggested_tags", "length_words", "today", "digest_stories")})
+            article = brief.get("output") == "article"
             sources = data_block("sources", [{"id": str(i["id"]), "url": i["url"], "title": i["title"], "publisher": i.get("source_name"), "published_at": str(i.get("published_at") or ""), "excerpt": str(i.get("clean_text") or i.get("excerpt") or "")[:3000]} for i in items[:12]])
             profile = data_block("writing_profile", {k: writing_profile.get(k) for k in ("system_style", "structure_template", "tone", "audience", "banned_phrases", "required_sections")})
             fb = f"\n\nThe previous attempt failed these checks; fix them:\n{feedback}" if feedback else ""
@@ -133,10 +142,10 @@ class NewsDeskCrew:
             digest = brief.get("mode") == "digest"
             research = Task(description=f"{CREW_RULES}\n\n{cfg.instructions('research')}\n\n{story}\n\n{sources}", expected_output=cfg.expected_output("research"), agent=agents["researcher"], output_pydantic=FactSheet, callback=keep_facts)
             analysis = Task(description=f"{CREW_RULES}\n\n{cfg.instructions('analysis')}\n\n{story}", expected_output=cfg.expected_output("analysis"), agent=agents["analyst"], context=[research])
-            write = Task(description=f"{CREW_RULES}\n\n{cfg.instructions('write', digest=DIGEST_NOTE if digest else '')}\n\n{story}\n\n{profile}{fb}", expected_output=cfg.expected_output("write"), agent=agents["writer"], context=[research, analysis])
+            write = Task(description=f"{CREW_RULES}\n\n{cfg.instructions('write', digest=DIGEST_NOTE if digest else '')}{ARTICLE_WRITE_NOTE if article else ''}\n\n{story}\n\n{profile}{fb}", expected_output=cfg.expected_output("write"), agent=agents["writer"], context=[research, analysis])
             check = Task(description=f"{CREW_RULES}\n\n{cfg.instructions('check')}", expected_output=cfg.expected_output("check"), agent=agents["fact_checker"], context=[research, write])
             seo = Task(
-                description=f"{CREW_RULES}\n\n{cfg.instructions('seo', digest_items=', digest_items' if digest else '')}\n\n{story}{fb}",
+                description=f"{CREW_RULES}\n\n{cfg.instructions('seo', digest_items=', digest_items' if digest else '')}{ARTICLE_SEO_NOTE if article else ''}\n\n{story}{fb}",
                 expected_output=cfg.expected_output("seo"),
                 agent=agents["seo_editor"],
                 context=[research, check],

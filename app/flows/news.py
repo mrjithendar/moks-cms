@@ -236,22 +236,28 @@ class NewsJobFlow(NewsHelpers, SeoFlow[NewsJobState]):
             guard = getattr(self.deps.llm, "guard", None)
             if not s.dry_run and guard is not None and used_up(await guard.status()):
                 raise BudgetExceeded("llm", "the LLM budget is used up (Admin → AI & SEO → Settings → LLM budget)")
-            ingest_lock: asyncio.Lock = d.extra.setdefault("news_ingest_lock", asyncio.Lock())
-            async with ingest_lock:  # ingestion is shared: one at a time; a source fetched within its interval is skipped
-                # Ingest's Claude topic fallback is shared work: capped by the global news budget, booked to this run.
-                ing_d = nd.with_news_llm(d, [rec.run_id], job=None, dry_run=s.dry_run, enabled=s.llm and not s.dry_run)
-                ing = await nd.ingest(ing_d, rec, source_ids=job.config.source_ids, llm_ok=s.llm and not s.dry_run)
-            if s.retry_of:
-                selected = await self._retry_selection(d, rec, job)
-            else:
-                selected = await nd.select_for_job(d, rec, job, dry_run=s.dry_run)
+            # Where the candidates come from (JobConfig.intake): the content sources and/or the content ideas.
+            ing: dict[str, Any] = {"new": 0}
+            selected: list[Any] = []
+            if "sources" in job.config.intake:
+                ingest_lock: asyncio.Lock = d.extra.setdefault("news_ingest_lock", asyncio.Lock())
+                async with ingest_lock:  # ingestion is shared: one at a time; a source fetched within its interval is skipped
+                    # Ingest's Claude topic fallback is shared work: capped by the global news budget, booked to this run.
+                    ing_d = nd.with_news_llm(d, [rec.run_id], job=None, dry_run=s.dry_run, enabled=s.llm and not s.dry_run)
+                    ing = await nd.ingest(ing_d, rec, source_ids=job.config.source_ids, llm_ok=s.llm and not s.dry_run)
+                if s.retry_of:
+                    selected = await self._retry_selection(d, rec, job)
+                else:
+                    selected = await nd.select_for_job(d, rec, job, dry_run=s.dry_run)
             s.selected = [{"cluster_id": c.cluster_id, "score": c.score, "rank": c.rank, "title": c.title} for c in selected]
             singles = [c for c in selected if (c.rank or 0) < 100] if job.mode != "daily_digest" else []
             digest = [c for c in selected if (c.rank or 0) >= 100] if job.mode == "both" else (selected if job.mode == "daily_digest" else [])
             work = [{"cluster_ids": [c.cluster_id], "mode": "single", "score": c.score} for c in singles]
             if digest:
                 work.append({"cluster_ids": [c.cluster_id for c in digest][: job.config.digest_size], "mode": "digest", "score": max(c.score for c in digest)})
-            s.children = await self._fan_out(d, job, work)
+            s.children = await self._fan_out(d, job, work) if work else []
+            if "ideas" in job.config.intake and not s.retry_of:
+                s.children.extend(await self._ideas(d, rec, job, limit=max(0, job.config.max_articles_per_run - len(work))))
             for ch in s.children:
                 rec.count(ch.get("outcome") or "failed")
             rec.count("drafted", sum(1 for ch in s.children if ch.get("outcome") == "ready_for_review"))
@@ -307,6 +313,33 @@ class NewsJobFlow(NewsHelpers, SeoFlow[NewsJobState]):
                 out.append({"cluster_ids": w["cluster_ids"], "mode": w["mode"], "outcome": "failed"})
             else:
                 out.append(r)
+        return out
+
+    async def _ideas(self, d: nd.DeskDeps, rec: RunRecorder, job: Job, *, limit: int) -> list[dict[str, Any]]:
+        """The content ideas intake: the web app picks this job's best matching ideas (its topics and keywords, its
+        daily cap), puts each on the editorial calendar and starts the Editorial crew on it (new_article_flow); the
+        drafts reach the review queue like every article draft. A dry run (or a run without the LLM) only lists them."""
+        s: NewsJobState = self.state
+        if limit <= 0:
+            rec.log("info", "no room for content ideas in this run (max articles per run is used up)", outcome="skipped")
+            return []
+        async with rec.step("ideas") as o:
+            try:
+                r = await d.web.jobs_draft_ideas({"jobId": job.id, "runId": rec.run_id, "limit": limit, "dryRun": s.dry_run or not s.llm})
+            except Exception as e:
+                s.errors.append(f"ideas: {type(e).__name__}: {str(e)[:200]}")
+                rec.log("warning", f"content ideas could not be started: {type(e).__name__}", outcome="failed")
+                o["output"] = 0
+                return []
+            picked = [i for i in (r.get("ideas") or []) if isinstance(i, dict)]
+            o["output"] = len(picked)
+            o["detail"] = {"reason": r.get("reason"), "considered": r.get("considered")}
+        out: list[dict[str, Any]] = []
+        for i in picked:
+            outcome = "dry_run" if (s.dry_run or not s.llm) else ("drafting" if i.get("runId") else "failed")
+            out.append({"cluster_ids": [], "mode": "idea", "idea_id": i.get("ideaId"), "title": i.get("title"), "run_id": i.get("runId"), "status": None, "outcome": outcome, "result": {"calendar_id": i.get("calendarId"), "draft_id": i.get("draftId"), "error": i.get("error")}})
+        if out:
+            rec.log("info", f"{len(out)} content idea(s) {'would be drafted' if s.dry_run or not s.llm else 'sent to the Editorial crew'}", outcome="ideas")
         return out
 
     async def _notify(self, d: nd.DeskDeps, rec: RunRecorder, job: Job) -> None:
