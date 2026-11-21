@@ -1,5 +1,20 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P3 (web app, first part): Retrieval, Embeddings and MCP settings (2026-11-21, owner request)
+
+- AI & SEO → Settings → ML & retrieval now also shows the SEO agent's groups **Retrieval** and **Embeddings**; MCP
+  shows its group **MCP servers** (the generic `AgentSettingsGroup`, no new component). An agent from before these
+  groups says "needs a newer seo-agent" in each card.
+- User guide: the settings reference says what each group holds and what applies at once or on restart.
+- **Known gap:** this web app still reads `PUBLIC_MCP_ENABLED` / `ADMIN_MCP_ENABLED` from its own environment
+  (`src/lib/seo-agent/config.ts`) to decide whether to route `/mcp/*` to the agent. Switching a server **on** in the
+  agent's settings does not open the route here until that variable is also set; switching it **off** works at once
+  (the agent answers 503).
+- **Not done yet in P3:** the guarded embeddings provider/model change with re-embed, the model registry on
+  /admin/models (activate, roll back, train now), per-tool MCP switches, the connections page with tokens and a call
+  log, and the SEO ML training thresholds as settings.
+- Tests: none added here (the cards are the existing component). **Nothing was run** in the session.
+
 ## Admin settings plan, P2 part B (web app, first half): LLM providers & models section (2026-11-21, owner request)
 
 Thin client of the seo-agent's `GET/PUT /llm-providers` and `GET /llm-models` (moks-seo-agent branch
