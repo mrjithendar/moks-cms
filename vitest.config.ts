@@ -6,6 +6,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    // Migrates one PGlite database per run; freshDb() (tests/db-helpers.ts) loads a copy of it for each test.
+    globalSetup: ["tests/db-template.setup.ts"],
+    // freshDb() collects the memory of the database it closes (tests/db-helpers.ts).
+    execArgv: ["--expose-gc"],
     // Database tests start an in-process Postgres (PGlite); in CI they share the CPU with the
     // parallel production build, so allow more than the 5 s default. Assertions are unchanged.
     testTimeout: 30_000,
