@@ -1025,7 +1025,7 @@ const faqs: GuideEntry[] = [
     "Admin → MCP access → Revoke on its row. The token stops working at once. To switch the whole admin MCP server off, the operator sets ADMIN_MCP_ENABLED=false.",
   ], { href: "/admin/automation/mcp", adminOnly: true, keywords: ["mcp", "revoke", "disconnect", "claude"] }),
   faq("faq-seo-budget", "SEO agent, AI & ML", "How much does the SEO agent spend on AI?", [
-    "Drafting stops at the monthly budget in AI & SEO → Settings → AI & drafts (0 uses the deployment's ceiling, by default $15). DataForSEO and AI visibility have their own monthly caps; a run stops before a call that would cross one.",
+    "There is one LLM budget for everything: AI & SEO → Settings → LLM budget, a daily limit, a monthly limit, or both. Agent flows, drafts, keyword intents and AI visibility all count against it, and a call that would cross it is not made. No limit is set until you save one. Ask the Blog keeps its own daily limit on top. DataForSEO is not an LLM and keeps its own monthly cap.",
   ], { href: "/admin/automation", adminOnly: true, keywords: ["cost", "budget", "spend", "claude", "dataforseo"] }),
   faq("faq-social-login", "Site settings", "Google sign-in says redirect_uri_mismatch. What is wrong?", [
     "The callback URL registered with Google must match the one shown in Admin → Integrations exactly, including https and the path.",

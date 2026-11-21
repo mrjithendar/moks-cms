@@ -21,6 +21,28 @@ Thin client of the seo-agent's `GET/PUT /llm-providers` and `GET /llm-models` (m
 - Tests: `tests/llm-providers.test.ts` (new, 10). **Nothing was run** in the session (no `node_modules`); the new
   files only passed a syntax-level `tsc` without the project's packages. Not viewed in a browser.
 
+## Admin settings plan, P2 part A (web app, second half): this app's own LLM calls on the one budget (2026-11-21, owner request)
+
+- New `src/lib/seo-intel/llm-gate.ts`: before an LLM call this app makes itself, hold the call's upper bound against
+  the one budget (seo-agent `POST /llm-budget/reserve`), and let go after the usage row is written (`/settle`).
+  Used by `claudeJson` (drafts on the legacy path, keyword intents), `submitBatch` (weekly batch) and AI visibility.
+- When the budget cannot be asked: no seo-agent set up → the call is allowed (there is no budget anywhere); an agent
+  older than the one budget (404/405) → allowed, with a warning in the log; an agent that is set up but does not
+  answer → **refused**.
+- Removed: this app's own monthly cap (`drafts.monthlyBudgetUsd`, `SEO_LLM_MONTHLY_BUDGET_USD`, the $15 default) and
+  AI visibility's own cap (`aiVisibility.monthlyBudgetUsd`). Saved settings that still hold these keys load fine; the
+  keys are dropped on the next save. DataForSEO keeps its own monthly cap (it is not an LLM).
+- AI visibility now writes each answer's cost to `seo_llm_usage` (purpose `ai_visibility`), so it counts in the total.
+  The Google AI Overview lookups (bought through DataForSEO, about $0.01 each) are counted there too.
+- "LLM usage this month" is a usage figure only (no bar, no cap). The red banner on the AI & SEO pages now reads the
+  one budget and shows when the daily or the monthly limit is used up; it gives up after 1.5 s so it never slows a page.
+- User guide FAQ "How much does the SEO agent spend on AI?", `.env.example`, `docs/seo/COSTS.md`, `AI_VISIBILITY.md`
+  and `OPERATIONS.md` say the same.
+- Tests changed: `tests/seo-v2-drafts.test.ts` (budget refusal, hold then settle, config has no limit),
+  `tests/seo-ai-visibility.test.ts` (stops at the refused call, usage row written), `tests/seo-v4-agent.test.ts`.
+  **Nothing was run** in the session (no `node_modules`, no network for installs); CI is the first run.
+- Needs seo-agent with moks-seo-agent #14 (already merged). With an older agent nothing is limited by this app.
+
 ## Admin settings plan, P2 part A (web app, first half): the one LLM budget section (2026-11-21, owner request)
 
 Thin client of moks-seo-agent #14 (one budget for every provider, model and purpose; `GET/PUT /llm-budget`).

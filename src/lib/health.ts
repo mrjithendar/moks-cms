@@ -201,7 +201,7 @@ function extraChecks(): Promise<Check>[] {
       const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
       const c = claudeConfig(await getSeoSettings());
       if (!c.apiKey) return { status: "not configured", detail: "ANTHROPIC_API_KEY is not set: drafting, Improve and reviews use rules only" };
-      return { status: "ok", detail: `key set · budget $${c.monthlyBudgetUsd} a month` };
+      return { status: "ok", detail: "key set" };
     }),
     ...(["gsc", "ga4"] as const).map((p) =>
       timed(p === "gsc" ? "Search Console sync" : "Google Analytics 4 sync", { group: "SEO & AI", href: "/admin/integrations" }, async () => {

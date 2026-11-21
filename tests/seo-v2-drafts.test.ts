@@ -189,7 +189,7 @@ describe("Claude draft pipeline (mocked API)", () => {
     await saveSeoSettings(settingsInput(), "admin");
     articleId = (await seedArticle(db)).id;
     process.env.ANTHROPIC_API_KEY = "sk-ant-test-not-real";
-    delete process.env.SEO_LLM_MONTHLY_BUDGET_USD;
+    delete process.env.SEO_AGENT_TOKEN; // no seo-agent: the budget gate lets calls through (llm-gate.ts)
   });
   afterEach(() => {
     process.env = { ...env };
@@ -249,23 +249,46 @@ describe("Claude draft pipeline (mocked API)", () => {
     expect(api.calls.filter((c) => c.path === "/v1/messages")).toHaveLength(2);
   });
 
-  it("budget cap reached → no API call, draft paused with a reason", async () => {
+  it("the LLM budget refuses → no API call, draft paused with the budget's reason", async () => {
     await seedRecommendation(db, articleId, "low_ctr");
-    process.env.SEO_LLM_MONTHLY_BUDGET_USD = "1";
-    await db.execute(sql`insert into seo_llm_usage (provider, model, purpose, prompt_version, input_tokens, output_tokens, cost_usd, outcome) values ('anthropic', 'claude-sonnet-5-5', 'draft', 'v', 0, 0, 1.2, 'ok')`);
     const api = fakeAnthropic({ answers: [output([titleChange])] });
-    const r = await drafts.generateDraft(articleId, { fetchImpl: api.fetchImpl });
-    expect(r.reason).toMatch(/Paused: Monthly budget/);
+    const asked: { usd: number; purpose: string }[] = [];
+    const gate = {
+      reserve: async (usd: number, purpose: string) => {
+        asked.push({ usd, purpose });
+        return { ok: false as const, detail: "the monthly LLM budget of $1.00 is used up" };
+      },
+      settle: async () => undefined,
+    };
+    const r = await drafts.generateDraft(articleId, { fetchImpl: api.fetchImpl, gate });
+    expect(r.reason).toMatch(/Paused: the monthly LLM budget/);
     expect(api.calls).toHaveLength(0);
-    const state = await claude.budgetState(db, claudeConfig(await (await import("@/lib/seo-intel/settings")).getSeoSettings()));
-    expect(state.paused).toBe(true);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.purpose).toBe("draft");
+    expect(asked[0]!.usd).toBeGreaterThan(0);
   });
 
-  it("settings can lower the env budget but never raise it", () => {
-    const s = { ...DEFAULT_SEO_SETTINGS, drafts: { ...DEFAULT_SEO_SETTINGS.drafts, monthlyBudgetUsd: 50 } };
-    expect(claudeConfig(s, { SEO_LLM_MONTHLY_BUDGET_USD: "20" }).monthlyBudgetUsd).toBe(20);
-    expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 5 } }, { SEO_LLM_MONTHLY_BUDGET_USD: "20" }).monthlyBudgetUsd).toBe(5);
-    expect(claudeConfig({ ...s, drafts: { ...s.drafts, monthlyBudgetUsd: 0 } }, {}).monthlyBudgetUsd).toBe(15);
+  it("a call holds its upper bound first and lets go of the hold after the usage row", async () => {
+    await seedRecommendation(db, articleId, "low_ctr");
+    const api = fakeAnthropic({ answers: [output([titleChange])] });
+    const events: string[] = [];
+    const gate = {
+      reserve: async () => {
+        events.push("reserve");
+        return { ok: true as const, id: "h1" };
+      },
+      settle: async (id: string | null) => {
+        events.push(`settle:${id}`);
+      },
+    };
+    await drafts.generateDraft(articleId, { fetchImpl: api.fetchImpl, gate });
+    expect(events).toEqual(["reserve", "settle:h1"]);
+  });
+
+  it("the Claude config has models and the key, and no limit of its own", () => {
+    const s = DEFAULT_SEO_SETTINGS;
+    expect(claudeConfig(s, { SEO_LLM_MONTHLY_BUDGET_USD: "20" })).not.toHaveProperty("monthlyBudgetUsd");
+    expect(DEFAULT_SEO_SETTINGS.drafts).not.toHaveProperty("monthlyBudgetUsd");
     expect(claudeConfig(s, { SEO_DRAFT_MODEL: "claude-opus-5-5" }).draftModel).toBe("claude-opus-5-5");
     expect(claudeConfig(s, {}).classifyModel).toBe("claude-haiku-5-5");
   });
@@ -310,7 +333,7 @@ describe("Claude draft pipeline (mocked API)", () => {
     expect(reqs[0]!.custom_id).toMatch(/^d_[0-9a-f-]{36}$/);
     expect(reqs[0]!.params.fallbacks).toBeUndefined(); // the Batches API rejects fallbacks
     const s = await (await import("@/lib/seo-intel/settings")).getSeoSettings();
-    expect((await claude.budgetState(db, claudeConfig(s))).reservedUsd).toBeGreaterThan(0);
+    expect((await claude.budgetState(db)).reservedUsd).toBeGreaterThan(0);
     expect((await drafts.openDraft(db, articleId))!.status).toBe("generating");
     // still running → nothing applied
     await drafts.pollDraftBatches({ fetchImpl: api.fetchImpl });
@@ -321,7 +344,7 @@ describe("Claude draft pipeline (mocked API)", () => {
     const d = (await drafts.openDraft(db, articleId))!;
     expect(d.status).toBe("ready_for_review");
     expect(d.changes).toHaveLength(1);
-    expect((await claude.budgetState(db, claudeConfig(s))).reservedUsd).toBe(0);
+    expect((await claude.budgetState(db)).reservedUsd).toBe(0);
     const [u] = rowsOf<{ mode: string; cost_usd: number }>(await db.execute(sql`select mode, cost_usd from seo_llm_usage`));
     expect(u!.mode).toBe("batch");
     expect(Number(u!.cost_usd)).toBeCloseTo((1200 * 2 + 400 * 10 + 2000 * 0.2) / 2e6, 8);

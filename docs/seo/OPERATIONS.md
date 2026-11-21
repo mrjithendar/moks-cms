@@ -199,8 +199,8 @@ This repository never edits the miniKube repo or applies alert rules (D-12).
 | `seo_draft` / `seo_verify` / `seo_submit` | on demand | generation, post-publish verification, IndexNow/sitemap/inspection |
 | scheduled drafts | every 30-s tick | "Publish later" approvals whose time has come |
 
-Budget paused? The search, review and automation admin pages show a red banner; Settings shows month-to-date spend per model. Raise
-`SEO_LLM_MONTHLY_BUDGET_USD` or wait for the next UTC month. Stop submissions: `SEO_SUBMISSION_ENABLED=false`.
+Budget paused? The search, review and automation admin pages show a red banner; Settings shows month-to-date spend per model. Change
+the limit in Admin → AI & SEO → Settings → LLM budget, or wait for it to reset (UTC day or month). Stop submissions: `SEO_SUBMISSION_ENABLED=false`.
 
 ## Rollback of an approved change
 On the draft's page: **Roll back this change** (new revision; history kept), or the editor's revision history if the
