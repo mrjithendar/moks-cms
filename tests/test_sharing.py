@@ -148,3 +148,17 @@ async def test_public_search_news_still_finds_published_news_posts() -> None:
         "p3": {"collection": "blog", "status": "published", "title": "Blog resize", "path": "/blog/x", "body": "resize", "published_at": now},
     })
     assert [r["path"] for r in await store.search("resize", None, 10)] == ["/news/k8s-135"]
+
+
+def test_holds_say_who_took_them(llm: FakeLlm, web: FakeWebApp, caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    with client(llm, web) as tc, caplog.at_level(logging.INFO, logger="seo_agent.llm"):
+        news = tc.post("/llm-budget/reserve", json={"max_usd": 0.25, "purpose": "news.crew"}, headers={"Authorization": f"Bearer {NEWS}"})
+        tc.post("/llm-budget/reserve", json={"max_usd": 0.5, "purpose": "draft"}, headers={"Authorization": f"Bearer {SERVICE}"})
+        view = tc.get("/llm-budget", headers={"Authorization": f"Bearer {SERVICE}"}).json()
+        assert view["holds"] == [{"caller": "news-agent", "usd": 0.25, "calls": 1}, {"caller": "web", "usd": 0.5, "calls": 1}]
+        tc.post("/llm-budget/settle", json={"id": news.json()["id"]}, headers={"Authorization": f"Bearer {NEWS}"})
+        assert [h["caller"] for h in tc.get("/llm-budget", headers={"Authorization": f"Bearer {SERVICE}"}).json()["holds"]] == ["web"]
+    held = [r for r in caplog.records if getattr(r, "event", None) == "llm_budget_hold"]
+    assert {(r.caller, r.outcome) for r in held} == {("news-agent", "held"), ("web", "held")}

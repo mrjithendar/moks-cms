@@ -582,6 +582,7 @@ def create_app(container: Container | None = None) -> FastAPI:
         now = c.guard.clock()
         out["ask_daily"] = {"limit_usd": c.guard.ask_daily_usd, "spent_usd": round(await c.guard.store.day_spend(now, "ask"), 6)}
         out["legacy_limits"] = await c.budgets.legacy()
+        out["holds"] = c.guard.held_by_caller()  # calls in flight elsewhere, by who asked (the web app, the news agent)
         return out
 
     @app.put("/llm-budget", dependencies=[Depends(auth)])
@@ -613,8 +614,10 @@ def create_app(container: Container | None = None) -> FastAPI:
             return JSONResponse({"error": "max_usd is the call's upper bound in USD (0 to 1000)"}, status_code=422)
         if not isinstance(purpose, str) or not re.fullmatch(r"[a-z][a-z0-9_.\-]{1,60}", purpose):
             return JSONResponse({"error": "purpose names what the call is for (lower-case, e.g. ai_visibility)"}, status_code=422)
+        c = ctr(request)
+        caller = "news-agent" if _is(request.headers.get("authorization", ""), c.settings.news_token) and not _is(request.headers.get("authorization", ""), c.settings.agent_token) else "web"
         try:
-            return {"id": await ctr(request).guard.hold(float(max_usd), purpose)}
+            return {"id": await c.guard.hold(float(max_usd), purpose, caller)}
         except BudgetExceeded as e:
             return JSONResponse({"error": e.detail, "scope": e.scope}, status_code=402)
 
