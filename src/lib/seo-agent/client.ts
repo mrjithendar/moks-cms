@@ -259,3 +259,88 @@ export const getAgentSettings = (deps?: AgentDeps) => call<AgentSettingsView>("G
 /** A field that is not sent stays as it is; null clears it (the deployment's value, then the default, applies). */
 export const putAgentSettings = (group: string, values: Record<string, AgentSettingValue>, actor: string, deps?: AgentDeps) =>
   call<AgentSettingsView>("PUT", `/admin-settings/${encodeURIComponent(group)}`, { values, actor }, deps, 8_000);
+
+// --- LLM providers and models (moks-seo-agent app/llm_providers; GET/PUT /llm-providers, GET /llm-models) ---------
+/** One kind of provider the agent knows how to reach (its catalog). No model list and no price lives there. */
+export type AgentLlmKind = {
+  id: string;
+  label: string;
+  adapter: string;
+  auth: string;
+  base_url: string;
+  base_url_editable: boolean;
+  lists_models: boolean;
+  structured: string;
+  needs: string[];
+  takes_key: boolean;
+  env_key: string;
+  many: boolean;
+  docs: string;
+  note: string;
+};
+export type AgentLlmPrices = { input: number | null; output: number | null; cache_read: number | null; cache_write: number | null };
+export type AgentLlmModel = {
+  provider_id: string;
+  model_id: string;
+  label: string;
+  enabled: boolean;
+  free: boolean;
+  /** entered: the admin's prices. built-in: Claude's list price. free: marked free. missing: cannot be switched on. */
+  price_state: "entered" | "built-in" | "free" | "missing";
+  prices: AgentLlmPrices;
+  builtin_prices: Record<string, number> | null;
+  context_window: number | null;
+  max_output: number | null;
+  capabilities: { structured_output: boolean; tools: boolean; vision: boolean };
+  provider_name?: string;
+};
+export type AgentLlmProvider = {
+  id: string;
+  kind: string;
+  kind_label: string;
+  name: string;
+  enabled: boolean;
+  base_url: string;
+  region: string;
+  deployment: string;
+  api_version: string;
+  /** Whether a key exists and where. The key itself is never sent. */
+  key: "saved" | "env" | "none" | "not_needed";
+  saved: boolean;
+  issues: string[];
+  models: AgentLlmModel[];
+};
+export type AgentLlmProvidersView = { kinds: AgentLlmKind[]; providers: AgentLlmProvider[]; can_store_keys: boolean; key_env: string };
+/** What a save sends. `api_key`: left out = keep the saved key, "" = remove it, text = replace it. `models`: left out = keep. */
+export type AgentLlmProviderSave = {
+  id: string;
+  kind: string;
+  name: string;
+  enabled: boolean;
+  base_url: string;
+  region: string;
+  deployment: string;
+  api_version: string;
+  api_key?: string;
+  models?: {
+    model_id: string;
+    label: string;
+    enabled: boolean;
+    free: boolean;
+    input_usd: number | null;
+    output_usd: number | null;
+    cache_read_usd: number | null;
+    cache_write_usd: number | null;
+    context_window: number | null;
+    max_output: number | null;
+    structured_output: boolean;
+    tools: boolean;
+    vision: boolean;
+  }[];
+};
+
+export const getLlmProviders = (deps?: AgentDeps) => call<AgentLlmProvidersView>("GET", "/llm-providers", undefined, deps, 8_000);
+export const putLlmProvider = (provider: AgentLlmProviderSave, actor: string, deps?: AgentDeps) =>
+  call<AgentLlmProvidersView & { saved: { id: string; created: boolean; enabled: boolean; key_changed: boolean; models: number | null } }>("PUT", "/llm-providers", { ...provider, actor }, deps, 8_000);
+/** Models that are switched on, of providers that are on: what a picker may offer. */
+export const getLlmModels = (deps?: AgentDeps) => call<{ models: AgentLlmModel[] }>("GET", "/llm-models", undefined, deps, 8_000);
