@@ -37,6 +37,8 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/news\/site-signals$/, () => news.newsSiteSignals()],
   ["POST", /^\/news\/notify$/, (_m, b) => news.newsNotify(b)],
   ["POST", /^\/news\/performance$/, () => news.newsCollectPerformance()],
+  // Crew jobs whose intake includes the content ideas: put the best matching ideas on the calendar and draft them.
+  ["POST", /^\/jobs\/ideas$/, (_m, b) => news.jobsDraftIdeas(b)],
   // Promotion (docs/seo/PROMOTION.md): channel opportunities, drafted posts and content ideas. Never posting.
   ["POST", /^\/promotion\/collect$/, (_m, b) => promo.promoCollect(b)],
   ["POST", /^\/promotion\/articles\/([^/]+)\/drafts$/, (m, b) => promo.promoSaveDrafts(m[1]!, b)],

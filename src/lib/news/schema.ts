@@ -10,6 +10,10 @@ export const AGENT_KEYS = ["researcher", "analyst", "writer", "fact_checker", "s
 export const SOURCE_TYPES = ["rss", "atom", "json_api", "github_releases", "sitemap", "html_allowlisted"] as const;
 export const REJECT_CATEGORIES = ["off_topic", "low_value", "duplicate", "inaccurate", "style", "other"] as const;
 export const IMAGE_PROVIDERS = ["template", "gemini", "openai"] as const;
+/** What a crew job writes (crew-jobs plan PR 3): news is one kind of content. moks-seo-agent app/news/config.py. */
+export const OUTPUTS = ["news", "article"] as const;
+/** Where a job's candidates come from: the content sources (News Desk crew) and/or the content ideas (Editorial crew). */
+export const INTAKES = ["sources", "ideas"] as const;
 export const MAX_NEWS_JOBS = 25; // bounds the `job` metric label (seo-agent app/metrics.py MAX_NEWS_JOBS)
 
 const words = z.array(z.string().trim().min(1).max(80)).max(100);
@@ -53,6 +57,24 @@ export const jobConfigSchema = z
     expiry_days: z.number().int().min(1).max(3650).nullable().default(null),
     publishing_slots: z.array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)).max(12).default([]),
     notify: z.boolean().default(true),
+    output: z.enum(OUTPUTS).default("news"),
+    intake: z
+      .array(z.enum(INTAKES))
+      .min(1)
+      .max(2)
+      .refine((v) => new Set(v).size === v.length, "list sources and ideas at most once each")
+      .default(["sources"]),
+    // The job's own quality-gate values, by field; a field left out uses the shared value (AI & SEO → Settings → AI &
+    // drafts → Quality gates). Checked against the gates' own ranges when parsed (qualitySchema, below).
+    quality: z
+      .record(z.string(), z.number())
+      .superRefine((q, ctx) => {
+        const known = Object.keys(qualitySchema.shape);
+        for (const k of Object.keys(q)) if (!known.includes(k)) ctx.addIssue({ code: "custom", message: `unknown quality gate ${k}`, path: [k] });
+        const r = qualitySchema.safeParse({ ...qualitySchema.parse({}), ...q });
+        if (!r.success) for (const i of r.error.issues) ctx.addIssue({ code: "custom", message: i.message, path: i.path });
+      })
+      .default({}),
   })
   .strict()
   .refine((c) => c.length_min_words < c.length_max_words, { message: "length_min_words must be below length_max_words", path: ["length_min_words"] });

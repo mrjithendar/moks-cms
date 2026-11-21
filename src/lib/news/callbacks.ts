@@ -120,9 +120,12 @@ export async function newsSaveDraft(body: unknown) {
       runId: z.string().max(80),
       model: z.string().max(80).nullable().default(null),
       promptVersion: z.string().max(40).nullable().default(null),
+      // What the job writes (JobConfig.output): a news story (collection news) or a blog article (collection blog).
+      output: z.enum(["news", "article"]).default("news"),
     }),
     body,
   );
+  const article = b.output === "article";
   const db = await getDb();
   const doc = b.document;
   const v = await validateNewArticle(db, "00000000-0000-0000-0000-000000000000", doc);
@@ -131,19 +134,19 @@ export async function newsSaveDraft(body: unknown) {
   const [fallback] = cat ? [cat] : rowsOf<{ slug: string }>(await db.execute(sql`select slug from category order by sort limit 1`));
   const news = (doc.news ?? {}) as { sources?: { title: string; url: string; publisher: string }[]; image?: { src?: string; alt?: string; width?: number; height?: number } | null };
   const actor = await deskActor(db, b.author ?? null);
-  const slugBase = String(doc.slug_suggestion || "news").replace(/[^a-z0-9-]/g, "").slice(0, 70) || "news";
+  const slugBase = String(doc.slug_suggestion || (article ? "article" : "news")).replace(/[^a-z0-9-]/g, "").slice(0, 70) || (article ? "article" : "news");
   const img = b.image?.src && /^\/media\/[0-9a-f-]{36}\//.test(b.image.src) ? { src: b.image.src, alt: String(b.image.alt || doc.title).slice(0, 300), width: b.image.width ?? 1600, height: b.image.height ?? 900 } : null;
   const post = await createPost(
     actor,
     {
-      collection: "news",
+      collection: article ? "blog" : "news",
       slug: `${slugBase}-${Date.now().toString(36).slice(-4)}`,
       title: String(doc.title).slice(0, 110),
       description: String(doc.meta_description ?? ""),
       body: String(doc.body_mdx ?? ""),
       category: (cat ?? fallback)?.slug ?? "devops-sre",
       tags: b.tags,
-      contentType: "news",
+      contentType: article ? "tutorial" : "news",
       status: "draft",
       sources: (news.sources ?? []).filter((s) => /^https?:\/\//.test(s.url)).map((s) => ({ title: s.title || s.url, url: s.url, publisher: s.publisher || hostOf(s.url) })),
       ...(img ? { featuredImage: img } : {}),
@@ -151,11 +154,74 @@ export async function newsSaveDraft(body: unknown) {
     { incompleteDrafts: true },
   );
   const base = await loadBase(db, post.id);
-  const d = await reserveDraft(db, post.id, base, "news", { kind: "new_article", threadManaged: true });
-  await saveDraft(d.id, { kind: "new_article", document: doc, changes: [], flags: [...v.flags, ...b.flags].slice(0, 60), summary: `News · ${b.jobName}: ${String(doc.title).slice(0, 200)}`, model: b.model, promptVersion: b.promptVersion, threadId: d.id });
+  const d = await reserveDraft(db, post.id, base, article ? "job" : "news", { kind: "new_article", threadManaged: true });
+  await saveDraft(d.id, { kind: "new_article", document: doc, changes: [], flags: [...v.flags, ...b.flags].slice(0, 60), summary: `${article ? "Article" : "News"} · ${b.jobName}: ${String(doc.title).slice(0, 200)}`, model: b.model, promptVersion: b.promptVersion, threadId: d.id });
   await db.execute(sql`update news_articles set draft_id = ${d.id}, post_id = ${post.id}, updated_at = now() where id = ${b.articleId}`);
   log.info("news draft saved", { operation: "news_save_draft", outcome: "ready_for_review" });
   return { draftId: d.id, postId: post.id, errors: [], flags: v.flags };
+}
+
+// --- content ideas intake (crew-jobs plan PR 3) ----------------------------------------------------------------------
+
+type IdeaDraft = { draftId?: string | null; runId?: string | null };
+type IdeaDeps = { draft?: (calendarId: string, actor: Actor) => Promise<IdeaDraft>; toCalendar?: (ideaId: string) => Promise<{ calendarId?: string }> };
+
+/**
+ * POST /internal/seo-agent/jobs/ideas {jobId, runId, limit, dryRun}: a crew job whose intake includes the content ideas
+ * (JobConfig.intake, moks-seo-agent app/flows/news.py `_ideas`). The job's own settings decide, read here, not sent:
+ * - which ideas: open ones (new or saved), best score first, that match the job's include keywords or its topics'
+ *   keywords (none set: any idea) and none of its exclude keywords;
+ * - how many: `limit` (what is left of the run's cap) and the job's daily cap (its news drafts and ideas started today).
+ * Each picked idea goes on the editorial calendar (as "Add to calendar" in Promotion does) and its draft is generated
+ * (as "Generate draft" does): the Editorial crew writes it and it reaches the review queue. Nothing is published.
+ * dryRun only lists what it would pick.
+ */
+export async function jobsDraftIdeas(body: unknown, deps: IdeaDeps = {}) {
+  const b = parse(z.object({ jobId: z.string().regex(UUID), runId: z.string().max(80), limit: z.number().int().min(1).max(20), dryRun: z.boolean().default(false) }), body);
+  const db = await getDb();
+  const { getJob } = await import("./service");
+  const job = await getJob(b.jobId, db);
+  if (!job) throw new CallbackError("Job not found.", 404, "not_found");
+  const [today] = rowsOf<{ n: number }>(
+    await db.execute(sql`
+      select (select count(*) from news_articles where job_id = ${b.jobId} and created_at >= date_trunc('day', now()) and status not in ('failed', 'dry_run'))::int
+           + (select count(*) from seo_content_ideas i join news_runs r on r.id::text = i.run_id where r.job_id = ${b.jobId} and i.status = 'sent' and i.updated_at >= date_trunc('day', now()))::int as n`),
+  );
+  const room = Math.max(0, Math.min(b.limit, job.config.max_articles_per_day - Number(today?.n ?? 0)));
+  if (room === 0) return { ideas: [], considered: 0, reason: "the job's daily cap is reached" };
+  const topicWords = job.config.topics.length ? rowsOf<{ keywords: string[] }>(await db.execute(sql`select keywords from news_topics where slug = any(${`{${job.config.topics.join(",")}}`}::text[]) and enabled`)).flatMap((t) => t.keywords ?? []) : [];
+  const want = [...job.config.include_keywords, ...topicWords].map((w) => w.toLowerCase()).filter(Boolean);
+  const avoid = job.config.exclude_keywords.map((w) => w.toLowerCase()).filter(Boolean);
+  const open = rowsOf<{ id: string; title: string; angle: string; target_query: string | null }>(await db.execute(sql`select id, title, angle, target_query from seo_content_ideas where status in ('new', 'saved') order by score desc, created_at limit 200`));
+  const fits = open.filter((i) => {
+    const text = `${i.title} ${i.angle} ${i.target_query ?? ""}`.toLowerCase();
+    return (want.length === 0 || want.some((w) => text.includes(w))) && !avoid.some((w) => text.includes(w));
+  });
+  const picked = fits.slice(0, room);
+  if (b.dryRun) return { ideas: picked.map((i) => ({ ideaId: i.id, title: i.title })), considered: fits.length };
+  const actor = await deskActor(db, job.config.author ?? null);
+  const toCalendar = deps.toCalendar ?? (async (id: string) => (await import("../seo-intel/promotion/store")).updateIdea(id, "calendar"));
+  // "Generate draft" in legacy mode (no SEO agent) stops at the outline post: no draft row, no run.
+  const draft =
+    deps.draft ??
+    (async (calendarId: string, a: Actor): Promise<IdeaDraft> => {
+      const r = await (await import("../seo-agent/orchestrate")).draftNewArticle(calendarId, a);
+      return "draftId" in r ? { draftId: r.draftId, runId: r.runId } : {};
+    });
+  const out: { ideaId: string; title: string; calendarId?: string; draftId?: string | null; runId?: string | null; error?: string }[] = [];
+  for (const i of picked) {
+    try {
+      const { calendarId } = await toCalendar(i.id);
+      if (!calendarId) throw new Error("the idea did not reach the calendar");
+      await db.execute(sql`update seo_content_ideas set run_id = ${b.runId}, updated_at = now() where id = ${i.id}`);
+      const d = await draft(calendarId, actor);
+      out.push({ ideaId: i.id, title: i.title, calendarId, draftId: d.draftId ?? null, runId: d.runId ?? null });
+    } catch (e) {
+      out.push({ ideaId: i.id, title: i.title, error: e instanceof Error ? e.message.slice(0, 300) : "failed" });
+    }
+  }
+  log.info("crew job ideas sent", { operation: "jobs_draft_ideas", outcome: `${out.filter((o) => !o.error).length} of ${picked.length}` });
+  return { ideas: out, considered: fits.length };
 }
 
 /** Regenerated cover from the review page: replaces the draft's image (only while it waits for review). */
