@@ -4,7 +4,7 @@ import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { StatusBadge } from "@/components/seo/badges";
 import { listJobs, listRuns } from "@/lib/news/service";
 
-export const metadata = { title: "Run history" };
+export const metadata = { title: "Job runs" };
 const STATUSES = ["running", "succeeded", "failed", "paused_budget", "skipped", "cancelled"];
 const TRIGGERS = ["cron", "manual", "dry_run", "mcp", "retry"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -19,7 +19,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
     const p = new URLSearchParams(Object.entries({ job, status, trigger }).filter((e): e is [string, string] => Boolean(e[1])));
     if (v) p.set(k, v);
     else p.delete(k);
-    return `/admin/news/runs${p.size ? `?${p}` : ""}`;
+    return `/admin/crewai/jobs/runs${p.size ? `?${p}` : ""}`;
   };
   const chip = (k: string, v: string | null, label: string, on: boolean) => (
     <Link key={`${k}:${v}`} href={href(k, v)} className={`inline-flex min-h-9 items-center rounded-full border px-3 text-xs ${on ? "border-accent bg-accent/10 text-fg" : "border-line text-fg-muted"}`}>
@@ -28,7 +28,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
   );
   return (
     <>
-      <AdminHeader title="Run history" description="Every job, ingest, image, training and style-review run, with counters, cost and errors." />
+      <AdminHeader title="Job runs" description="Every crew job run, and the intake, cover image, training and style-review runs behind them, with counters, cost and errors. Each flow's own steps and log are under Flow runs." />
       <div className="mb-4 flex flex-wrap gap-2">
         {chip("job", null, "All jobs", !job)}
         {jobs.map((j) => chip("job", j.id, j.name, job === j.id))}
@@ -48,7 +48,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
             const c = r.counters as Record<string, number>;
             return (
               <tr key={String(r.id)} className="border-t border-line">
-                <td className={td}><Link href={`/admin/news/runs/${String(r.id)}`} className="font-medium text-fg hover:underline"><LocalTime iso={String(r.started_at)} /></Link></td>
+                <td className={td}><Link href={`/admin/crewai/jobs/runs/${String(r.id)}`} className="font-medium text-fg hover:underline"><LocalTime iso={String(r.started_at)} /></Link></td>
                 <td className={td}>{String(r.job_name ?? "—")}<p className="text-xs text-fg-subtle">{String(r.kind)}{r.dry_run ? " · dry run" : ""}</p></td>
                 <td className={td}>{String(r.trigger)}</td>
                 <td className={td}><StatusBadge status={String(r.status)} /></td>

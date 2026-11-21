@@ -20,7 +20,6 @@ export type MenuIconName =
   | "comments"
   | "inbox"
   | "billing"
-  | "newsroom"
   | "ai"
   | "insights"
   | "practice"
@@ -32,25 +31,34 @@ export type MenuIconName =
   | "pin"
   | "more";
 
-type GroupDef = { id: string; label: string; icon: MenuIconName; /** The group's name for someone who cannot see `unless` (authors have a profile but no Users page). */ alt?: { unless: string; label: string } };
+type GroupDef = {
+  id: string;
+  label: string;
+  icon: MenuIconName;
+  /** The group's name for someone who cannot see `unless` (authors have a profile but no Users page). */ alt?: { unless: string; label: string };
+  /** A line above the group, as WordPress draws between the core content menus, the plugin menus and the site menus. */ separator?: boolean;
+};
 
-/** Top-level groups, in menu order. Every group opens a submenu, even one with a single page. */
+/**
+ * Top-level groups, in menu order: WordPress's own (owner, 2026-11-21: "reorganize all the menus in wordpress style").
+ * Dashboard; the content menus (Posts, Media, Pages, Comments); then, like plugin menus (WooCommerce, Yoast), AI & SEO,
+ * Billing and Practice; then Appearance, Users, Tools and Settings. Every group opens a submenu, even one with a
+ * single page.
+ */
 export const MENU_GROUPS: GroupDef[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { id: "posts", label: "Posts", icon: "posts" },
-  { id: "editorial", label: "Editorial", icon: "editorial" },
+  { id: "posts", label: "Posts", icon: "posts", separator: true },
   { id: "media", label: "Media", icon: "media" },
   { id: "pages", label: "Pages", icon: "pages" },
-  { id: "newsroom", label: "Newsroom", icon: "newsroom" },
-  // The SEO agent and what it works from: one group since 2026-11-21 (before: "AI room" and "SEO & insights").
-  { id: "ai", label: "AI & SEO", icon: "ai" },
-  { id: "community", label: "Community", icon: "comments" },
+  { id: "comments", label: "Comments", icon: "comments" },
+  // The SEO agent, its crew jobs and what they work from (there is no Newsroom since 2026-11-21).
+  { id: "ai", label: "AI & SEO", icon: "ai", separator: true },
   { id: "billing", label: "Billing", icon: "billing" },
   { id: "practice", label: "Practice", icon: "practice" },
-  { id: "appearance", label: "Appearance", icon: "appearance" },
+  { id: "appearance", label: "Appearance", icon: "appearance", separator: true },
   { id: "users", label: "Users", icon: "users", alt: { unless: "/admin/users", label: "Your account" } },
+  { id: "tools", label: "Tools", icon: "tools" },
   { id: "settings", label: "Settings", icon: "settings" },
-  { id: "system", label: "System", icon: "tools" },
 ];
 
 type Place = { group: string; /** Name inside the group, when the page's own label would repeat the group's. */ title?: string; /** Sub-heading above this page and the ones after it in the group, up to the next heading. */ heading?: string };
@@ -59,59 +67,56 @@ type Place = { group: string; /** Name inside the group, when the page's own lab
 export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin", { group: "dashboard", title: "Home" }],
 
+  // Posts, as in WordPress; the editorial calendar, the review queue and promotion sit under it like editorial plugins.
   ["/admin/posts", { group: "posts", title: "All posts" }],
-  ["/admin/posts/new", { group: "posts", title: "Add new" }],
+  ["/admin/posts/new", { group: "posts", title: "Add new post" }],
   ["/admin/categories", { group: "posts" }],
   ["/admin/tags", { group: "posts" }],
-
-  // Planning, drafting and promoting: from an idea to a published, shared article.
-  ["/admin/calendar", { group: "editorial" }],
-  ["/admin/review", { group: "editorial" }],
-  ["/admin/promotion", { group: "editorial" }],
+  ["/admin/calendar", { group: "posts", heading: "Editorial" }],
+  ["/admin/review", { group: "posts" }],
+  ["/admin/promotion", { group: "posts" }],
 
   ["/admin/media", { group: "media", title: "Library" }],
 
   ["/admin/pages", { group: "pages", title: "All pages" }],
-  ["/admin/pages/new", { group: "pages", title: "Add new" }],
+  ["/admin/pages/new", { group: "pages", title: "Add new page" }],
   ["/admin/appearance?section=hireMe", { group: "pages" }],
 
-  // The news desk: watched sources turned into news drafts.
-  ["/admin/news", { group: "newsroom", title: "Jobs", heading: "Desk" }],
-  ["/admin/news/runs", { group: "newsroom" }],
-  ["/admin/news/sources", { group: "newsroom", heading: "Setup" }],
-  ["/admin/news/topics", { group: "newsroom" }],
-  ["/admin/news/profiles", { group: "newsroom" }],
-  ["/admin/news/analytics", { group: "newsroom", heading: "Insights" }],
-  ["/admin/news/settings", { group: "newsroom", heading: "Settings" }],
+  // Comments, and the other things people send: messages and bookings.
+  ["/admin/comments", { group: "comments", title: "All comments" }],
+  ["/admin/messages", { group: "comments" }],
+  ["/admin/bookings", { group: "comments" }],
 
-  // The AI that works on the site (the SEO agent's flows, its models and data), what it measures (traffic, content,
-  // authority) and its settings. Every address is the one it had in the two groups this one replaced.
-  ["/admin/crewai", { group: "ai", title: "CrewAI console", heading: "Agent" }],
+  // The crew jobs and the flows and crews they run, what they write from, the models and data, what the site measures
+  // (traffic, content, authority) and the settings.
+  ["/admin/crewai", { group: "ai", title: "CrewAI console", heading: "Crew jobs" }],
+  ["/admin/crewai/jobs", { group: "ai", title: "Jobs" }],
+  ["/admin/crewai/jobs/runs", { group: "ai", title: "Job runs" }],
   ["/admin/crewai/runs", { group: "ai", title: "Flow runs" }],
   ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
   ["/admin/crewai/schedules", { group: "ai", title: "Schedules" }],
   ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
   ["/admin/automation/skills", { group: "ai" }],
   ["/admin/crewai/config", { group: "ai", title: "Import / export" }],
-  ["/admin/models", { group: "ai", heading: "Models & data" }],
-  ["/admin/lancedb", { group: "ai" }],
+  ["/admin/content/sources", { group: "ai", title: "Content sources", heading: "Content" }],
+  ["/admin/content/topics", { group: "ai", title: "Topics" }],
+  ["/admin/content/profiles", { group: "ai", title: "Profiles & playground" }],
+  ["/admin/content/analytics", { group: "ai", title: "Content analytics" }],
+  ["/admin/keywords", { group: "ai" }],
+  ["/admin/recommendations", { group: "ai" }],
+  ["/admin/content-audit", { group: "ai" }],
+  ["/admin/links", { group: "ai" }],
   ["/admin/search", { group: "ai", heading: "Traffic" }],
   ["/admin/analytics", { group: "ai" }],
   ["/admin/page-insights", { group: "ai" }],
   ["/admin/reports", { group: "ai" }],
-  ["/admin/keywords", { group: "ai", heading: "Content" }],
-  ["/admin/recommendations", { group: "ai" }],
-  ["/admin/content-audit", { group: "ai" }],
-  ["/admin/links", { group: "ai" }],
   ["/admin/backlinks", { group: "ai", heading: "Authority & health" }],
   ["/admin/ai-visibility", { group: "ai" }],
   ["/admin/technical", { group: "ai" }],
+  ["/admin/models", { group: "ai", heading: "Models & data" }],
+  ["/admin/lancedb", { group: "ai" }],
   ["/admin/automation", { group: "ai", title: "Settings", heading: "Settings" }],
   ["/admin/automation/mcp", { group: "ai" }],
-
-  ["/admin/comments", { group: "community" }],
-  ["/admin/messages", { group: "community" }],
-  ["/admin/bookings", { group: "community" }],
 
   ["/admin/invoices", { group: "billing" }],
   ["/admin/payments", { group: "billing" }],
@@ -124,20 +129,21 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/appearance?section=theme", { group: "appearance", title: "Typography & colours" }],
 
   ["/admin/users", { group: "users", title: "All users" }],
-  ["/admin/profile", { group: "users", title: "Your profile" }],
+  ["/admin/profile", { group: "users", title: "Profile" }],
   ["/admin/api-keys", { group: "users" }],
+
+  // Tools, as in WordPress: site health first, then import/export and the data tools, then the records.
+  ["/admin/system", { group: "tools", title: "Site health" }],
+  ["/admin/cache", { group: "tools" }],
+  ["/admin/backups", { group: "tools", title: "Backups (export / import)" }],
+  ["/admin/sync", { group: "tools" }],
+  ["/admin/database", { group: "tools" }],
+  ["/admin/audit", { group: "tools" }],
 
   ["/admin/appearance?section=general", { group: "settings", title: "General" }],
   ["/admin/integrations", { group: "settings" }],
-  ["/admin/storage", { group: "settings" }],
+  ["/admin/storage", { group: "settings", title: "Media & storage" }],
   ["/admin/email", { group: "settings" }],
-
-  ["/admin/system", { group: "system", heading: "Status" }],
-  ["/admin/cache", { group: "system" }],
-  ["/admin/backups", { group: "system", heading: "Data" }],
-  ["/admin/database", { group: "system" }],
-  ["/admin/sync", { group: "system" }],
-  ["/admin/audit", { group: "system", heading: "Records" }],
 ];
 
 /** The manual is help, not a place to work: it is drawn at the foot of the menu, outside the groups. */
@@ -145,7 +151,7 @@ export const HELP_HREF = "/admin/user-manual";
 
 /** A page as the menu shows it: `title` inside its group, `label` (its full name) where there is no group around it. */
 export type MenuEntry = NavItem & { title: string; heading?: string };
-export type MenuGroup = { id: string; label: string; icon: MenuIconName; items: MenuEntry[]; badge: number };
+export type MenuGroup = { id: string; label: string; icon: MenuIconName; items: MenuEntry[]; badge: number; /** Draw a line above it (GroupDef.separator; never above the first group shown). */ separator?: boolean };
 export type Menu = { groups: MenuGroup[]; help: MenuEntry | null };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -204,9 +210,13 @@ export function arrangeMenu(items: NavItem[]): Menu {
       shown = h ?? shown;
     }
     const label = def.alt && !list.some((i) => i.href === def.alt?.unless) ? def.alt.label : def.label;
-    groups.push({ id: def.id, label, icon: def.icon, items: list, badge: total(list) });
+    groups.push({ id: def.id, label, icon: def.icon, items: list, badge: total(list), ...(def.separator && groups.length > 0 ? { separator: true } : {}) });
   }
-  for (const [id, g] of extra) groups.push({ id, label: g.label, icon: "more", items: g.items, badge: total(g.items) });
+  let first = true;
+  for (const [id, g] of extra) {
+    groups.push({ id, label: g.label, icon: "more", items: g.items, badge: total(g.items), ...(first && groups.length > 0 ? { separator: true } : {}) });
+    first = false;
+  }
   return { groups, help };
 }
 

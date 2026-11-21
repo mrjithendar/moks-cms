@@ -22,7 +22,7 @@ Where things run:
 flowchart LR
   CJ[CronJob news-dispatch<br/>every 15 min] -->|POST /flows/news_dispatch_flow/kickoff| D[news_dispatch_flow]
   D -->|due jobs: cron in job time zone<br/>slot = job + minute| J[news_job_flow]
-  UI[/admin/news<br/>Run now · Dry run/] --> J
+  UI[/admin/crewai/jobs<br/>Run now · Dry run/] --> J
   MCP[admin MCP<br/>kickoff_news_job] --> J
   subgraph J1[news_job_flow]
     direction TB

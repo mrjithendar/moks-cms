@@ -212,7 +212,7 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
                 <Link className="underline" href="/admin/automation?section=ask-the-blog">Ask the Blog</Link>
               </li>
               <li>
-                The news desk&apos;s own caps, image spend included. <Link className="underline" href="/admin/news/settings">Newsroom settings</Link>
+                The crew jobs&apos; own limits, cover image spend included. <Link className="underline" href="/admin/automation?section=agent-limits#job-settings-limits">Crew job limits</Link>
               </li>
             </ul>
           </div>

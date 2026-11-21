@@ -15,7 +15,6 @@ const PATHS: Record<MenuIconName, string[]> = {
   comments: ["M4 5h16v11H10l-5 4v-4H4z"],
   inbox: ["M3.5 13 6.5 5h11l3 8v6h-17z", "M3.5 13H9l1 2.5h4l1-2.5h5.5"],
   billing: ["M6 3h12v18l-3-2-3 2-3-2-3 2z", "M9 8h6M9 12h6M9 16h3"],
-  newsroom: ["M4 5h12v14H6a2 2 0 0 1-2-2z", "M16 9h4v8a2 2 0 0 1-2 2H6", "M7.5 9h5M7.5 12.5h5M7.5 16h3"],
   ai: ["M7 7h10v10H7z", "M10 10h4v4h-4z", "M9.5 3.5V7M14.5 3.5V7M9.5 17v3.5M14.5 17v3.5M3.5 9.5H7M3.5 14.5H7M17 9.5h3.5M17 14.5h3.5"],
   insights: ["M4 4v16h16", "M8 16v-4M12 16V8M16 16v-6"],
   practice: ["M8.5 8 4.5 12l4 4", "M15.5 8l4 4-4 4", "M13.5 5l-3 14"],

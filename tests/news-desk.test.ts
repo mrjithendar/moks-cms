@@ -165,6 +165,10 @@ describe("fetch callback", () => {
     expect((await callbacks.newsFetch({ url: "https://other.example.net/x", sourceId: id, purpose: "feed" }, { fetcher: f, now: 2 })).error).toMatch(/not on the allowlist/);
     expect((await callbacks.newsFetch({ url: "http://blocked.example.org/x", sourceId: id, purpose: "feed" }, { fetcher: f })).error).toMatch(/https/);
     await svc.saveNewsSettings(admin, { paywalled_hosts: ["paywall.example.com"] });
+    // Each settings group is saved on its own page (lib/news/settings-fields.ts): a save merges, it never resets the rest.
+    await svc.saveNewsSettings(admin, { max_drafts_per_day: 7, quality: { title_max: 58 } });
+    expect(await svc.getNewsSettings()).toMatchObject({ paywalled_hosts: ["paywall.example.com"], max_drafts_per_day: 7, quality: { title_max: 58, max_quote_words: 25 } });
+    await expect(svc.saveNewsSettings(admin, { no_such_field: 1 })).rejects.toMatchObject({ status: 400 });
     expect((await callbacks.newsFetch({ url: "https://www.paywall.example.com/a", purpose: "primary_source" }, { fetcher: f })).error).toMatch(/paywalled/);
     await expect(svc.saveSource(admin, null, { name: "Paywalled", type: "rss", url: "https://paywall.example.com/feed" })).rejects.toMatchObject({ status: 400 });
     // robots.txt 503 / 429 → treat as disallowed for now

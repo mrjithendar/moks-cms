@@ -30,7 +30,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     <>
       <AdminHeader
         title={String(run.job_name ?? run.kind)}
-        description={<>Started <LocalTime iso={String(run.started_at)} /> · Trigger {String(run.trigger)}{run.dry_run ? " · dry run (nothing saved to the review queue)" : ""} · job version {String(run.job_version ?? "—")} · ${(Number(run.cost_usd) + Number(run.image_cost_usd)).toFixed(3)} ({Number(run.tokens).toLocaleString("en")} tokens){run.parent_run_id ? <> · retry of <Link className="underline" href={`/admin/news/runs/${String(run.parent_run_id)}`}>{String(run.parent_run_id).slice(0, 8)}</Link></> : null}</>}
+        description={<>Started <LocalTime iso={String(run.started_at)} /> · Trigger {String(run.trigger)}{run.dry_run ? " · dry run (nothing saved to the review queue)" : ""} · job version {String(run.job_version ?? "—")} · ${(Number(run.cost_usd) + Number(run.image_cost_usd)).toFixed(3)} ({Number(run.tokens).toLocaleString("en")} tokens){run.parent_run_id ? <> · retry of <Link className="underline" href={`/admin/crewai/jobs/runs/${String(run.parent_run_id)}`}>{String(run.parent_run_id).slice(0, 8)}</Link></> : null}</>}
         actions={
           run.job_id && !live ? (
             <>

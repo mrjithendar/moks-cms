@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/admin/crewai", label: "Overview" },
-  { href: "/admin/crewai/runs", label: "Runs" },
+  { href: "/admin/crewai/jobs", label: "Jobs" },
+  { href: "/admin/crewai/runs", label: "Flow runs" },
   { href: "/admin/crewai/flows", label: "Flows" },
   { href: "/admin/crewai/schedules", label: "Schedules" },
   { href: "/admin/crewai/crews", label: "Crews" },
   { href: "/admin/crewai/config", label: "Import / export" },
   { href: "/admin/automation/skills", label: "Skills ↗" },
+  { href: "/admin/content/sources", label: "Content ↗" },
   { href: "/admin/automation?section=runs", label: "Settings ↗" },
 ];
 
