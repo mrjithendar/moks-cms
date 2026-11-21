@@ -91,6 +91,14 @@ describe("job config contract and versioning", () => {
     expect(schemaMod.jobConfigSchema.safeParse({ ...fixture, weights: { vibes: 1 } }).success).toBe(false);
   });
 
+  it("default categories stop at the cap the Job editor enforces", async () => {
+    const { MAX_DEFAULT_CATEGORIES } = await import("@/lib/news/limits");
+    const fixture = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../docs/news/fixtures/job-config.json"), "utf8"));
+    const cats = (n: number) => Array.from({ length: n }, (_, i) => `category-${i}`);
+    expect(schemaMod.jobConfigSchema.safeParse({ ...fixture, default_categories: cats(MAX_DEFAULT_CATEGORIES) }).success).toBe(true);
+    expect(schemaMod.jobConfigSchema.safeParse({ ...fixture, default_categories: cats(MAX_DEFAULT_CATEGORIES + 1) }).success).toBe(false);
+  });
+
   it("every save is a version with a diff; rollback saves the old snapshot as a new version; clone is disabled", async () => {
     const j = (await svc.createJob(admin, { name: "Kubernetes news", cron: "0 7 * * 1-5" }))!;
     const base = { name: j.name, description: "", enabled: false, cron: j.cron, timezone: j.timezone, mode: "single_stories", writing_profile_key: "news-default", image_profile_key: "cover-template", review_priority: 50 };

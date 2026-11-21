@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Alert, Button, Input, Select, Textarea } from "@/components/ui/form";
+import { MAX_DEFAULT_CATEGORIES } from "@/lib/news/limits";
 import { Field } from "./Fld";
 import { api, when } from "./api";
 
@@ -84,15 +85,20 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
     }
   }
 
-  const checks = (k: "source_ids" | "topics" | "default_categories", opts: Opt[], empty: string) => (
+  // `max`: once that many are ticked the rest are disabled, so the editor stops where the save would refuse.
+  const checks = (k: "source_ids" | "topics" | "default_categories", opts: Opt[], empty: string, max?: number) => (
     <fieldset className="grid gap-2 sm:grid-cols-2">
       {opts.length === 0 && <p className="text-sm text-fg-subtle">{empty}</p>}
-      {opts.map((o) => (
-        <label key={o.value} className="flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-sm">
-          <input type="checkbox" checked={c[k].includes(o.value)} onChange={() => toggle(k, o.value)} />
-          {o.label}
-        </label>
-      ))}
+      {opts.map((o) => {
+        const on = c[k].includes(o.value);
+        const full = max !== undefined && !on && c[k].length >= max;
+        return (
+          <label key={o.value} className={`flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-sm${full ? " opacity-50" : ""}`}>
+            <input type="checkbox" checked={on} disabled={full} onChange={() => toggle(k, o.value)} />
+            {o.label}
+          </label>
+        );
+      })}
     </fieldset>
   );
   const num = (label: string, value: number, onChange: (n: number) => void, opts: { min?: number; max?: number; step?: number; hint?: string } = {}) => (
@@ -207,8 +213,12 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
           )}
           {tab === "Categories" && (
             <>
-              <p className="text-sm text-fg-muted">Used when the classifier has no confident category. Topics map to these CMS categories (Topics tab).</p>
-              {checks("default_categories", categories, "No categories.")}
+              <p className="text-sm text-fg-muted">
+                Used when the classifier has no confident category. Topics map to these CMS categories (Topics tab). The writer is offered at most 3: the
+                topic&apos;s category first, then these in the order you ticked them; the article is filed under the one it puts first. Up to{" "}
+                {MAX_DEFAULT_CATEGORIES}; {c.default_categories.length} ticked.
+              </p>
+              {checks("default_categories", categories, "No categories.", MAX_DEFAULT_CATEGORIES)}
             </>
           )}
           {tab === "Schedule & limits" && (
