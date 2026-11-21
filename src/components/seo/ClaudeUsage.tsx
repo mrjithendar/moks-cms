@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getDb } from "@/db";
 import { Card } from "@/components/admin/ui";
 import { budgetState, flowCostBreakdown } from "@/lib/seo-intel/claude";
@@ -111,7 +112,7 @@ export async function BudgetBanner() {
       <p className="font-medium">LLM calls paused: the {stop.period === "day" ? "daily" : "monthly"} LLM budget is used up</p>
       <p className="mt-0.5">
         ${stop.spentUsd.toFixed(2)} of ${stop.limitUsd.toFixed(2)} spent this {stop.period === "day" ? "day (UTC)" : "month"}. Existing drafts can still be reviewed and approved. Change the limit under{" "}
-        <a className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</a>, or wait for it to reset.
+        <Link className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</Link>, or wait for it to reset.
       </p>
     </div>
   );

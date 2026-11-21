@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { NewsNav } from "@/components/news/NewsNav";
 import { ensureNewsDefaults } from "@/lib/news/service";
@@ -21,7 +22,7 @@ export default async function NewsLayout({ children }: { children: ReactNode }) 
       {!on && (
         <p role="status" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
           {newsDeskStateText(state)} You can configure jobs, sources and profiles; nothing runs until it is on.{" "}
-          <a className="underline" href="/admin/news/settings">Newsroom settings</a>
+          <Link className="underline" href="/admin/news/settings">Newsroom settings</Link>
         </p>
       )}
       {children}
