@@ -42,8 +42,8 @@ export const MENU_GROUPS: GroupDef[] = [
   { id: "media", label: "Media", icon: "media" },
   { id: "pages", label: "Pages", icon: "pages" },
   { id: "newsroom", label: "Newsroom", icon: "newsroom" },
-  { id: "ai", label: "AI room", icon: "ai" },
-  { id: "insights", label: "SEO & insights", icon: "insights" },
+  // The SEO agent and what it works from: one group since 2026-11-21 (before: "AI room" and "SEO & insights").
+  { id: "ai", label: "AI & SEO", icon: "ai" },
   { id: "community", label: "Community", icon: "comments" },
   { id: "billing", label: "Billing", icon: "billing" },
   { id: "practice", label: "Practice", icon: "practice" },
@@ -53,7 +53,7 @@ export const MENU_GROUPS: GroupDef[] = [
   { id: "system", label: "System", icon: "tools" },
 ];
 
-type Place = { group: string; /** Name inside the group, when the page's own label would repeat the group's. */ title?: string; /** Sub-heading above this page and the ones after it. */ heading?: string };
+type Place = { group: string; /** Name inside the group, when the page's own label would repeat the group's. */ title?: string; /** Sub-heading above this page and the ones after it in the group, up to the next heading. */ heading?: string };
 
 /** Every known page: its group, and (by position here) its order within the group. */
 export const MENU_PLACES: [href: string, place: Place][] = [
@@ -76,38 +76,38 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/appearance?section=hireMe", { group: "pages" }],
 
   // The news desk: watched sources turned into news drafts.
-  ["/admin/news", { group: "newsroom", title: "Jobs" }],
+  ["/admin/news", { group: "newsroom", title: "Jobs", heading: "Desk" }],
   ["/admin/news/runs", { group: "newsroom" }],
-  ["/admin/news/sources", { group: "newsroom" }],
+  ["/admin/news/sources", { group: "newsroom", heading: "Setup" }],
   ["/admin/news/topics", { group: "newsroom" }],
   ["/admin/news/profiles", { group: "newsroom" }],
-  ["/admin/news/analytics", { group: "newsroom" }],
-  ["/admin/news/settings", { group: "newsroom" }],
+  ["/admin/news/analytics", { group: "newsroom", heading: "Insights" }],
+  ["/admin/news/settings", { group: "newsroom", heading: "Settings" }],
 
-  // The AI that works on the site: the SEO agent's flows, its models and data, and access for AI clients.
-  ["/admin/crewai", { group: "ai", title: "CrewAI console" }],
+  // The AI that works on the site (the SEO agent's flows, its models and data), what it measures (traffic, content,
+  // authority) and its settings. Every address is the one it had in the two groups this one replaced.
+  ["/admin/crewai", { group: "ai", title: "CrewAI console", heading: "Agent" }],
   ["/admin/crewai/runs", { group: "ai", title: "Flow runs" }],
   ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
   ["/admin/crewai/schedules", { group: "ai", title: "Schedules" }],
   ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
-  ["/admin/crewai/config", { group: "ai", title: "CrewAI import / export" }],
-  ["/admin/automation", { group: "ai" }],
   ["/admin/automation/skills", { group: "ai" }],
-  ["/admin/models", { group: "ai" }],
+  ["/admin/crewai/config", { group: "ai", title: "Import / export" }],
+  ["/admin/models", { group: "ai", heading: "Models & data" }],
   ["/admin/lancedb", { group: "ai" }],
+  ["/admin/search", { group: "ai", heading: "Traffic" }],
+  ["/admin/analytics", { group: "ai" }],
+  ["/admin/page-insights", { group: "ai" }],
+  ["/admin/reports", { group: "ai" }],
+  ["/admin/keywords", { group: "ai", heading: "Content" }],
+  ["/admin/recommendations", { group: "ai" }],
+  ["/admin/content-audit", { group: "ai" }],
+  ["/admin/links", { group: "ai" }],
+  ["/admin/backlinks", { group: "ai", heading: "Authority & health" }],
+  ["/admin/ai-visibility", { group: "ai" }],
+  ["/admin/technical", { group: "ai" }],
+  ["/admin/automation", { group: "ai", title: "Settings", heading: "Settings" }],
   ["/admin/automation/mcp", { group: "ai" }],
-
-  ["/admin/search", { group: "insights", heading: "Traffic" }],
-  ["/admin/analytics", { group: "insights" }],
-  ["/admin/page-insights", { group: "insights" }],
-  ["/admin/reports", { group: "insights" }],
-  ["/admin/keywords", { group: "insights", heading: "Content" }],
-  ["/admin/recommendations", { group: "insights" }],
-  ["/admin/content-audit", { group: "insights" }],
-  ["/admin/links", { group: "insights" }],
-  ["/admin/backlinks", { group: "insights", heading: "Authority & health" }],
-  ["/admin/ai-visibility", { group: "insights" }],
-  ["/admin/technical", { group: "insights" }],
 
   ["/admin/comments", { group: "community" }],
   ["/admin/messages", { group: "community" }],
@@ -132,12 +132,12 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/storage", { group: "settings" }],
   ["/admin/email", { group: "settings" }],
 
-  ["/admin/system", { group: "system" }],
+  ["/admin/system", { group: "system", heading: "Status" }],
   ["/admin/cache", { group: "system" }],
-  ["/admin/backups", { group: "system" }],
+  ["/admin/backups", { group: "system", heading: "Data" }],
   ["/admin/database", { group: "system" }],
   ["/admin/sync", { group: "system" }],
-  ["/admin/audit", { group: "system" }],
+  ["/admin/audit", { group: "system", heading: "Records" }],
 ];
 
 /** The manual is help, not a place to work: it is drawn at the foot of the menu, outside the groups. */
@@ -151,8 +151,21 @@ export type Menu = { groups: MenuGroup[]; help: MenuEntry | null };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 /** Put the pages a person may see into groups. Groups without a page for them are left out. */
+/** The sub-heading each page sits under: its own, or the nearest one above it in the same group. */
+function headings(): Map<string, string> {
+  const last = new Map<string, string>();
+  const out = new Map<string, string>();
+  for (const [href, p] of MENU_PLACES) {
+    if (p.heading) last.set(p.group, p.heading);
+    const h = last.get(p.group);
+    if (h) out.set(href, h);
+  }
+  return out;
+}
+
 export function arrangeMenu(items: NavItem[]): Menu {
   const order = new Map(MENU_PLACES.map(([href], i) => [href, i]));
+  const under = headings();
   const place = new Map(MENU_PLACES);
   const byGroup = new Map<string, MenuEntry[]>();
   const extra = new Map<string, { label: string; items: MenuEntry[] }>();
@@ -166,7 +179,7 @@ export function arrangeMenu(items: NavItem[]): Menu {
     const p = place.get(item.href);
     if (p) {
       const list = byGroup.get(p.group) ?? [];
-      list.push({ ...item, title: p.title ?? item.label, heading: p.heading });
+      list.push({ ...item, title: p.title ?? item.label });
       byGroup.set(p.group, list);
     } else {
       const id = `more-${slug(item.section) || "pages"}`;
@@ -182,6 +195,14 @@ export function arrangeMenu(items: NavItem[]): Menu {
     const list = byGroup.get(def.id);
     if (!list || list.length === 0) continue;
     list.sort((a, b) => (order.get(a.href) ?? 0) - (order.get(b.href) ?? 0));
+    // A heading is drawn above the first page a person can see under it, so it survives when the page that
+    // declares it is not theirs to see.
+    let shown: string | undefined;
+    for (const entry of list) {
+      const h = under.get(entry.href);
+      if (h && h !== shown) entry.heading = h;
+      shown = h ?? shown;
+    }
     const label = def.alt && !list.some((i) => i.href === def.alt?.unless) ? def.alt.label : def.label;
     groups.push({ id: def.id, label, icon: def.icon, items: list, badge: total(list) });
   }

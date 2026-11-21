@@ -87,14 +87,15 @@ afterEach(() => {
 describe("how the menu is arranged (lib/admin-menu.ts)", () => {
   it("puts pages into groups, in order, with their short names, sub-headings and badge totals", () => {
     const { groups, help } = arrangeMenu(ITEMS);
-    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "editorial", "media", "ai", "insights", "community", "appearance", "settings", "more-operations"]);
+    expect(groups.map((g) => g.id)).toEqual(["dashboard", "posts", "editorial", "media", "ai", "community", "appearance", "settings", "more-operations"]);
     const by = Object.fromEntries(groups.map((g) => [g.id, g]));
     expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new", "Categories"]);
     expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories"]);
     expect(by.editorial!.items.map((i) => i.title)).toEqual(["Review queue"]);
-    expect(by.ai!.items.map((i) => i.title)).toEqual(["Automation & AI", "Skills", "MCP access"]);
+    // AI & SEO: the agent, what it measures, then its settings; a sub-heading sits on the first page under it.
+    expect(by.ai!.label).toBe("AI & SEO");
+    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Agent"], ["Search performance", "Traffic"], ["Keywords", "Content"], ["Settings", "Settings"], ["MCP access", undefined]]);
     expect(by.community!.items.map((i) => i.title)).toEqual(["Comments", "Messages", "Bookings"]);
-    expect(by.insights!.items.map((i) => [i.title, i.heading])).toEqual([["Search performance", "Traffic"], ["Keywords", "Content"]]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
     expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);
     expect([by.editorial!.badge, by.community!.badge, by.media!.badge]).toEqual([3, 6, 0]);
@@ -155,7 +156,8 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(found("HELP")).toEqual(["User manual"]);
     expect(found("  ")).toEqual([]);
     expect(found("zzz")).toEqual([]);
-    expect(filterMenu(menu, "key")[0]!.group).toBe("SEO & insights");
+    expect(filterMenu(menu, "key")[0]!.group).toBe("AI & SEO");
+    expect(found("settings mcp")).toEqual(["MCP access"]); // found by the sub-heading it sits under
   });
 
   it("reads the preferences cookie defensively", () => {
@@ -170,14 +172,14 @@ describe("admin sidebar", () => {
   it("beside the page (tablet and larger), every group opens a submenu panel beside the sidebar; nothing expands in place", () => {
     render();
     // Every group is a button with a submenu, even one with a single page; none is open until it is asked for.
-    for (const id of ["dashboard", "posts", "editorial", "media", "ai", "insights", "community", "appearance", "settings"]) {
+    for (const id of ["dashboard", "posts", "editorial", "media", "ai", "community", "appearance", "settings"]) {
       expect(header(id).getAttribute("aria-controls"), id).toBe(list(id).id);
       expect(header(id).getAttribute("aria-expanded"), id).toBe("false");
       expect(list(id).hidden, id).toBe(true);
     }
     expect(list("dashboard").querySelector("a")!.getAttribute("href")).toBe("/admin");
     // The group holding the current page is marked.
-    expect(header("insights").className).toContain("md:bg-accent-soft");
+    expect(header("ai").className).toContain("md:bg-accent-soft");
     expect(currentLink()!.textContent).toBe("Keywords");
 
     act(() => header("posts").click());
@@ -223,7 +225,7 @@ describe("admin sidebar", () => {
   it("server and first browser render agree (no hydration mismatch)", () => {
     const html = renderToStaticMarkup(<AdminSidebar items={ITEMS} role="admin" />);
     expect(html.match(/aria-expanded="true"/g)).toHaveLength(1);
-    expect((html.match(/ hidden=""/g) ?? []).length).toBe(9); // every group but the current one (insights)
+    expect((html.match(/ hidden=""/g) ?? []).length).toBe(8); // every group but the current one (AI & SEO)
     expect(html).not.toContain("data-rail");
     expect(renderToStaticMarkup(<AdminSidebar items={ITEMS} prefs={{ rail: true, pins: ["/admin/posts"] }} />)).toContain("data-rail");
   });
@@ -256,12 +258,17 @@ describe("admin sidebar", () => {
     render();
     expect(list("community").hidden).toBe(false);
     expect(list("posts").hidden).toBe(true);
-    expect(list("insights").hidden).toBe(false);
+    expect(list("ai").hidden).toBe(false);
   });
 
   it("on a phone, navigating to a page in another group opens it", () => {
     wideScreen = false;
     render();
+    expect(list("community").hidden).toBe(true);
+    pathname = "/admin/bookings";
+    render();
+    expect(list("community").hidden).toBe(false);
+    expect(currentLink()!.textContent).toBe("Bookings");
     pathname = "/admin/automation/mcp";
     render();
     expect(list("ai").hidden).toBe(false);
@@ -290,7 +297,7 @@ describe("admin sidebar", () => {
     expect(container.querySelector("[data-group]")).toBeNull();
     const results = [...container.querySelectorAll("[data-results] a")];
     expect(results.map((a) => a.getAttribute("href"))).toEqual(["/admin/keywords"]);
-    expect(results[0]!.textContent).toContain("SEO & insights");
+    expect(results[0]!.textContent).toContain("AI & SEO");
     act(() => {
       container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
@@ -335,7 +342,7 @@ describe("admin sidebar", () => {
     expect(aside.hasAttribute("data-rail")).toBe(true);
     expect(aside.className).toContain("md:w-16");
     expect(header("posts").getAttribute("title")).toBe("Posts");
-    expect(header("insights").getAttribute("aria-expanded")).toBe("false");
+    expect(header("ai").getAttribute("aria-expanded")).toBe("false");
 
     act(() => header("posts").click());
     expect(list("posts").hidden).toBe(false);
@@ -355,7 +362,7 @@ describe("admin sidebar", () => {
   it("on a phone the collapsed setting changes nothing: groups open in place behind the Menu button", () => {
     wideScreen = false;
     render({ rail: true, pins: [] });
-    expect(header("insights").getAttribute("aria-expanded")).toBe("true");
+    expect(header("ai").getAttribute("aria-expanded")).toBe("true");
     act(() => header("posts").click());
     expect(list("posts").hidden).toBe(false);
     expect(list("posts").className).not.toContain("md:fixed");

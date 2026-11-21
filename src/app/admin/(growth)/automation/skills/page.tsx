@@ -5,7 +5,7 @@ import { CREW_AGENTS, CREWS, LIMITS, listSkills, SKILL_TAGS } from "@/lib/seo-ag
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Skills" };
 
-/** AI room → Skills (D-96): the guidance each crew agent gets in its prompt. Defaults ship with the site; admins add more. */
+/** AI & SEO → Skills (D-96): the guidance each crew agent gets in its prompt. Defaults ship with the site; admins add more. */
 export default async function SkillsPage() {
   const skills = await listSkills();
   return (
