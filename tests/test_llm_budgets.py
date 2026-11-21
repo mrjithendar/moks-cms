@@ -77,13 +77,13 @@ async def test_the_monthly_limit_counts_every_model_and_every_purpose_together()
 
 
 async def test_the_daily_limit_is_by_utc_day_and_both_limits_apply() -> None:
-    g = guard(Budget(1.0, 100.0), [row(SONNET, 0.999), row(SONNET, 20, at=YESTERDAY)])
+    g = guard(Budget(1.0, 100.0), [row(SONNET, 0.9999), row(SONNET, 20, at=YESTERDAY)])
     with pytest.raises(BudgetExceeded) as e:
         await g.ensure(HAIKU, 3500, 1000, "draft")
     assert e.value.scope == "llm_daily" and "It resets 2026-11-21 00:00 UTC" in e.value.detail
     await guard(Budget(1.0, 100.0), [row(SONNET, 20, at=YESTERDAY)]).ensure(HAIKU, 3500, 1000, "draft")  # yesterday is over
     with pytest.raises(BudgetExceeded) as e:
-        await guard(Budget(50.0, 20.0), [row(SONNET, 19.999, at=YESTERDAY)]).ensure(HAIKU, 3500, 1000, "draft")
+        await guard(Budget(50.0, 20.0), [row(SONNET, 19.9999, at=YESTERDAY)]).ensure(HAIKU, 3500, 1000, "draft")
     assert e.value.scope == "llm_monthly"
 
 
