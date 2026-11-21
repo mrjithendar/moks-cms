@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_DEFAULT_CATEGORIES } from "./limits";
 
 /**
  * News desk config shapes. They mirror moks-seo-agent/app/news/config.py (JobConfig, Quality, NewsSettings): both
@@ -29,7 +30,7 @@ export const jobConfigSchema = z
     length_min_words: z.number().int().min(100).max(5000).default(350),
     length_max_words: z.number().int().min(150).max(8000).default(1200),
     author: z.string().max(80).nullable().default(null),
-    default_categories: z.array(z.string().max(60)).max(5).default([]),
+    default_categories: z.array(z.string().max(60)).max(MAX_DEFAULT_CATEGORIES).default([]),
     writing_profile_version: z.number().int().min(1).nullable().default(null),
     image_profile_version: z.number().int().min(1).nullable().default(null),
     models: z.partialRecord(z.enum(AGENT_KEYS), z.string().regex(/^claude-[a-z0-9-]{3,40}$/)).default({}),
