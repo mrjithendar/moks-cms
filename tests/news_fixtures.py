@@ -59,6 +59,15 @@ class NewsWeb(FakeWebApp):
     gemini: list[bytes] = field(default_factory=list)
     save_errors: list[str] = field(default_factory=list)
     image_updates: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    ideas: list[dict[str, Any]] = field(default_factory=list)  # what POST /jobs/ideas picks (content ideas intake)
+    idea_calls: list[dict[str, Any]] = field(default_factory=list)
+
+    async def jobs_draft_ideas(self, body: dict[str, Any]) -> dict[str, Any]:
+        self.idea_calls.append(body)
+        picked = self.ideas[: body["limit"]]
+        if body.get("dryRun"):
+            return {"ideas": [{"ideaId": i["id"], "title": i["title"]} for i in picked], "considered": len(self.ideas)}
+        return {"ideas": [{"ideaId": i["id"], "title": i["title"], "calendarId": f"cal-{i['id']}", "draftId": f"draft-{i['id']}", "runId": f"run-{i['id']}"} for i in picked], "considered": len(self.ideas)}
 
     async def news_fetch(self, body: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(("news_fetch", body["url"]))

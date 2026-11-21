@@ -374,7 +374,11 @@ def gate_style(draft: NewsDraft, q: Quality, banned: list[str], required: list[s
     return g
 
 
-def gate_seo(draft: NewsDraft, q: Quality) -> Gate:
+# schema.org types a draft may carry, by what the job writes (JobConfig.output).
+LD_TYPES: dict[str, tuple[str, ...]] = {"news": ("NewsArticle",), "article": ("Article", "TechArticle", "BlogPosting")}
+
+
+def gate_seo(draft: NewsDraft, q: Quality, output: str = "news") -> Gate:
     g = Gate("seo")
     t = draft.title.strip()
     if not t:
@@ -387,8 +391,9 @@ def gate_seo(draft: NewsDraft, q: Quality) -> Gate:
     if not q.meta_min <= len(m) <= q.meta_max:
         g.fail(f"meta description is {len(m)} characters ({q.meta_min}–{q.meta_max})")
     ld = draft.schema_jsonld
-    if not isinstance(ld, dict) or ld.get("@type") != "NewsArticle" or not ld.get("headline"):
-        g.fail("JSON-LD must be a NewsArticle with a headline")
+    types = LD_TYPES.get(output, LD_TYPES["news"])
+    if not isinstance(ld, dict) or ld.get("@type") not in types or not ld.get("headline"):
+        g.fail(f"JSON-LD must be {' or '.join(types)} with a headline")
     else:
         try:
             json.dumps(ld)
@@ -420,7 +425,7 @@ async def run_gates(draft: NewsDraft, *, sources: list[SourceDoc], facts: FactSh
         "quotes": gate_quotes(draft, sources, q),
         "value": gate_value(draft, cfg, q, required),
         "style": gate_style(draft, q, banned, required, allowed_hosts),
-        "seo": gate_seo(draft, q),
+        "seo": gate_seo(draft, q, cfg.output),
         "duplicate": gate_duplicate(duplicate_reason),
     }
     return Report(gates)
