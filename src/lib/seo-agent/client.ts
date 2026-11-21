@@ -187,24 +187,37 @@ export const lanceDelete = (table: string, k: LanceKey, deps?: AgentDeps) =>
   call<{ deleted: number; version: number }>("POST", `/lancedb/tables/${encodeURIComponent(table)}/delete`, lanceBody(k), deps);
 
 /**
- * LLM budgets, owned by the seo-agent (moks-seo-agent/app/llm_budgets.py): an optional daily and monthly limit per
- * model and per provider, stored and enforced there. Admin → Automation & AI → LLM budgets only shows and edits them.
- * A null limit is no limit.
+ * The one LLM budget (moks-seo-agent app/llm_budgets.py): an optional daily and an optional monthly limit for every
+ * provider, model and purpose together, stored and enforced by the agent. Admin → AI & SEO → Settings → LLM budget
+ * only shows and edits it. The breakdowns are for reading; they limit nothing.
  */
-export type AgentLlmLimit = { daily_usd: number | null; monthly_usd: number | null };
-export type AgentLlmBudgets = { models: Record<string, AgentLlmLimit>; providers: Record<string, AgentLlmLimit> };
-/** GET /llm-budgets: the limits with this month's spend (UTC) by model and provider, today's alongside. */
-export type AgentLlmBudgetsView = {
-  budgets: AgentLlmBudgets;
-  month_start: string;
-  day_resets_at: string;
-  month_resets_at: string;
-  models: { model: string; provider: string; today_usd: number; month_usd: number; calls: number; purposes: string[] }[];
-  providers: { provider: string; today_usd: number; month_usd: number; forecast_usd: number }[];
+export type AgentLlmBudget = { daily_usd: number | null; monthly_usd: number | null };
+export type AgentLlmScope = "day" | "month";
+export type AgentLlmBudgetView = {
+  budget: AgentLlmBudget;
+  scope: AgentLlmScope;
+  period_start: string;
+  resets_at: string;
+  spent_usd: number;
+  /** Upper-bound estimates of the calls in flight; they count as spent until each call is booked. */
+  pending_usd: number;
+  limit_usd: number | null;
+  remaining_usd: number | null;
+  /** Month only: the month's spend at its average daily rate so far. */
+  forecast_usd: number | null;
+  by_provider: { provider: string; usd: number; calls: number }[];
+  by_model: { provider: string; model: string; usd: number; calls: number }[];
+  by_purpose: { purpose: string; usd: number; calls: number }[];
+  other: { scope: AgentLlmScope; spent_usd: number; limit_usd: number | null; resets_at: string };
+  /** Ask the Blog's own daily limit: a guard against readers, on top of the budget. */
+  ask_daily: { limit_usd: number; spent_usd: number };
+  /** Limits per model and per provider from before the one budget. Shown read-only: nothing enforces them. */
+  legacy_limits: { models: Record<string, AgentLlmBudget>; providers: Record<string, AgentLlmBudget> };
 };
-export const getLlmBudgets = (deps?: AgentDeps) => call<AgentLlmBudgetsView>("GET", "/llm-budgets", undefined, deps, 8_000);
-/** PUT /llm-budgets: the whole set (what is left out has no limit afterwards), validated by the agent (422 with issues). */
-export const putLlmBudgets = (budgets: AgentLlmBudgets, actor: string, deps?: AgentDeps) => call<{ budgets: AgentLlmBudgets }>("PUT", "/llm-budgets", { ...budgets, actor }, deps, 8_000);
+
+export const getLlmBudget = (scope: AgentLlmScope, deps?: AgentDeps) => call<AgentLlmBudgetView>("GET", `/llm-budget?scope=${scope}`, undefined, deps, 8_000);
+/** Both limits are sent; null is no limit. The agent validates and answers 422 with its issues. */
+export const putLlmBudget = (budget: AgentLlmBudget, actor: string, deps?: AgentDeps) => call<{ budget: AgentLlmBudget }>("PUT", "/llm-budget", { ...budget, actor }, deps, 8_000);
 
 // --- Admin-editable agent settings (moks-seo-agent app/admin_settings; GET /admin-settings, PUT /admin-settings/{group}) ---
 

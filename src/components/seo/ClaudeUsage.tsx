@@ -14,13 +14,13 @@ export async function loadClaudeUsage(): Promise<ClaudeUsageData> {
   return { cfg: { ...cfg, keySet: Boolean(apiKey) }, b, flows: await flowCostBreakdown(db, b.spentUsd) };
 }
 
-/** Settings → Claude usage: month-to-date spend against the hard cap, per model, with cache reads. */
+/** AI & SEO settings → LLM budget → LLM usage (called "Claude usage" before): this site's own month-to-date spend against its cap, per model, with cache reads. */
 export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
   const { cfg, b, flows } = data;
   const pct = b.budgetUsd ? Math.min(100, ((b.spentUsd + b.reservedUsd) / b.budgetUsd) * 100) : 100;
   return (
     <Card className="mb-6">
-      <h2 className="font-semibold text-fg">Claude usage this month</h2>
+      <h2 className="font-semibold text-fg">LLM usage this month</h2>
       <p className="mt-1 text-sm text-fg-muted">
         Key: {cfg.keySet ? "configured (ANTHROPIC_API_KEY)" : <strong className="text-amber-800 dark:text-amber-300">not configured — drafting needs ANTHROPIC_API_KEY</strong>}. Draft model <code>{cfg.draftModel}</code>, classification model <code>{cfg.classifyModel}</code>.
       </p>
