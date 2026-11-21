@@ -14,17 +14,9 @@ import type { AgentCrew, AgentFlow } from "../seo-agent/client";
  * The agents' catalogues say the same with an "agent" field on each flow and crew; an older seo-agent without it is
  * read as "seo".
  */
-export type AgentId = "seo" | "news";
-export const NEWS_CREWS: ReadonlySet<string> = new Set(["news"]);
-export const AGENT_LABEL: Record<AgentId, string> = { seo: "SEO agent", news: "News agent" };
+import { agentOfCrew, agentOfFlow, NEWS_CREWS, type AgentId } from "./agent-of";
 
-export const agentOfCrew = (crew: string): AgentId => (NEWS_CREWS.has(crew) ? "news" : "seo");
-
-export function agentOfFlow(flow: string, inputs?: Record<string, unknown> | null): AgentId {
-  if (flow.startsWith("news_")) return "news";
-  if (flow === "crew_test_flow" && typeof inputs?.crew === "string") return agentOfCrew(inputs.crew);
-  return "seo";
-}
+export { AGENT_LABEL, agentOfCrew, agentOfFlow, NEWS_CREWS, type AgentId } from "./agent-of";
 
 type Started = { run_id: string; status: string; existing: boolean };
 type KickoffOpts = { triggeredBy?: "manual" | "cron"; actor?: string };

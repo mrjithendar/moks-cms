@@ -17,5 +17,12 @@ flows, the data model, the ML, the quality gates, covers and costs:
 | Flow runs and run history | `seo_flow_runs` and `seo_flow_run_*` (shared with the seo-agent; each agent touches only its own flows), shown in the CrewAI console with an Agent column |
 | Data | the shared Postgres, migration `0017_news_desk.sql` (17 `news_*` tables) and later ones; the news agent has its own database role |
 
-The CrewAI console talks to both agents (`src/lib/crewai/agents.ts`): news flows and the news crew go to the news
-agent, everything else to the seo-agent. Nothing in the news agent can publish.
+The CrewAI console talks to both agents (`src/lib/crewai/agents.ts`, the rule in `src/lib/crewai/agent-of.ts`): news
+flows and the news crew go to the news agent, everything else to the seo-agent. The runs list says which agent ran each
+run and filters by it; an agent that does not answer has its flows' start buttons disabled and its crews listed
+read-only. Nothing in the news agent can publish.
+
+The news agent's own settings (its Claude key, sealed with `NEWS_AGENT_SETTINGS_KEY`; default models; limits; the
+embeddings connection) are shown and saved in Newsroom → Settings, below the News agent card
+(`/api/admin/news/agent-settings/{group}` → its `PUT /admin-settings/{group}`). A callback refused for the news
+agent's token is written to the audit log (`agent.callback_forbidden`).

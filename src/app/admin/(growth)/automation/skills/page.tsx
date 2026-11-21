@@ -12,7 +12,7 @@ export default async function SkillsPage() {
     <>
       <AdminHeader
         title="Skills"
-        description="Writing and checking guidance the SEO agent's crews load into each agent's instructions. Default skills ship with the site: edit, disable or reset them. Add your own for any agent. Tags choose when a skill applies, from the signals each run already has (the ML intent model and query clusters, Search Console, Google Analytics, the news classifier); a skill without tags applies to every run of its agents. Changes apply from the next run."
+        description="Writing and checking guidance the crews load into each agent's instructions: the SEO agent's crews, and the news desk crew (news.*), which runs in the news agent and reads the same skills. Default skills ship with the site: edit, disable or reset them. Add your own for any agent. Tags choose when a skill applies, from the signals each run already has (the ML intent model and query clusters, Search Console, Google Analytics, the news classifier); a skill without tags applies to every run of its agents. Changes apply from the next run."
       />
       <SkillsManager skills={skills} crews={Object.entries(CREWS).map(([id, label]) => ({ id, label }))} agents={CREW_AGENTS} tags={SKILL_TAGS} limits={LIMITS} />
     </>

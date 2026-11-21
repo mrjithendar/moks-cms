@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+const auditCalls = vi.hoisted(() => [] as unknown[][]);
+vi.mock("@/lib/audit", () => ({ auditSafe: async (...a: unknown[]) => void auditCalls.push(a) }));
 
 /**
  * The news desk's engine is its own service since 2026-11-21: the news agent (mrjithendar/newsroom). The web app finds
@@ -113,5 +115,39 @@ describe("the CrewAI console routes each action to its agent", () => {
     expect(agentOfFlow("crew_test_flow", null)).toBe("seo");
     expect(agentOfCrew("news")).toBe("news");
     expect(agentOfCrew("report")).toBe("seo");
+  });
+});
+
+describe("refused callbacks are audited", () => {
+  it("a 403 writes agent.callback_forbidden with the caller and route", async () => {
+    auditCalls.length = 0;
+    const { handleCallback } = await import("@/lib/seo-agent/internal-server");
+    const r = await handleCallback("POST", "/internal/seo-agent/reports/generate", `Bearer ${NEWS_CB}`, {}, ENV, { "user-agent": "news-agent/1" });
+    expect(r.status).toBe(403);
+    expect(auditCalls).toHaveLength(1);
+    expect(auditCalls[0]!.slice(0, 4)).toEqual([{ label: "news-agent" }, "agent.callback_forbidden", "POST /reports/generate", { caller: "news-agent" }]);
+    expect(auditCalls[0]![4]).toMatchObject({ severity: "warning", request: { userAgent: "news-agent/1" } });
+    // A route that is not on its list, even one that does not exist, is refused and audited as well.
+    await handleCallback("GET", "/internal/seo-agent/nope", `Bearer ${NEWS_CB}`, undefined, ENV);
+    expect(auditCalls).toHaveLength(2);
+  });
+});
+
+describe("the Newsroom no longer talks to the seo-agent", () => {
+  it("nothing in the Newsroom's code imports the seo-agent's client", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.(ts|tsx)$/.test(name)) files.push(p);
+      }
+    };
+    for (const dir of ["src/lib/news", "src/app/admin/news", "src/app/api/admin/news", "src/components/news"]) walk(dir);
+    expect(files.length).toBeGreaterThan(10);
+    const offenders = files.filter((f) => /from ["'](?:@\/lib\/seo-agent\/client|(?:\.\.\/)+seo-agent\/client)["']/.test(readFileSync(f, "utf8")));
+    expect(offenders).toEqual([]);
   });
 });

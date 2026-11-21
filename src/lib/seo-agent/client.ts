@@ -1,4 +1,5 @@
 import "server-only";
+import { AgentError } from "../agent-error";
 import { agentToken } from "./config";
 import { agentBaseUrl } from "./endpoint";
 
@@ -8,16 +9,8 @@ import { agentBaseUrl } from "./endpoint";
  * status/cancel) and the public /api/ask proxy. Errors surface as AgentError with the agent's status, never its
  * internals; a disabled agent is a 503.
  */
-export class AgentError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    /** The agent's own list of problems (a 422 for crew configuration or flow inputs), when it sent one. */
-    readonly issues: string[] = [],
-  ) {
-    super(message);
-  }
-}
+// One error type for both agents (lib/agent-error.ts), re-exported so existing imports keep working.
+export { AgentError };
 
 export type AgentDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined> };
 
@@ -214,6 +207,8 @@ export type AgentLlmBudgetView = {
   ask_daily: { limit_usd: number; spent_usd: number };
   /** Limits per model and per provider from before the one budget. Shown read-only: nothing enforces them. */
   legacy_limits: { models: Record<string, AgentLlmBudget>; providers: Record<string, AgentLlmBudget> };
+  /** Calls in progress elsewhere, held against the budget over its API, by who asked (a newer seo-agent sends it). */
+  holds?: { caller: string; usd: number; calls: number }[];
 };
 
 export const getLlmBudget = (scope: AgentLlmScope, deps?: AgentDeps) => call<AgentLlmBudgetView>("GET", `/llm-budget?scope=${scope}`, undefined, deps, 8_000);

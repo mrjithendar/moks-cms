@@ -1,8 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { AgentError } from "../seo-agent/client";
-import { kickoff, type NewsAgentDeps as AgentDeps, type NewsFlowName } from "../news-agent/client";
+import { AgentError, kickoff, type NewsAgentDeps as AgentDeps, type NewsFlowName } from "../news-agent/client";
 import { NewsError } from "./service";
 import { newsDeskState, newsDeskStateText } from "./schema";
 import { getNewsSettings } from "./service";

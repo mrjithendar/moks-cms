@@ -26,6 +26,9 @@ The site repository has the manifests (jithendar.com: `kubernetes/news-agent-*.y
    dispatcher CronJob `news-flow-dispatcher`, which starts the `news-*` schedules of the CrewAI console).
 3. Check: Admin → System status shows "News agent: ready"; Newsroom → Settings → News agent shows where it was found.
    The web app finds it at `NEWS_AGENT_URL`, the endpoint saved there, or `http://news-agent:8080`.
+4. Optional: Newsroom → Settings shows the news agent's own settings below that card. A Claude key saved there
+   (sealed with `NEWS_AGENT_SETTINGS_KEY`, which the secrets script creates) wins over the one in `news-agent-env` and
+   applies after a restart of `deploy/news-agent`.
 
 ## 3. Enable the desk
 
