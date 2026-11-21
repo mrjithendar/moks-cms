@@ -67,6 +67,9 @@ class WebApp(Protocol):
     async def news_fetch(self, body: dict[str, Any]) -> dict[str, Any]: ...
     async def news_save_draft(self, body: dict[str, Any]) -> dict[str, Any]: ...
     async def jobs_draft_ideas(self, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def custom_crews(self) -> list[dict[str, Any]]: ...
+    async def custom_flows(self) -> list[dict[str, Any]]: ...
+    async def custom_save_draft(self, body: dict[str, Any]) -> dict[str, Any]: ...
     async def news_store_media(self, body: dict[str, Any]) -> dict[str, Any]: ...
     async def news_generate_image(self, body: dict[str, Any]) -> dict[str, Any]: ...
     async def news_update_draft_image(self, draft_id: str, image: dict[str, Any]) -> dict[str, Any]: ...
@@ -231,6 +234,19 @@ class HttpWebApp:
     async def jobs_draft_ideas(self, body: dict[str, Any]) -> dict[str, Any]:
         """A crew job's content ideas intake (moks-cms src/lib/news/callbacks.ts jobsDraftIdeas)."""
         return await self._req("POST", "/jobs/ideas", json=body, timeout=120)
+
+    async def custom_crews(self) -> list[dict[str, Any]]:
+        """The enabled custom crews ({key, version, spec}; moks-cms src/lib/crewai/custom.ts)."""
+        r = await self._req("GET", "/custom-crews")
+        return list(r.get("items") or []) if isinstance(r, dict) else []
+
+    async def custom_flows(self) -> list[dict[str, Any]]:
+        r = await self._req("GET", "/custom-flows")
+        return list(r.get("items") or []) if isinstance(r, dict) else []
+
+    async def custom_save_draft(self, body: dict[str, Any]) -> dict[str, Any]:
+        """A custom flow's draft step: a CMS draft post and its review draft. Never published from here."""
+        return await self._req("POST", "/custom/drafts", json=body, timeout=60)
 
     async def news_store_media(self, body: dict[str, Any]) -> dict[str, Any]:
         return await self._req("POST", "/news/media", json=body, timeout=120)
