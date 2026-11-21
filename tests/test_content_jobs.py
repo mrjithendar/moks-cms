@@ -98,3 +98,15 @@ async def test_ideas_fill_only_the_room_the_sources_left_and_a_dry_run_starts_no
     assert web2.idea_calls[0]["dryRun"] is True
     assert [ch["outcome"] for ch in dry["state_json"]["children"]] == ["dry_run"]
     assert fr["status"] == "succeeded"
+
+
+async def test_the_playground_tries_a_profile_the_way_the_job_writes(llm: Any) -> None:
+    # Crew-jobs plan PR 5: the profile playground follows the job: an article job's trial is an article, with its models.
+    crew = FakeNewsCrew()
+    c, web, store = setup(llm, crew=crew, job_cfg={"output": "article", "models": {"writer": "claude-haiku-5-5"}})
+    await run(c, "news_job_flow", {"job_id": JOB, "dry_run": True, "llm": False})
+    cid = next(iter(store.clusters))
+    await run(c, "news_playground_flow", {"job_id": JOB, "cluster_id": cid, "profile_key": "news-default", "version_a": 1})
+    trial = crew.runs[-1]
+    assert trial["brief"]["output"] == "article" and trial["models"] == {"writer": "claude-haiku-5-5"}
+    assert web.saved == []
