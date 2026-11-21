@@ -2,9 +2,9 @@
 
 import { formatLocal } from "@/components/LocalTime";
 
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@/components/admin/Dialog";
+import { SettingsSections, useSettingsSection } from "@/components/admin/SettingsSections";
 import { AlertIcon, CheckIcon, ExternalIcon } from "@/components/icons";
 import { Alert, Button, inputClass, Spinner } from "@/components/ui/form";
 import { defaultConfig, validateConfig, type SiteConfig } from "@/lib/site-config/schema";
@@ -75,16 +75,9 @@ export function AppearanceEditor({
   context: EditorContext;
   initialSection?: string;
 }) {
-  const [section, setSection] = useState<SectionId>(SECTIONS.some((s) => s.id === initialSection) ? (initialSection as SectionId) : "general");
-  // The admin menu links straight to sections of this page (Menus, Homepage, Typography & colours, General). Such a
-  // link changes the address without loading the editor again, so the section follows the address when it changes
-  // (React's "adjust state when a prop changes"). The effect further down writes the address when the section does.
-  const inAddress = useSearchParams().get("section");
-  const [lastInAddress, setLastInAddress] = useState(inAddress);
-  if (inAddress !== lastInAddress) {
-    setLastInAddress(inAddress);
-    if (inAddress !== section && SECTIONS.some((s) => s.id === inAddress)) setSection(inAddress as SectionId);
-  }
+  // The admin menu links straight to sections of this page (Menus, Homepage, Typography & colours, General). The
+  // shared hook keeps the open section and `?section=` in step both ways (components/admin/SettingsSections.tsx).
+  const [section, setSection] = useSettingsSection<SectionId>(SECTIONS, initialSection, "general");
   const [draft, setDraft] = useState<unknown>(initial.config);
   const [state, setState] = useState<SaveState>("saved");
   const [message, setMessage] = useState<{ tone: "success" | "error" | "info"; text: string; list?: string[] } | null>(null);
@@ -163,7 +156,7 @@ export function AppearanceEditor({
     setState("saved");
   }, []);
 
-  // Warn before leaving with unsaved edits; keep the section in the URL for bookmarks.
+  // Warn before leaving with unsaved edits.
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
       if (state === "pending" || state === "saving") e.preventDefault();
@@ -171,11 +164,6 @@ export function AppearanceEditor({
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [state]);
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("section", section);
-    window.history.replaceState(null, "", url);
-  }, [section]);
 
   const sectionIssues = (id: SectionId) => issues.filter((i) => SECTIONS.find((s) => s.id === id)!.prefix.some((p) => i.path === p || i.path.startsWith(`${p}.`))).length;
   const api = useMemo(() => ({ draft, set, issues }), [draft, set, issues]);
@@ -284,45 +272,7 @@ export function AppearanceEditor({
           </div>
         )}
 
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[13rem_minmax(0,1fr)]">
-          <nav aria-label="Settings sections" className="xl:sticky xl:top-[calc(var(--spacing-chrome)+6rem)] xl:self-start">
-            <label className="block xl:hidden">
-              <span className="sr-only">Section</span>
-              <select value={section} onChange={(e) => setSection(e.target.value as SectionId)} className={inputClass}>
-                {SECTIONS.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                    {sectionIssues(s.id) ? ` (${sectionIssues(s.id)} to fix)` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ul className="hidden space-y-0.5 xl:block">
-              {SECTIONS.map((s) => {
-                const n = sectionIssues(s.id);
-                return (
-                  <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSection(s.id)}
-                      aria-current={s.id === section ? "page" : undefined}
-                      className={`flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-3 text-left text-sm font-medium transition-colors ${s.id === section ? "bg-accent-soft text-accent-text" : "text-fg-muted hover:bg-surface-sunken hover:text-fg"}`}
-                    >
-                      {s.label}
-                      {n > 0 && (
-                        <span className="rounded-full bg-red-100 px-1.5 text-xs font-semibold text-red-800 dark:bg-red-500/20 dark:text-red-200">
-                          {n}
-                          <span className="sr-only"> problems</span>
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-
-          <div className="min-w-0 space-y-6">
+        <SettingsSections sections={SECTIONS.map((s) => ({ id: s.id, label: s.label, problems: sectionIssues(s.id) }))} current={section} onSelect={(id) => setSection(id as SectionId)}>
             <h2 className="sr-only">{current.label}</h2>
             {section === "general" && <GeneralPanel />}
             {section === "branding" && <BrandingPanel />}
@@ -357,8 +307,7 @@ export function AppearanceEditor({
                 />
               </>
             )}
-          </div>
-        </div>
+        </SettingsSections>
       </div>
 
       <PreviewDialog open={previewOpen} onClose={() => setPreviewOpen(false)} paths={context.samplePaths} />

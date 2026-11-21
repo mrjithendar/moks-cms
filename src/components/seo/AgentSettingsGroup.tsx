@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useUnsavedChanges } from "@/components/admin/SettingsSections";
 import { Card } from "@/components/admin/ui";
 import { Alert, Button, Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { AgentSettingField, AgentSettingsGroup as Group, AgentSettingValue, AgentSettingsView } from "@/lib/seo-agent/client";
@@ -93,6 +94,8 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; issues?: string[] } | null>(null);
   const anchor = `agent-settings-${groupId}`;
+  const pending = useMemo(() => (group ? changesOf(group, drafts, clearSecrets) : null), [group, drafts, clearSecrets]);
+  useUnsavedChanges(Boolean(pending && (Object.keys(pending.values).length > 0 || pending.issues.length > 0)));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -130,7 +133,7 @@ export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettin
   }
 
   return (
-    <Card className="mt-6">
+    <Card className="mb-6">
       <h2 id={anchor} className="scroll-mt-24 text-lg font-semibold text-fg">{group?.title ?? title}</h2>
       {group ? (
         <>

@@ -16,7 +16,7 @@ const body = z.object({ kind: z.enum(["opportunities", "ideas"]), articleId: z.s
 export const POST = seoRoute("promotion-run", { mutating: true, rate: { max: 10, windowSeconds: 600 } }, async (_req, ctx) => {
   const b = parse(body, ctx.body);
   if (!(await getPromotionSettings()).enabled) throw new SeoApiError("Promotion is switched off in its settings.", 409, "disabled");
-  if ((await orchestrator()) !== "crewai") throw new SeoApiError("Promotion runs as CrewAI flows, and the SEO agent is disabled (Automation & AI → SEO agent).", 409, "orchestrator");
+  if ((await orchestrator()) !== "crewai") throw new SeoApiError("Promotion runs as CrewAI flows, and the SEO agent is disabled (AI & SEO → Settings → SEO agent).", 409, "orchestrator");
   try {
     const r = b.kind === "ideas" ? await kickoff("content_ideas_flow", {}, { actor: ctx.actor.label }) : await kickoff("promotion_flow", b.articleId ? { article_id: b.articleId } : {}, { actor: ctx.actor.label });
     await ctx.audit("promotion.run", b.articleId, { kind: b.kind, runId: r.run_id, existing: r.existing });
