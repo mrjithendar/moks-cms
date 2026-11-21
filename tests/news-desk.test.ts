@@ -189,15 +189,59 @@ const NEWS_DOC = {
   news: { dek: "Resize running pods.", categories: ["kubernetes"], tags: ["kubernetes", "autoscaling"], sources: [{ title: "Kubernetes v1.35", publisher: "Kubernetes", url: "https://kubernetes.io/blog/2026/11/10/v1-35/", accessed_at: "2026-11-10" }], image: null, job_name: "Daily" },
 };
 
-async function newsDraft(doc = NEWS_DOC) {
-  const job = (await svc.createJob(admin, { name: "Daily", config: { expiry_days: 7 } }))!;
+async function newsDraft(doc: Record<string, unknown> = NEWS_DOC, output: "news" | "article" = "news") {
+  const job = (await svc.createJob(admin, { name: "Daily", config: { expiry_days: 7, output } }))!;
   const [run] = rowsOf<{ id: string }>(await db.execute(sql`insert into news_runs (id, job_id, trigger, status) values (gen_random_uuid(), ${job.id}, 'manual', 'running') returning id`));
   const [cl] = rowsOf<{ id: string }>(await db.execute(sql`insert into news_clusters (title, topics) values ('Kubernetes 1.35', '[{"slug":"kubernetes","p":0.9}]') returning id`));
   await db.execute(sql`insert into news_candidates (run_id, job_id, cluster_id, features, score, breakdown, model_version, decision, reason) values (${run!.id}, ${job.id}, ${cl!.id}, '{"recency":1}', 0.72, '{"model":"v1-weighted"}', 'v1-weighted', 'selected', 'selected')`);
   const [a] = rowsOf<{ id: string }>(await db.execute(sql`insert into news_articles (job_id, run_id, cluster_id, status, generated_doc, score, expires_after_days) values (${job.id}, ${run!.id}, ${cl!.id}, 'drafting', ${JSON.stringify(doc)}::jsonb, 0.72, 7) returning id`));
-  const r = await cb("POST", "/news/drafts", { articleId: a!.id, jobId: job.id, jobName: "Daily", document: doc, flags: [], categories: ["kubernetes"], tags: ["kubernetes"], image: null, runId: run!.id, author: "jithendar-dharmapuri" });
+  const r = await cb("POST", "/news/drafts", { articleId: a!.id, jobId: job.id, jobName: "Daily", document: doc, flags: [], categories: ["kubernetes"], tags: ["kubernetes"], image: null, runId: run!.id, author: "jithendar-dharmapuri", ...(output === "article" ? { output } : {}) });
   return { job, articleId: a!.id, clusterId: cl!.id, res: r as { status: number; body: { draftId: string; postId: string; errors: string[] } } };
 }
+
+describe("crew jobs write any content (crew-jobs plan PR 3)", () => {
+  it("a job config says what it writes, where it starts from and its own quality gates; bad values are refused", () => {
+    const c = schemaMod.jobConfigSchema.parse({});
+    expect(c).toMatchObject({ output: "news", intake: ["sources"], quality: {} });
+    expect(schemaMod.jobConfigSchema.parse({ output: "article", intake: ["ideas", "sources"], quality: { title_max: 58 } })).toMatchObject({ output: "article", quality: { title_max: 58 } });
+    for (const bad of [{ output: "podcast" }, { intake: [] }, { intake: ["sources", "sources"] }, { quality: { nope: 1 } }, { quality: { title_max: 5 } }]) expect(schemaMod.jobConfigSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+  });
+
+  it("an article job's draft is a blog post (tutorial) in the review queue, not news", async () => {
+    const { res } = await newsDraft({ ...NEWS_DOC, slug_suggestion: "in-place-pod-resize-in-practice" }, "article");
+    expect(res.status).toBe(200);
+    const [post] = await db.select().from(schema.post).where(sql`id = ${res.body.postId}`);
+    expect(post).toMatchObject({ collection: "blog", contentType: "tutorial", status: "draft" });
+    const [d] = rowsOf<{ collection: string; summary: string }>(await db.execute(sql`select collection, summary from seo_drafts where id = ${res.body.draftId}`));
+    expect(d!.collection).toBe("blog");
+    expect(d!.summary).toMatch(/^Article · Daily:/);
+  });
+
+  it("the ideas intake picks the job's best matching open ideas within its caps, puts them on the calendar and drafts them", async () => {
+    const job = (await svc.createJob(admin, { name: "Ideas", config: { intake: ["ideas"], output: "article", include_keywords: ["kubernetes"], exclude_keywords: ["webinar"], max_articles_per_day: 2 } }))!;
+    const [run] = rowsOf<{ id: string }>(await db.execute(sql`insert into news_runs (id, job_id, trigger, status) values (gen_random_uuid(), ${job.id}, 'cron', 'running') returning id`));
+    const idea = async (title: string, score: number, status = "new") => rowsOf<{ id: string }>(await db.execute(sql`insert into seo_content_ideas (fingerprint, title, angle, score, status) values (${title}, ${title}, 'angle', ${score}, ${status}) returning id`))[0]!.id;
+    const best = await idea("Kubernetes pod resize in practice", 0.9);
+    const second = await idea("Kubernetes autoscaling pitfalls", 0.8, "saved");
+    await idea("Kubernetes webinar recap", 0.95); // excluded keyword
+    await idea("Terraform state tips", 0.99); // no matching keyword
+    await idea("Kubernetes old idea", 0.7, "dismissed");
+    const dry = await callbacks.jobsDraftIdeas({ jobId: job.id, runId: run!.id, limit: 5, dryRun: true });
+    expect(dry.ideas.map((i) => i.ideaId)).toEqual([best, second]); // capped by the daily cap (2), best first
+    const sent: string[] = [];
+    const r = await callbacks.jobsDraftIdeas(
+      { jobId: job.id, runId: run!.id, limit: 1 },
+      { toCalendar: async (id) => ({ calendarId: `cal-${id.slice(0, 4)}` }), draft: async (calendarId) => (sent.push(calendarId), { draftId: "d1", runId: "r1" }) },
+    );
+    expect(r.ideas).toEqual([{ ideaId: best, title: "Kubernetes pod resize in practice", calendarId: `cal-${best.slice(0, 4)}`, draftId: "d1", runId: "r1" }]);
+    expect(sent).toHaveLength(1);
+    expect(rowsOf<{ run_id: string }>(await db.execute(sql`select run_id from seo_content_ideas where id = ${best}`))[0]!.run_id).toBe(run!.id);
+    await expect(callbacks.jobsDraftIdeas({ jobId: "00000000-0000-4000-8000-000000000000", runId: "x", limit: 1 })).rejects.toMatchObject({ status: 404 });
+    // through the callback server, with the seo-agent's token
+    const viaServer = await cb("POST", "/jobs/ideas", { jobId: job.id, runId: run!.id, limit: 1, dryRun: true });
+    expect(viaServer.status).toBe(200);
+  });
+});
 
 describe("drafts → review → publish", () => {
   it("creates a CMS draft post in news and an agent-owned review draft; nothing is published", async () => {

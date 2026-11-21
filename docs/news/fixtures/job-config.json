@@ -26,5 +26,8 @@
   "weights": { "severity": 0.1 },
   "expiry_days": 30,
   "publishing_slots": ["09:00", "17:30"],
-  "notify": true
+  "notify": true,
+  "output": "news",
+  "intake": ["sources", "ideas"],
+  "quality": { "title_max": 58 }
 }

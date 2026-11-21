@@ -21,12 +21,29 @@ type Config = Record<string, unknown> & {
   budget: Record<string, number>;
   diversity: Record<string, number>;
   image: { enabled: boolean; provider: string | null; variants: number | null };
+  output?: "news" | "article";
+  intake?: ("sources" | "ideas")[];
+  quality?: Record<string, number>;
 };
 export type JobForm = { name: string; description: string; enabled: boolean; cron: string; timezone: string; mode: string; writing_profile_key: string; image_profile_key: string; review_priority: number; config: Config };
 type Version = { version: number; diff: { path: string; before: unknown; after: unknown }[]; note: string | null; created_by: string | null; created_at: string };
 type Opt = { value: string; label: string };
 
-const TABS = ["General", "Sources", "Selection & ML", "Writing", "Images", "Categories", "Schedule & limits", "Budget", "Review"] as const;
+const TABS = ["General", "Sources", "Selection & ML", "Writing", "Quality", "Images", "Categories", "Schedule & limits", "Budget", "Review"] as const;
+/** The quality gates a job may set for itself (lib/news/schema.ts qualitySchema); empty = the shared value. */
+const QUALITY_FIELDS: [key: string, label: string, step: number][] = [
+  ["max_ngram_overlap", "Max 8-gram overlap per paragraph", 0.01],
+  ["max_shared_run_words", "Max verbatim run (words)", 1],
+  ["max_paragraph_cosine", "Max paragraph similarity (cosine)", 0.01],
+  ["max_quote_words", "Max quote length (words)", 1],
+  ["min_analysis_share", "Min share of original analysis", 0.01],
+  ["readability_min", "Readability min (Flesch)", 1],
+  ["readability_max", "Readability max (Flesch)", 1],
+  ["title_max", "Title max (characters)", 1],
+  ["meta_min", "Meta description min (characters)", 1],
+  ["meta_max", "Meta description max (characters)", 1],
+  ["max_internal_links", "Max internal links", 1],
+];
 const FEATURES = ["credibility", "source_count", "burst", "recency", "topic_match", "audience", "novelty", "severity", "keyword_overlap"];
 const AGENTS = ["researcher", "analyst", "writer", "fact_checker", "seo_editor", "art_director"];
 const list = (s: string) => s.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
@@ -122,6 +139,26 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
             <>
               <Field label="Name"><Input value={f.name} onChange={(e) => set("name", e.target.value)} maxLength={120} /></Field>
               <Field label="Description"><Textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={3} /></Field>
+              <Field label="Output" hint="What this job writes. News: dated news stories (the news section, NewsArticle). Blog article: evergreen, practical articles from the same grounded facts (the blog, Article).">
+                <Select value={c.output ?? "news"} onChange={(e) => setC("output", e.target.value)}>
+                  <option value="news">News story</option>
+                  <option value="article">Blog article</option>
+                </Select>
+              </Field>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-fg">Starts from</legend>
+                {([["sources", "Content sources", "Feeds and APIs (Content sources tab), ranked and drafted by the News Desk crew."], ["ideas", "Content ideas", "Promotion's ideas that have an audience, matched to this job's keywords and topics; each goes on the editorial calendar and the Editorial crew writes it."]] as const).map(([k, label, hint]) => {
+                  const intake = c.intake ?? ["sources"];
+                  const on = intake.includes(k);
+                  return (
+                    <label key={k} className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" className="mt-1" checked={on} disabled={on && intake.length === 1} onChange={(e) => setC("intake", e.target.checked ? [...intake, k] : intake.filter((x) => x !== k))} />
+                      <span><span className="font-medium text-fg">{label}</span><span className="block text-xs text-fg-subtle">{hint}</span></span>
+                    </label>
+                  );
+                })}
+                <p className="text-xs text-fg-subtle">At least one. With both, ideas fill the places in a run that the sources left (Max articles per run).</p>
+              </fieldset>
               <Field label="Mode" hint="Single stories: one article per story. Daily digest: one article with the top stories. Both: singles plus a digest of the rest.">
                 <Select value={f.mode} onChange={(e) => set("mode", e.target.value)}>
                   <option value="single_stories">Single stories</option>
@@ -235,6 +272,32 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
                 {num("Expiry notice after (days, 0 = never)", Number(c.expiry_days ?? 0), (n) => setC("expiry_days", n > 0 ? n : null), { min: 0, max: 3650 })}
               </div>
               <Field label="Publishing slots (HH:MM, job time zone)" hint="“Schedule” in review offers the next of these."><Input value={c.publishing_slots.join(", ")} onChange={(e) => setC("publishing_slots", list(e.target.value))} /></Field>
+            </>
+          )}
+          {tab === "Quality" && (
+            <>
+              <p className="text-sm text-fg-muted">Every draft this job writes is checked against these before it reaches the review queue. Leave a field empty to use the shared value (AI &amp; SEO → Settings → AI &amp; drafts → Quality gates).</p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {QUALITY_FIELDS.map(([k, label, step]) => {
+                  const q = c.quality ?? {};
+                  return (
+                    <Field key={k} label={label} hint={q[k] === undefined ? "Shared value" : "This job's own value"}>
+                      <Input
+                        type="number"
+                        step={step}
+                        value={q[k] ?? ""}
+                        placeholder="shared"
+                        onChange={(e) => {
+                          const next = { ...q };
+                          if (e.target.value === "") delete next[k];
+                          else next[k] = Number(e.target.value);
+                          setC("quality", next);
+                        }}
+                      />
+                    </Field>
+                  );
+                })}
+              </div>
             </>
           )}
           {tab === "Budget" && (
