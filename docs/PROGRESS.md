@@ -1,5 +1,19 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P1 (part 2): one "AI & SEO" menu entry (2026-11-21, owner request)
+
+- `src/lib/admin-menu.ts`: groups `ai` ("AI room") and `insights` ("SEO & insights") are one group, `ai`, labelled
+  "AI & SEO", with sub-headings Agent, Models & data, Traffic, Content, Authority & health, Settings. Automation & AI
+  is named "Settings" in the menu (the page and its address are unchanged). Newsroom (Desk, Setup, Insights,
+  Settings) and System (Status, Data, Records) have sub-headings. **No URL changed** (PD-12).
+- `arrangeMenu`: a sub-heading is drawn above the first page a person can see under it, so it is not lost when the
+  page that declares it is hidden from them (before, a heading belonged to one page only).
+- `tests/admin-nav.test.tsx` updated for the merged group; `docs/ADMIN_MENU.md` (with a before → now table) and the
+  user guide's menu entries updated.
+- lint, typecheck, test and build were not run locally (no `node_modules`); CI on the pull request runs them. Not
+  opened in a browser.
+- Still to do for P1: the shared sectioned settings shell and Automation & AI split into sections.
+
 ## Admin settings plan, P1 (part 1): the SEO agent's own settings in the admin (2026-11-20, owner request)
 
 Owner's plan "Admin settings overhaul" (2026-11-20), prompt P1. The agent half is merged (moks-seo-agent #13: table

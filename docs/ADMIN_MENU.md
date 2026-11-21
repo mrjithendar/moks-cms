@@ -22,18 +22,31 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Editorial | Editorial calendar, Review queue, Promotion |
 | Media | Library |
 | Pages | All pages, Add new, Hire me page |
-| Newsroom | Jobs, Run history, Sources, Topics, Profiles & playground, Analytics, Settings (the news desk) |
-| AI room | Automation & AI (the SEO agent's flows), Skills (the crews' writing and checking guidance, D-96), ML models, LanceDB, MCP access |
-| SEO & insights | **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Content:** Keywords, Recommendations, Content audit, Internal linking. **Authority & health:** Backlinks, AI visibility, Technical health |
+| Newsroom | **Desk:** Jobs, Run history. **Setup:** Sources, Topics, Profiles & playground. **Insights:** Analytics. **Settings:** Settings (the news desk) |
+| AI & SEO | **Agent:** CrewAI console, Flow runs, Flows, Schedules, Crews, Skills (the crews' writing and checking guidance, D-96), Import / export. **Models & data:** ML models, LanceDB. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Content:** Keywords, Recommendations, Content audit, Internal linking. **Authority & health:** Backlinks, AI visibility, Technical health. **Settings:** Settings (the Automation & AI page), MCP access |
 | Community | Comments, Messages, Bookings |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | Appearance | Customise, Menus, Homepage, Typography & colours |
 | Users | All users, Your profile, API keys ("Your account" for someone without the Users page) |
 | Settings | General, Integrations, Storage, Email |
-| System | System status, Cache, Backups, Database, Data sync, Audit log |
+| System | **Status:** System status, Cache. **Data:** Backups, Database, Data sync. **Records:** Audit log |
 
 Below the entries: **Help** (the user manual) and **Collapse menu**.
+
+**AI & SEO (2026-11-21).** "AI room" and "SEO & insights" became one entry. Only the menu moved: every page kept its
+address, so bookmarks and links still work. What moved where:
+
+| Before | Now |
+|---|---|
+| AI room → CrewAI console, Flow runs, Flows, Schedules, Crews, CrewAI import / export, Skills | AI & SEO → Agent (Import / export is the last one) |
+| AI room → ML models, LanceDB | AI & SEO → Models & data |
+| AI room → Automation & AI | AI & SEO → Settings → Settings |
+| AI room → MCP access | AI & SEO → Settings → MCP access |
+| SEO & insights → Traffic, Content, Authority & health | AI & SEO → the same three headings |
+
+A sub-heading is drawn above the first page a person can see under it (`arrangeMenu`), so a heading is not lost when
+the page that declares it is hidden from them. Newsroom and System have sub-headings too.
 
 ## The admin bar (2026-11-20)
 

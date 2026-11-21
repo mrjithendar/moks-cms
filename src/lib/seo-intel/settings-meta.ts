@@ -32,7 +32,7 @@ export const SECTION_LABELS: Record<string, string> = {
   keywords: "Keyword opportunities",
   aiVisibility: "AI visibility (weekly prompts to AI assistants with web search; API keys only in the site's Secret)",
   dataforseo: "DataForSEO (pay as you go; credentials DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD in the site's Secret)",
-  runHistory: "Run history (CrewAI console: Admin → AI room → CrewAI console)",
+  runHistory: "Run history (CrewAI console: Admin → AI & SEO → CrewAI console)",
 };
 
 /** One line of help per field that isn't self-explanatory, keyed by its dotted path. */
