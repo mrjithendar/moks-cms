@@ -3,23 +3,16 @@ import { AdminHeader, Table, td, th } from "@/components/admin/ui";
 import { Ago } from "@/components/crewai/Ago";
 import { RunFlowButton } from "@/components/crewai/RunFlowButton";
 import { RunStatusIcon } from "@/components/crewai/RunStatusIcon";
-import { AGENT_IDS, AGENT_LABEL, agentOfFlow } from "@/lib/crewai/agent-of";
-import { bothFlows } from "@/lib/crewai/agents";
+import { agentFlows } from "@/lib/crewai/catalogue";
 import { FLOW_GROUPS, FLOWS, flowInfo, rerunBlocked } from "@/lib/crewai/flows";
 import { overview } from "@/lib/crewai/runs";
 import { describeCron, hasSchedules, listSchedules, type Schedule } from "@/lib/crewai/schedules";
 
 export const metadata = { title: "Flows" };
 
-/**
- * Every flow of both agents (Jenkins' job list): what it does, when it is scheduled, its last run, Run with parameters.
- * The seo-agent's and the news agent's flows are listed together; an agent that does not answer has its flows listed
- * with their start buttons disabled and a line saying which agent it is.
- */
+/** Every flow the SEO agent has (Jenkins' job list): what it does, when it is scheduled, its last run, Run with parameters. */
 export default async function CrewaiFlowsPage() {
-  const [{ flows: catalogue, reachable }, o, schedulesReady] = await Promise.all([bothFlows(), overview(), hasSchedules().catch(() => false)]);
-  const agent = reachable.seo || reachable.news ? catalogue : null;
-  const down = AGENT_IDS.filter((a) => !reachable[a]);
+  const [agent, o, schedulesReady] = await Promise.all([agentFlows(), overview(), hasSchedules().catch(() => false)]);
   const schedules = schedulesReady ? await listSchedules() : [];
   const byFlow = new Map<string, Schedule[]>();
   for (const s of schedules) byFlow.set(s.flow, [...(byFlow.get(s.flow) ?? []), s]);
@@ -27,13 +20,8 @@ export default async function CrewaiFlowsPage() {
   const names = [...new Set([...FLOWS.map((f) => f.name), ...(agent ? [...agent.keys()] : [])])];
   return (
     <>
-      <AdminHeader title="Flows" description="Every flow of the SEO agent and the news agent: what it does, when it runs, how its last run went. Open a flow for its parameters, schedules and run history, or start it with your own parameters." />
-      {down.length > 0 && (
-        <p role="status" className="mb-6 rounded-lg border border-line bg-surface-muted p-3 text-sm text-fg-muted">
-          {down.map((a) => AGENT_LABEL[a]).join(" and ")} did not answer: {down.length === 2 ? "no flow" : "its flows"} can be started and {down.length === 2 ? "their" : "their"} parameters are not shown until it is back.
-          {down.includes("news") && " The news agent is found as described in Newsroom → Settings → News agent."}
-        </p>
-      )}
+      <AdminHeader title="Flows" description="Every flow of the SEO agent: what it does, when it runs, how its last run went. Open a flow for its parameters, schedules and run history, or start it with your own parameters." />
+      {!agent && <p role="status" className="mb-6 rounded-lg border border-line bg-surface-muted p-3 text-sm text-fg-muted">The SEO agent did not answer, so flows cannot be started and their parameters are not shown.</p>}
       <div className="space-y-8">
         {FLOW_GROUPS.map((group) => {
           const inGroup = names.filter((n) => flowInfo(n).group === group);
@@ -68,7 +56,7 @@ export default async function CrewaiFlowsPage() {
                         {l && <p className="text-xs text-fg-subtle"><Ago iso={l.startedAt} /></p>}
                       </td>
                       <td className={`${td} text-right`}>
-                        {name !== "crew_test_flow" && <RunFlowButton flow={name} label={info.label} schema={agent?.get(name)?.inputs_schema ?? null} blocked={rerunBlocked(name) ?? (reachable[agentOfFlow(name)] ? null : `${AGENT_LABEL[agentOfFlow(name)]} is not reachable.`)} />}
+                        {name !== "crew_test_flow" && <RunFlowButton flow={name} label={info.label} schema={agent?.get(name)?.inputs_schema ?? null} blocked={rerunBlocked(name)} />}
                       </td>
                     </tr>
                   );

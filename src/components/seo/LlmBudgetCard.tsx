@@ -162,7 +162,6 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
             )}
             <p className="mt-2 text-sm text-fg-subtle">
               {view.pending_usd > 0 && <>{usd(view.pending_usd)} more is held for calls in progress. </>}
-              {view.holds && view.holds.length > 0 && <>Of that, held by {view.holds.map((h) => `${h.caller === "news-agent" ? "the news agent" : h.caller === "web" ? "this web app" : h.caller} (${usd(h.usd)}, ${h.calls} call${h.calls === 1 ? "" : "s"})`).join(" and ")}. </>}
               {scope === "month" && view.forecast_usd !== null && <>At this month&apos;s rate so far: about {usd(view.forecast_usd)} by the end of the month. </>}
               Resets {when(view.resets_at)}.
             </p>

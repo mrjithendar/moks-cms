@@ -57,9 +57,9 @@ above), NVD (needs your own query). Anthropic's newsroom has no feed that was ve
 ## Legal and terms (read before enabling a source)
 
 - The desk writes **original summaries and analysis** and links to the source; it never republishes articles. Code
-  gates block drafts that are too close to any source (the news agent's docs/QUALITY_GATES.md). Quotes: ≤ 25 words, one per source, attributed.
+  gates block drafts that are too close to any source (QUALITY_GATES.md). Quotes: ≤ 25 words, one per source, attributed.
 - Respect each source's terms: some forbid automated access or commercial reuse. Record what you checked in the source's
   terms note. Never add paywalled content (add the host to Settings → Paywalled hosts to make sure).
 - Prefer official feeds and APIs to pages; `html_allowlisted` is a last resort.
-- Images from sources are never used: covers are generated (the news agent's docs/IMAGES.md).
+- Images from sources are never used: covers are generated (IMAGES.md).
 - This is not legal advice; for anything unclear, ask the publisher or a lawyer.

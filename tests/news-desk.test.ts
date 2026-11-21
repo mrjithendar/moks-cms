@@ -31,9 +31,7 @@ const { saveSeoSettings } = await import("@/lib/seo-intel/settings");
  */
 const admin: Actor = { id: "admin", role: "admin", label: "admin@example.com" };
 const CB = "c".repeat(40);
-const NCB = "n".repeat(40); // the news agent's callback token: the only one the /news/* routes accept
-const cb = (method: string, p: string, body?: unknown) =>
-  handleCallback(method, `/internal/seo-agent${p}`, `Bearer ${p.startsWith("/news/") ? NCB : CB}`, body, { ...process.env, SEO_AGENT_CALLBACK_TOKEN: CB, NEWS_AGENT_CALLBACK_TOKEN: NCB });
+const cb = (method: string, p: string, body?: unknown) => handleCallback(method, `/internal/seo-agent${p}`, `Bearer ${CB}`, body, { ...process.env, SEO_AGENT_CALLBACK_TOKEN: CB });
 let db: Db;
 const env = { ...process.env };
 

@@ -1,5 +1,4 @@
 import "server-only";
-import { AgentError } from "../agent-error";
 import { agentToken } from "./config";
 import { agentBaseUrl } from "./endpoint";
 
@@ -9,8 +8,16 @@ import { agentBaseUrl } from "./endpoint";
  * status/cancel) and the public /api/ask proxy. Errors surface as AgentError with the agent's status, never its
  * internals; a disabled agent is a 503.
  */
-// One error type for both agents (lib/agent-error.ts), re-exported so existing imports keep working.
-export { AgentError };
+export class AgentError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** The agent's own list of problems (a 422 for crew configuration or flow inputs), when it sent one. */
+    readonly issues: string[] = [],
+  ) {
+    super(message);
+  }
+}
 
 export type AgentDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined> };
 
@@ -38,8 +45,9 @@ export type Decision = { decision: "approve" | "reject" | "regenerate"; approval
 
 /** Flows a person or a schedule may start with POST /flows/{name}/kickoff. publish_flow is not one of them.
  * crew_test_flow is the CrewAI console's crew Test run (moks-seo-agent/app/flows/crew_test.py), started by an admin only. */
-export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow";
-// The news desk's flows are the news agent's since 2026-11-21: lib/news-agent/client.ts (NewsFlowName).
+export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | NewsFlowName;
+/** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
+export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
 
 export const DISABLED_MESSAGE = "The SEO agent is disabled: none was found. Add its endpoint under Admin → AI & SEO → Settings → Overview.";
 
@@ -78,7 +86,7 @@ async function call<T>(method: string, path: string, body: unknown, deps: AgentD
 export const kickoff = (flow: FlowName, inputs: Record<string, unknown>, opts: { triggeredBy?: "manual" | "cron"; actor?: string } = {}, deps?: AgentDeps) =>
   call<{ run_id: string; status: string; existing: boolean }>("POST", `/flows/${flow}/kickoff`, { inputs, triggered_by: opts.triggeredBy ?? "manual", actor: opts.actor ?? null }, deps);
 /** One flow as the agent's GET /flows describes it (CrewAI console: Run with parameters, schedules, crews). */
-export type AgentFlow = { name: string; agent?: "seo" | "news"; inputs_schema: JsonSchema; approval_only: boolean; schedulable: boolean; mcp: boolean; crews: string[] };
+export type AgentFlow = { name: string; inputs_schema: JsonSchema; approval_only: boolean; schedulable: boolean; mcp: boolean; crews: string[] };
 /** The JSON Schema subset Pydantic emits for the flows' input models. */
 export type JsonSchema = {
   type?: string | string[];
@@ -103,8 +111,6 @@ export type JsonSchema = {
 /** One crew's editable configuration as the code defines it (moks-seo-agent/app/crews/config.py catalogue). */
 export type AgentCrew = {
   crew: string;
-  /** Which agent runs it (both agents send it; an older seo-agent does not: read as "seo"). */
-  agent?: "seo" | "news";
   label: string;
   description: string;
   prompt_version: string;
@@ -207,8 +213,6 @@ export type AgentLlmBudgetView = {
   ask_daily: { limit_usd: number; spent_usd: number };
   /** Limits per model and per provider from before the one budget. Shown read-only: nothing enforces them. */
   legacy_limits: { models: Record<string, AgentLlmBudget>; providers: Record<string, AgentLlmBudget> };
-  /** Calls in progress elsewhere, held against the budget over its API, by who asked (a newer seo-agent sends it). */
-  holds?: { caller: string; usd: number; calls: number }[];
 };
 
 export const getLlmBudget = (scope: AgentLlmScope, deps?: AgentDeps) => call<AgentLlmBudgetView>("GET", `/llm-budget?scope=${scope}`, undefined, deps, 8_000);

@@ -84,7 +84,7 @@ export type FlowCostBreakdown = { monthStart: string; flows: FlowCost[]; outside
 
 /**
  * Month-to-date spend per seo-agent flow (v5), from seo_flow_runs.cost_usd (every run's model cost, written by the
- * agent's CrewAI persistence). News flows are left out (the news agent's), as is Ask the Blog (no flow).
+ * agent's CrewAI persistence). News flows are left out (own caps, docs/news/COSTS.md), as is Ask the Blog (no flow).
  * "Outside flows" = the admin month's spend in seo_llm_usage minus the flows: the v2 legacy path, keyword intents and
  * recommendation explanations. A flow's cost lands in the month its run started.
  */
