@@ -367,7 +367,8 @@ export class SettingsError extends Error {
 async function documentToSave(raw: unknown): Promise<SeoSettingsInput> {
   const body = (raw ?? {}) as Record<string, unknown>;
   if (!Array.isArray(body.only)) return body as SeoSettingsInput;
-  const { llmKeySet: _flag, ...stored } = publicSettings(await getSeoSettings()) as unknown as Record<string, unknown>;
+  const stored = { ...(publicSettings(await getSeoSettings()) as unknown as Record<string, unknown>) };
+  delete stored.llmKeySet; // a flag for the page, not a stored setting
   const names = body.only.filter((s): s is string => typeof s === "string" && s in stored);
   if (names.length === 0 || names.length !== body.only.length) throw new SettingsError("The settings are not valid.", ["only: name the sections to save"]);
   const missing = names.filter((n) => body[n] === undefined || body[n] === null);

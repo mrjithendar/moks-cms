@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Alert, Button, Input, Select, Textarea } from "@/components/ui/form";
@@ -33,7 +34,7 @@ export function NewsSettingsForm({ initial, desk, envProvider }: { initial: S; d
       </section>
       <section className="space-y-4">
         <h2 className="text-sm font-semibold">Global caps</h2>
-        <p className="text-sm text-fg-muted">News LLM spend has no cap of its own: it counts in the one LLM budget under <a className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</a>. Image spend keeps the caps below.</p>
+        <p className="text-sm text-fg-muted">News LLM spend has no cap of its own: it counts in the one LLM budget under <Link className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</Link>. Image spend keeps the caps below.</p>
         <div className="grid gap-4 sm:grid-cols-3">
           {num("image_daily_usd", "Images per day (USD)", 0.05)}
           {num("image_monthly_usd", "Images per month (USD)", 0.5)}

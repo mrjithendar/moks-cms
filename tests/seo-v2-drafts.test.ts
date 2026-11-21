@@ -332,7 +332,6 @@ describe("Claude draft pipeline (mocked API)", () => {
     const reqs = create.body!.requests as { custom_id: string; params: Record<string, unknown> }[];
     expect(reqs[0]!.custom_id).toMatch(/^d_[0-9a-f-]{36}$/);
     expect(reqs[0]!.params.fallbacks).toBeUndefined(); // the Batches API rejects fallbacks
-    const s = await (await import("@/lib/seo-intel/settings")).getSeoSettings();
     expect((await claude.budgetState(db)).reservedUsd).toBeGreaterThan(0);
     expect((await drafts.openDraft(db, articleId))!.status).toBe("generating");
     // still running → nothing applied
