@@ -17,7 +17,7 @@ permissions:
 jobs:
   hygiene:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: mk4
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,7 +26,8 @@ jobs:
       - name: No cloud-sync conflict copies
         run: scripts/check-conflict-copies.sh
       - name: shellcheck
-        # ubuntu-latest ships shellcheck. verify-practice-sandbox.sh is excluded: it builds eval'd check strings on purpose.
+        # Needs shellcheck on the runner (ubuntu-latest shipped it; the mk4 runner image does not).
+        # verify-practice-sandbox.sh is excluded: it builds eval'd check strings on purpose.
         run: shellcheck -x scripts/check-conflict-copies.sh scripts/image-size.sh scripts/smoke-site-image.sh scripts/wait-for-jobs.sh
       - name: Alerts handoff file is current and valid
         # Structural checks + staleness (scripts/build-alerts.py --check), then full PromQL validation with promtool
