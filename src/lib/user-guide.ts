@@ -257,7 +257,7 @@ const guides: GuideEntry[] = [
       "- News topics: map news topics to the CMS's categories; your corrections train the classifier weekly.",
       "- News profiles & playground: versioned writing and image styles; proposed versions need your approval.",
       "- News run history and News analytics: every run with its cost and errors, and how published news performs.",
-      "- News settings: global spending caps on top of each job's own budget.",
+      "- News settings: the news desk's switch (\"News desk on\") and global image spending caps on top of each job's own image caps. News LLM spend has no cap of its own: it counts in the one LLM budget (AI & SEO → Settings → LLM budget). Off means no job runs; sources, jobs and profiles stay as they are. If the page says the desk is switched off by the deployment, NEWS_DESK_ENABLED is set to false there and must be removed before the switch works.",
     ],
   },
   {
@@ -480,7 +480,7 @@ const guides: GuideEntry[] = [
       "AI & SEO → Settings (called Automation & AI until November 2026; old links still open it) has a list of sections on the left, like Appearance & site settings. On a phone the list is a drop-down above the section. Each section saves on its own, so a change in one never overwrites another, and every saved change is audit-logged. If you leave a section with unsaved changes, you are asked first.",
       "- Overview: the search and analytics connections, and the SEO agent (on or off, and its endpoint).",
       "- LLM providers & models: one form per provider (Anthropic, OpenAI, Google Gemini, Azure OpenAI, AWS Bedrock, Mistral, xAI, or any OpenAI-compatible server). Enter its API key (stored sealed in the SEO agent and never shown again), add the models you want and their prices in USD per million tokens, then switch them on. A model cannot be switched on without prices unless it is a Claude model with a built-in price or you mark it free; no price is filled in for you. For now this is set-up only: every job still calls Anthropic until a model is chosen for each job. LLM budget: one budget for every provider, model and purpose together. A Daily | Monthly switch shows that period's spend against its limit, the one field that sets it (empty means no limit) and where the spend went by provider, model and purpose; LLM usage for this month is below it.",
-      "- Ask the Blog, ML & retrieval, MCP: the assistant's settings, the SEO models and retrieval check, and the way to MCP access.",
+      "- Ask the Blog, ML & retrieval, MCP: the assistant's settings, the SEO models and retrieval check, and the way to MCP access. ML & retrieval also has the SEO agent's Retrieval settings (passages per answer, lowest similarity, how long questions are kept, the LanceDB copy) and Embeddings settings (the backend's address, key and time limit; the embeddings provider and model stay in the deployment, because changing them needs every article embedded again). MCP has the two servers' switches (they apply at once: a server that is off answers 503), their rate limits and the host names they answer to (these apply when the SEO agent restarts). No setting can add a tool or let a client approve, publish or submit content.",
       "- Data sources: which Google properties are read, how far back and how long data is kept; DataForSEO for search volume, difficulty, live rankings and backlinks.",
       "- Schedules: when each job runs (UTC; weekday 0 = Sunday).",
       "- Scoring & rules: the weights and thresholds that find and rank recommendations.",

@@ -197,7 +197,7 @@ function extraChecks(): Promise<Check>[] {
       if (failing.length) return { status: "degraded", detail: `ready · latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} (${f.at} UTC: ${f.error})`).join("; ")}` };
       return { status: "ok", detail: "ready · no flow's latest run failed in the last 24 h" };
     }),
-    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=ai" }, async () => {
+    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=llm-providers" }, async () => {
       const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
       const c = claudeConfig(await getSeoSettings());
       if (!c.apiKey) return { status: "not configured", detail: "ANTHROPIC_API_KEY is not set: drafting, Improve and reviews use rules only" };
@@ -211,6 +211,17 @@ function extraChecks(): Promise<Check>[] {
         return { status, detail: st.message };
       }),
     ),
+    timed("LLM budget", { group: "SEO & AI", href: "/admin/automation?section=llm-budget" }, async () => {
+      // The one budget lives in the seo-agent. No limit at all is reported as degraded: nothing then stops LLM spending.
+      const { loadLlmBudget } = await import("./llm-budget-view");
+      const { view, error, tooOld } = await loadLlmBudget("month");
+      if (!view) return { status: tooOld ? "degraded" : "not configured", detail: (error ?? "the SEO agent could not be asked").slice(0, 160) };
+      const { daily_usd: day, monthly_usd: month } = view.budget;
+      if (day === null && month === null) return { status: "degraded", detail: "no daily or monthly limit is set: nothing stops LLM spending" };
+      const used = view.limit_usd !== null && view.spent_usd >= view.limit_usd;
+      const limits = [day !== null ? `$${day} a day` : null, month !== null ? `$${month} a month` : null].filter(Boolean).join(" · ");
+      return { status: used ? "degraded" : "ok", detail: `${limits} · $${view.spent_usd.toFixed(2)} spent this month${used ? " · the monthly limit is reached: LLM calls are refused" : ""}` };
+    }),
     timed("ML models", { group: "SEO & AI", href: "/admin/models" }, async () => {
       const db = await getDb();
       const rows = rowsOf<{ kind: string; trained_at: string }>(await db.execute(sql`select kind, trained_at::text from seo_ml_models where active order by kind`));
@@ -219,9 +230,11 @@ function extraChecks(): Promise<Check>[] {
       const days = Math.round((Date.now() - Date.parse(oldest.trained_at)) / 86_400_000);
       return { status: days > 45 ? "degraded" : "ok", detail: `${rows.length} active (${rows.map((r) => r.kind).join(", ")}) · oldest trained ${days} day(s) ago` };
     }),
-    timed("News desk", { group: "Publishing", href: "/admin/news/settings" }, async () => {
-      const { newsDeskEnabled } = await import("./news/schema");
-      if (!newsDeskEnabled()) return { status: "not configured", detail: "switched off (NEWS_DESK_ENABLED)" };
+    timed("News desk", { group: "Publishing", href: "/admin/news/settings#news-desk-switch" }, async () => {
+      const { newsDeskState } = await import("./news/schema");
+      const { getNewsSettings } = await import("./news/service");
+      const desk = newsDeskState(await getNewsSettings().catch(() => null));
+      if (!desk.on) return { status: "not configured", detail: desk.by === "deployment_off" ? "switched off by the deployment (NEWS_DESK_ENABLED=false)" : "switched off (Newsroom → Settings)" };
       const db = await getDb();
       const [r] = rowsOf<{ total: number; failed: number }>(await db.execute(sql`select count(*)::int as total, count(*) filter (where status = 'failed')::int as failed from news_runs where created_at > now() - interval '24 hours'`));
       const total = Number(r?.total ?? 0);
@@ -254,7 +267,7 @@ function extraChecks(): Promise<Check>[] {
       const p = await activeProviders();
       return p.length ? { status: "ok", detail: p.map((x) => (x === "github" ? "GitHub" : "Google")).join(", ") } : { status: "not configured", detail: "email and password only" };
     }),
-    timed("Payments (Razorpay)", { group: "Integrations", env: "RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET" }, async () => {
+    timed("Payments (Razorpay)", { group: "Integrations", href: "/admin/payments" }, async () => {
       const { razorpayKeys } = await import("./razorpay");
       const k = razorpayKeys(process.env);
       if (!k.keyId && !k.keySecret) return { status: "not configured", detail: "paid bookings and invoice payment links are off" };

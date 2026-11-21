@@ -1,5 +1,48 @@
 # Progress log — jithendar.com
 
+## Admin settings plan, P6 (first part): System status rows link to the right section (2026-11-21, owner request)
+
+- `src/lib/health.ts`: "Claude (AI drafting)" links to AI & SEO → Settings → LLM providers & models; "News desk" to
+  its switch; "Payments (Razorpay)" to `/admin/payments` (it was listed as a deployment setting).
+- New row **LLM budget** (SEO & AI): degraded when no daily or monthly limit is saved, or when the monthly limit is
+  reached; links to the LLM budget section. With the agent unreachable it says so.
+- **Not done yet in P6:** the practice settings page and AI hints on the shared LLM set-up, start-up settings with
+  "restart pending", and the Configuration tab.
+- Tests: `tests/health-checks.test.ts` already checks that every linked page exists; not changed. **Nothing was run.**
+
+## Admin settings plan, P5 (first part): the news desk switch is in the admin (2026-11-21, owner request)
+
+- Newsroom → Settings has one switch, "News desk on". The rule (`newsDeskState` in `src/lib/news/schema.ts`, the same
+  in the seo-agent's `app/news/config.py`): `NEWS_DESK_ENABLED=false` in the deployment forces the desk off; else the
+  admin's switch decides once saved; never saved, `NEWS_DESK_ENABLED=true` keeps the desk on as before. So this
+  release changes nothing until someone saves the settings. The old "Paused" box is gone from the form (a saved
+  pause is still honoured, and a save clears it).
+- The banner on every Newsroom page, the health check and the "start a flow" guard use the same state and say who
+  decided it.
+- **Manual step, not done:** remove `NEWS_DESK_ENABLED` from the ConfigMaps (a jithendar.com change the owner
+  applies). Until then nothing breaks: `true` keeps working as today.
+- **News LLM caps removed** (second part): the seo-agent no longer enforces the global or per-job news LLM caps; the
+  one LLM budget does. The fields are gone from Newsroom → Settings and the job editor's Budget tab (the keys stay
+  in the schemas so saved rows still load). Image caps are unchanged. `docs/news/COSTS.md` is **not** updated yet.
+- **Not done yet in P5:** default sources seeded disabled, topics review, the sectioned
+  Newsroom settings, docs under `docs/news/`.
+- Tests: `tests/news-desk-switch.test.ts` (new, 4). **Nothing was run** in the session.
+
+## Admin settings plan, P3 (web app, first part): Retrieval, Embeddings and MCP settings (2026-11-21, owner request)
+
+- AI & SEO → Settings → ML & retrieval now also shows the SEO agent's groups **Retrieval** and **Embeddings**; MCP
+  shows its group **MCP servers** (the generic `AgentSettingsGroup`, no new component). An agent from before these
+  groups says "needs a newer seo-agent" in each card.
+- User guide: the settings reference says what each group holds and what applies at once or on restart.
+- **Known gap:** this web app still reads `PUBLIC_MCP_ENABLED` / `ADMIN_MCP_ENABLED` from its own environment
+  (`src/lib/seo-agent/config.ts`) to decide whether to route `/mcp/*` to the agent. Switching a server **on** in the
+  agent's settings does not open the route here until that variable is also set; switching it **off** works at once
+  (the agent answers 503).
+- **Not done yet in P3:** the guarded embeddings provider/model change with re-embed, the model registry on
+  /admin/models (activate, roll back, train now), per-tool MCP switches, the connections page with tokens and a call
+  log, and the SEO ML training thresholds as settings.
+- Tests: none added here (the cards are the existing component). **Nothing was run** in the session.
+
 ## Admin settings plan, P2 part B (web app, first half): LLM providers & models section (2026-11-21, owner request)
 
 Thin client of the seo-agent's `GET/PUT /llm-providers` and `GET /llm-models` (moks-seo-agent branch
