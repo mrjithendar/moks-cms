@@ -76,7 +76,7 @@ export default async function CrewaiFlowPage({ params }: { params: Promise<{ nam
         <section aria-labelledby="sched-h">
           <div className="mb-3 flex items-baseline justify-between gap-2">
             <h2 id="sched-h" className="text-base font-semibold text-fg">Schedules</h2>
-            {SCHEDULABLE_FLOWS.includes(name) && <Link href={`/admin/crewai/schedules?flow=${name}`} className={buttonClass("ghost", "sm")}>Manage schedules</Link>}
+            {SCHEDULABLE_FLOWS.includes(name) && <Link href={`/admin/crewai/jobs?kind=system&flow=${name}`} className={buttonClass("ghost", "sm")}>Manage schedules</Link>}
           </div>
           {mine.length === 0 ? (
             <Card><p className="text-sm text-fg-muted">{SCHEDULABLE_FLOWS.includes(name) ? "Not scheduled: it runs only when started." : "This flow is not started by a schedule."}</p></Card>

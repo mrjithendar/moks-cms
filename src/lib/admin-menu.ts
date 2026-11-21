@@ -94,7 +94,6 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/crewai/jobs/runs", { group: "ai", title: "Job runs" }],
   ["/admin/crewai/runs", { group: "ai", title: "Flow runs" }],
   ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
-  ["/admin/crewai/schedules", { group: "ai", title: "Schedules" }],
   ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
   ["/admin/automation/skills", { group: "ai" }],
   ["/admin/crewai/config", { group: "ai", title: "Import / export" }],

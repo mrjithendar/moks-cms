@@ -8,7 +8,6 @@ const TABS = [
   { href: "/admin/crewai/jobs", label: "Jobs" },
   { href: "/admin/crewai/runs", label: "Flow runs" },
   { href: "/admin/crewai/flows", label: "Flows" },
-  { href: "/admin/crewai/schedules", label: "Schedules" },
   { href: "/admin/crewai/crews", label: "Crews" },
   { href: "/admin/crewai/config", label: "Import / export" },
   { href: "/admin/automation/skills", label: "Skills ↗" },

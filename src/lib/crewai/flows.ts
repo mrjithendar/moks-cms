@@ -34,7 +34,7 @@ export const FLOWS: FlowInfo[] = [
   F("ga4_sync_flow", "GA4 sync", "Data sync", "yes", "Imports Google Analytics 4 data."),
   F("promotion_flow", "Promotion", "Promotion", "yes", "The Promotion crew scores where to share new articles and drafts the posts."),
   F("content_ideas_flow", "Content ideas", "Promotion", "yes", "Turns community and search signals into article ideas for the calendar."),
-  F("news_dispatch_flow", "News dispatcher", "News desk", "cron", "Starts each news job that is due (every 15 minutes)."),
+  F("news_dispatch_flow", "Crew jobs housekeeping", "News desk", "cron", "Daily clean-up and the gauges of the crew jobs; the jobs themselves start on their own times (the one dispatcher)."),
   F("news_job_flow", "News job", "News desk", "yes", "Fetches, ranks and drafts the stories of one news job."),
   F("news_ingest_flow", "News ingest", "News desk", "yes", "Fetches and stores items from the news sources."),
   F("news_draft_flow", "News draft", "News desk", "news", "The News desk crew writes one story or digest."),

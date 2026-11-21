@@ -36,6 +36,10 @@ describe("the menu", () => {
     expect(MENU_PLACES.some(([href]) => href.startsWith("/admin/news"))).toBe(false);
   });
 
+  it("lists no Schedules page: schedules are the system jobs on the Jobs page", () => {
+    expect(MENU_PLACES.some(([href]) => href === "/admin/crewai/schedules")).toBe(false);
+  });
+
   it("follows WordPress's order: content menus, plugin-like menus, then Appearance, Users, Tools, Settings", () => {
     expect(MENU_GROUPS.map((g) => g.label)).toEqual(["Dashboard", "Posts", "Media", "Pages", "Comments", "AI & SEO", "Billing", "Practice", "Appearance", "Users", "Tools", "Settings"]);
   });

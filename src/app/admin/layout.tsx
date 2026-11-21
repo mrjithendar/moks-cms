@@ -99,7 +99,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/crewai/jobs/runs", label: "Job runs", section: "Site settings" },
           { href: "/admin/crewai/runs", label: "Flow runs", section: "Site settings" },
           { href: "/admin/crewai/flows", label: "Flows", section: "Site settings" },
-          { href: "/admin/crewai/schedules", label: "Schedules", section: "Site settings" },
           { href: "/admin/crewai/crews", label: "Crews", section: "Site settings" },
           { href: "/admin/crewai/config", label: "CrewAI import / export", section: "Site settings" },
           { href: "/admin/automation", label: "AI & SEO settings", section: "Site settings" },
