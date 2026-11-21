@@ -197,6 +197,15 @@ function extraChecks(): Promise<Check>[] {
       if (failing.length) return { status: "degraded", detail: `ready · latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} (${f.at} UTC: ${f.error})`).join("; ")}` };
       return { status: "ok", detail: "ready · no flow's latest run failed in the last 24 h" };
     }),
+    timed("News agent (news desk)", { group: "Publishing", href: "/admin/news/settings#news-agent" }, async () => {
+      const { newsAgentStatus } = await import("./news-agent/endpoint");
+      const s = await newsAgentStatus();
+      if (!s.enabled) return { status: "not configured", detail: `${s.reason} The news desk runs nothing until it is found.` };
+      const { newsAgentReady } = await import("./news-agent/client");
+      const ready = await newsAgentReady().catch((e: Error) => ({ status: `unreachable: ${e.message}`, site_search: undefined }));
+      if (ready.status !== "ready") return { status: "down", detail: `news agent ${ready.status}` };
+      return { status: ready.site_search === false ? "degraded" : "ok", detail: `ready · version ${s.version ?? "?"}${ready.site_search === false ? " · site search (the seo-agent) not reachable: site match is skipped" : ""}` };
+    }),
     timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=llm-providers" }, async () => {
       const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
       const c = claudeConfig(await getSeoSettings());
