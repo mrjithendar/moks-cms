@@ -19,6 +19,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from ..flows import MCP_KICKOFF_ALLOWLIST
+from ..llm import used_up
 from ..runs import RunError
 from ..services import review, seo_data
 from ..services.content import ContentError
@@ -210,8 +211,8 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
         if flow_name not in MCP_KICKOFF_ALLOWLIST:  # Literal already refuses; this is the second line
             raise ContentError(f"{flow_name} cannot be started from MCP")
         st = await c.guard.status()
-        if flow_name in ("optimize_article_flow", "new_article_flow", "report_flow") and st["month_spend_usd"] >= st["monthly_budget_usd"]:
-            raise ContentError("the monthly LLM budget is used up; drafting flows are paused")
+        if flow_name in ("optimize_article_flow", "new_article_flow", "report_flow") and used_up(st):
+            raise ContentError("the LLM budget is used up; drafting flows are paused")
         # Drafting flows: only a new draft or one whose generation failed (never a draft awaiting review). Feedback given
         # here reaches the crew as untrusted data (triggered_by="mcp"), not as instructions.
         await review.check_mcp_draft(web, flow_name, inputs or {})
