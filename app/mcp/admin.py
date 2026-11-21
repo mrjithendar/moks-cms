@@ -210,6 +210,8 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
         LLM budget and the one-run-per-target locks. Limited to a few starts per hour."""
         if flow_name not in MCP_KICKOFF_ALLOWLIST:  # Literal already refuses; this is the second line
             raise ContentError(f"{flow_name} cannot be started from MCP")
+        if flow_name in getattr(c.settings, "mcp_kickoffs_off", ()):  # the admin's setting: it can only narrow the allowlist
+            raise ContentError(f"{flow_name} cannot be started from MCP: switched off by the site's admin")
         st = await c.guard.status()
         if flow_name in ("optimize_article_flow", "new_article_flow", "report_flow") and used_up(st):
             raise ContentError("the LLM budget is used up; drafting flows are paused")
