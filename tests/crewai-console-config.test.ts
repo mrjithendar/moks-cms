@@ -35,7 +35,7 @@ const crewRoute = await import("@/app/api/admin/crewai/crews/[crew]/route");
 const configRoute = await import("@/app/api/admin/crewai/config/route");
 const { default: FlowsPage } = await import("@/app/admin/crewai/flows/page");
 const { default: FlowPage } = await import("@/app/admin/crewai/flows/[name]/page");
-const { default: SchedulesPage } = await import("@/app/admin/crewai/schedules/page");
+const { SystemJobs } = await import("@/components/crewai/SystemJobs");
 const { default: CrewsPage } = await import("@/app/admin/crewai/crews/page");
 const { default: CrewPage } = await import("@/app/admin/crewai/crews/[crew]/page");
 const { default: ConfigPage } = await import("@/app/admin/crewai/config/page");
@@ -134,6 +134,8 @@ describe("migration 0037", () => {
     expect(by.get("gsc-sync")).toMatchObject({ flow: "gsc_sync_flow", cron: "10 6 * * *" });
     expect(by.get("report-monthly")).toMatchObject({ flow: "report_flow", cron: "0 8 2 * *", inputs: { period: "monthly" } });
     expect(by.get("news-dispatch")).toMatchObject({ flow: "news_dispatch_flow", cron: "*/15 * * * *" });
+    // 0038: the agent's one dispatcher starts the crew jobs; this row is their housekeeping now.
+    expect(by.get("news-dispatch")!.description).toMatch(/^Crew jobs: daily clean-up and gauges/);
     expect(list.every((s) => s.nextAt !== null)).toBe(true);
   });
 
@@ -334,7 +336,9 @@ describe("pages", () => {
     const flow = renderToStaticMarkup(await FlowPage({ params: Promise.resolve({ name: "report_flow" }) }));
     expect(flow).toContain("report-weekly");
     expect(flow).toContain("weekly | monthly");
-    const sched = renderToStaticMarkup(await SchedulesPage({ searchParams: Promise.resolve({}) }));
+    // The schedules are the system jobs on AI & SEO → Jobs since 2026-11-21 (the Schedules page redirects there).
+    const sched = renderToStaticMarkup(await SystemJobs({}));
+    expect(sched).toContain("System jobs");
     expect(sched).toContain("gsc-sync");
     expect(sched).toContain("Mondays at 07:00");
     expect(sched).toContain("New schedule");

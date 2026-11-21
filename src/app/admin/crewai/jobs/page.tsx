@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AdminHeader, Card, Stat, Table, td, th } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { StatusBadge } from "@/components/seo/badges";
+import { SystemJobs } from "@/components/crewai/SystemJobs";
 import { JobsSwitch } from "@/components/news/JobsSwitch";
 import { newsDeskState, newsDeskStateText } from "@/lib/news/schema";
 import { ensureNewsDefaults, getNewsSettings, listJobs } from "@/lib/news/service";
@@ -17,11 +18,22 @@ const ago = (iso: unknown) => {
 
 type LastRun = { id: string; status: string; started_at: string; counters: Record<string, number> } | null;
 
+const KINDS = [
+  { id: "all", label: "All jobs" },
+  { id: "content", label: "Content jobs" },
+  { id: "system", label: "System jobs" },
+] as const;
+type Kind = (typeof KINDS)[number]["id"];
+
 /**
- * AI & SEO → Jobs: the crew jobs (news is one kind of content a job writes; there is no Newsroom since 2026-11-21),
- * their switch, and what each did today. A job's settings open in its editor.
+ * AI & SEO → Jobs: every job in one list (crew-jobs plan PR 2). Content jobs (news_jobs: news is one kind of content a
+ * job writes; there is no Newsroom since 2026-11-21) with their switch and what each did today, and the system jobs
+ * (the built-in flows' schedules, until then the CrewAI console's Schedules page). ?kind=content|system narrows it.
  */
-export default async function CrewJobsPage() {
+export default async function CrewJobsPage({ searchParams }: { searchParams?: Promise<Record<string, string | undefined>> } = {}) {
+  const sp = (await searchParams) ?? {};
+  const kind: Kind = KINDS.find((k) => k.id === sp.kind)?.id ?? "all";
+  const flow = sp.flow && /^[a-z][a-z0-9_]{2,39}_flow$/.test(sp.flow) ? sp.flow : null;
   await ensureNewsDefaults().catch(() => undefined);
   const [jobs, s] = await Promise.all([listJobs(), getNewsSettings()]);
   const desk = newsDeskState(s);
@@ -47,6 +59,15 @@ export default async function CrewJobsPage() {
           </>
         }
       />
+      <nav aria-label="Kind of job" className="mb-6 flex flex-wrap gap-2">
+        {KINDS.map((k) => (
+          <Link key={k.id} href={k.id === "all" ? "/admin/crewai/jobs" : `/admin/crewai/jobs?kind=${k.id}`} aria-current={kind === k.id ? "page" : undefined} className={`inline-flex min-h-9 items-center rounded-full border px-3 text-sm ${kind === k.id ? "border-accent bg-accent/10 font-medium text-fg" : "border-line text-fg-muted hover:text-fg"}`}>
+            {k.label}
+          </Link>
+        ))}
+      </nav>
+      {kind !== "system" && (
+      <>
       <JobsSwitch desk={{ on: desk.on, by: desk.by, text: newsDeskStateText(desk) }} />
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <Stat label="Drafts today" value={today} hint={<>all jobs: at most {s.max_drafts_per_day} (<Link className="underline" href="/admin/automation?section=agent-limits#job-settings-limits">limits</Link>)</>} />
@@ -104,6 +125,9 @@ export default async function CrewJobsPage() {
           </ul>
         </>
       )}
+      </>
+      )}
+      {kind !== "content" && <SystemJobs flow={flow} />}
     </>
   );
 }
