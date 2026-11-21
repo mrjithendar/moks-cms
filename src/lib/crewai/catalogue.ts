@@ -1,17 +1,20 @@
 import "server-only";
-import { bothCrews, bothFlows, type ConsoleCrew, type ConsoleFlow } from "./agents";
+import { crewCatalogue, flowCatalogue, type AgentCrew, type AgentFlow } from "../seo-agent/client";
 
-/**
- * Both agents' flow catalogues by name (lib/crewai/agents.ts), or null while neither answers (pages still render from
- * the database). An agent that is off simply has no entries.
- */
-export async function agentFlows(): Promise<Map<string, ConsoleFlow> | null> {
-  const { flows, reachable } = await bothFlows();
-  return reachable.seo || reachable.news ? flows : null;
+/** The agent's flow catalogue by name, or null while the agent is off (pages still render from the database). */
+export async function agentFlows(): Promise<Map<string, AgentFlow> | null> {
+  try {
+    return new Map((await flowCatalogue()).items.map((f) => [f.name, f]));
+  } catch {
+    return null;
+  }
 }
 
-/** Both agents' crews (code defaults), or null while neither answers. */
-export async function agentCrews(): Promise<ConsoleCrew[] | null> {
-  const { crews, reachable } = await bothCrews();
-  return reachable.seo || reachable.news ? crews : null;
+/** The agent's crews (code defaults), or null while the agent is off. */
+export async function agentCrews(): Promise<AgentCrew[] | null> {
+  try {
+    return (await crewCatalogue()).items;
+  } catch {
+    return null;
+  }
 }

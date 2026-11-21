@@ -113,18 +113,6 @@ describe("runs list", () => {
     const page = await runs.listRuns({ limit: 2 });
     expect((await runs.listRuns({ before: page[1]!.startedAt })).map((r) => r.runId)).toEqual([old]);
   });
-
-  it("says which agent ran each run and filters by it (news_* flows and the news crew's test runs are the news agent's)", async () => {
-    const seoRun = await seedRun({ flow: "gsc_sync_flow" });
-    const newsRun = await seedRun({ flow: "news_job_flow", target: "job:1" });
-    const newsTest = await seedRun({ flow: "crew_test_flow", target: "crew:news", inputs: { crew: "news", source_run_id: newsRun } });
-    const seoTest = await seedRun({ flow: "crew_test_flow", target: "crew:editorial", inputs: { crew: "editorial", source_run_id: seoRun } });
-    const all = await runs.listRuns();
-    expect(Object.fromEntries(all.map((r) => [r.runId, r.agent]))).toEqual({ [seoRun]: "seo", [newsRun]: "news", [newsTest]: "news", [seoTest]: "seo" });
-    expect((await runs.listRuns({ agent: "news" })).map((r) => r.runId).sort()).toEqual([newsRun, newsTest].sort());
-    expect((await runs.listRuns({ agent: "seo" })).map((r) => r.runId).sort()).toEqual([seoRun, seoTest].sort());
-    expect((await runs.listRuns({ agent: "nope" })).length).toBe(4); // anything else: no agent filter
-  });
 });
 
 async function seedHistory(runId: string) {

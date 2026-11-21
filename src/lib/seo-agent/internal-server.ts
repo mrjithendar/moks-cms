@@ -1,6 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { context, propagation } from "@opentelemetry/api";
-import { auditSafe } from "../audit";
 import { log } from "../log";
 import { withSpan } from "../trace";
 import { DraftError } from "../seo-intel/drafts";
@@ -11,23 +10,14 @@ import * as promo from "./callbacks-promotion";
 import * as skills from "./skills";
 import { crewConfigsCallback } from "../crewai/crews";
 import { runHistoryCallbackSettings } from "../crewai/runs";
-import { newsCallbackToken } from "../news-agent/config";
 import { callbackPort, callbackToken } from "./config";
 
 /**
- * Cluster-internal callback API for the seo-agent and the news agent (docs/seo/AGENTS.md "Callback API").
+ * Cluster-internal callback API for the seo-agent service (docs/seo/AGENTS.md "Callback API").
  *
- * A separate listener in the web process (SEO_AGENT_CALLBACK_PORT, default 9465; on when SEO_AGENT_CALLBACK_TOKEN or
- * NEWS_AGENT_CALLBACK_TOKEN is set), like the metrics port: the Istio VirtualService routes the public site to port
- * 3000 only, so nothing on the internet can reach this; the NetworkPolicy admits only the agents' pods.
- *
- * Every request needs one of two tokens, and the token decides what it may call:
- * - SEO_AGENT_CALLBACK_TOKEN (the seo-agent): every route except the news desk's (`/news/*`, 403).
- * - NEWS_AGENT_CALLBACK_TOKEN (the news agent, mrjithendar/newsroom): NEWS_AGENT_ROUTES only, 403 for the rest. It can
- *   fetch, save news drafts and covers, notify, and read what every crew run reads; it cannot touch other drafts,
- *   publish, or run reports.
- * A refused call is written to the audit log (agent.callback_forbidden, warning) with the caller and route: a token
- * calling what it may not is either a bug or a stolen token.
+ * A separate listener in the web process (SEO_AGENT_CALLBACK_PORT, default 9465; on when SEO_AGENT_CALLBACK_TOKEN is set, off with SEO_ORCHESTRATOR=legacy),
+ * like the metrics port: the Istio VirtualService routes the public site to port 3000 only, so nothing on the internet
+ * can reach this; the NetworkPolicy admits only seo-agent pods; every request needs SEO_AGENT_CALLBACK_TOKEN.
  */
 export type CallbackResponse = { status: number; body: unknown };
 export type CallbackHeaders = Record<string, string | string[] | undefined>;
@@ -38,8 +28,7 @@ const header = (h: CallbackHeaders, name: string): string | undefined => {
 };
 
 const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, body: unknown, q: URLSearchParams, h: CallbackHeaders) => Promise<unknown>][] = [
-  // News desk (docs/news/ARCHITECTURE.md): fetch, draft creation, covers, notifications. Never publishing. Only the
-  // news agent's token reaches these (NEWS_AGENT_ROUTES); the seo-agent's gets 403.
+  // News desk (docs/news/ARCHITECTURE.md): fetch, draft creation, covers, notifications. Never publishing.
   ["POST", /^\/news\/fetch$/, (_m, b) => news.newsFetch(b)],
   ["POST", /^\/news\/drafts$/, (_m, b) => news.newsSaveDraft(b)],
   ["POST", /^\/news\/drafts\/([^/]+)\/image$/, (m, b) => news.newsUpdateDraftImage(m[1]!, b)],
@@ -94,28 +83,6 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/storage\/lancedb$/, () => cb.lancedbStorage()],
 ];
 
-/**
- * What the news agent's token may call (mrjithendar/newsroom app/webapp.py CALLBACK_ROUTES; its contract test parses
- * this list): the news desk's own routes, Search Console queries for the crew's tool, and what every crew run reads.
- */
-export const NEWS_AGENT_ROUTES: readonly (readonly [method: string, pattern: RegExp])[] = [
-  ["POST", /^\/news\/fetch$/],
-  ["POST", /^\/news\/drafts$/],
-  ["POST", /^\/news\/drafts\/([^/]+)\/image$/],
-  ["POST", /^\/news\/media$/],
-  ["POST", /^\/news\/images\/generate$/],
-  ["GET", /^\/news\/site-signals$/],
-  ["POST", /^\/news\/notify$/],
-  ["POST", /^\/news\/performance$/],
-  ["GET", /^\/gsc\/queries$/],
-  ["GET", /^\/skills$/],
-  ["GET", /^\/crew-configs$/],
-  ["GET", /^\/run-history\/settings$/],
-];
-const NEWS_DESK_PATH = /^\/news\//;
-
-export type Caller = "seo-agent" | "news-agent";
-
 const PREFIX = "/internal/seo-agent";
 
 /** A route pattern as a low-cardinality span name: /drafts/([^/]+)/save → /drafts/:id/save. */
@@ -132,32 +99,11 @@ export function tokenOk(header: string | undefined, token: string | null): boole
 }
 
 /** Route one request (also used directly by tests). */
-/** Which agent the token belongs to, or null. The two tokens must differ; if they are equal, it is the seo-agent. */
-export function callerOf(authorization: string | undefined, env: Record<string, string | undefined> = process.env): Caller | null {
-  if (tokenOk(authorization, callbackToken(env))) return "seo-agent";
-  if (tokenOk(authorization, newsCallbackToken(env))) return "news-agent";
-  return null;
-}
-
-/** Whether `caller` may call `method path` (403 otherwise). */
-export function allowed(caller: Caller, method: string, path: string): boolean {
-  if (caller === "news-agent") return NEWS_AGENT_ROUTES.some(([m, re]) => m === method && re.test(path));
-  return !NEWS_DESK_PATH.test(path);
-}
-
 export async function handleCallback(method: string, rawUrl: string, authorization: string | undefined, body: unknown, env: Record<string, string | undefined> = process.env, headers: CallbackHeaders = {}): Promise<CallbackResponse> {
-  const caller = callerOf(authorization, env);
-  if (!caller) return { status: 401, body: { error: "unauthorized", code: "unauthorized" } };
+  if (!tokenOk(authorization, callbackToken(env))) return { status: 401, body: { error: "unauthorized", code: "unauthorized" } };
   const url = new URL(rawUrl, "http://internal");
   if (!url.pathname.startsWith(PREFIX)) return { status: 404, body: { error: "not found", code: "not_found" } };
   const path = url.pathname.slice(PREFIX.length);
-  if (!allowed(caller, method, path)) {
-    log.warn("agent callback refused for this token", { event: "agent_callback_forbidden", caller, method, route: path.slice(0, 80) });
-    const ua = headers["user-agent"];
-    await auditSafe({ label: caller }, "agent.callback_forbidden", `${method} ${path.slice(0, 120)}`, { caller }, { severity: "warning", request: { ip: null, userAgent: (Array.isArray(ua) ? ua[0] : ua)?.slice(0, 200) ?? null } });
-    const why = caller === "news-agent" ? "This token may call the news desk's routes only." : "The news desk's routes are the news agent's (NEWS_AGENT_CALLBACK_TOKEN).";
-    return { status: 403, body: { error: why, code: "forbidden" } };
-  }
   for (const [m, re, fn] of ROUTES) {
     const match = re.exec(path);
     if (!match) continue;
@@ -166,7 +112,7 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
     const parent = propagation.extract(context.active(), headers);
     const route = routeName(re);
     try {
-      const out = await context.with(parent, () => withSpan(`${caller}.callback ${method} ${route}`, { "http.request.method": method, "http.route": `${PREFIX}${route}` }, () => fn(match, body, url.searchParams, headers)));
+      const out = await context.with(parent, () => withSpan(`seo-agent.callback ${method} ${route}`, { "http.request.method": method, "http.route": `${PREFIX}${route}` }, () => fn(match, body, url.searchParams, headers)));
       return { status: 200, body: out };
     } catch (e) {
       if (e instanceof cb.CallbackError) return { status: e.status, body: { error: e.message, code: e.code } };
@@ -183,23 +129,15 @@ const MAX_BODY = 1_000_000;
 const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/(reports\/[^/]+\/pdf|news\/media)$/.test((url ?? "").split("?")[0]!) ? 14_000_000 : MAX_BODY);
 
 /** Start the listener once per process (instrumentation.ts). Returns the port, or null when off. */
-/** The listener's port: the seo-agent's setting, or for the news agent alone (SEO_ORCHESTRATOR=legacy) the same default. */
-export function listenPort(env: Record<string, string | undefined> = process.env): number {
-  const seo = callbackPort(env);
-  if (seo) return seo;
-  if (!newsCallbackToken(env)) return 0;
-  const n = Number(env.SEO_AGENT_CALLBACK_PORT ?? 9465);
-  return Number.isInteger(n) && n > 0 && n < 65536 ? n : 0;
-}
-
 export async function startCallbackServer(env: Record<string, string | undefined> = process.env): Promise<number | null> {
-  const port = listenPort(env);
+  const port = callbackPort(env);
   if (!port) return null;
-  // No token: no agent is set up to call back (both are optional), so there is nothing to warn about.
-  const tokens: [string, string | null][] = [["SEO_AGENT_CALLBACK_TOKEN", callbackToken(env)], ["NEWS_AGENT_CALLBACK_TOKEN", newsCallbackToken(env)]];
-  if (!tokens.some(([, t]) => t)) return null;
-  for (const [name, t] of tokens) if (t && t.length < 32) log.warn(`agent callback token ${name} is shorter than 32 characters: refused`, { event: "agent_callback_token_short", token: name });
-  if (!tokens.some(([, t]) => t && t.length >= 32)) return null;
+  // No token: no agent is set up to call back (it is optional), so there is nothing to warn about.
+  if (!callbackToken(env)) return null;
+  if (callbackToken(env)!.length < 32) {
+    log.warn("seo agent callback listener not started: SEO_AGENT_CALLBACK_TOKEN is shorter than 32 characters", { event: "seo_agent_callback_off" });
+    return null;
+  }
   const g = globalThis as unknown as { __seoAgentCallback?: boolean };
   if (g.__seoAgentCallback) return port;
   g.__seoAgentCallback = true;

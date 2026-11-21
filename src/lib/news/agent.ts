@@ -1,16 +1,14 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { AgentError, kickoff, type NewsAgentDeps as AgentDeps, type NewsFlowName } from "../news-agent/client";
+import { AgentError, kickoff, type AgentDeps, type NewsFlowName } from "../seo-agent/client";
 import { NewsError } from "./service";
 import { newsDeskState, newsDeskStateText } from "./schema";
 import { getNewsSettings } from "./service";
 
 /**
- * Admin actions that start news flows in the news agent (mrjithendar/newsroom, lib/news-agent/client.ts; NEWS_AGENT_TOKEN).
- * The agent re-validates inputs, enforces one active run per job and the budgets, and refuses everything while the
- * news desk is off (the admin switch, or NEWS_DESK_ENABLED=false in the deployment). A news agent that is not found
- * is a 503 with where to set it up; nothing falls back to the seo-agent.
+ * Admin actions that start news flows in the seo-agent. Same client and token as the SEO flows; the agent re-validates
+ * inputs, enforces one active run per job and the budgets, and refuses everything while the news desk is off (the admin switch, or NEWS_DESK_ENABLED=false in the deployment).
  */
 async function start(flow: NewsFlowName, inputs: Record<string, unknown>, actor: string, deps?: AgentDeps) {
   const state = newsDeskState(await getNewsSettings().catch(() => null), deps?.env);
@@ -18,7 +16,7 @@ async function start(flow: NewsFlowName, inputs: Record<string, unknown>, actor:
   try {
     return await kickoff(flow, inputs, { actor }, deps);
   } catch (e) {
-    if (e instanceof AgentError) throw new NewsError(e.status >= 500 ? e.message : `The news agent refused: ${e.message}`, e.status >= 500 ? 503 : e.status);
+    if (e instanceof AgentError) throw new NewsError(`The agent refused: ${e.message}`, e.status >= 500 ? 503 : e.status);
     throw e;
   }
 }

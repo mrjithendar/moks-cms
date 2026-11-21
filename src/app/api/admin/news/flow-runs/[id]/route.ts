@@ -1,4 +1,4 @@
-import { getRun } from "@/lib/news-agent/client";
+import { getRun } from "@/lib/seo-agent/client";
 import { json, SeoApiError, seoRoute, UUID } from "@/lib/seo-intel/http";
 
 export const dynamic = "force-dynamic";
