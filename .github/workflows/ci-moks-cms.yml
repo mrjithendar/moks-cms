@@ -23,7 +23,7 @@ name: moks-cms
 #           repository is private on GitHub Free, which has no branch protection or required status checks, so nothing
 #           else stops a pull request from being merged before its checks pass.
 #
-# One stage at a time, on purpose: the mk4 workers have 4 cores and 8 GiB each, a runner pod reserves 0.5 core and
+# One stage at a time, from when these jobs ran on the mk4 runner pods: the mk4 workers have 4 cores and 8 GiB each, a runner pod reserves 0.5 core and
 # 1 GiB but a test shard or the production build uses 1.5–3 GiB and 2–3 cores. On 2026-11-21 one merge started 7 such
 # pods at once (lint, 4 test shards and the release build next to each other); w3 ran out of memory, killed cluster
 # components and 5 of the jobs ("The self-hosted runner lost communication"), and the retried shards timed out in
@@ -32,7 +32,7 @@ name: moks-cms
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds nothing.
 #
-# Every job runs on the mk4 runner scale set (runs-on: mk4; k8s-deployments deploy/minikube/runners). The release
+# Every job runs on GitHub-hosted arm64 runners (runs-on: ubuntu-24.04-arm). The release
 # job logs in to Harbor as the robot in repository secrets HARBOR_USERNAME and HARBOR_PASSWORD (push and pull in
 # project jithendar only).
 
@@ -71,7 +71,7 @@ jobs:
       !cancelled() && (github.event_name != 'pull_request' ||
       (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository) ||
       (needs.scope.outputs.image == 'true' && needs.scope.outputs.verified != 'true'))
-    runs-on: mk4
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,7 +100,7 @@ jobs:
       !cancelled() && needs.check.result == 'success' && needs.test.result == 'success' &&
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: mk4
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,7 +129,7 @@ jobs:
   test:
     needs: [scope, check]
     if: ${{ !cancelled() && needs.check.result == 'success' }}
-    runs-on: mk4
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -154,7 +154,7 @@ jobs:
   # *.md), so merging only those must not build or push a new image.
   scope:
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
-    runs-on: mk4
+    runs-on: ubuntu-24.04-arm
     # Mostly the wait for the pull request's own run (WAIT_MINUTES below).
     timeout-minutes: 45
     permissions:
@@ -285,7 +285,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch)) &&
       (needs.scope.outputs.verified == 'true' || (needs.check.result == 'success' && needs.test.result == 'success'))
     # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
-    runs-on: mk4
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     permissions:
       contents: read
