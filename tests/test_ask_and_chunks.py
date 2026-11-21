@@ -121,21 +121,24 @@ async def test_kill_switch_default_off(llm: FakeLlm, web: FakeWebApp) -> None:
     assert r["outcome"] == "disabled" and llm.calls == []
 
 
-async def test_daily_public_budget_is_separate_from_admin_budget(web: FakeWebApp) -> None:
+async def test_the_daily_public_limit_stops_the_assistant_not_the_admins_work(web: FakeWebApp) -> None:
     store = MemorySpendStore()
     store.rows.append({"purpose": "ask_answer", "cost_usd": 1.0})
     llm = FakeLlm(BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=1.0))
     r = await memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits())).ask.ask("How does cert-manager renew certificates?")
     assert r["outcome"] == "budget" and llm.calls == []
-    await llm.guard.ensure("claude-sonnet-5-5", 1000, 1000, "draft")  # the admin path is unaffected
+    await llm.guard.ensure("claude-sonnet-5-5", 1000, 1000, "draft")  # readers reaching their limit does not stop drafting
 
 
-async def test_public_spend_never_eats_the_admin_budget(web: FakeWebApp) -> None:
+async def test_public_spend_counts_in_the_one_llm_budget(web: FakeWebApp) -> None:
+    from app.llm import BudgetExceeded
+
     store = MemorySpendStore()
     store.rows.append({"purpose": "ask_answer", "cost_usd": 9.99})  # a month of public answers
     guard = BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=100.0)
-    await guard.ensure("claude-sonnet-5-5", 4000, 4096, "draft")  # drafting still allowed
-    assert (await guard.status())["month_spend_usd"] == 0
+    with pytest.raises(BudgetExceeded) as e:  # one budget for everything: the assistant's spend is spend
+        await guard.ensure("claude-sonnet-5-5", 4000, 4096, "draft")
+    assert e.value.scope == "llm_monthly" and (await guard.status())["month_spend_usd"] == 9.99
 
 
 async def test_streaming_emits_deltas_then_a_guarded_final(llm: FakeLlm, web: FakeWebApp) -> None:

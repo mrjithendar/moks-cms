@@ -125,7 +125,7 @@ async def test_stream_closed_early_still_books_an_upper_bound() -> None:
     row = store.rows[0]
     assert row["input_tokens"] == 200  # from the message_start snapshot
     assert row["output_tokens"] >= 20  # ≥ 70 chars / 3.5, never less than what was streamed
-    assert len(seen) == 1 and guard.pending["monthly"] == 0
+    assert len(seen) == 1 and guard.pending["total"] == 0
 
 
 async def test_usage_is_priced_on_the_model_that_answered() -> None:
@@ -157,7 +157,7 @@ async def test_concurrent_calls_cannot_all_pass_on_the_same_spend() -> None:
     await asyncio.sleep(0.01)
     gate.set()
     assert sorted(await asyncio.gather(*tasks)) == ["blocked", "ok", "ok"]
-    assert guard.pending["monthly"] == pytest.approx(0)
+    assert guard.pending["total"] == pytest.approx(0)
 
 
 async def test_reservation_is_released_on_error_and_by_record() -> None:
@@ -177,7 +177,7 @@ async def test_fake_llm_uses_reservations() -> None:
     llm = FakeLlm(guard)
     llm.queue("draft", "hello")
     await llm.text(_spec())
-    assert guard.pending == {"monthly": 0.0, "ask_daily": 0.0}
+    assert guard.pending == {"total": 0.0, "ask_daily": 0.0}
 
 
 # --- 12. spans -------------------------------------------------------------------------------------------------------
