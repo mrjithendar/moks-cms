@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { agentApiError } from "@/lib/crewai/agent-http";
 import { deleteSchedule, getSchedule, resetSchedule, schedulePatch, updateSchedule } from "@/lib/crewai/schedules";
-import { AgentError, kickoff, validateFlowInputs, type FlowName } from "@/lib/seo-agent/client";
+import { kickoffFor, validateFlowInputsFor } from "@/lib/crewai/agents";
+import { AgentError } from "@/lib/seo-agent/client";
 import { json, parse, SeoApiError, seoRoute } from "@/lib/seo-intel/http";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export const PATCH = seoRoute<{ id: string }>("crewai-schedule-update", { mutati
   const v = parse(schedulePatch, ctx.body ?? {});
   if (v.inputs) {
     try {
-      v.inputs = (await validateFlowInputs(before.flow, v.inputs)).inputs;
+      v.inputs = (await validateFlowInputsFor(before.flow, v.inputs)).inputs;
     } catch (e) {
       if (!(e instanceof AgentError) || e.status !== 503) agentApiError(e);
     }
@@ -51,7 +52,7 @@ export const POST = seoRoute<{ id: string }>("crewai-schedule-action", { mutatin
     return json({ schedule: r });
   }
   try {
-    const r = await kickoff(s.flow as FlowName, s.inputs, { triggeredBy: "manual", actor: ctx.actor.label });
+    const r = await kickoffFor(s.flow, s.inputs, { triggeredBy: "manual", actor: ctx.actor.label });
     await ctx.audit("crewai.schedule.run", s.id, { name: s.name, flow: s.flow, runId: r.run_id, existing: r.existing });
     return json({ runId: r.run_id, status: r.status, existing: r.existing }, r.existing ? 200 : 202);
   } catch (e) {

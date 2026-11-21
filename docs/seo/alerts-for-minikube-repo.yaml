@@ -138,7 +138,7 @@ groups:
 - name: jithendar-com-news
   rules:
   - alert: NewsJobFailingRepeatedly
-    expr: max by (news_job) (news_job_consecutive_failures{job="seo-agent"}) >= 2
+    expr: max by (news_job) (news_job_consecutive_failures{job="news-agent"}) >= 2
     for: 5m
     labels:
       severity: warning
@@ -146,7 +146,7 @@ groups:
       summary: News job {{ $labels.news_job }} failed twice in a row
       runbook_url: https://github.com/moks-tech/moks-cms/blob/master/docs/news/RUNBOOK.md#job-failing
   - alert: NewsSourceFailing24h
-    expr: max(news_source_failing_seconds{job="seo-agent"}) > 86400
+    expr: max(news_source_failing_seconds{job="news-agent"}) > 86400
     for: 15m
     labels:
       severity: warning
@@ -154,7 +154,7 @@ groups:
       summary: A news source has been failing for more than 24 hours
       runbook_url: https://github.com/moks-tech/moks-cms/blob/master/docs/news/RUNBOOK.md#source-failing
   - alert: NewsQualityFailureRateHigh
-    expr: max(news_quality_failure_ratio_7d{job="seo-agent"}) > 0.5
+    expr: max(news_quality_failure_ratio_7d{job="news-agent"}) > 0.5
     for: 1h
     labels:
       severity: warning
@@ -162,7 +162,7 @@ groups:
       summary: Over half of news drafts failed the quality gates in the last 7 days
       runbook_url: https://github.com/moks-tech/moks-cms/blob/master/docs/news/RUNBOOK.md#quality-failures
   - alert: NewsBudget80Percent
-    expr: max by (scope) (news_budget_used_ratio{job="seo-agent"}) >= 0.8 and max by (scope) (news_budget_used_ratio{job="seo-agent"}) < 1
+    expr: max by (scope) (news_budget_used_ratio{job="news-agent"}) >= 0.8 and max by (scope) (news_budget_used_ratio{job="news-agent"}) < 1
     for: 10m
     labels:
       severity: info
@@ -170,7 +170,7 @@ groups:
       summary: News budget {{ $labels.scope }} at {{ $value | humanizePercentage }}
       runbook_url: https://github.com/moks-tech/moks-cms/blob/master/docs/news/RUNBOOK.md#budget
   - alert: NewsBudgetReached
-    expr: max by (scope) (news_budget_used_ratio{job="seo-agent"}) >= 1
+    expr: max by (scope) (news_budget_used_ratio{job="news-agent"}) >= 1
     for: 5m
     labels:
       severity: warning
@@ -178,7 +178,7 @@ groups:
       summary: 'News budget {{ $labels.scope }} reached: runs pause until the period resets or the cap is raised'
       runbook_url: https://github.com/moks-tech/moks-cms/blob/master/docs/news/RUNBOOK.md#budget
   - alert: NewsJobNoDrafts
-    expr: (time() - max by (news_job) (news_job_last_draft_timestamp_seconds{job="seo-agent"})) > 3 * 86400 and max by (news_job) (news_job_last_draft_timestamp_seconds{job="seo-agent"}) > 0
+    expr: (time() - max by (news_job) (news_job_last_draft_timestamp_seconds{job="news-agent"})) > 3 * 86400 and max by (news_job) (news_job_last_draft_timestamp_seconds{job="news-agent"}) > 0
     for: 1h
     labels:
       severity: info

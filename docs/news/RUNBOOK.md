@@ -5,14 +5,14 @@
 - **Run history** (Admin → News desk → Run history) and **run detail**: timeline, live log, candidates with reasons,
   drafts, errors. Every run, including dry runs, image regenerations, training and style reviews.
 - **Grafana** "Jithendar.com · News desk" (`grafana/jithendar-com-news.json` in `moks-tech/jithendar.com`).
-- **Loki**: `{app="seo-agent"} | json | operation=~"news_.*"` (log lines carry `operation=news_<step>` and `outcome`;
+- **Loki**: `{app="news-agent"} | json | operation=~"news_.*"` (log lines carry `operation=news_<step>` and `outcome`;
   the run id is in the database row the UI links to, D-19).
 - **Agent API**: `GET /flows/runs?flow=news_job_flow` (internal).
 
 ## Kill switch and rollback
 
 1. Fastest: Admin → News desk → Settings → **Paused** (no deploy). The dispatcher and every job skip.
-2. `NEWS_DESK_ENABLED=false` in ConfigMap `seo-agent-config` (and the web app's `jithendar-com-public`), restart.
+2. `NEWS_DESK_ENABLED=false` in ConfigMap `news-agent-config` (and the web app's `jithendar-com-public`), restart.
 3. Suspend the CronJobs: `kubectl -n jithendar patch cronjob news-dispatch -p '{"spec":{"suspend":true}}'`
    (same for `news-train`, `news-style-review`).
 4. Code rollback: redeploy the previous image tag / `git revert` the merge; the migration is additive and can stay.
@@ -33,7 +33,7 @@
 | `news_cost_usd_total` | kind (llm, image) |
 | `news_model_auc` | model (ranker = AUC, classifier = macro F1) of the **serving** model; kept for the dashboard |
 | `news_model_macro_f1`, `news_model_holdout_auc` | model: the same numbers under correct names (classifier, ranker) |
-| `news_model_score_psi` | model: score drift of the serving model vs its training rows (> 0.25: drift; docs/news/ML.md "Monitoring") |
+| `news_model_score_psi` | model: score drift of the serving model vs its training rows (> 0.25: drift; newsroom docs/ML.md "Monitoring") |
 | `news_topic_assignments_total` | method (model, model_low_conf, claude, rules) |
 | `news_budget_used_ratio` | scope (global/job × llm/image × day/month) |
 | `news_job_consecutive_failures`, `news_job_last_draft_timestamp_seconds` | news_job (DB-computed) |
@@ -87,7 +87,7 @@ keyword filters too narrow, everything already covered, sources failing).
 
 ## Postgres test database (developers)
 
-`moks-seo-agent/tests/test_news_postgres.py` runs the store against the real migration when
+`mrjithendar/newsroom` `tests/test_news_postgres.py` runs the store against the real migration when
 `SEO_AGENT_TEST_DATABASE_URL` is set. On macOS, LightGBM needs an OpenMP runtime: run pytest with
 `DYLD_FALLBACK_LIBRARY_PATH=.venv/lib/python3.13/site-packages/sklearn/.dylibs` (scikit-learn bundles libomp), or
 `brew install libomp`. The image installs `libgomp1`.

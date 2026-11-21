@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { agentApiError } from "@/lib/crewai/agent-http";
 import { flowInfo, rerunBlocked } from "@/lib/crewai/flows";
-import { kickoff, type FlowName } from "@/lib/seo-agent/client";
+import { kickoffFor } from "@/lib/crewai/agents";
 import { json, parse, SeoApiError, seoRoute } from "@/lib/seo-intel/http";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export const POST = seoRoute<{ name: string }>("crewai-flow-run", { mutating: tr
   const blocked = p.name === "crew_test_flow" ? "Start a crew test run from Crews → Test run." : rerunBlocked(p.name);
   if (blocked) throw new SeoApiError(blocked, 409, "not_startable");
   try {
-    const r = await kickoff(p.name as FlowName, b.inputs, { triggeredBy: "manual", actor: ctx.actor.label });
+    const r = await kickoffFor(p.name, b.inputs, { triggeredBy: "manual", actor: ctx.actor.label });
     await ctx.audit("crewai.run", p.name, { runId: r.run_id, existing: r.existing, inputs: Object.keys(b.inputs) });
     return json({ runId: r.run_id, status: r.status, existing: r.existing }, r.existing ? 200 : 202);
   } catch (e) {

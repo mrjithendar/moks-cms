@@ -4,7 +4,7 @@ Five models that can replace or inform a v1–v4 rule. They run in the seo-agent
 `seo_ml_flow` (weekly CronJob `seo-flow-ml` plus manual runs from **ML models → Run now**). They write Postgres tables,
 and the web app reads those tables. **No ML runs inside a web request.**
 
-The pattern is the News Desk's ([../news/ML.md](../news/ML.md)): train → evaluate on held-out data → store the version
+The pattern is the News Desk's ([newsroom docs/ML.md](https://github.com/mrjithendar/newsroom/blob/master/docs/ML.md)): train → evaluate on held-out data → store the version
 and its metrics (`seo_ml_models`) → **active only if it beats the current rule** (and, where noted, after your review)
 → outputs written → the TypeScript side uses the model or falls back to the rule. Libraries: the ones already installed
 (scikit-learn 1.9.1 incl. `HDBSCAN`, LightGBM 4.7.0, numpy, scipy). The one library the brief named that isn't

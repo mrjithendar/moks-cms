@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { siteUrl } from "@/config/site";
 import { applyImport, bundleSchema, exportBundle, planImport, type AgentChecks } from "@/lib/crewai/config-io";
-import { validateCrewConfig, validateFlowInputs } from "@/lib/seo-agent/client";
+import { validateCrewConfigFor, validateFlowInputsFor } from "@/lib/crewai/agents";
 import { json, parse, seoRoute } from "@/lib/seo-intel/http";
 
 export const dynamic = "force-dynamic";
 
-const agent: AgentChecks = { crew: (c, cfg) => validateCrewConfig(c, cfg), inputs: (f, i) => validateFlowInputs(f, i) };
+const agent: AgentChecks = { crew: (c, cfg) => validateCrewConfigFor(c, cfg), inputs: (f, i) => validateFlowInputsFor(f, i) };
 
 /**
  * GET /api/admin/crewai/config?parts=schedules,crews,skills — the console's configuration as a JSON file to download

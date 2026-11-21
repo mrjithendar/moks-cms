@@ -194,7 +194,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
             <>
               <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={c.image.enabled} onChange={(e) => setNested("image", "enabled", e.target.checked)} /> Generate a cover image</label>
               <Field label="Image profile"><Select value={f.image_profile_key} onChange={(e) => set("image_profile_key", e.target.value)}>{imageKeys.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select></Field>
-              <Field label="Provider override" hint="Template is free; Gemini/OpenAI need configuration and an image budget (docs/news/IMAGES.md).">
+              <Field label="Provider override" hint="Template is free; Gemini/OpenAI need configuration and an image budget (the news agent's docs/IMAGES.md).">
                 <Select value={c.image.provider ?? ""} onChange={(e) => setNested("image", "provider", e.target.value || null)}>
                   <option value="">The profile&apos;s provider</option>
                   <option value="template">Template</option>
