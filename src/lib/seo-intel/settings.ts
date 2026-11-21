@@ -110,8 +110,6 @@ const settingsSchema = z.object({
     /** Empty = SEO_DRAFT_MODEL / SEO_CLASSIFY_MODEL from the environment, else the built-in defaults. */
     draftModel: modelId,
     classifyModel: modelId,
-    /** Empty/0 = SEO_LLM_MONTHLY_BUDGET_USD. The environment value is a ceiling the setting cannot raise. */
-    monthlyBudgetUsd: num(0, 10_000),
     effort: z.enum(["low", "medium", "high"]),
     maxOutputTokens: num(1000, 32_000),
     /** Flag a draft that rewrites more than this share of the body when its recommendations did not ask for it. */
@@ -193,8 +191,6 @@ const settingsSchema = z.object({
     weekday,
     hourUtc: hour,
     maxPrompts: num(1, 200),
-    /** Hard monthly cap (USD) across all assistants. */
-    monthlyBudgetUsd: num(0, 500),
     /** Counted per answer for APIs whose cost is not returned (ChatGPT, Perplexity, Gemini). */
     costPerAnswerUsd: num(0, 1),
     /** Extra names that count as a mention (the site name and host always do). */
@@ -247,7 +243,6 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     enabled: true,
     draftModel: "",
     classifyModel: "",
-    monthlyBudgetUsd: 0,
     effort: "medium",
     maxOutputTokens: 16_000,
     maxRewriteRatio: 0.25,
@@ -284,7 +279,6 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     weekday: 4,
     hourUtc: 6,
     maxPrompts: 25,
-    monthlyBudgetUsd: 10,
     costPerAnswerUsd: 0.03,
     brandNames: [],
     providers: { claude: true, chatgpt: false, perplexity: false, gemini: false, google_ai_overview: false },
@@ -443,34 +437,14 @@ export function llmConfigured(s: SeoSettings): boolean {
 
 export const DEFAULT_DRAFT_MODEL = "claude-sonnet-5-5";
 export const DEFAULT_CLASSIFY_MODEL = "claude-haiku-5-5";
-/** Used when neither the setting nor SEO_LLM_MONTHLY_BUDGET_USD is set. */
-export const DEFAULT_MONTHLY_BUDGET_USD = 15; // v5: the admin month is estimated at $8–10.5 (COSTS.md), too close to $10
+export type ClaudeConfig = { apiKey: string | null; draftModel: string; classifyModel: string };
 
-export type ClaudeConfig = { apiKey: string | null; draftModel: string; classifyModel: string; monthlyBudgetUsd: number; budgetSource: "env" | "settings" | "default" };
-
-/** Models, key and budget for Claude drafting. The env budget is a hard ceiling; the setting may only lower it. */
+/** Models and key for Claude drafting. There is no limit here: the one LLM budget lives in the seo-agent (llm-gate.ts). */
 export function claudeConfig(s: SeoSettings, env: Record<string, string | undefined> = process.env): ClaudeConfig {
-  const envBudget = Number(env.SEO_LLM_MONTHLY_BUDGET_USD);
-  const hasEnv = Number.isFinite(envBudget) && envBudget >= 0 && env.SEO_LLM_MONTHLY_BUDGET_USD?.trim() !== "" && env.SEO_LLM_MONTHLY_BUDGET_USD !== undefined;
-  const fromSettings = s.drafts.monthlyBudgetUsd > 0 ? s.drafts.monthlyBudgetUsd : null;
-  let monthlyBudgetUsd = DEFAULT_MONTHLY_BUDGET_USD;
-  let budgetSource: ClaudeConfig["budgetSource"] = "default";
-  if (hasEnv && fromSettings !== null) {
-    monthlyBudgetUsd = Math.min(envBudget, fromSettings);
-    budgetSource = fromSettings < envBudget ? "settings" : "env";
-  } else if (hasEnv) {
-    monthlyBudgetUsd = envBudget;
-    budgetSource = "env";
-  } else if (fromSettings !== null) {
-    monthlyBudgetUsd = fromSettings;
-    budgetSource = "settings";
-  }
   return {
     apiKey: env.ANTHROPIC_API_KEY?.trim() || null,
     draftModel: s.drafts.draftModel || env.SEO_DRAFT_MODEL?.trim() || DEFAULT_DRAFT_MODEL,
     classifyModel: s.drafts.classifyModel || env.SEO_CLASSIFY_MODEL?.trim() || DEFAULT_CLASSIFY_MODEL,
-    monthlyBudgetUsd,
-    budgetSource,
   };
 }
 

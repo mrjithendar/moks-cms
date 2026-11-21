@@ -2,6 +2,8 @@ import { getDb } from "@/db";
 import { Card } from "@/components/admin/ui";
 import { budgetState, flowCostBreakdown } from "@/lib/seo-intel/claude";
 import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
+import { loadLlmBudget } from "@/lib/llm-budget-view";
+import type { AgentLlmBudgetView } from "@/lib/seo-agent/client";
 
 const usd = (n: number) => `$${n.toFixed(n < 10 ? 2 : 0)}`;
 
@@ -10,30 +12,25 @@ export type ClaudeUsageData = { cfg: Omit<ReturnType<typeof claudeConfig>, "apiK
 export async function loadClaudeUsage(): Promise<ClaudeUsageData> {
   const { apiKey, ...cfg } = claudeConfig(await getSeoSettings());
   const db = await getDb();
-  const b = await budgetState(db, cfg);
+  const b = await budgetState(db);
   return { cfg: { ...cfg, keySet: Boolean(apiKey) }, b, flows: await flowCostBreakdown(db, b.spentUsd) };
 }
 
-/** AI & SEO settings → LLM budget → LLM usage (called "Claude usage" before): this site's own month-to-date spend against its cap, per model, with cache reads. */
+/** AI & SEO settings → LLM budget → LLM usage (called "Claude usage" before): this site's own month-to-date spend per model, with cache reads. A usage figure: the limit is the one LLM budget. */
 export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
   const { cfg, b, flows } = data;
-  const pct = b.budgetUsd ? Math.min(100, ((b.spentUsd + b.reservedUsd) / b.budgetUsd) * 100) : 100;
   return (
     <Card className="mb-6">
       <h2 className="font-semibold text-fg">LLM usage this month</h2>
       <p className="mt-1 text-sm text-fg-muted">
         Key: {cfg.keySet ? "configured (ANTHROPIC_API_KEY)" : <strong className="text-amber-800 dark:text-amber-300">not configured — drafting needs ANTHROPIC_API_KEY</strong>}. Draft model <code>{cfg.draftModel}</code>, classification model <code>{cfg.classifyModel}</code>.
       </p>
-      <div className="mt-3" role="meter" aria-valuemin={0} aria-valuemax={b.budgetUsd} aria-valuenow={Number((b.spentUsd + b.reservedUsd).toFixed(2))} aria-label="Month-to-date spend against the monthly budget">
+      <div className="mt-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
           <span className="text-2xl font-semibold tabular-nums text-fg">{usd(b.spentUsd)}</span>
-          <span className="text-fg-subtle">of {usd(b.budgetUsd)} ({cfg.budgetSource === "env" ? "SEO_LLM_MONTHLY_BUDGET_USD" : cfg.budgetSource === "settings" ? "settings" : "default"}) · since {b.monthStart}</span>
-        </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-sunken">
-          <div className={`h-full ${b.paused ? "bg-red-600" : pct > 80 ? "bg-amber-500" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+          <span className="text-fg-subtle">since {b.monthStart} · the limit is the LLM budget above</span>
         </div>
         {b.reservedUsd > 0 && <p className="mt-1 text-xs text-fg-subtle">{usd(b.reservedUsd)} reserved for batches in progress.</p>}
-        {b.paused && <p className="mt-2 text-sm font-medium text-red-700 dark:text-red-300">Budget reached: drafting is paused until next month or until the budget is raised.</p>}
       </div>
       {b.byModel.length > 0 && (
         <div className="overflow-x-auto"><table className="mt-4 w-full text-sm">
@@ -90,20 +87,32 @@ export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
   );
 }
 
-/** Banner on every search/analytics admin page while the monthly cap is reached. */
-export async function BudgetBanner() {
-  let b: Awaited<ReturnType<typeof budgetState>> | null = null;
-  try {
-    const cfg = claudeConfig(await getSeoSettings());
-    if (cfg.apiKey) b = await budgetState(await getDb(), cfg);
-  } catch {
-    b = null; // never break the page over the banner
+/** What the banner says when a limit of the one LLM budget is used up, or null. Pure, so it can be tested. */
+export function budgetStop(view: Pick<AgentLlmBudgetView, "scope" | "limit_usd" | "spent_usd" | "other"> | null): { period: "day" | "month"; spentUsd: number; limitUsd: number } | null {
+  if (!view) return null;
+  for (const p of [{ period: view.scope, spent: view.spent_usd, limit: view.limit_usd }, { period: view.other?.scope, spent: view.other?.spent_usd, limit: view.other?.limit_usd }]) {
+    if ((p.period === "day" || p.period === "month") && typeof p.limit === "number" && typeof p.spent === "number" && p.spent >= p.limit) return { period: p.period, spentUsd: p.spent, limitUsd: p.limit };
   }
-  if (!b?.paused) return null;
+  return null;
+}
+
+/** Banner on every search/analytics admin page while the one LLM budget is used up. Never slows or breaks the page. */
+export async function BudgetBanner() {
+  let stop: ReturnType<typeof budgetStop> = null;
+  try {
+    const view = await Promise.race([loadLlmBudget("month").then((l) => l.view), new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
+    stop = budgetStop(view);
+  } catch {
+    stop = null;
+  }
+  if (!stop) return null;
   return (
     <div role="status" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-      <p className="font-medium">Claude drafting paused: monthly budget reached</p>
-      <p className="mt-0.5">${b.spentUsd.toFixed(2)} of ${b.budgetUsd.toFixed(2)} spent this month. Existing drafts can still be reviewed and approved. Raise SEO_LLM_MONTHLY_BUDGET_USD or wait until next month.</p>
+      <p className="font-medium">LLM calls paused: the {stop.period === "day" ? "daily" : "monthly"} LLM budget is used up</p>
+      <p className="mt-0.5">
+        ${stop.spentUsd.toFixed(2)} of ${stop.limitUsd.toFixed(2)} spent this {stop.period === "day" ? "day (UTC)" : "month"}. Existing drafts can still be reviewed and approved. Change the limit under{" "}
+        <a className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</a>, or wait for it to reset.
+      </p>
     </div>
   );
 }

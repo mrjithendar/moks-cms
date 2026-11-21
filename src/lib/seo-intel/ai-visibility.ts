@@ -8,6 +8,7 @@ import { DataForSeoError, DfsClient, dfsCredentials } from "./dataforseo";
 import { SkipRun, type RunContext, type RunOutcome } from "./jobs";
 import type { SeoSettings } from "./settings";
 import { siteOrigin } from "./urls";
+import { agentGate, type LlmGate } from "./llm-gate";
 
 /**
  * AI visibility: does this site show up when people ask AI assistants about its subjects?
@@ -28,19 +29,24 @@ import { siteOrigin } from "./urls";
  * location, personalisation. Treat the numbers as a trend for the same prompts, not as what every reader sees.
  *
  * Spend: Claude's cost is computed from the returned token usage and search count; DataForSEO returns its cost; the
- * other APIs are counted at `costPerAnswerUsd` (an estimate, set it from the provider's pricing). The month's total
- * (sum of `seo_ai_answers.cost_usd`) is capped by `monthlyBudgetUsd`: the run stops before a call that would cross it.
+ * other APIs are counted at `costPerAnswerUsd` (an estimate, set it from the provider's pricing).
+ *
+ * There is no limit of its own. Every call first holds its upper bound against the one LLM budget (llm-gate.ts) and
+ * the run stops at the first call that does not fit. Each answer's cost is also written to `seo_llm_usage` (purpose
+ * `ai_visibility`), which is what the budget adds up, so this spend counts in the total.
  */
 export const AI_PROVIDERS = ["claude", "chatgpt", "perplexity", "gemini", "google_ai_overview"] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 export const AI_PROVIDER_LABEL: Record<AiProvider, string> = { claude: "Claude", chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", google_ai_overview: "Google AI Overview" };
+/** How each assistant is named in seo_llm_usage (the budget page groups spend by provider). */
+const USAGE_PROVIDER: Record<AiProvider, string> = { claude: "anthropic", chatgpt: "openai", perplexity: "perplexity", gemini: "gemini", google_ai_overview: "dataforseo" };
 const WEB_SEARCH_USD = 0.01; // Anthropic web search: $10 per 1,000 searches
 const MAX_ANSWER_CHARS = 8000;
 export const NO_AI_OVERVIEW = "no_ai_overview";
 
 export type Source = { url: string; title: string; domain: string };
 export type Answer = { text: string; sources: Source[]; model: string; costUsd: number; error?: string };
-export type AiDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined> };
+export type AiDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined>; gate?: LlmGate };
 
 // --- Matching (pure) ---------------------------------------------------------------------------------------------
 
@@ -203,7 +209,7 @@ async function askGoogleAiOverview(prompt: string, c: Ctx): Promise<Answer> {
 
 const ASK: Record<AiProvider, (prompt: string, c: Ctx) => Promise<Answer>> = { claude: askClaude, chatgpt: askChatGpt, perplexity: askPerplexity, gemini: askGemini, google_ai_overview: askGoogleAiOverview };
 
-/** Upper bound on one call, checked against the remaining budget before it is made. */
+/** Upper bound on one call, held against the one LLM budget before it is made. */
 function estimate(p: AiProvider, s: SeoSettings["aiVisibility"]): number {
   if (p === "claude") return estimateCostUsd(s.models.claude, 60_000, 4000) + 5 * WEB_SEARCH_USD;
   if (p === "google_ai_overview") return 0.01;
@@ -225,8 +231,7 @@ export async function runAiVisibility(ctx: RunContext, deps: AiDeps = {}): Promi
   if (!providers.length) throw new SkipRun("No assistant is both enabled and configured (Settings → AI visibility, and its API key).", "not_configured");
   const prompts = rowsOf<{ id: string; prompt: string }>(await ctx.db.execute(sql`select id, prompt from seo_ai_prompts where active order by added_at, prompt limit ${s.maxPrompts}`));
   if (!prompts.length) return { status: "skipped", rows: 0, error: "No prompts yet: add some on the AI visibility page.", errorCode: "no_prompts" };
-  let left = s.monthlyBudgetUsd - (await aiMonthSpend(ctx.db, ctx.now));
-  if (left <= 0) throw new SkipRun(`Monthly AI visibility budget of $${s.monthlyBudgetUsd} reached.`, "budget");
+  const gate = deps.gate ?? ctx.deps.gate ?? agentGate({ env });
   const fetchImpl = deps.fetchImpl ?? ctx.deps.fetchImpl ?? fetch;
   const creds = dfsCredentials(env);
   const c: Ctx = { settings: s, dfs: ctx.settings.dataforseo, env, fetchImpl, dfsClient: creds ? new DfsClient(creds, Number.POSITIVE_INFINITY, fetchImpl) : null };
@@ -237,23 +242,24 @@ export async function runAiVisibility(ctx: RunContext, deps: AiDeps = {}): Promi
   let rows = 0;
   let spent = 0;
   let errors = 0;
-  let stopped = false;
+  let stopped: string | null = null;
   for (const p of prompts) {
     const todo = providers.filter((id) => !done.has(`${p.id}:${id}`));
     const affordable: AiProvider[] = [];
+    const holds: (string | null)[] = [];
     for (const id of todo) {
-      if (estimate(id, s) > left) {
-        stopped = true;
+      const held = await gate.reserve(estimate(id, s), "ai_visibility");
+      if (!held.ok) {
+        stopped = held.detail;
         break;
       }
-      left -= estimate(id, s);
+      holds.push(held.id);
       affordable.push(id);
     }
     const results = await Promise.allSettled(affordable.map((id) => ASK[id](p.prompt, c)));
     for (const [i, r] of results.entries()) {
       const id = affordable[i]!;
       const a: Answer = r.status === "fulfilled" ? r.value : { text: "", sources: [], model: id === "claude" ? s.models.claude : (s.models as Record<string, string>)[id] ?? "", costUsd: 0, error: errorText(r.reason) };
-      left += estimate(id, s) - a.costUsd;
       spent += a.costUsd;
       if (a.error && a.error !== NO_AI_OVERVIEW) errors++;
       const m = analyzeAnswer(a.text, a.sources, host, names);
@@ -262,13 +268,18 @@ export async function runAiVisibility(ctx: RunContext, deps: AiDeps = {}): Promi
         values (${p.id}, ${id}, ${a.model.slice(0, 120)}, ${day}, ${a.text.slice(0, MAX_ANSWER_CHARS)}, ${JSON.stringify(a.sources.slice(0, 50))}::jsonb, ${m.cited}, ${JSON.stringify(m.citedUrls)}::jsonb, ${m.mentioned}, ${m.citedRank}, ${a.costUsd}, ${a.error?.slice(0, 500) ?? null})
         on conflict (prompt_id, provider, run_on) do update set model = excluded.model, answer = excluded.answer, sources = excluded.sources, cited = excluded.cited,
           cited_urls = excluded.cited_urls, mentioned = excluded.mentioned, cited_rank = excluded.cited_rank, cost_usd = seo_ai_answers.cost_usd + excluded.cost_usd, error = excluded.error, created_at = now()`);
+      if (a.costUsd > 0) {
+        await ctx.db.execute(sql`insert into seo_llm_usage (provider, model, purpose, prompt_version, mode, cost_usd, outcome)
+          values (${USAGE_PROVIDER[id]}, ${(a.model || id).slice(0, 120)}, 'ai_visibility', 'ai-visibility', 'sync', ${a.costUsd}, ${a.error && a.error !== NO_AI_OVERVIEW ? "error" : "ok"})`);
+      }
+      await gate.settle(holds[i] ?? null);
       rows++;
     }
     await ctx.heartbeat();
     if (stopped) break;
   }
   const detail = { prompts: prompts.length, providers, costUsd: Math.round(spent * 1e5) / 1e5, errors };
-  if (stopped) return { status: rows ? "partial" : "skipped", rows, error: `Monthly AI visibility budget of $${s.monthlyBudgetUsd} reached; the rest waits for next month or a higher cap.`, errorCode: "budget", detail };
+  if (stopped) return { status: rows ? "partial" : "skipped", rows, error: `Stopped by the LLM budget: ${stopped} The rest waits for the budget to reset or a higher limit.`, errorCode: "budget", detail };
   return { status: errors && errors === rows ? "failed" : errors ? "partial" : "succeeded", rows, detail, ...(errors ? { error: `${errors} answer(s) failed; see the AI visibility page.` } : {}) };
 }
 

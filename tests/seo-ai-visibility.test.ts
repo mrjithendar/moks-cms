@@ -111,13 +111,30 @@ describe("AI visibility job", () => {
     expect(o.competitors.map((c) => c.domain)).not.toContain("jithendar.com");
   });
 
-  it("stops before a call that would cross the monthly cap", async () => {
-    await saveSeoSettings(on({ monthlyBudgetUsd: 0.05, providers: { ...AV.providers, claude: false, perplexity: true } }), "admin");
+  it("stops at the first call the LLM budget refuses, and counts what it spent in seo_llm_usage", async () => {
+    await saveSeoSettings(on({ providers: { ...AV.providers, claude: false, perplexity: true } }), "admin");
     const { fetchImpl } = vendors();
-    const out = await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW });
+    let asked = 0;
+    const settled: (string | null)[] = [];
+    const gate = {
+      reserve: async () => {
+        asked += 1;
+        return asked === 1 ? { ok: true as const, id: "h1" } : { ok: false as const, detail: "the monthly LLM budget is used up." };
+      },
+      settle: async (id: string | null) => {
+        settled.push(id);
+      },
+    };
+    const out = await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW, gate });
     expect(out).toMatchObject({ status: "partial", errorCode: "budget" });
+    expect(out.error).toMatch(/LLM budget/);
     const [r] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_ai_answers`));
     expect(r!.n).toBe(1);
+    const usage = rowsOf<{ provider: string; purpose: string; cost_usd: number }>(await db.execute(sql`select provider, purpose, cost_usd from seo_llm_usage`));
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({ provider: "perplexity", purpose: "ai_visibility" });
+    expect(Number(usage[0]!.cost_usd)).toBeGreaterThan(0);
+    expect(settled).toEqual(["h1"]);
   });
 
   it("suggests question-like Search Console queries that are not prompts yet", async () => {

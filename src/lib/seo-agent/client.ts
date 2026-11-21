@@ -218,6 +218,10 @@ export type AgentLlmBudgetView = {
 export const getLlmBudget = (scope: AgentLlmScope, deps?: AgentDeps) => call<AgentLlmBudgetView>("GET", `/llm-budget?scope=${scope}`, undefined, deps, 8_000);
 /** Both limits are sent; null is no limit. The agent validates and answers 422 with its issues. */
 export const putLlmBudget = (budget: AgentLlmBudget, actor: string, deps?: AgentDeps) => call<{ budget: AgentLlmBudget }>("PUT", "/llm-budget", { ...budget, actor }, deps, 8_000);
+/** Holds a call's upper bound against the one budget. 402 (AgentError) with the reason when it does not fit. */
+export const reserveLlmBudget = (maxUsd: number, purpose: string, deps?: AgentDeps) => call<{ id: string }>("POST", "/llm-budget/reserve", { max_usd: maxUsd, purpose }, deps, 8_000);
+/** Lets go of a hold once the caller has written its usage row. */
+export const settleLlmBudget = (id: string, deps?: AgentDeps) => call<{ released: boolean }>("POST", "/llm-budget/settle", { id }, deps, 8_000);
 
 // --- Admin-editable agent settings (moks-seo-agent app/admin_settings; GET /admin-settings, PUT /admin-settings/{group}) ---
 
