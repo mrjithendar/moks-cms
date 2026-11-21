@@ -593,7 +593,8 @@ class NewsPlaygroundFlow(NewsHelpers, SeoFlow[NewsPlaygroundState]):
                 llm = NewsLlm(d.llm, budget, [rec.run_id])
                 crew = (d.crew_factory or (lambda lm: nd.NewsDeskCrew(d.settings, lm, d.web, d.retriever)))(llm)
                 cluster = await d.store.get_cluster(s.cluster_id) or {"title": "story"}
-                r = await crew.run({"mode": "single", "title": cluster["title"], "cluster_id": s.cluster_id, "length_words": [job.config.length_min_words, job.config.length_max_words]}, items=items, writing_profile=wp, image_profile={}, allow_hosts=nd._allowed_hosts(items, d), max_tokens=job.config.budget.max_tokens_per_draft)
+                # The trial follows the job (crew-jobs plan PR 5): what it writes (a news story or a blog article) and its models.
+                r = await crew.run({"mode": "single", "output": job.config.output, "title": cluster["title"], "cluster_id": s.cluster_id, "length_words": [job.config.length_min_words, job.config.length_max_words]}, items=items, writing_profile=wp, image_profile={}, allow_hosts=nd._allowed_hosts(items, d), max_tokens=job.config.budget.max_tokens_per_draft, models=job.config.models)
                 out[label] = {"version": version, "title": r.draft.title, "body_mdx": r.draft.body_mdx, "dek": r.draft.dek, "tokens": llm.tokens, "cost_usd": round(llm.cost_usd, 4), "status": r.status}
             s.result = out
             await self.close_run(d, rec, "succeeded", job=job)
