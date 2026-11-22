@@ -52,7 +52,7 @@ class Hit:
 class Retriever(Protocol):
     available: bool
 
-    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]: ...
+    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0, rerank: bool = True) -> list[Hit]: ...
     async def similar_articles(self, article_id: str, k: int = 8) -> list[tuple[str, str, float]]: ...
     async def version(self) -> str: ...
 
@@ -99,6 +99,20 @@ def _cand(r: dict[str, Any], vector_rank: int | None = None, text_rank: int | No
 
 def to_hit(c: Candidate) -> Hit:
     return Hit(c.article_id, c.title, c.path, c.heading_path, c.anchor, c.content, round(c.vector_score, 6), c.category, round(c.fused, 6), {"vector": c.vector_rank, "text": c.text_rank, "ids": c.id_matches})
+
+
+async def ranked_hits(fused: list[Candidate], cfg: RetrievalConfig, k: int, query: str, reranker: Any = None) -> list[Hit]:
+    """The final top k: the fused order, diversified, or with the reranker switched on its order for the first
+    `reranker.window(N)` of the diversified top N and the fused order after them. Shared by PgVectorIndex and the eval's
+    LocalIndex, so the evaluation measures what production runs. Whatever the reranker's outcome, the hits are the
+    ones the fused order would give from the same pool (it reorders, it never adds or drops a passage)."""
+    if reranker is None or not reranker.enabled:
+        return [to_hit(x) for x in diversify(fused, k, cfg.max_per_article)]
+    pool = [to_hit(x) for x in diversify(fused, max(cfg.candidates, k), cfg.max_per_article)]
+    n = reranker.window(cfg.candidates)
+    head, outcome = await reranker.rerank(query, pool[:n])
+    metrics.RAG_RERANK.labels(outcome).inc()
+    return (head + pool[n:])[:k]
 
 
 def replace_cfg(cfg: RetrievalConfig, min_score: float) -> RetrievalConfig:
@@ -208,16 +222,12 @@ def search_settings(pgvector_version: str | None, n: int) -> list[tuple[str, str
 
 
 class PgVectorIndex:
-    def __init__(self, pool: Any, embeddings: Embeddings, config: RetrievalConfig | None = None):
+    def __init__(self, pool: Any, embeddings: Embeddings, config: RetrievalConfig | None = None, reranker: Any = None):
         self.pool = pool
         self.emb = embeddings
         self.config = config or RetrievalConfig.from_env()
         self.counter = token_counter(embeddings)
-        self.reranker: Any = None
-        if self.config.reranker_dir:
-            from .reranker import CrossEncoderReranker
-
-            self.reranker = CrossEncoderReranker(self.config.reranker_dir)
+        self.reranker = reranker  # app/reranker.py RerankGate: reads its switch on every search
         self.available = False
         self.reason = "not checked"
         self.pgvector_version: str | None = None
@@ -358,9 +368,10 @@ class PgVectorIndex:
         self._version_cache = None
         return stats
 
-    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]:
+    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0, rerank: bool = True) -> list[Hit]:
         """Hybrid (or vector) retrieval: candidate lists from Postgres, fusion in app/retrieval.py. `min_score` is a
-        cosine pre-filter on every candidate (Ask the Blog's ASK_BLOG_MIN_SCORE)."""
+        cosine pre-filter on every candidate (Ask the Blog's ASK_BLOG_MIN_SCORE). `rerank=False` for callers that
+        want the nearest passages by cosine, not the best answers (the news desk's duplicate check)."""
         if not self.available or self.rebuilding or not query.strip():
             return []
         cfg = self.config
@@ -373,10 +384,7 @@ class PgVectorIndex:
                     await c.execute("select set_config(%s, %s, true)", (name, value))
                 cands = await self.candidates(c, query, _vec(v), qids, cfg.candidates, exclude_article)
         fused = fuse(cands, replace_cfg(cfg, min_score))
-        if self.reranker is not None:
-            top = [to_hit(x) for x in diversify(fused, cfg.candidates, cfg.max_per_article)]
-            return list(await self.reranker.rerank(query, top, k))
-        return [to_hit(x) for x in diversify(fused, k, cfg.max_per_article)]
+        return await ranked_hits(fused, cfg, k, query, self.reranker if rerank else None)
 
     async def candidates(self, c: Any, query: str, qvec: str, qids: list[str], n: int, exclude_article: str | None) -> list[Candidate]:
         """vector top-N (+ full-text top-N and exact-identifier matches in hybrid mode), each with its cosine."""
@@ -441,7 +449,7 @@ class MemoryRetriever:
         self.available = available
         self.queries: list[str] = []
 
-    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]:
+    async def search(self, query: str, k: int = 6, *, exclude_article: str | None = None, min_score: float = 0.0, rerank: bool = True) -> list[Hit]:
         self.queries.append(query)
         words = {w for w in query.lower().split() if len(w) > 2}
         scored = []

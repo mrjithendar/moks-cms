@@ -215,7 +215,7 @@ def test_retrieval_config_from_env() -> None:
     cfg = RetrievalConfig.from_env({"RAG_MODE": "hybrid", "RAG_RRF_K": "20", "RAG_MAX_PER_ARTICLE": "2", "RAG_CANDIDATES": "500"})
     assert (cfg.mode, cfg.rrf_k, cfg.max_per_article, cfg.candidates) == ("hybrid", 20, 2, 100)
     assert RetrievalConfig.from_env({}).mode == "vector"  # the eval-decided default (RAG.md)
-    assert RetrievalConfig.from_env({"RAG_RERANKER_DIR": "/m"}).reranker_dir == ""  # needs RAG_RERANKER_ENABLED too
+    assert not hasattr(RetrievalConfig.from_env({"RAG_RERANKER_ENABLED": "true"}), "reranker_dir")  # a live setting now (tests/test_reranker.py)
 
 
 # --- grader-selected excerpts ----------------------------------------------------------------------------------------

@@ -38,8 +38,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from .embeddings import Chunk, chunk_markdown, chunk_markdown_v4, embed_input, extract_identifiers, question_identifiers, token_counter
-from .index import HYBRID_DDL, TEXT_QUERY_CTE, Hit, to_hit
-from .retrieval import Bm25, Candidate, MemoryRow, RetrievalConfig, candidates_from_lists, diversify, fuse, text_terms
+from .index import HYBRID_DDL, TEXT_QUERY_CTE, Hit, ranked_hits
+from .retrieval import Bm25, Candidate, MemoryRow, RetrievalConfig, candidates_from_lists, fuse, text_terms
 
 K = 6
 # The question set ships with the app (app/data): the weekly seo_ml_flow runs it against the live index in the pod,
@@ -207,6 +207,7 @@ class LocalIndex:
     chunks: list[tuple[dict[str, Any], Chunk]] = field(default_factory=list)
     bm25: Bm25 | None = None
     table: str = ""
+    reranker: Any = None  # app/reranker.py RerankGate, as PgVectorIndex takes it
 
     async def build(self, articles: list[dict[str, Any]]) -> dict[str, Any]:
         counter = token_counter(self.embeddings)
@@ -264,7 +265,7 @@ class LocalIndex:
             scores = self.bm25.scores(text_terms(query))
         return scores
 
-    async def search(self, query: str, k: int = K, *, exclude_article: str | None = None, min_score: float = 0.0) -> list[Hit]:
+    async def search(self, query: str, k: int = K, *, exclude_article: str | None = None, min_score: float = 0.0, rerank: bool = True) -> list[Hit]:
         cfg = self.config
         [v] = await self.embeddings.embed([query], query=True)
         qvec = np.asarray(v, dtype=np.float32)
@@ -275,7 +276,7 @@ class LocalIndex:
         from dataclasses import replace
 
         fused = fuse(cands, replace(cfg, min_vector_score=max(cfg.min_vector_score, min_score)))
-        return [to_hit(c) for c in diversify(fused, k, cfg.max_per_article)]
+        return await ranked_hits(fused, cfg, k, query, self.reranker if rerank else None)
 
     def article_vectors(self) -> dict[str, np.ndarray]:
         by: dict[str, list[np.ndarray]] = {}

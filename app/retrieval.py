@@ -35,7 +35,7 @@ class RetrievalConfig:
     identifier_boost: float = 1 / 61  # one exact identifier match ≈ a rank-1 hit in one list
     max_per_article: int = 3  # 0 = no diversification. v5 eval: 2 cost 10.7 points of anchor hits, 3 cost 2.2 (RAG.md)
     min_vector_score: float = 0.0  # cosine pre-filter on every candidate (Ask the Blog passes its floor)
-    reranker_dir: str = ""  # RAG_RERANKER_ENABLED=true + RAG_RERANKER_DIR: rerank the fused top-N (app/reranker.py)
+    # The reranker is not part of this config: its switch and limits are live Settings (app/reranker.py RerankGate).
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> RetrievalConfig:
@@ -54,7 +54,6 @@ class RetrievalConfig:
             rrf_k=int(num("RAG_RRF_K", 60, 1, 1000)),
             identifier_boost=num("RAG_IDENTIFIER_BOOST", 1 / 61, 0.0, 1.0),
             max_per_article=int(num("RAG_MAX_PER_ARTICLE", 3, 0, 20)),
-            reranker_dir=e.get("RAG_RERANKER_DIR", "").strip() if e.get("RAG_RERANKER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on") else "",
         )
 
 

@@ -10,8 +10,8 @@ messages refers to moks-cms pull requests.
 |---|---|
 | `app/` | The service: internal API on port 8080 (`app/main.py`), MCP edge on port 8090 (`app/mcp`), flows, crews, tools |
 | `tests/` | pytest; `tests/moks_cms.py` finds the moks-cms checkout for the contract tests |
-| `scripts/` | RAG eval and calibration, the database role (`db-role.sql`), CI helpers |
-| `Dockerfile` | The image: locked dependencies and the bge-small-en-v1.5 ONNX model (checksums verified in the build) |
+| `scripts/` | RAG eval and calibration, the reranker's PyTorch tooling (`reranker_model.py`), the database role (`db-role.sql`), CI helpers |
+| `Dockerfile` | The image: locked dependencies, the bge-small-en-v1.5 ONNX model and the reranker's int8 ONNX model (checksums verified in the build) |
 
 The design docs are in moks-cms under `docs/seo/` (FLOWS, CREWS, RAG, MCP, ML, OPERATIONS, SECURITY, MANUAL_SETUP,
 DECISIONS) and `docs/news/`. A path written as `moks-cms/<path>` in code comments means that file in moks-cms.
@@ -131,9 +131,57 @@ They live in `app/admin_settings/`:
 
 
 Groups so far: **Agent limits**; **Embeddings** (the backend's address, key and time limit; the provider and model
-stay in the deployment until a guarded re-embed exists); **Retrieval** (passages per answer, lowest similarity,
-how long questions are kept, the LanceDB copy); **MCP servers** (the two switches, live; their rate limits and
+stay in the deployment until a guarded re-embed exists); **Retrieval** (passages per answer, lowest similarity, the
+reranker's switch and limits, how long questions are kept, the LanceDB copy); **MCP servers** (the two switches, live; their rate limits and
 allowed hosts, on restart). It also holds three lists that only take things away: public tools switched off, admin tools switched off (refused at once, out of the tool list after a restart) and flows that may not be started over MCP (narrows the code's allowlist, never widens it). Ask the Blog's own switch, audience, daily limit and cache time stay in Ask the Blog.
+
+## The reranker and PyTorch
+
+Search can reorder its passages with a cross-encoder (`app/reranker.py`): cross-encoder/ms-marco-MiniLM-L6-v2, int8
+ONNX, baked into the image. It is **off** until **Rerank passages** is switched on in Admin → AI & SEO → Settings →
+Retrieval, which applies at once. The same group holds its limits, all 0 (no limit) until you set them: passages it
+reads, a time limit, and reranks at once; plus its CPU threads (on restart). Whatever goes wrong (no model, too slow,
+busy, a failure), the search returns the order it has without it. `seo_rag_rerank_total{outcome}` counts what
+happened, and `seo_rag_rerank_seconds` is the model's time per search. The news desk's duplicate check never reranks
+(it reads the nearest articles by cosine).
+
+Measured on the 95-question eval set (an M3 Pro, not mk4) with the whole search timed. "All" is every candidate left
+after the 3-per-article cap: up to 20 (`RAG_CANDIDATES`), about 10 on average.
+
+| Passages reranked | Threads | Recall@3 | MRR | p95 |
+|---|---|---|---|---|
+| none (production today) | | 90.5 % | 0.865 | 10 ms |
+| all | 2 | 95.2 % | 0.899 | 559 ms |
+| all | 4 | 95.2 % | 0.899 | 349 ms |
+| 10 | 4 | 92.9 % | 0.894 | 211 ms |
+| 6 | 4 | 91.7 % | 0.894 | 108 ms |
+
+That table has no similarity floor, which is how the crews' `vector_search` and MCP search run. **Ask the Blog filters
+by its lowest similarity first** (`ASK_BLOG_MIN_SCORE`), and the reranker only reorders what passes. At today's 0.66
+it gains less: Recall@3 85.7 % → 88.1 % (+2.4, under the +3 rule). At the calibrated 0.59 the floor removes nothing the
+eval needs, and the gain is the full 90.5 % → 95.2 %. So for Ask the Blog the reranker passes its accuracy rule only
+together with the floor at 0.59.
+
+Measure on mk4's CPU before switching it on: `rag-eval.yml` with `token-vector-div,token-vector-rerank` and
+`--reranker-threads N --reranker-candidates N` gives the same table on a GitHub ARM runner, and the live eval in
+`seo_ml_flow` records whether it ran with the reranker (`seo_rag_eval_runs.metrics.reranker`).
+
+**PyTorch** is not in the image or in CI. It is the `train` dependency group (torch from PyTorch's CPU index,
+transformers, onnx), for model work outside the service:
+
+```bash
+uv sync --group train
+uv run --group train python scripts/reranker_model.py download --out /tmp/rr/src
+uv run --group train python scripts/reranker_model.py export --src /tmp/rr/src --out /tmp/rr/fp32 --int8 /tmp/rr/int8
+uv run --group train python scripts/reranker_model.py verify --src /tmp/rr/src --onnx-dir /tmp/rr/int8 --model-dir /models/bge-small-en-v1.5
+```
+
+`verify` scores each eval question's real candidates with PyTorch and with the ONNX file through the service's own code,
+and reports the logit differences and how often the rankings agree. Run it before baking a new ONNX file. On
+2026-11-22 (959 pairs, the 95 questions' bge-small candidates): the fp32 export matched PyTorch to 0.00002 with the
+same order for every question; the baked int8 file differs by 0.16 on average (max 0.85), Kendall τ 0.94, the same
+best passage for 93 of 95 questions (ONNX Runtime's own int8 quantization of the export: 89 of 95, so the image keeps
+the repository's file). Its timings on macOS say nothing about mk4 (PyTorch uses Apple's Accelerate there).
 
 ## CI and release
 

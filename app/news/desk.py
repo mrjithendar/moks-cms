@@ -402,7 +402,8 @@ async def classify_and_novelty(d: DeskDeps, rec: RunRecorder, cluster_ids: list[
     for cid, c in rows.items():
         if d.retriever is not None and getattr(d.retriever, "available", True):
             try:
-                hits = await d.retriever.search(c["title"], k=3)
+                # The nearest articles by cosine, not the reranker's best answers: the 0.86 check below reads cosine.
+                hits = await d.retriever.search(c["title"], k=3, rerank=False)
             except Exception:
                 hits = []
             if hits:
