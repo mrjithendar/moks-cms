@@ -393,7 +393,15 @@ async def run_rag_eval(store: MlStore, retriever: Any) -> dict[str, Any]:
     if not EVAL_PATH.exists():  # an image built without app/data: the other models are still trained
         return {"skipped": f"evaluation set not found ({EVAL_PATH.name})"}
     res = await evaluate("live", lambda q, k: retriever.search(q, k), load_eval_set())
-    m = {**res.metrics, "calibrated_floor": res.calibrated_floor, "p95_ms": res.latency_ms["p95"], "mode": getattr(getattr(retriever, "config", None), "mode", "?")}
+    gate = getattr(retriever, "reranker", None)
+    m = {
+        **res.metrics,
+        "calibrated_floor": res.calibrated_floor,
+        "p95_ms": res.latency_ms["p95"],
+        "mode": getattr(getattr(retriever, "config", None), "mode", "?"),
+        # Whether this run was reranked: it runs the production search (without Ask the Blog's floor), so Recall@3 moves with the switch.
+        "reranker": gate.name if gate is not None and gate.enabled else "off",
+    }
     await store.record_rag_eval("live", m)
     metrics.RAG_EVAL_RECALL3.set(res.metrics["recall@3"])
     return m

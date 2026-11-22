@@ -60,6 +60,13 @@ RAG_CHUNKS_TRUNCATED = Counter("seo_rag_chunks_truncated_total", "Embedded input
 RAG_RETRIEVAL_MODE = Gauge("seo_rag_retrieval_mode", "1 for the retrieval mode in use (RAG_MODE).", ["mode"], registry=REGISTRY)
 RAG_EVAL_RECALL3 = Gauge("seo_rag_eval_recall_at_3", "Recall@3 of the latest retrieval evaluation run against the live index.", registry=REGISTRY)
 RAG_MODES = {"vector", "hybrid"}
+# The cross-encoder reranker (app/reranker.py). `outcome` ∈ RERANK_OUTCOMES. The histogram is the model's own time for
+# one search, observed when the computation ends, so work that outlived its search's deadline is counted too.
+RERANK_OUTCOMES = {"applied", "unavailable", "busy", "timeout", "error"}
+RAG_RERANK = Counter("seo_rag_rerank_total", "Searches with the reranker switched on, by outcome (anything but applied kept the fused order).", ["outcome"], registry=REGISTRY)
+RAG_RERANK_SECONDS = Histogram(
+    "seo_rag_rerank_seconds", "Cross-encoder time for one search's candidates.", buckets=(0.025, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2, 5, 10), registry=REGISTRY
+)
 
 # v5 SEO-side ML (docs/seo/ML.md). `model` ∈ ML_MODELS, `status` ∈ ML_RUN_STATUSES, `metric` ∈ the fixed names in
 # app/seo_ml/train.py EXPORTED: all bounded.

@@ -13,7 +13,7 @@ on:
         description: Configurations (scripts/rag_eval.py)
         default: baseline-v4,token-vector,token-vector-div,token-hybrid-noid,token-hybrid
       extra_args:
-        description: Extra arguments, e.g. --max-per-article 2 --suffix=.div2
+        description: Extra arguments, e.g. --max-per-article 2 --suffix=.div2, or for the *-rerank configs --reranker-threads 4 --reranker-candidates 10
         default: ""
 
 permissions:
@@ -55,6 +55,19 @@ jobs:
           curl -fsSL -o "$RUNNER_TEMP/bge/tokenizer.json" "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/$rev/tokenizer.json"
           echo "$msha  $RUNNER_TEMP/bge/model.onnx" | sha256sum -c -
           echo "$tsha  $RUNNER_TEMP/bge/tokenizer.json" | sha256sum -c -
+      - name: Fetch the reranker model (same revision and checksums as the Dockerfile; used by the *-rerank configs)
+        run: |
+          set -euo pipefail
+          repo="$(sed -n 's/^ARG RERANKER_REPO=//p' Dockerfile)"
+          rev="$(sed -n 's/^ARG RERANKER_REV=//p' Dockerfile)"
+          file="$(sed -n 's/^ARG RERANKER_FILE=//p' Dockerfile)"
+          msha="$(sed -n 's/^ARG RERANKER_SHA256=//p' Dockerfile)"
+          tsha="$(sed -n 's/^ARG TOKENIZER_SHA256=//p' Dockerfile)"
+          mkdir -p "$RUNNER_TEMP/reranker"
+          curl -fsSL -o "$RUNNER_TEMP/reranker/model.onnx" "https://huggingface.co/$repo/resolve/$rev/$file"
+          curl -fsSL -o "$RUNNER_TEMP/reranker/tokenizer.json" "https://huggingface.co/$repo/resolve/$rev/tokenizer.json"
+          echo "$msha  $RUNNER_TEMP/reranker/model.onnx" | sha256sum -c -
+          echo "$tsha  $RUNNER_TEMP/reranker/tokenizer.json" | sha256sum -c -
       - name: Evaluate
         env:
           CONFIGS: ${{ inputs.configs }}
@@ -63,6 +76,7 @@ jobs:
           set -euo pipefail
           # shellcheck disable=SC2086
           uv run --frozen python scripts/rag_eval.py --embeddings onnx --model-dir "$RUNNER_TEMP/bge" \
-            --dsn postgresql://postgres:ci-only-not-secret@localhost:5432/rag_eval --configs "$CONFIGS" --out "$RUNNER_TEMP/rag-eval" $EXTRA
+            --dsn postgresql://postgres:ci-only-not-secret@localhost:5432/rag_eval --configs "$CONFIGS" --out "$RUNNER_TEMP/rag-eval" \
+            --reranker-dir "$RUNNER_TEMP/reranker" $EXTRA
           # Every report goes into the job summary (copy the ones worth keeping into moks-cms docs/seo/rag-eval/).
           cat "$RUNNER_TEMP"/rag-eval/*summary*.md "$RUNNER_TEMP"/rag-eval/*[!y].md >> "$GITHUB_STEP_SUMMARY"

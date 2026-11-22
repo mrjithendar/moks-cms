@@ -84,6 +84,7 @@ from .llm_providers.discover import CannotDiscover
 from .llm_providers.discover import discover as discover_models
 from .logs import configure_logging
 from .news.store import MemoryNewsStore, PgNewsStore
+from .reranker import RerankGate
 from .run_history import MemoryHistorySink, PgHistorySink, RecordingLlm, RunHistory
 from .run_history import install as install_run_log
 from .run_history import uninstall as uninstall_run_log
@@ -253,8 +254,14 @@ async def build_container(settings: Settings) -> Container:
     web = HttpWebApp(settings.callback_url, settings.callback_token)
     history = RunHistory(PgHistorySink(pool), web.run_history_settings)
     llm = RecordingLlm(AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s), history)
-    index = PgVectorIndex(pool, make_embeddings(settings))
+    # The reranker's gate holds the shared Settings object, so its switch and limits apply live (app/reranker.py).
+    reranker = RerankGate(settings)
+    index = PgVectorIndex(pool, make_embeddings(settings), reranker=reranker)
     reasons: list[str] = [settings_note] if settings_note else []
+    if reranker.enabled:  # load it now rather than on the first question; a failed load leaves search as it is
+        await reranker.load()
+        if reranker.load_error:
+            reasons.append(f"reranker not loaded: {reranker.load_error}")
     try:
         await index.ensure_schema()
         if not index.available:

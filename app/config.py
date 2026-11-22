@@ -143,6 +143,14 @@ class Settings:
     # app/calibration.py unless ASK_BLOG_MIN_SCORE is set; 0.66 is bge-small's.
     ask_min_score: float = 0.66
     ask_retention_days: int = 30
+    # The cross-encoder reranker (app/reranker.py): off until switched on; RAG_RERANKER_DIR is set by the image.
+    # 0 = no limit for the three limits: every candidate, no deadline, no cap on reranks running at once.
+    rag_reranker_enabled: bool = False
+    rag_reranker_dir: str = ""
+    rag_reranker_threads: int = 2
+    rag_reranker_candidates: int = 0
+    rag_reranker_timeout_ms: int = 0
+    rag_reranker_max_concurrent: int = 0
     production: bool = False
     otel_endpoint: str = ""
     service_name: str = "seo-agent"
@@ -260,6 +268,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ask_top_k=max(1, min(12, _int("ASK_BLOG_TOP_K", Settings.ask_top_k, env))),
         ask_min_score=max(0.0, min(0.95, _float("ASK_BLOG_MIN_SCORE", floor, env))),
         ask_retention_days=_int("ASK_BLOG_RETENTION_DAYS", Settings.ask_retention_days, env),
+        rag_reranker_enabled=_bool("RAG_RERANKER_ENABLED", False, env),
+        rag_reranker_dir=env.get("RAG_RERANKER_DIR", "").strip(),
+        rag_reranker_threads=max(1, min(16, _int("RAG_RERANKER_THREADS", Settings.rag_reranker_threads, env))),
+        rag_reranker_candidates=max(0, min(100, _int("RAG_RERANKER_CANDIDATES", 0, env))),
+        rag_reranker_timeout_ms=max(0, min(30_000, _int("RAG_RERANKER_TIMEOUT_MS", 0, env))),
+        rag_reranker_max_concurrent=max(0, min(64, _int("RAG_RERANKER_MAX_CONCURRENT", 0, env))),
         production=env.get("APP_ENV", "") == "production",
         otel_endpoint=env.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
         service_name=env.get("OTEL_SERVICE_NAME", "seo-agent"),

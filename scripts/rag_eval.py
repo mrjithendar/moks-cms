@@ -18,7 +18,9 @@ Configurations (RetrievalConfig in app/retrieval.py; chunker in app/embeddings.p
   token-hybrid-noid    token chunker, RRF (vector + full text), no identifier boost, ≤ 3 per article
   token-hybrid         token chunker, RRF + identifier boost, ≤ 3 per article  (RAG_MODE=hybrid)
   (--max-per-article N overrides the diversification of every config except the baseline)
-  token-hybrid-rerank  token-hybrid + the optional cross-encoder reranker (needs --reranker-dir)
+  token-vector-rerank  token-vector-div + the cross-encoder reranker (needs --reranker-dir): what production runs with
+                       RAG_RERANKER_ENABLED=true and the default RAG_MODE=vector
+  token-hybrid-rerank  token-hybrid + the cross-encoder reranker (needs --reranker-dir)
 
 Opt-in end-to-end generation eval (real Anthropic calls, ANTHROPIC_API_KEY; capped by --generation-max-usd): Ask the
 Blog's own pipeline over the eval set on the --generation-config index, answers scored for citation precision and
@@ -53,6 +55,7 @@ CONFIGS: dict[str, tuple[str, RetrievalConfig]] = {
     "token-vector-div": ("token", RetrievalConfig(mode="vector")),
     "token-hybrid-noid": ("token", RetrievalConfig(mode="hybrid", identifier_boost=0.0)),
     "token-hybrid": ("token", RetrievalConfig(mode="hybrid")),
+    "token-vector-rerank": ("token", RetrievalConfig(mode="vector")),
     "token-hybrid-rerank": ("token", RetrievalConfig(mode="hybrid")),
 }
 
@@ -97,6 +100,8 @@ async def main() -> int:
     ap.add_argument("--max-per-article", type=int, default=None, help="override diversification (0 = off)")
     ap.add_argument("--suffix", default="", help="appended to each config name in the output files")
     ap.add_argument("--reranker-dir", default=None)
+    ap.add_argument("--reranker-threads", type=int, default=None, help="RAG_RERANKER_THREADS (default: the service's default)")
+    ap.add_argument("--reranker-candidates", type=int, default=0, help="RAG_RERANKER_CANDIDATES: passages the reranker reorders (0 = all)")
     ap.add_argument("--eval", default=str(EVAL_PATH))
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--date", default=dt.date.today().isoformat())
@@ -124,25 +129,29 @@ async def main() -> int:
         if a.max_per_article is not None and name != "baseline-v4":
             cfg = replace(cfg, max_per_article=a.max_per_article)
         label = f"{name}{a.suffix}"
-        ix = LocalIndex(emb, cfg, chunker=chunker, dsn=a.dsn if cfg.mode == "hybrid" else None)
-        info = await ix.build(articles)
-        built.setdefault(chunker, ix)
-        search = ix.search
         notes = []
+        gate = None
         if name.endswith("-rerank"):
-            from app.reranker import CrossEncoderReranker
+            # The service's own gate (app/reranker.py RerankGate), switched on, with no deadline or concurrency limit:
+            # every question is reranked, so the metrics and the latency are the reranker's.
+            from types import SimpleNamespace
+
+            from app.config import Settings
+            from app.reranker import RerankGate
 
             if not a.reranker_dir:
-                print("token-hybrid-rerank needs --reranker-dir", file=sys.stderr)
+                print(f"{name} needs --reranker-dir", file=sys.stderr)
                 return 2
-            rr = CrossEncoderReranker(a.reranker_dir)
-
-            async def search(q: str, k: int, ix: LocalIndex = ix, rr: CrossEncoderReranker = rr) -> list:  # type: ignore[no-redef]
-                cands = await ix.search(q, 20)
-                return await rr.rerank(q, cands, k)
-
-            notes.append(f"reranker: {rr.name}, top 20 fused → top {6}")
-        res = await evaluate(label, search, questions, floor=a.floor, notes=notes)
+            threads = a.reranker_threads or Settings.rag_reranker_threads
+            gate = RerankGate(SimpleNamespace(rag_reranker_enabled=True, rag_reranker_dir=a.reranker_dir, rag_reranker_threads=threads, rag_reranker_candidates=a.reranker_candidates))
+            if await gate.load() is None:
+                print(f"reranker not loaded from {a.reranker_dir}: {gate.load_error}", file=sys.stderr)
+                return 2
+            notes.append(f"reranker: {gate.name}, {threads} threads, reorders the first {gate.window(cfg.candidates)} of {cfg.candidates} candidates")
+        ix = LocalIndex(emb, cfg, chunker=chunker, dsn=a.dsn if cfg.mode == "hybrid" else None, reranker=gate)
+        info = await ix.build(articles)
+        built.setdefault(chunker, ix)
+        res = await evaluate(label, ix.search, questions, floor=a.floor, notes=notes)
         meta = {
             "date": a.date,
             "commit": commit(),

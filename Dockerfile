@@ -2,7 +2,9 @@
 # embeddings; ReportLab (pure Python) renders the report PDFs. The one system library is libgomp1 (OpenMP), which the
 # LightGBM wheel links against for the news desk ranker (docs/news/ML.md); scikit-learn/SciPy wheels bundle their own.
 # The embeddings model (BAAI/bge-small-en-v1.5, ONNX export, MIT) is baked in at a pinned revision and verified by
-# sha256, so pods never download anything at start-up and the image is reproducible.
+# sha256, so pods never download anything at start-up and the image is reproducible. So is the reranker's model
+# (app/reranker.py, off until RAG_RERANKER_ENABLED). PyTorch is never installed: it is the `train` dependency group,
+# for scripts/reranker_model.py outside the service, and `uv sync --no-dev` installs no group.
 ARG PYTHON_VERSION=3.13
 
 FROM python:${PYTHON_VERSION}-slim AS build
@@ -33,6 +35,19 @@ RUN mkdir -p /models/bge-small-en-v1.5 \
  && echo "${MODEL_SHA256}  /models/bge-small-en-v1.5/model.onnx" | sha256sum -c - \
  && echo "${TOKENIZER_SHA256}  /models/bge-small-en-v1.5/tokenizer.json" | sha256sum -c -
 
+# The reranker: cross-encoder/ms-marco-MiniLM-L6-v2 (Apache-2.0) at a pinned revision, the int8 ONNX export the model
+# repository publishes (23 MB, 18 MB compressed). Its fp32 export would add 83 MB compressed, more than the image-size
+# gate allows (D-68), for the same Recall@3 on the eval set (MRR 0.907 vs 0.899, app/reranker.py). Its tokenizer.json is bge-small's
+# byte for byte (the same BERT vocabulary), checked against the same sha256.
+ARG RERANKER_REPO=cross-encoder/ms-marco-MiniLM-L6-v2
+ARG RERANKER_REV=233902d25c440f23af6f7d6e94d2946bac0bee0a
+ARG RERANKER_FILE=onnx/model_qint8_arm64.onnx
+ARG RERANKER_SHA256=3573b6b9593cb2f75987a31815d409ca3dd8808629118fd20451bb1a5d90cec7
+RUN mkdir -p /models/ms-marco-MiniLM-L6-v2 \
+ && python -c "import urllib.request as u; u.urlretrieve('https://huggingface.co/${RERANKER_REPO}/resolve/${RERANKER_REV}/${RERANKER_FILE}', '/models/ms-marco-MiniLM-L6-v2/model.onnx'); u.urlretrieve('https://huggingface.co/${RERANKER_REPO}/resolve/${RERANKER_REV}/tokenizer.json', '/models/ms-marco-MiniLM-L6-v2/tokenizer.json')" \
+ && echo "${RERANKER_SHA256}  /models/ms-marco-MiniLM-L6-v2/model.onnx" | sha256sum -c - \
+ && echo "${TOKENIZER_SHA256}  /models/ms-marco-MiniLM-L6-v2/tokenizer.json" | sha256sum -c -
+
 FROM python:${PYTHON_VERSION}-slim
 WORKDIR /srv
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
@@ -41,7 +56,7 @@ COPY --from=build /models /models
 COPY app ./app
 ENV PATH=/srv/.venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     HOME=/tmp XDG_DATA_HOME=/tmp XDG_CACHE_HOME=/tmp \
-    EMBEDDINGS_MODEL_DIR=/models/bge-small-en-v1.5 \
+    EMBEDDINGS_MODEL_DIR=/models/bge-small-en-v1.5 RAG_RERANKER_DIR=/models/ms-marco-MiniLM-L6-v2 \
     TOKENIZERS_PARALLELISM=false RAYON_NUM_THREADS=1 OMP_NUM_THREADS=2 MALLOC_ARENA_MAX=2 \
     CREWAI_DISABLE_TELEMETRY=true CREWAI_DISABLE_TRACKING=true CREWAI_TRACING_ENABLED=false CREWAI_DISABLE_VERSION_CHECK=true \
     CREWAI_STORAGE_DIR=/tmp/crewai
