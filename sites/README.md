@@ -6,7 +6,7 @@ moks-cms itself deploys nothing.
 
 ```
 <site repository>/
-  site.json        identity: host, name, tagline, description, language, time zone, author, social links, AdSense ID;
+  site.json        identity: host, name, tagline, description, language, time zone, author, social links, AdSense ID, Reader Revenue Manager product;
                    "aiCrawlers" sets robots.txt for AI crawlers: "search" (answer engines that cite pages:
                    OAI-SearchBot, Claude-SearchBot, PerplexityBot…) and "training" (GPTBot, ClaudeBot,
                    Google-Extended, CCBot…), each "allow" or "block" (src/lib/seo/ai-crawlers.ts)

@@ -64,6 +64,36 @@ export function AdSenseLoader({ client }: { client: string }) {
   );
 }
 
+/**
+ * Google's Reader Revenue Manager init (the snippet from Publisher Center → Add code to your site), with the theme the
+ * page is showing: an explicit choice (data-theme), else the system's. JSON in a <script>: "<" is escaped.
+ */
+export function readerRevenueInitScript(productId: string, lang: string): string {
+  const options = JSON.stringify({ type: "NewsArticle", isPartOfType: ["Product"], isPartOfProductId: productId, clientOptions: { lang } }).replace(/</g, "\\u003c");
+  return (
+    `(self.SWG_BASIC=self.SWG_BASIC||[]).push(function(b){var o=${options},d=document.documentElement.dataset.theme;` +
+    `o.clientOptions.theme=d==="dark"||(!d&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";b.init(o);});`
+  );
+}
+
+/**
+ * Google Reader Revenue Manager (swg-basic.js): shows the CTAs set up in Publisher Center (rewarded ads, surveys,
+ * contributions, newsletter sign-ups). Public pages only, and not at all when the visitor arrives on a private one.
+ * Server-rendered like the AdSense tag, so Publisher Center finds the code in the raw HTML; the async src is hoisted
+ * into <head> and never blocks rendering. The init only queues itself (SWG_BASIC), so the order does not matter.
+ */
+export function ReaderRevenue({ productId, lang }: { productId: string; lang: string }) {
+  const pathname = usePathname();
+  const [allowed] = useState(() => isTrackablePath(pathname));
+  if (!allowed) return null;
+  return (
+    <>
+      <script async src="https://news.google.com/swg/js/v1/swg-basic.js" />
+      <script id="swg-basic-init" dangerouslySetInnerHTML={{ __html: readerRevenueInitScript(productId, lang) }} />
+    </>
+  );
+}
+
 /** Sends article_engaged once, when the end of the article body scrolls into view. */
 export function ArticleEngagement({ collection, slug }: { collection: string; slug: string }) {
   const ref = useRef<HTMLSpanElement>(null);

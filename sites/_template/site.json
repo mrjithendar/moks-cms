@@ -17,5 +17,6 @@
     "mastodon": ""
   },
   "adsenseClientId": "",
+  "readerRevenue": { "productId": "", "lang": "" },
   "aiCrawlers": { "search": "allow", "training": "allow" }
 }

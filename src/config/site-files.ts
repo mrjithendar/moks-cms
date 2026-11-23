@@ -25,6 +25,8 @@ export type SiteFile = {
   editorBio: string;
   social: { github: string; x: string; linkedin: string; youtube: string; mastodon: string };
   adsenseClientId: string;
+  /** Google Reader Revenue Manager (Publisher Center): the isPartOfProductId of the site code, and the language of Google's prompts. */
+  readerRevenue?: { productId?: string; lang?: string };
   aiCrawlers?: { search?: string; training?: string };
   [key: string]: unknown;
 };
