@@ -3,7 +3,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { getSeoSettings, type SeoSettings } from "../seo-intel/settings";
-import { ACTIVE_STATUSES, RUN_STATUSES, TRIGGERS } from "./flows";
+import { ACTIVE_STATUSES, BACKGROUND_FLOWS, RUN_STATUSES, TRIGGERS } from "./flows";
 
 /**
  * The CrewAI console's reads (/admin/crewai): runs of the SEO agent's flows (seo_flow_runs, migration 0016) with the
@@ -210,37 +210,48 @@ export async function transcript(id: number, db?: Db): Promise<Transcript | null
 
 // --- Overview ----------------------------------------------------------------------------------------------------------
 
-export type FlowHealth = { flow: string; last: RunRow; recent: string[]; runs7d: number; failed7d: number; cost7d: number; medianMs: number | null };
+export type FlowHealth = { flow: string; last: RunRow; recent: string[]; runs7d: number; succeeded7d: number; failed7d: number; cost7d: number; medianMs: number | null };
 export type Overview = {
   day: { runs: number; succeeded: number; failed: number; active: number };
   week: { runs: number; succeeded: number; failed: number; costUsd: number; tokens: number; p50Ms: number | null; p95Ms: number | null };
+  /** Runs of BACKGROUND_FLOWS in the last 7 days: left out of `day`, `week` and `perDay`. */
+  background7d: number;
   perDay: { day: string; succeeded: number; failed: number; other: number }[];
   active: RunRow[];
   failures: RunRow[];
   flows: FlowHealth[];
 };
 
+/**
+ * The console's overview. The totals (`day`, `week`, `perDay`) count the flows' work and leave BACKGROUND_FLOWS out
+ * (`background7d` says how many runs that was); every flow, those included, is in `flows`, `active` and `failures`.
+ * A flow's health is over its finished runs of the last 7 days, the same window as its run count and cost.
+ */
 export async function overview(now: Date = new Date(), db?: Db): Promise<Overview> {
   const d = db ?? (await getDb());
   const nowIso = now.toISOString();
+  const work = BACKGROUND_FLOWS.length ? sql`flow_name not in (${sql.join(BACKGROUND_FLOWS.map((f) => sql`${f}`), sql`, `)})` : sql`true`;
   const [[day], [week], perDay, active, failures, flows] = await Promise.all([
     d.execute(sql`select count(*)::int as runs, count(*) filter (where status = 'succeeded')::int as succeeded, count(*) filter (where status = 'failed')::int as failed,
-        (select count(*)::int from seo_flow_runs where status in ('queued', 'running')) as active
-      from seo_flow_runs where started_at > ${nowIso}::timestamptz - interval '1 day'`).then((x) => rowsOf<Record<string, unknown>>(x)),
-    d.execute(sql`select count(*)::int as runs, count(*) filter (where status = 'succeeded')::int as succeeded, count(*) filter (where status = 'failed')::int as failed,
-        coalesce(sum(cost_usd), 0)::float8 as cost_usd, coalesce(sum(tokens), 0)::bigint as tokens,
-        percentile_cont(0.5) within group (order by extract(epoch from (finished_at - started_at)) * 1000) filter (where finished_at is not null) as p50,
-        percentile_cont(0.95) within group (order by extract(epoch from (finished_at - started_at)) * 1000) filter (where finished_at is not null) as p95
+        (select count(*)::int from seo_flow_runs where status in ('queued', 'running') and ${work}) as active
+      from seo_flow_runs where started_at > ${nowIso}::timestamptz - interval '1 day' and ${work}`).then((x) => rowsOf<Record<string, unknown>>(x)),
+    d.execute(sql`select count(*) filter (where ${work})::int as runs, count(*) filter (where status = 'succeeded' and ${work})::int as succeeded,
+        count(*) filter (where status = 'failed' and ${work})::int as failed,
+        coalesce(sum(cost_usd) filter (where ${work}), 0)::float8 as cost_usd, coalesce(sum(tokens) filter (where ${work}), 0)::bigint as tokens,
+        percentile_cont(0.5) within group (order by extract(epoch from (finished_at - started_at)) * 1000) filter (where finished_at is not null and ${work}) as p50,
+        percentile_cont(0.95) within group (order by extract(epoch from (finished_at - started_at)) * 1000) filter (where finished_at is not null and ${work}) as p95,
+        count(*) filter (where not (${work}))::int as background
       from seo_flow_runs where started_at > ${nowIso}::timestamptz - interval '7 days'`).then((x) => rowsOf<Record<string, unknown>>(x)),
     d.execute(sql`select to_char(date_trunc('day', started_at at time zone 'UTC'), 'YYYY-MM-DD') as day, count(*) filter (where status = 'succeeded')::int as succeeded,
         count(*) filter (where status = 'failed')::int as failed, count(*) filter (where status not in ('succeeded', 'failed'))::int as other
-      from seo_flow_runs where started_at > ${nowIso}::timestamptz - interval '14 days' group by 1 order by 1`).then((x) => rowsOf<Record<string, unknown>>(x)),
+      from seo_flow_runs where started_at > ${nowIso}::timestamptz - interval '14 days' and ${work} group by 1 order by 1`).then((x) => rowsOf<Record<string, unknown>>(x)),
     d.execute(sql`select ${RUN_COLS} from seo_flow_runs r where r.status in ('queued', 'running') order by r.started_at desc limit 20`).then((x) => rowsOf<Record<string, unknown>>(x)),
     d.execute(sql`select ${RUN_COLS} from seo_flow_runs r where r.status = 'failed' and r.started_at > ${nowIso}::timestamptz - interval '7 days' order by r.started_at desc limit 6`).then((x) => rowsOf<Record<string, unknown>>(x)),
     d.execute(sql`with ranked as (select r.*, row_number() over (partition by flow_name order by started_at desc, run_id desc) as rn from seo_flow_runs r)
       select ${RUN_COLS},
         (select array_agg(x.status order by x.rn) from ranked x where x.flow_name = r.flow_name and x.rn <= 10) as recent,
         (select count(*)::int from seo_flow_runs y where y.flow_name = r.flow_name and y.started_at > ${nowIso}::timestamptz - interval '7 days') as runs_7d,
+        (select count(*)::int from seo_flow_runs y where y.flow_name = r.flow_name and y.status = 'succeeded' and y.started_at > ${nowIso}::timestamptz - interval '7 days') as succeeded_7d,
         (select count(*)::int from seo_flow_runs y where y.flow_name = r.flow_name and y.status = 'failed' and y.started_at > ${nowIso}::timestamptz - interval '7 days') as failed_7d,
         (select coalesce(sum(cost_usd), 0)::float8 from seo_flow_runs y where y.flow_name = r.flow_name and y.started_at > ${nowIso}::timestamptz - interval '7 days') as cost_7d,
         (select percentile_cont(0.5) within group (order by extract(epoch from (x.finished_at - x.started_at)) * 1000) from ranked x where x.flow_name = r.flow_name and x.rn <= 10 and x.status = 'succeeded') as median_ms
@@ -250,6 +261,7 @@ export async function overview(now: Date = new Date(), db?: Db): Promise<Overvie
   return {
     day: { runs: Number(day?.runs ?? 0), succeeded: Number(day?.succeeded ?? 0), failed: Number(day?.failed ?? 0), active: Number(day?.active ?? 0) },
     week: { runs: Number(week?.runs ?? 0), succeeded: Number(week?.succeeded ?? 0), failed: Number(week?.failed ?? 0), costUsd: Number(week?.cost_usd ?? 0), tokens: Number(week?.tokens ?? 0), p50Ms: n(week?.p50), p95Ms: n(week?.p95) },
+    background7d: Number(week?.background ?? 0),
     perDay: perDay.map((p) => ({ day: String(p.day), succeeded: Number(p.succeeded), failed: Number(p.failed), other: Number(p.other) })),
     active: active.map(toRun),
     failures: failures.map(toRun),
@@ -258,6 +270,7 @@ export async function overview(now: Date = new Date(), db?: Db): Promise<Overvie
       last: toRun(f),
       recent: Array.isArray(f.recent) ? (f.recent as unknown[]).map(String) : typeof f.recent === "string" ? String(f.recent).replace(/^\{|\}$/g, "").split(",").filter(Boolean) : [],
       runs7d: Number(f.runs_7d ?? 0),
+      succeeded7d: Number(f.succeeded_7d ?? 0),
       failed7d: Number(f.failed_7d ?? 0),
       cost7d: Number(f.cost_7d ?? 0),
       medianMs: n(f.median_ms),

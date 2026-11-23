@@ -4,24 +4,27 @@ import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
 import { RunStatusIcon } from "@/components/crewai/RunStatusIcon";
 import { buttonClass } from "@/components/ui/form";
-import { flowInfo, STATUS_LABELS } from "@/lib/crewai/flows";
-import { formatDuration, formatTokens, formatUsd, percent, runDurationMs } from "@/lib/crewai/format";
+import { BACKGROUND_FLOWS, flowInfo, STATUS_LABELS } from "@/lib/crewai/flows";
+import { formatDuration, formatTokens, formatUsd, healthOf, percent, runDurationMs } from "@/lib/crewai/format";
 import { overview, type FlowHealth, type Overview } from "@/lib/crewai/runs";
 
-export const metadata = { title: "Overview" };
+/**
+ * "CrewAI console · Admin" in the browser tab. The console layout's "%s · CrewAI console · Admin" applies to the pages
+ * under it, not to this one at its own level, so "Overview" here read "Overview · Admin".
+ */
+export const metadata = { title: "CrewAI console" };
 
 const runHref = (id: string) => `/admin/crewai/runs/${id}`;
 
-function Health({ recent }: { recent: string[] }) {
-  const done = recent.filter((s) => s === "succeeded" || s === "failed");
-  const ok = done.filter((s) => s === "succeeded").length;
-  const rate = done.length ? ok / done.length : null;
+function Health({ flow }: { flow: FlowHealth }) {
+  const { ok, done, window } = healthOf(flow);
+  const rate = done ? ok / done : null;
   const [label, dot] = rate == null ? ["No finished runs", "bg-slate-300 dark:bg-white/20"] : rate >= 0.8 ? ["Healthy", "bg-emerald-500"] : rate >= 0.4 ? ["Unstable", "bg-amber-500"] : ["Failing", "bg-red-500"];
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={rate == null ? undefined : `${ok} of the last ${done.length} finished runs succeeded`}>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={rate == null ? undefined : `${ok} of ${done} finished runs ${window} succeeded`}>
       <span className={`h-2.5 w-2.5 rounded-full ${dot}`} aria-hidden="true" />
       {label}
-      {rate != null && <span className="text-fg-subtle">· {Math.round(rate * 100)}%</span>}
+      {rate != null && <span className="text-fg-subtle">· {percent(ok, done)}</span>}
     </span>
   );
 }
@@ -84,7 +87,7 @@ function FlowTable({ flows }: { flows: FlowHealth[] }) {
               <Link href={`/admin/crewai/runs?flow=${f.flow}`} className="font-medium text-fg hover:underline">{info.label}</Link>
               <p className="text-xs text-fg-subtle">{info.group} · <code>{f.flow}</code></p>
             </td>
-            <td className={`${td} text-sm`}><Health recent={f.recent} /></td>
+            <td className={`${td} text-sm`}><Health flow={f} /></td>
             <td className={td}><Recent recent={f.recent} /></td>
             <td className={td}>
               <Link href={runHref(f.last.runId)} className="inline-flex items-center gap-1.5 hover:underline">
@@ -114,12 +117,16 @@ export default async function CrewaiOverviewPage() {
         description="Every run of the SEO agent's flows and crews: what is running now, what failed and why, cost and health per flow. Open a run for its steps and full log."
         actions={<Link href="/admin/crewai/runs" className={buttonClass("primary", "sm")}>All runs</Link>}
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-2 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Runs, last 24 hours" value={o.day.runs} hint={`${o.day.succeeded} succeeded · ${o.day.failed} failed · ${o.day.active} running`} />
         <Stat label="Success rate, 7 days" value={percent(o.week.succeeded, finished7)} hint={`of ${finished7} finished runs`} />
         <Stat label="Median run time, 7 days" value={formatDuration(o.week.p50Ms)} hint={`95th percentile ${formatDuration(o.week.p95Ms)}`} />
         <Stat label="Model cost, 7 days" value={formatUsd(o.week.costUsd)} hint={`${formatTokens(o.week.tokens)} tokens`} />
       </div>
+      <p className="mb-6 text-xs text-fg-subtle">
+        These totals and Runs per day leave out {BACKGROUND_FLOWS.map((f) => flowInfo(f).label).join(", ")}, which ticks on a short fixed schedule
+        {o.background7d > 0 ? ` (${o.background7d} runs in 7 days)` : ""}; it is listed under Flows.
+      </p>
       <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card>
           <div className="mb-3 flex items-baseline justify-between gap-2">

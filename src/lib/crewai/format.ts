@@ -34,8 +34,27 @@ export function formatTokens(n: number | null | undefined): string {
   return String(v);
 }
 
+/**
+ * A share as a percentage, rounded to whole numbers except at the ends: it never says 100% while something failed
+ * (661 of 663 is "99.7%", not "100%") and never 0% while something succeeded.
+ */
 export function percent(part: number, whole: number): string {
-  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—";
+  if (!(whole > 0)) return "—";
+  const p = (part / whole) * 100;
+  const r = Math.round(p);
+  if (r === 100 && part < whole) return `${Math.min(99.9, Math.round(p * 10) / 10)}%`;
+  if (r === 0 && part > 0) return p < 0.1 ? "<0.1%" : `${Math.round(p * 10) / 10}%`;
+  return `${r}%`;
+}
+
+/**
+ * A flow's health over its finished runs of the last 7 days, the window of the console's Runs (7 d) column next to
+ * it, so "2 failed" there is never beside a "100%" here. With no finished run in 7 days it falls back to the last ten.
+ */
+export function healthOf(f: { recent: string[]; succeeded7d: number; failed7d: number }): { ok: number; done: number; window: string } {
+  if (f.succeeded7d + f.failed7d > 0) return { ok: f.succeeded7d, done: f.succeeded7d + f.failed7d, window: "in the last 7 days" };
+  const done = f.recent.filter((s) => s === "succeeded" || s === "failed");
+  return { ok: done.filter((s) => s === "succeeded").length, done: done.length, window: `of the last ${done.length}` };
 }
 
 /** A log line as plain text (the raw log download): "2026-11-18T10:04:11.123Z INFO  [draft] message". */
