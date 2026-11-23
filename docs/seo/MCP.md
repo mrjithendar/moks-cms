@@ -126,7 +126,7 @@ standards-based implementation inside the web app, restricted to the existing ad
 - **Scopes:** `seo:read`, `seo:flows`, `seo:review:reject`. `seo:read` is always included. There is no approve or
   publish scope.
 - **Admin only:** a grant stops working at once if its user is no longer an admin or is banned.
-- **Revocation:** SEO › Settings › MCP access lists connected clients (scopes, when allowed, last use) with **Revoke**;
+- **Revocation:** AI & SEO › Settings › MCP lists connected clients (scopes, when allowed, last use) with **Revoke**;
   revocation kills every token of the grant on the next request. Kill switch: `ADMIN_MCP_ENABLED=false` (the agent's
   admin server returns 404 and the OAuth endpoints refuse).
 
@@ -134,7 +134,7 @@ standards-based implementation inside the web app, restricted to the existing ad
 
 **Claude (desktop, web, mobile):** Settings › Connectors › Add custom connector → URL `https://jithendar.com/mcp/admin`.
 Claude reads the protected-resource metadata, registers itself, opens the consent page (sign in as the admin), and the
-client appears under SEO › Settings › MCP access. For readers: `https://jithendar.com/mcp/public` (no sign-in).
+client appears under AI & SEO › Settings › MCP (Connected clients). For readers: `https://jithendar.com/mcp/public` (no sign-in).
 **Status: Needs production validation** (requires the Kong routes, `ADMIN_MCP_ENABLED=true`, migration 0016 and a
 deployed site).
 

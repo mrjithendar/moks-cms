@@ -75,7 +75,7 @@ function Breakdown({ title, rows, total }: { title: string; rows: { key: string;
 }
 
 /**
- * Admin → AI & SEO → Settings → LLM budget: ONE budget for every provider, model and purpose together, with an
+ * Admin → AI & SEO → Settings → LLM providers & budget (top card): ONE budget for every provider, model and purpose together, with an
  * optional daily limit and an optional monthly limit. A Daily | Monthly switch chooses the period shown: its spend
  * against its limit, the one field that sets that limit, and where the period's spend went (for reading; the
  * breakdowns limit nothing). The seo-agent owns the budget (moks-seo-agent/app/llm_budgets.py): this card only reads
@@ -131,7 +131,7 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id="llm-budget" className="scroll-mt-24 text-lg font-semibold text-fg">LLM budget</h2>
-          <p className="mt-1 text-sm text-fg-muted">One budget for every provider, model and purpose together: drafts, crews, the news desk, Ask the Blog and this site&apos;s own calls. Kept and enforced by the SEO agent.</p>
+          <p className="mt-1 text-sm text-fg-muted">One budget for every provider, model and purpose together: drafts, crew jobs and flows, AI visibility, Ask the Blog and this site&apos;s own calls. Kept and enforced by the SEO agent.</p>
         </div>
         <nav aria-label="Budget period" className="flex shrink-0 rounded-lg border border-line p-0.5 text-sm">
           {(["day", "month"] as const).map((s) => (

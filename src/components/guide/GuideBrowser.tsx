@@ -26,8 +26,7 @@ const SETTINGS_SECTION: Record<string, string> = {
   Users: "Site settings",
   Bookings: "Community",
   Payments: "Community",
-  "Automation & AI": "SEO agent, AI & ML",
-  "MCP access": "SEO agent, AI & ML",
+  "AI & SEO settings": "SEO agent, AI & ML",
   Invoices: "Community",
 };
 

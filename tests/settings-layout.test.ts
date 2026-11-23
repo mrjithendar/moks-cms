@@ -31,8 +31,9 @@ describe("settings pages share the sectioned layout of Settings → General", ()
     expect(storage).toContain("flash(`${BACK}?section=move`");
   });
 
-  it("MCP access is a section of AI & SEO → Settings; its old page sends you there", () => {
-    expect(read("src/app/admin/(growth)/automation/sections/index.ts")).toContain('{ id: "mcp-access", label: "MCP access", render: McpAccessSection }');
-    expect(read("src/app/admin/(growth)/automation/mcp/page.tsx")).toContain('redirect("/admin/automation?section=mcp-access")');
+  it("MCP access is part of AI & SEO → Settings → MCP; its old page sends you to the connected clients", () => {
+    expect(read("src/app/admin/(growth)/automation/sections/index.ts")).toContain('{ id: "mcp", label: "MCP", group: "Assistants", render: McpSection }');
+    expect(read("src/app/admin/(growth)/automation/mcp/page.tsx")).toContain('redirect(aiSeoSectionHref("mcp", "mcp-clients-h"))');
+    expect(read("src/app/admin/(growth)/automation/sections/mcp.tsx")).toContain('<Section title="Connected clients" id="mcp-clients">');
   });
 });

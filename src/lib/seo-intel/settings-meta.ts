@@ -8,7 +8,7 @@ export type SettingsTab = { id: string; label: string; sections: string[]; descr
 /** Sections not listed here land in "Other", so a new settings section is never hidden. */
 export const SETTINGS_TABS: SettingsTab[] = [
   { id: "data", label: "Data sources", sections: ["google", "sync", "dataforseo"], description: "Which Google properties are read, how far back, and how long data is kept; DataForSEO for volume, difficulty, live rankings and backlinks." },
-  { id: "schedules", label: "Schedules", sections: ["schedules"], description: "When the web worker runs each job (UTC). While the SEO agent is on, its CronJobs own the flow jobs instead." },
+  { id: "schedules", label: "Schedules", sections: ["schedules"], description: "When the web worker runs each job (UTC). While the SEO agent is on, the jobs its flows own run as system jobs on their own schedules instead (AI & SEO → Jobs)." },
   { id: "scoring", label: "Scoring & rules", sections: ["weights", "thresholds"], description: "How recommendations are found and ranked (docs/seo/SCORING.md)." },
   { id: "content", label: "Content & links", sections: ["keywords", "links", "submission"], description: "Keyword opportunities, internal-linking limits and search-engine submission." },
   { id: "ai", label: "AI & drafts", sections: ["drafts", "llm", "aiVisibility"], description: "Claude drafting (always stops at human review), the optional explanation model, and AI visibility (are AI assistants citing the site?)." },
@@ -26,7 +26,7 @@ export const SECTION_LABELS: Record<string, string> = {
   crawler: "Technical crawler",
   llm: "LLM enrichment (optional; off by default)",
   reports: "Reports (email only after recipients are set and email is enabled)",
-  drafts: "Claude drafts (automation stops at “ready for review”; empty models/budget = environment defaults)",
+  drafts: "Claude drafts (automation stops at “ready for review”; empty models = environment defaults; spend counts in the one LLM budget)",
   links: "Internal linking limits (conservative by default)",
   submission: "Search-engine submission (kill switch: SEO_SUBMISSION_ENABLED)",
   keywords: "Keyword opportunities",

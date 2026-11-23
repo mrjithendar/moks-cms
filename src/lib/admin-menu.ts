@@ -115,7 +115,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/models", { group: "ai", heading: "Models & data" }],
   ["/admin/lancedb", { group: "ai" }],
   ["/admin/automation", { group: "ai", title: "Settings", heading: "Settings" }],
-  ["/admin/automation?section=mcp-access", { group: "ai", title: "MCP access" }],
+  ["/admin/automation?section=mcp", { group: "ai", title: "MCP" }],
 
   ["/admin/invoices", { group: "billing" }],
   ["/admin/payments", { group: "billing" }],

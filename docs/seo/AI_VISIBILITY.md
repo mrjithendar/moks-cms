@@ -44,7 +44,7 @@ No model is guessed for ChatGPT or Gemini: each stays "not ready" until its mode
 ## Cost control
 
 AI visibility has no limit of its own: it counts against the one LLM budget (Admin → AI & SEO → Settings → LLM
-budget), like every other LLM call. Before each call the job holds an upper estimate against that budget (Claude: 60k
+providers & budget), like every other LLM call. Before each call the job holds an upper estimate against that budget (Claude: 60k
 input + 4k output tokens at the model's price + 5 searches; the others: `costPerAnswerUsd`; AI Overview: $0.01) and
 stops at the first call that does not fit (the run ends `partial`). Each answer's cost is also written to
 `seo_llm_usage` with purpose `ai_visibility`, which is what the budget adds up. `maxPrompts` still bounds a run. Rough size: 25 prompts ×

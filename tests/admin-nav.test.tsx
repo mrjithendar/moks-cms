@@ -36,7 +36,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
   { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
   { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
-  { href: "/admin/automation?section=mcp-access", label: "MCP access", section: "Site settings" },
+  { href: "/admin/automation?section=mcp", label: "MCP", section: "Site settings" },
   { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
   { href: "/admin/somewhere-new", label: "Brand new page", section: "Operations" },
 ];
@@ -96,7 +96,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(by.posts!.items.map((i) => i.heading)).toEqual([undefined, undefined, undefined, "Editorial"]); // the editorial pages sit under Posts
     // AI & SEO: the crew jobs, content, what the site measures, then its settings; a sub-heading sits on the first page under it.
     expect(by.ai!.label).toBe("AI & SEO");
-    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Crew jobs"], ["Keywords", "Content"], ["Search performance", "Traffic"], ["Settings", "Settings"], ["MCP access", undefined]]);
+    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Crew jobs"], ["Keywords", "Content"], ["Search performance", "Traffic"], ["Settings", "Settings"], ["MCP", undefined]]);
     expect(by.comments!.items.map((i) => i.title)).toEqual(["All comments", "Messages", "Bookings"]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
     expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);
@@ -136,7 +136,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
   });
 
   it("the current page is the longest matching link, and a link with a query only matches that query", () => {
-    expect(currentOf(ITEMS, "/admin/automation", new URLSearchParams("section=mcp-access"))?.label).toBe("MCP access");
+    expect(currentOf(ITEMS, "/admin/automation", new URLSearchParams("section=mcp"))?.label).toBe("MCP");
     expect(currentOf(ITEMS, "/admin/automation/skills")?.label).toBe("Skills");
     expect(currentOf(ITEMS, "/admin/automation")?.label).toBe("Automation & AI");
     expect(currentOf(ITEMS, "/admin")?.label).toBe("Dashboard");
@@ -159,7 +159,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(found("  ")).toEqual([]);
     expect(found("zzz")).toEqual([]);
     expect(filterMenu(menu, "key")[0]!.group).toBe("AI & SEO");
-    expect(found("settings mcp")).toEqual(["MCP access"]); // found by the sub-heading it sits under
+    expect(found("settings mcp")).toEqual(["MCP"]); // found by the sub-heading it sits under
   });
 
   it("reads the preferences cookie defensively", () => {
@@ -272,10 +272,10 @@ describe("admin sidebar", () => {
     expect(list("comments").hidden).toBe(false);
     expect(currentLink()!.textContent).toBe("Bookings");
     pathname = "/admin/automation";
-    search = "section=mcp-access";
+    search = "section=mcp";
     render();
     expect(list("ai").hidden).toBe(false);
-    expect(currentLink()!.textContent).toBe("MCP access");
+    expect(currentLink()!.textContent).toBe("MCP");
   });
 
   it("follows the section of a page that holds several menu pages (?section=…)", () => {

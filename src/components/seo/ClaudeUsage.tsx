@@ -17,7 +17,7 @@ export async function loadClaudeUsage(): Promise<ClaudeUsageData> {
   return { cfg: { ...cfg, keySet: Boolean(apiKey) }, b, flows: await flowCostBreakdown(db, b.spentUsd) };
 }
 
-/** AI & SEO settings → LLM budget → LLM usage (called "Claude usage" before): this site's own month-to-date spend per model, with cache reads. A usage figure: the limit is the one LLM budget. */
+/** AI & SEO settings → LLM providers & budget → LLM usage (called "Claude usage" before): this site's own month-to-date spend per model, with cache reads. A usage figure: the limit is the one LLM budget. */
 export function ClaudeUsageCard({ data }: { data: ClaudeUsageData }) {
   const { cfg, b, flows } = data;
   return (
@@ -112,7 +112,7 @@ export async function BudgetBanner() {
       <p className="font-medium">LLM calls paused: the {stop.period === "day" ? "daily" : "monthly"} LLM budget is used up</p>
       <p className="mt-0.5">
         ${stop.spentUsd.toFixed(2)} of ${stop.limitUsd.toFixed(2)} spent this {stop.period === "day" ? "day (UTC)" : "month"}. Existing drafts can still be reviewed and approved. Change the limit under{" "}
-        <Link className="underline" href="/admin/automation?section=llm-budget">AI &amp; SEO → Settings → LLM budget</Link>, or wait for it to reset.
+        <Link className="underline" href="/admin/automation?section=llm#llm-budget">AI &amp; SEO → Settings → LLM providers &amp; budget</Link>, or wait for it to reset.
       </p>
     </div>
   );

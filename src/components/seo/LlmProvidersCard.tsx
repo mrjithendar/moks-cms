@@ -285,7 +285,7 @@ function ProviderForm({ provider, kind, canStoreKeys, keyEnv, isNew, onSaved, on
   );
 }
 
-/** AI & SEO settings → LLM providers & models: one form per provider, saved one at a time in the SEO agent. */
+/** AI & SEO settings → LLM providers & budget → providers and models: one form per provider, saved one at a time in the SEO agent. */
 export function LlmProvidersCard({ load }: { load: LlmProvidersLoad }) {
   const router = useRouter();
   const [view, setView] = useState<AgentLlmProvidersView | null>(load.view);
@@ -296,7 +296,7 @@ export function LlmProvidersCard({ load }: { load: LlmProvidersLoad }) {
   if (!view) {
     return (
       <Card className="mb-6">
-        <h2 className="text-lg font-semibold text-fg">LLM providers &amp; models</h2>
+        <h2 id="llm-providers" className="scroll-mt-24 text-lg font-semibold text-fg">LLM providers &amp; models</h2>
         <div className="mt-4">
           <Alert tone={load.tooOld ? "info" : "error"}>{load.error ?? "The SEO agent could not be asked."} Providers, keys and models are kept by the SEO agent, so they can be seen and changed only while it is reachable.</Alert>
         </div>

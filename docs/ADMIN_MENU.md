@@ -27,7 +27,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Pages | All pages, Add new page, Hire me page |
 | Comments | All comments, Messages, Bookings |
 | — | |
-| AI & SEO | **Crew jobs:** CrewAI console, Jobs (content jobs and system jobs), Job runs, Flow runs, Flows (with Custom flows), Crews (with Custom crews), Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP access |
+| AI & SEO | **Crew jobs:** CrewAI console, Jobs (content jobs and system jobs), Job runs, Flow runs, Flows (with Custom flows), Crews (with Custom crews), Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | — | |
@@ -55,7 +55,7 @@ address, so bookmarks and links still work. What moved where:
 | AI room → CrewAI console, Flow runs, Flows, Schedules, Crews, CrewAI import / export, Skills | AI & SEO → Agent (Import / export is the last one) |
 | AI room → ML models, LanceDB | AI & SEO → Models & data |
 | AI room → Automation & AI | AI & SEO → Settings → Settings |
-| AI room → MCP access | AI & SEO → Settings → MCP access |
+| AI room → MCP access | AI & SEO → Settings → MCP (one section with the servers since 2026-11-23) |
 | SEO & insights → Traffic, Content, Authority & health | AI & SEO → the same three headings |
 
 A sub-heading is drawn above the first page a person can see under it (`arrangeMenu`), so a heading is not lost when

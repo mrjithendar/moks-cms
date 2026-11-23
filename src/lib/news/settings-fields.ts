@@ -31,7 +31,7 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   limits: {
     id: "limits",
     title: "Crew job limits",
-    description: "Apply to every crew job together, on top of each job's own caps. LLM spend has no cap here: it counts in the one LLM budget (Settings → LLM budget).",
+    description: "Apply to every crew job together, on top of each job's own caps. LLM spend has no cap here: it counts in the one LLM budget (Settings → LLM providers & budget).",
     fields: [
       { key: "max_drafts_per_day", label: "Drafts per day (all jobs)", kind: "number" },
       { key: "draft_concurrency", label: "Drafts in parallel", kind: "number", hint: "1–4; each draft is one crew run" },
