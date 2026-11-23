@@ -1,30 +1,77 @@
-import Link from "next/link";
-import { Card } from "@/components/admin/ui";
+import { Card, Table, td, th } from "@/components/admin/ui";
 import { AgentSettingsGroup } from "@/components/seo/AgentSettingsGroup";
-import { buttonClass } from "@/components/ui/form";
+import { Empty, fmtWhen, Section } from "@/components/seo/ui";
+import { listGrants, metadata as asMetadata, resourceUrl, SCOPES } from "@/lib/mcp-oauth/oauth";
+import { mcpEnabled } from "@/lib/seo-agent/endpoint";
 import { loadAgentSettings } from "@/lib/seo-agent/settings-client";
+import { siteOrigin } from "@/lib/seo-intel/urls";
+import { revokeGrant } from "../mcp/actions";
 
 /**
- * AI & SEO settings → MCP: the SEO agent's group "mcp" (the two servers' switches, limits and host names), and the
- * way to the connections page. Which tools exist, and that none approves, publishes or submits, is owned by the
- * agent's code and is not a setting.
+ * AI & SEO settings → MCP (one section since 2026-11-23; it was "MCP" and "MCP access", and before 2026-11-21 MCP
+ * access was its own page, /admin/automation/mcp, which now opens this section). Top down: what a client can and
+ * cannot do; the two servers, whether each is on and how to connect Claude; the clients connected, with Revoke; then
+ * the SEO agent's group "mcp" (the servers' switches, limits and host names). Which tools exist, and that none
+ * approves, publishes or submits, is owned by the agent's code and is not a setting.
  */
 export default async function McpSection() {
+  const [grants, adminOn, publicOn, agent] = await Promise.all([listGrants(), mcpEnabled("admin"), mcpEnabled("public"), loadAgentSettings()]);
+  const origin = siteOrigin().origin;
+  const on = (v: boolean) => <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${v ? "bg-green-50 text-green-800 dark:bg-green-500/10 dark:text-green-300" : "bg-surface-sunken text-fg-muted"}`}>{v ? "on" : "off"}</span>;
   return (
     <>
-      <Card className="mb-6">
+      <Card>
         <h2 className="text-lg font-semibold text-fg">MCP</h2>
         <p className="mt-1 text-sm text-fg-muted">
-          AI clients such as Claude can read the site&apos;s SEO data and start flows through the SEO agent&apos;s MCP servers. Which clients are connected, their scopes and how to connect one are on the MCP access page.
+          AI assistants (Claude on your phone or desktop, MCP Inspector) connect to the SEO agent&apos;s MCP servers. They can read metrics, triage drafts and start drafting or sync flows.
         </p>
-        <p className="mt-3 text-sm text-fg-muted">No MCP tool can approve, publish, roll back or submit content, and the flows a client may start are fixed in the agent&apos;s code. The settings below cannot widen that.</p>
-        <p className="mt-4">
-          <Link href="/admin/automation?section=mcp-access" className={buttonClass("secondary")}>
-            Open MCP access
-          </Link>
-        </p>
+        <p className="mt-3 text-sm text-fg-muted">They can never approve, publish, roll back or submit to search engines: approval stays on the review page. The flows a client may start are fixed in the agent&apos;s code, and the settings below cannot widen that.</p>
       </Card>
-      <AgentSettingsGroup load={await loadAgentSettings()} groupId="mcp" title="MCP servers" />
+      <Section title="Servers">
+        <Card>
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="font-medium">Admin server {on(adminOn)}</dt>
+              <dd className="mt-1 font-mono text-xs text-fg-muted">{resourceUrl()}</dd>
+              <dd className="mt-1 text-xs text-fg-subtle">OAuth 2.1 with PKCE · authorization server {asMetadata().issuer} · switch: ADMIN_MCP_ENABLED, and the SEO agent on</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Public server {on(publicOn)}</dt>
+              <dd className="mt-1 font-mono text-xs text-fg-muted">{origin}/mcp/public</dd>
+              <dd className="mt-1 text-xs text-fg-subtle">Read-only, published articles only, no sign-in · switch: PUBLIC_MCP_ENABLED, and the SEO agent on</dd>
+            </div>
+          </dl>
+          <p className="mt-4 text-sm text-fg-muted">
+            To connect Claude: Settings › Connectors › Add custom connector, URL <span className="font-mono text-xs">{resourceUrl()}</span>. Claude registers itself, sends you to a consent page on this site, and appears under Connected clients.
+          </p>
+        </Card>
+      </Section>
+      <Section title="Connected clients" id="mcp-clients">
+        {grants.length === 0 ? (
+          <Empty>No clients connected. Clients appear here after you allow them on the consent page.</Empty>
+        ) : (
+          <Table head={<tr><th className={th}>Client</th><th className={th}>Scopes</th><th className={th}>Allowed</th><th className={th}>Last used</th><th className={th}>Status</th><th className={th}><span className="sr-only">Actions</span></th></tr>}>
+            {grants.map((g) => (
+              <tr key={g.id}>
+                <td className={td}>{g.client_name}<span className="block font-mono text-xs text-fg-subtle">{g.client_id.slice(0, 16)}…</span></td>
+                <td className={`${td} text-xs`}>{g.scopes.map((s) => <span key={s} title={SCOPES[s as keyof typeof SCOPES]} className="mr-1 inline-block rounded bg-surface-sunken px-1.5 py-0.5 font-mono">{s}</span>)}</td>
+                <td className={`${td} whitespace-nowrap text-xs`}>{fmtWhen(g.created_at)}<span className="block text-fg-subtle">{g.email}</span></td>
+                <td className={`${td} whitespace-nowrap text-xs`}>{g.last_used_at ? fmtWhen(g.last_used_at) : "never"}</td>
+                <td className={`${td} text-xs`}>{g.revoked_at ? <>revoked {fmtWhen(g.revoked_at)}</> : "active"}</td>
+                <td className={td}>
+                  {!g.revoked_at && (
+                    <form action={revokeGrant}>
+                      <input type="hidden" name="grantId" value={g.id} />
+                      <button className="min-h-9 rounded-md border border-line-strong px-3 text-sm font-medium text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10">Revoke</button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Section>
+      <AgentSettingsGroup load={agent} groupId="mcp" title="Server settings" />
     </>
   );
 }

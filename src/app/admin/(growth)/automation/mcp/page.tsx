@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
+import { aiSeoSectionHref } from "../sections/paths";
 
 export const dynamic = "force-dynamic";
 
-/** MCP access is a section of AI & SEO → Settings since 2026-11-21 (the sectioned layout of Settings → General). */
+/** MCP access was its own page until 2026-11-21; it is part of AI & SEO → Settings → MCP since 2026-11-23. */
 export default function McpAccessPage() {
-  redirect("/admin/automation?section=mcp-access");
+  redirect(aiSeoSectionHref("mcp", "mcp-clients-h"));
 }

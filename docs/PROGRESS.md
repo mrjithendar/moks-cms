@@ -1,5 +1,29 @@
 # Progress log — jithendar.com
 
+## AI & SEO settings reorganised: LLM and MCP sections merged, four headings (2026-11-23, owner request)
+
+- **LLM providers & budget** (`?section=llm`, `sections/llm.tsx`) is one section: the LLM budget card on top, the
+  providers & models card under it, this site's LLM usage at the bottom. It replaces `llm-providers` and `llm-budget`.
+- **MCP** (`?section=mcp`) is one section: what a client can and cannot do, the two servers and how to connect Claude,
+  Connected clients with Revoke, then the agent's MCP server settings. It replaces `mcp` + `mcp-access`.
+- The section list has four headings (`SettingsSection.group`, `groupSections`; an `<optgroup>` on a phone): SEO
+  agent (Overview, Agent limits, Run history), Models & AI (LLM providers & budget, AI & drafts, ML & retrieval),
+  Assistants (Ask the Blog, MCP), SEO (Data sources, Schedules, Scoring & rules, Content & links, Crawler, Reports).
+  Pages without groups (Appearance, Integrations, Storage, Email) look as before.
+- Old ids still work: `?section=llm-budget|llm-providers|mcp-access` redirect to the merged section, keeping the rest
+  of the query (`&scope=day`) and scrolling to the card (`sections/paths.ts` `aliasTarget`); `/admin/automation/mcp`
+  opens Connected clients. Every link in the app, the menu item (now "MCP"), System status, the guide and docs point
+  at the new ids.
+- Fixed on the way (found reviewing the owner's screenshots): the budget card still said "the news desk"; the drafts
+  card's title promised a budget field that no longer exists; the Schedules area said the agent's "CronJobs" own the
+  flow jobs (they are system jobs on the one dispatcher since #154/#182); the guide said AI & drafts has "its monthly
+  budget". The user guide's settings reference links each SEO area to its own section.
+- Guide: `src/lib/user-guide.ts` (AI & SEO settings guide rewritten by heading, MCP guide, FAQs), the settings
+  reference (`user-guide-settings.ts`, area "AI & SEO settings"), diagram `mcp-access` re-exported.
+- Tests: `tests/seo-settings-ui.test.tsx` (+2: headings, aliases, the merged sections' cards), `settings-layout`,
+  `llm-budget`, `admin-nav` updated. Ran: those + guide, health, LLM, MCP and agent-settings files (15 files, all
+  pass), `tsc --noEmit`, eslint on the changed files.
+
 ## Crew jobs: no Newsroom, WordPress-style menu, sectioned settings, content jobs, builder (2026-11-21, owner request)
 
 - The news agent split was reversed (moks-seo-agent #25, moks-cms #178, jithendar.com #16, k8s-deployments #29): the

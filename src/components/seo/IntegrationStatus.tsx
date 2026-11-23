@@ -44,7 +44,7 @@ export async function loadConnections(env: Record<string, string | undefined> = 
     key: "claude",
     name: "Claude (drafting)",
     status: cfg.apiKey ? "ok" : "not configured",
-    detail: cfg.apiKey ? "Key set (ANTHROPIC_API_KEY). The limit is the LLM budget (Settings → LLM budget)." : "ANTHROPIC_API_KEY is not set: drafting and intent labelling use rules only.",
+    detail: cfg.apiKey ? "Key set (ANTHROPIC_API_KEY). The limit is the LLM budget (Settings → LLM providers & budget)." : "ANTHROPIC_API_KEY is not set: drafting and intent labelling use rules only.",
   });
   // The only line that may probe the network: the agent's status (cached per process; endpoint.ts).
   const st = await agentStatus(env === process.env ? {} : { env });

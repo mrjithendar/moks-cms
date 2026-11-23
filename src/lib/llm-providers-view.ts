@@ -1,7 +1,7 @@
 import { AgentError, getLlmModels, getLlmProviders, type AgentLlmModel, type AgentLlmProvidersView } from "./seo-agent/client";
 
 /**
- * Admin → AI & SEO → Settings → LLM providers & models. Providers, keys and models belong to the seo-agent, which
+ * Admin → AI & SEO → Settings → LLM providers & budget (the providers card). Providers, keys and models belong to the seo-agent, which
  * makes the LLM calls: it stores them (keys sealed with its own key), validates a save and never sends a key back
  * (moks-seo-agent/app/llm_providers). This app only shows the agent's answer and hands a save to it.
  */

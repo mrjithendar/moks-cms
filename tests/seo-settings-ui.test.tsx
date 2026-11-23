@@ -92,11 +92,46 @@ describe("settings page", () => {
     const { AI_SEO_SECTIONS } = await import("@/app/admin/(growth)/automation/sections");
     const ids = AI_SEO_SECTIONS.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ["overview", "llm-providers", "llm-budget", "agent-limits", "ask-the-blog", "ml", "mcp"]) expect(ids).toContain(id);
+    for (const id of ["overview", "llm", "agent-limits", "ask-the-blog", "ml", "mcp"]) expect(ids).toContain(id);
+    for (const old of ["llm-providers", "llm-budget", "mcp-access"]) expect(ids, old).not.toContain(old); // merged; paths.ts SECTION_ALIASES
     for (const t of meta.SETTINGS_TABS) expect(ids, t.id).toContain(t.id); // an old #tab-<id> link maps onto ?section=<id>
     const dir = path.resolve(import.meta.dirname, "../src/app/admin/(growth)/automation/sections");
     const files = fs.readdirSync(dir).filter((f) => f.endsWith(".tsx") && f !== "seo-area.tsx").map((f) => f.replace(/\.tsx$/, ""));
     expect(files.sort()).toEqual(ids.map((id) => (meta.SETTINGS_TABS.some((t) => t.id === id) ? `seo-${id}` : id)).sort());
+  });
+
+  it("lists the sections under four headings, and an id from before a merge is sent on to the section that has it now", async () => {
+    const { AI_SEO_SECTIONS, aliasTarget } = await import("@/app/admin/(growth)/automation/sections");
+    const { groupSections } = await import("@/components/admin/SettingsSections");
+    // Each heading once: the sections under one heading are next to each other in the list.
+    expect(groupSections(AI_SEO_SECTIONS).map((g) => g.group)).toEqual(["SEO agent", "Models & AI", "Assistants", "SEO"]);
+    const html = await page();
+    for (const g of ["SEO agent", "Models &amp; AI", "Assistants", "SEO"]) {
+      expect(html).toContain(`<optgroup label="${g}">`); // the phone's select
+      expect(html).toContain(`<ul aria-label="${g}"`); // the list on a wide screen
+    }
+    expect(aliasTarget({ section: "llm-budget", scope: "day" })).toBe("/admin/automation?section=llm&scope=day#llm-budget");
+    expect(aliasTarget({ section: "llm-providers" })).toBe("/admin/automation?section=llm#llm-providers");
+    expect(aliasTarget({ section: "mcp-access" })).toBe("/admin/automation?section=mcp#mcp-clients-h");
+    expect(aliasTarget({ section: "llm" })).toBeNull();
+    expect(aliasTarget({})).toBeNull();
+  });
+
+  it("LLM providers & budget has the budget, the providers and this site's usage; MCP has the servers, the clients and their settings", async () => {
+    const llm = await page("llm");
+    expect(llm).toMatch(/<a[^>]*aria-current="page"[^>]*>LLM providers &amp; budget/);
+    // The ids the old addresses scroll to are there even while the SEO agent cannot be asked (as here).
+    expect(llm).toContain('id="llm-budget"');
+    expect(llm).toContain('id="llm-providers"');
+    expect(llm).toContain("LLM usage this month");
+    expect(llm.indexOf('id="llm-budget"')).toBeLessThan(llm.indexOf('id="llm-providers"'));
+    expect(llm).toContain('href="/admin/automation?section=llm&amp;scope=day"'); // the budget's Daily tab stays in this section
+    const mcp = await page("mcp");
+    expect(mcp).toMatch(/<a[^>]*aria-current="page"[^>]*>MCP</);
+    expect(mcp).toContain("Admin server");
+    expect(mcp).toContain('id="mcp-clients-h"');
+    expect(mcp).toContain("No clients connected.");
+    expect(mcp).not.toContain("Open MCP access"); // no link to a page that is now the same section
   });
 
   it("an area saved on its own is laid over the stored document; the rest is not touched", async () => {

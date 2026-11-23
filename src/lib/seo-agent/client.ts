@@ -192,7 +192,7 @@ export const lanceDelete = (table: string, k: LanceKey, deps?: AgentDeps) =>
 
 /**
  * The one LLM budget (moks-seo-agent app/llm_budgets.py): an optional daily and an optional monthly limit for every
- * provider, model and purpose together, stored and enforced by the agent. Admin → AI & SEO → Settings → LLM budget
+ * provider, model and purpose together, stored and enforced by the agent. Admin → AI & SEO → Settings → LLM providers & budget
  * only shows and edits it. The breakdowns are for reading; they limit nothing.
  */
 export type AgentLlmBudget = { daily_usd: number | null; monthly_usd: number | null };

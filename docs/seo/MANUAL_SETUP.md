@@ -293,7 +293,7 @@ No client registration is needed: Claude and MCP Inspector register themselves (
    Auth → OAuth flow): consent page as admin → tools listed → `get_overview` works.
 4. Claude: Settings › Connectors › Add custom connector → `https://jithendar.com/mcp/admin`; allow; ask "triage my SEO
    review queue". Mark "Claude custom connector" as verified in PROGRESS.md.
-5. SEO › Settings › MCP access lists both clients; **Revoke** one and confirm its next call fails.
+5. AI & SEO › Settings › MCP lists both clients; **Revoke** one and confirm its next call fails.
 
 ## 27. Gateway routes for /mcp/* (Kong; additive)
 The entities are in `kubernetes/kong/seo-agent-mcp.deck.yaml` (one Service, two Routes, rate-limiting and

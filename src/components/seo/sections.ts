@@ -39,8 +39,8 @@ export const SEO_GROUPS: { label: string; items: Section[] }[] = [
       { href: "/admin/integrations", label: "Integrations", icon: "plug", hint: "Search Console, GA4, Claude" },
       { href: "/admin/sync", label: "Data sync", icon: "sync", hint: "Jobs, errors, correlation ids" },
       { href: "/admin/models", label: "ML models", icon: "chart", hint: "Model versions, metrics vs the rules, overrides, labelling" },
-      { href: "/admin/automation", label: "AI & SEO settings", icon: "cog", hint: "Schedules, thresholds, drafts, budget" },
-      { href: "/admin/automation?section=mcp-access", label: "MCP access", icon: "plug", hint: "AI assistants connected to the SEO tools" },
+      { href: "/admin/automation", label: "AI & SEO settings", icon: "cog", hint: "SEO agent, LLM providers & budget, ML, SEO settings" },
+      { href: "/admin/automation?section=mcp", label: "MCP", icon: "plug", hint: "MCP servers and the AI assistants connected to the SEO tools" },
     ],
   },
 ];

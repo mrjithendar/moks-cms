@@ -44,7 +44,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
           ))}
         </ul>
         <p className="mt-5 rounded-lg bg-surface-sunken p-3 text-sm text-fg-muted">
-          It can <strong>never</strong> approve or publish a draft, roll back, or submit pages to search engines. Approval stays on this site&apos;s review page. You can revoke access any time in SEO › Settings › MCP access.
+          It can <strong>never</strong> approve or publish a draft, roll back, or submit pages to search engines. Approval stays on this site&apos;s review page. You can revoke access any time in AI &amp; SEO › Settings › MCP.
         </p>
         <form action={decide} className="mt-6 flex gap-3">
           {Object.entries(q).map(([k, v]) => (typeof v === "string" ? <input key={k} type="hidden" name={`q_${k}`} value={v} /> : null))}

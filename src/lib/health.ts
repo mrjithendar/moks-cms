@@ -197,7 +197,7 @@ function extraChecks(): Promise<Check>[] {
       if (failing.length) return { status: "degraded", detail: `ready · latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} (${f.at} UTC: ${f.error})`).join("; ")}` };
       return { status: "ok", detail: "ready · no flow's latest run failed in the last 24 h" };
     }),
-    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=llm-providers" }, async () => {
+    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=llm#llm-providers" }, async () => {
       const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
       const c = claudeConfig(await getSeoSettings());
       if (!c.apiKey) return { status: "not configured", detail: "ANTHROPIC_API_KEY is not set: drafting, Improve and reviews use rules only" };
@@ -211,7 +211,7 @@ function extraChecks(): Promise<Check>[] {
         return { status, detail: st.message };
       }),
     ),
-    timed("LLM budget", { group: "SEO & AI", href: "/admin/automation?section=llm-budget" }, async () => {
+    timed("LLM budget", { group: "SEO & AI", href: "/admin/automation?section=llm#llm-budget" }, async () => {
       // The one budget lives in the seo-agent. No limit at all is reported as degraded: nothing then stops LLM spending.
       const { loadLlmBudget } = await import("./llm-budget-view");
       const { view, error, tooOld } = await loadLlmBudget("month");

@@ -40,10 +40,10 @@ function seoGroups(): SettingsGroup[] {
     if (!mine.length) return [];
     return mine.map((section) => ({
       id: `seo-${section}`,
-      area: "Automation & AI",
+      area: "AI & SEO settings",
       title: `${tab.label}: ${SECTION_LABELS[section] ?? humanize(section)}`,
       description: tab.description,
-      href: "/admin/automation",
+      href: tab.id === "other" ? "/admin/automation" : `/admin/automation?section=${tab.id}`,
       rows: leafPaths(getPath(doc, section) ?? {}, [section]).map((path) => ({
         name: path.split(".").slice(1).map(humanize).join(" › "),
         key: path,
@@ -359,10 +359,10 @@ const INTEGRATIONS: SettingsGroup[] = [
 function mcpGroup(): SettingsGroup {
   return {
     id: "mcp-scopes",
-    area: "MCP access",
-    title: "MCP servers and scopes",
+    area: "AI & SEO settings",
+    title: "MCP: servers and scopes",
     description: "No scope can approve, publish, roll back or submit to search engines.",
-    href: "/admin/automation?section=mcp-access",
+    href: "/admin/automation?section=mcp",
     rows: [
       r("Admin server", "OAuth 2.1 with PKCE; switch ADMIN_MCP_ENABLED.", "off"),
       r("Public server", "Read-only, published articles only, no sign-in; switch PUBLIC_MCP_ENABLED.", "off"),

@@ -20,7 +20,26 @@ import { inputClass } from "@/components/ui/form";
  * A form inside a section calls `useUnsavedChanges(dirty)`. While any form has unsaved changes, leaving the section
  * asks first, and so does closing the tab.
  */
-export type SettingsSection = { id: string; label: string; /** Problems to fix in this section, shown as a count. */ problems?: number };
+export type SettingsSection = {
+  id: string;
+  label: string;
+  /** Problems to fix in this section, shown as a count. */
+  problems?: number;
+  /** A heading the section is listed under (an optgroup in the phone's select). Sections of one group are next to each other. */
+  group?: string;
+};
+
+/** The sections in runs of the same group, in their order: `[{ group: "SEO", sections: [...] }, ...]`; no group = "". */
+export function groupSections<T extends { group?: string }>(sections: readonly T[]): { group: string; sections: T[] }[] {
+  const runs: { group: string; sections: T[] }[] = [];
+  for (const s of sections) {
+    const g = s.group ?? "";
+    const last = runs.at(-1);
+    if (last && last.group === g) last.sections.push(s);
+    else runs.push({ group: g, sections: [s] });
+  }
+  return runs;
+}
 
 type Unsaved = { report: (id: symbol, dirty: boolean) => void };
 const UnsavedContext = createContext<Unsaved | null>(null);
@@ -138,38 +157,54 @@ export function SettingsSections({
           <label className="block xl:hidden">
             <span className="sr-only">Section</span>
             <select value={current} onChange={(e) => go(e.target.value)} className={inputClass}>
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                  {s.problems ? ` (${s.problems} to fix)` : ""}
-                </option>
-              ))}
+              {groupSections(sections).map(({ group, sections: run }) => {
+                const options = run.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                    {s.problems ? ` (${s.problems} to fix)` : ""}
+                  </option>
+                ));
+                return group ? (
+                  <optgroup key={group} label={group}>
+                    {options}
+                  </optgroup>
+                ) : (
+                  options
+                );
+              })}
             </select>
           </label>
-          <ul className="hidden space-y-0.5 xl:block">
-            {sections.map((s) => (
-              <li key={s.id}>
-                {onSelect || !href ? (
-                  <button type="button" onClick={() => go(s.id)} aria-current={s.id === current ? "page" : undefined} className={item(s.id === current)}>
-                    {s.label}
-                    {count(s.problems)}
-                  </button>
-                ) : (
-                  <Link
-                    href={href(s.id)}
-                    aria-current={s.id === current ? "page" : undefined}
-                    className={item(s.id === current)}
-                    onClick={(e) => {
-                      if (s.id !== current && !mayLeave()) e.preventDefault();
-                    }}
-                  >
-                    {s.label}
-                    {count(s.problems)}
-                  </Link>
-                )}
-              </li>
+          <div className="hidden xl:block">
+            {groupSections(sections).map(({ group, sections: run }, i) => (
+              <div key={group || i} className={i > 0 ? "mt-4" : undefined}>
+                {group && <p aria-hidden="true" className="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">{group}</p>}
+                <ul aria-label={group || undefined} className="space-y-0.5">
+                  {run.map((s) => (
+                    <li key={s.id}>
+                      {onSelect || !href ? (
+                        <button type="button" onClick={() => go(s.id)} aria-current={s.id === current ? "page" : undefined} className={item(s.id === current)}>
+                          {s.label}
+                          {count(s.problems)}
+                        </button>
+                      ) : (
+                        <Link
+                          href={href(s.id)}
+                          aria-current={s.id === current ? "page" : undefined}
+                          className={item(s.id === current)}
+                          onClick={(e) => {
+                            if (s.id !== current && !mayLeave()) e.preventDefault();
+                          }}
+                        >
+                          {s.label}
+                          {count(s.problems)}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </nav>
         <div className="min-w-0 space-y-6">{children}</div>
       </div>

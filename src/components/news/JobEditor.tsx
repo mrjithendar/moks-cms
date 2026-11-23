@@ -305,7 +305,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               {num("Images per day (USD)", Number(c.budget.image_daily_usd), (n) => setNested("budget", "image_daily_usd", n), { min: 0, max: 100, step: 0.05 })}
               {num("Images per month (USD)", Number(c.budget.image_monthly_usd), (n) => setNested("budget", "image_monthly_usd", n), { min: 0, max: 1000, step: 0.5 })}
               {num("Tokens per draft (crew cap)", Number(c.budget.max_tokens_per_draft), (n) => setNested("budget", "max_tokens_per_draft", n), { min: 10_000, max: 400_000, step: 1000 })}
-              <p className="text-sm text-fg-subtle sm:col-span-2">These are image caps and a token limit per draft. LLM spend has no cap per job: it counts in the one LLM budget (AI &amp; SEO → Settings → LLM budget), and a run stops as “paused (budget)” when that is used up or an image cap is reached. The global image caps (Settings) apply too.</p>
+              <p className="text-sm text-fg-subtle sm:col-span-2">These are image caps and a token limit per draft. LLM spend has no cap per job: it counts in the one LLM budget (AI &amp; SEO → Settings → LLM providers &amp; budget), and a run stops as “paused (budget)” when that is used up or an image cap is reached. The global image caps (Settings) apply too.</p>
             </div>
           )}
           {tab === "Review" && (
