@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, setDbForTests, type Db } from "@/db";
 import { GET as adsTxtRoute } from "@/app/ads.txt/route";
 import { consentDefaultsScript } from "@/components/integrations/ThirdParty";
+import { readerRevenueInitScript } from "@/components/integrations/ThirdPartyClient";
 import { adsTxt, integrations, isTrackablePath } from "@/config/integrations";
 import { cleanLocation, PageViewDeduper, safeParams } from "@/lib/analytics";
 import { getPublishedArticle, invalidateContent } from "@/lib/content";
@@ -59,6 +60,29 @@ describe("integration configuration", () => {
     expect(integrations({}, true).adsense?.client).toBe("ca-pub-2479369059565142");
     expect(integrations({}, false).adsense).toBeNull();
     expect(integrations({ ADSENSE_CLIENT_ID: "off" }, true).adsense).toBeNull();
+  });
+
+  it("loads Reader Revenue Manager in production only, from the admin setting or site.json", () => {
+    const site = { language: "en", readerRevenue: { productId: "CAowy6LIDA:openaccess", lang: "en-GB" } };
+    expect(integrations({}, true, site).readerRevenue).toEqual({ productId: "CAowy6LIDA:openaccess", lang: "en-GB" });
+    expect(integrations({}, false, site).readerRevenue).toBeNull(); // never outside production
+    // The admin value wins; "off" turns it off; nothing configured: none.
+    expect(integrations({ READER_REVENUE_PRODUCT_ID: "ABCDEFGHIJ:premium" }, true, site).readerRevenue?.productId).toBe("ABCDEFGHIJ:premium");
+    expect(integrations({ READER_REVENUE_PRODUCT_ID: "off" }, true, site).readerRevenue).toBeNull();
+    expect(integrations({}, true, { language: "en" }).readerRevenue).toBeNull();
+    // Malformed IDs are never put into a page; the language falls back to the site's.
+    expect(integrations({ READER_REVENUE_PRODUCT_ID: 'x:"</script>' }, true, { language: "en" }).readerRevenue).toBeNull();
+    expect(integrations({}, true, { language: "de", readerRevenue: { productId: "CAowy6LIDA:openaccess", lang: "bad lang" } }).readerRevenue?.lang).toBe("de");
+  });
+
+  it("writes Google's Reader Revenue Manager init with the product, the language and the page's theme", () => {
+    const js = readerRevenueInitScript("CAowy6LIDA:openaccess", "en-GB");
+    expect(js).toContain("(self.SWG_BASIC=self.SWG_BASIC||[]).push(");
+    expect(js).toContain('"type":"NewsArticle","isPartOfType":["Product"],"isPartOfProductId":"CAowy6LIDA:openaccess"');
+    expect(js).toContain('"clientOptions":{"lang":"en-GB"}');
+    expect(js).toContain("document.documentElement.dataset.theme");
+    expect(js).toContain("b.init(o)");
+    expect(readerRevenueInitScript("a:</script>", "en")).not.toContain("</script>");
   });
 
   it("serves ads.txt only with the account-provided text, verbatim", async () => {

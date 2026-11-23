@@ -1,11 +1,12 @@
 import { CONSENT_REGIONS } from "@/config/integrations";
-import { AdSenseLoader, GoogleAnalytics } from "./ThirdPartyClient";
+import { AdSenseLoader, GoogleAnalytics, ReaderRevenue } from "./ThirdPartyClient";
 
 /**
  * Consent Mode v2 defaults, then (on public pages only) GA4 and the AdSense tag. Rendered nothing
  * when neither is configured. The AdSense tag also delivers Google's certified consent message
  * (AdSense → Privacy & messaging) to visitors in the EEA, UK and Switzerland; that message updates
  * the consent state below. Ads and analytics never block rendering (both load after hydration).
+ * Reader Revenue Manager (Publisher Center's CTAs) loads on its own, with or without analytics and ads.
  */
 export function consentDefaultsScript(mode: "regional" | "strict"): string {
   const denied = { ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied", analytics_storage: "denied" };
@@ -24,13 +25,14 @@ export async function ThirdParty() {
   // Imported here so the pure helpers above stay usable without a database (tests).
   const { runtimeIntegrations } = await import("@/lib/runtime-settings");
   const cfg = await runtimeIntegrations();
-  if (!cfg.ga4 && !cfg.adsense) return null;
+  if (!cfg.ga4 && !cfg.adsense && !cfg.readerRevenue) return null;
   return (
     <>
       {/* Inline and server-rendered, so it runs during parsing — before GA4 or AdSense (both load after hydration). */}
-      <script id="consent-defaults" dangerouslySetInnerHTML={{ __html: consentDefaultsScript(cfg.consentDefault) }} />
+      {(cfg.ga4 || cfg.adsense) && <script id="consent-defaults" dangerouslySetInnerHTML={{ __html: consentDefaultsScript(cfg.consentDefault) }} />}
       {cfg.ga4 && <GoogleAnalytics measurementId={cfg.ga4} />}
       {cfg.adsense && <AdSenseLoader client={cfg.adsense.client} />}
+      {cfg.readerRevenue && <ReaderRevenue productId={cfg.readerRevenue.productId} lang={cfg.readerRevenue.lang} />}
     </>
   );
 }

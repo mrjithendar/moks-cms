@@ -80,6 +80,17 @@ No newsletter exists, so no newsletter events.
 - If you enable Auto ads, exclude `/admin`, `/login`, `/account`, `/setup` and `/preview` in AdSense; the tag is not
   loaded there anyway.
 
+## Google Reader Revenue Manager
+
+- Publisher Center's site code (`swg-basic.js` plus the `SWG_BASIC` init) is server-rendered on public pages, in
+  production only, so the CTAs set up in Reader Revenue Manager (rewarded ads, surveys, contributions, newsletter
+  sign-ups) can show. Product ID: Admin → Integrations → Analytics, ads and consent (`READER_REVENUE_PRODUCT_ID`),
+  else `readerRevenue.productId` in the site's site.json; `off` turns it off, and nothing loads when neither is set.
+  The language comes from `readerRevenue.lang`, else the site's `language`; the theme follows the page (light/dark).
+- Never on admin, login, account, setup, preview or API routes, and not at all when the visitor arrives on one.
+- Rewarded ad CTAs need AdSense (or Ad Manager) linked in Reader Revenue Manager → Ad settings; with AdSense, the
+  AdSense tag must be on the same pages, which it is wherever ads are on.
+
 ## Security headers
 
 `Strict-Transport-Security` (1 year), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (camera,

@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { adsTxt, integrations, type Integrations } from "@/config/integrations";
+import { adsTxt, integrations, READER_REVENUE_PRODUCT, type Integrations } from "@/config/integrations";
 import { getDb, schema } from "@/db";
 import { audit } from "./audit";
 import { broadcastInvalidate, onInvalidate } from "./cache-bus";
@@ -53,7 +53,7 @@ export const GROUPS: Group[] = [
     id: "analytics",
     page: "/admin/integrations",
     title: "Analytics, ads and consent",
-    description: "Google Analytics 4 and AdSense load only in production, only on public pages, and only after consent where the law requires it.",
+    description: "Google Analytics 4, AdSense and Reader Revenue Manager load only in production and only on public pages; analytics and ads wait for consent where the law requires it.",
     fields: [
       { env: "GA4_MEASUREMENT_ID", label: "GA4 measurement ID", type: "text", pattern: /^$|^G-[A-Z0-9]{4,16}$/, placeholder: "G-XXXXXXXXXX" },
       { env: "ADSENSE_CLIENT_ID", label: "AdSense publisher ID", type: "text", pattern: /^$|^off$|^ca-pub-\d{10,20}$/, placeholder: "ca-pub-2479369059565142", hint: "Empty: ca-pub-2479369059565142 (jithendar.com's account). \"off\" disables ads." },
@@ -70,6 +70,14 @@ export const GROUPS: Group[] = [
         ],
       },
       { env: "ADS_TXT", label: "ads.txt", type: "textarea", hint: "Exactly the line(s) your AdSense account gives you; served at /ads.txt. Empty: /ads.txt returns 404." },
+      {
+        env: "READER_REVENUE_PRODUCT_ID",
+        label: "Reader Revenue Manager product ID",
+        type: "text",
+        pattern: new RegExp(`^$|^off$|${READER_REVENUE_PRODUCT.source}`),
+        placeholder: "ABCDEFGHIJ:openaccess",
+        hint: "Google Publisher Center → Reader Revenue Manager → Add code to your site: the isPartOfProductId value. Empty: readerRevenue.productId in site.json (none if unset). \"off\" turns it off.",
+      },
     ],
   },
   {
