@@ -94,7 +94,7 @@ export const GROUPS: Group[] = [
     id: "cloudflare",
     title: "Cloudflare settings",
     description:
-      "Lets the admin bar's Cache menu, Admin → Cache and publishing purge Cloudflare's copies of your pages, when Cloudflare is in front of the site. Cloudflare dashboard → your domain → Overview: Zone ID. My Profile → API Tokens → Create Token → Custom token: permission Zone → Cache Purge → Purge, zone resources: this domain only (optional: Zone → Zone → Read, to show the zone and plan in Admin → Cache). Then Test connection on the Cloudflare card above.",
+      "Lets the admin bar's Cache menu, Admin → Cache and publishing purge Cloudflare's copies of your pages, when Cloudflare is in front of the site. Cloudflare dashboard → your domain → Overview: Zone ID. My Profile → API Tokens (or Manage account → Account API tokens) → Create Token → Custom token: permission Zone → Cache Purge → Purge, zone resources: this domain only (optional: Zone → Zone → Read, to show the zone and plan in Admin → Cache). Then Test connection on the Cloudflare card above.",
     page: "/admin/cache",
     fields: [
       { env: "CLOUDFLARE_ZONE_ID", label: "Zone ID", type: "text", pattern: /^$|^[a-f0-9]{32}$/, placeholder: "32 hexadecimal characters" },

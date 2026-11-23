@@ -45,6 +45,8 @@ export function describeFailure(status: number, body: ApiBody | null): string {
   const first = body?.errors?.[0];
   const detail = first?.message ? `${first.message}${first.code ? ` (code ${first.code})` : ""}` : `HTTP ${status}`;
   if (status === 429 || first?.code === 1134) return `Cloudflare's purge limit was reached; try again in a minute. Cloudflare said: ${detail}`;
+  if (first?.code === 1000)
+    return `Cloudflare does not recognise this API token: it was rolled or deleted, or not all of it was saved (save an API token, not the Global API Key). Cloudflare said: ${detail}`;
   if (status === 401 || status === 403 || first?.code === 10000 || first?.code === 9109)
     return `Cloudflare refused the API token: it needs Zone → Cache Purge → Purge on this zone, and the zone ID must be the site's. Cloudflare said: ${detail}`;
   if (status === 404) return `Cloudflare does not know this zone ID. Check Advanced settings → Cloudflare. Cloudflare said: ${detail}`;
@@ -97,21 +99,24 @@ export async function purgeCloudflare(cfg: CloudflareConfig, req: PurgeRequest, 
 
 export type ConnectionCheck = { ok: boolean; message: string; zone?: { name: string; plan: string | null; status: string | null } };
 
+/** The address Test connection purges: the site never serves it, so nothing cached is dropped. */
+export const PURGE_CHECK_PATH = "/__cloudflare-purge-check";
+
 /**
- * Admin → Cache → Test connection: the token is active (GET /user/tokens/verify), and, when it may read the zone
- * (optional Zone → Zone → Read), which zone and plan it is. Purges nothing.
+ * Admin → Cache → Test connection: the one permission the site needs, a URL purge on this zone, tried on
+ * PURGE_CHECK_PATH, then, when the token may read the zone (optional Zone → Zone → Read), which zone and plan it is.
+ * Not GET /user/tokens/verify: Cloudflare answers it with 1000 "Invalid API Token" for account-owned tokens
+ * (Manage account → Account API tokens, "cfat_…"), which purge fine.
  */
 export async function checkCloudflare(cfg: CloudflareConfig, fetcher?: Fetcher): Promise<ConnectionCheck> {
   try {
-    const v = await call(cfg, "GET", "/user/tokens/verify", undefined, fetcher);
-    const status = (v.body?.result as { status?: string } | undefined)?.status;
-    if (v.status >= 400 || v.body?.success === false || (status && status !== "active")) {
-      return { ok: false, message: status && status !== "active" ? `The API token is ${status}.` : describeFailure(v.status, v.body) };
-    }
+    const origin = siteUrl();
+    const p = await call(cfg, "POST", `/zones/${encodeURIComponent(cfg.zoneId)}/purge_cache`, { files: [new URL(PURGE_CHECK_PATH, origin).toString()] }, fetcher);
+    if (p.status >= 400 || p.body?.success === false) return { ok: false, message: describeFailure(p.status, p.body) };
     const z = await call(cfg, "GET", `/zones/${encodeURIComponent(cfg.zoneId)}`, undefined, fetcher);
     const zone = z.body?.result as { name?: string; status?: string; plan?: { name?: string } } | undefined;
     if (z.status < 400 && zone?.name) {
-      const host = new URL(siteUrl()).hostname;
+      const host = new URL(origin).hostname;
       const matches = host === zone.name || host.endsWith(`.${zone.name}`);
       return {
         ok: matches,
@@ -119,7 +124,7 @@ export async function checkCloudflare(cfg: CloudflareConfig, fetcher?: Fetcher):
         zone: { name: zone.name, plan: zone.plan?.name ?? null, status: zone.status ?? null },
       };
     }
-    return { ok: true, message: "The API token is active. (Zone details need the optional Zone → Zone → Read permission; purging does not.)" };
+    return { ok: true, message: "The API token can purge this zone. (Zone details need the optional Zone → Zone → Read permission; purging does not.)" };
   } catch (err) {
     return { ok: false, message: err instanceof CloudflareError ? err.message : "Cloudflare could not be reached." };
   }
