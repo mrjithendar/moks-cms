@@ -61,16 +61,31 @@ describe("Cloudflare purge requests", () => {
 });
 
 describe("Cloudflare connection test", () => {
-  it("checks the token, then the zone against the site's host", async () => {
+  it("tries a purge of an address the site never serves, then the zone against the site's host", async () => {
     vi.stubEnv("SITE_URL", "https://example.com");
-    const ok = fakeFetch([{ status: 200, body: { success: true, result: { status: "active" } } }, { status: 200, body: { success: true, result: { name: "example.com", status: "active", plan: { name: "Free Website" } } } }]);
+    const ok = fakeFetch([OK, { status: 200, body: { success: true, result: { name: "example.com", status: "active", plan: { name: "Free Website" } } } }]);
     expect(await checkCloudflare(CFG, ok.fetcher)).toMatchObject({ ok: true, zone: { name: "example.com", plan: "Free Website" } });
-    const other = fakeFetch([{ status: 200, body: { success: true, result: { status: "active" } } }, { status: 200, body: { success: true, result: { name: "other.org" } } }]);
+    expect(ok.calls.map((c) => [c.method, c.url, c.body])).toEqual([
+      ["POST", `https://api.cloudflare.com/client/v4/zones/${CFG.zoneId}/purge_cache`, { files: ["https://example.com/__cloudflare-purge-check"] }],
+      ["GET", `https://api.cloudflare.com/client/v4/zones/${CFG.zoneId}`, undefined],
+    ]);
+    const other = fakeFetch([OK, { status: 200, body: { success: true, result: { name: "other.org" } } }]);
     expect(await checkCloudflare(CFG, other.fetcher)).toMatchObject({ ok: false, message: expect.stringMatching(/not this site's/) });
-    const noZoneRead = fakeFetch([{ status: 200, body: { success: true, result: { status: "active" } } }, { status: 403, body: { success: false, errors: [{ code: 9109 }] } }]);
-    expect(await checkCloudflare(CFG, noZoneRead.fetcher)).toMatchObject({ ok: true, message: expect.stringMatching(/active/) });
-    const bad = fakeFetch([{ status: 401, body: { success: false, errors: [{ code: 1000, message: "Invalid API Token" }] } }]);
-    expect(await checkCloudflare(CFG, bad.fetcher)).toMatchObject({ ok: false });
+    const noZoneRead = fakeFetch([OK, { status: 403, body: { success: false, errors: [{ code: 9109 }] } }]);
+    expect(await checkCloudflare(CFG, noZoneRead.fetcher)).toMatchObject({ ok: true, message: expect.stringMatching(/can purge this zone/) });
+    const noPurge = fakeFetch([{ status: 403, body: { success: false, errors: [{ code: 10000, message: "Authentication error" }] } }]);
+    expect(await checkCloudflare(CFG, noPurge.fetcher)).toMatchObject({ ok: false, message: expect.stringMatching(/Cache Purge → Purge/) });
+    expect(noPurge.calls).toHaveLength(1);
+    const unknown = fakeFetch([{ status: 401, body: { success: false, errors: [{ code: 1000, message: "Invalid API Token" }] } }]);
+    expect(await checkCloudflare(CFG, unknown.fetcher)).toMatchObject({ ok: false, message: expect.stringMatching(/does not recognise this API token/) });
+    vi.unstubAllEnvs();
+  });
+
+  it("never asks /user/tokens/verify, which refuses account-owned tokens that purge fine", async () => {
+    vi.stubEnv("SITE_URL", "https://example.com");
+    const f = fakeFetch([OK, { status: 403, body: { success: false, errors: [{ code: 9109 }] } }]);
+    expect((await checkCloudflare({ ...CFG, token: "cfat_account-owned-token-0123456789" }, f.fetcher)).ok).toBe(true);
+    expect(f.calls.some((c) => c.url.includes("/tokens/verify"))).toBe(false);
     vi.unstubAllEnvs();
   });
 });
