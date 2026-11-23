@@ -52,7 +52,7 @@ def _filters(c: Candidate, cfg: JobConfig) -> str | None:
     text = c.text.lower()
     ents = {e.split(":", 1)[-1] for e in c.entities}
     if c.language and cfg.language and c.language != cfg.language:
-        return f"language {c.language} (job is {cfg.language})"
+        return f"language {c.language} (content flow is {cfg.language})"
     if c.age_hours > cfg.max_age_hours:
         return f"too old ({c.age_hours:.0f} h > {cfg.max_age_hours:.0f} h)"
     for k in cfg.exclude_keywords:
@@ -65,14 +65,14 @@ def _filters(c: Candidate, cfg: JobConfig) -> str | None:
         if not any(_hit(k, text) for k in cfg.include_keywords) and not any(e.lower() in ents for e in cfg.include_entities):
             return "no include keyword or entity matched"
     if cfg.topics and not set(cfg.topics) & set(c.topics):
-        return f"off-topic for this job (topics: {', '.join(c.topics) or 'none'})"
+        return f"off-topic for this content flow (topics: {', '.join(c.topics) or 'none'})"
     if c.covered:
         return f"already covered within {cfg.dedupe_window_days} days"
     if c.site_match and c.site_match.get("update_candidate"):
         return f"an existing article covers this ({c.site_match.get('path')}); suggested as an update instead"
     t = c.threshold if c.threshold is not None else cfg.min_score
     if c.score < t:
-        return f"score {c.score:.2f} below the job's threshold {t:.2f}" + (f" (min_score {cfg.min_score:.2f} mapped to {c.model_version})" if c.threshold is not None else "")
+        return f"score {c.score:.2f} below the content flow's threshold {t:.2f}" + (f" (min_score {cfg.min_score:.2f} mapped to {c.model_version})" if c.threshold is not None else "")
     return None
 
 
@@ -107,7 +107,7 @@ def select(cands: list[Candidate], cfg: JobConfig, counts: Counts, *, global_cap
             c.reason = f"per-run cap ({cfg.max_articles_per_run}) reached"
             continue
         if counts.job_today + taken >= cfg.max_articles_per_day:
-            c.reason = f"daily cap for this job ({cfg.max_articles_per_day}) reached"
+            c.reason = f"daily cap for this content flow ({cfg.max_articles_per_day}) reached"
             continue
         if counts.global_today + taken >= global_cap:
             c.reason = f"global daily cap ({global_cap}) reached"

@@ -79,7 +79,7 @@ async def test_tool_registries_and_schemas(llm, web) -> None:
         assert {p.name for p in (await s.list_prompts()).prompts} == {"triage_review_queue", "weekly_seo_briefing", "investigate_drop", "ai_visibility_review"}
         for name, t in tools.items():
             assert t.annotations is not None and t.annotations.destructiveHint is False, name
-            assert t.annotations.readOnlyHint is (name not in ("kickoff_flow", "reject_draft", "add_review_note", "kickoff_news_job", "reject_news_draft")), name
+            assert t.annotations.readOnlyHint is (name not in ("kickoff_flow", "reject_draft", "add_review_note", "run_content_flow", "reject_news_draft")), name
 
 
 def test_no_mcp_tool_can_approve_publish_rollback_or_submit() -> None:
@@ -318,6 +318,15 @@ async def test_a_tool_switched_off_at_start_is_not_listed_and_not_callable(llm, 
         names = {t.name for t in (await s.list_tools()).tools}
         assert names == set(ADMIN_TOOLS) - {"reject_draft"}
         assert (await s.call_tool("reject_draft", {"draft_id": DRAFT, "reason": "x"})).isError
+
+
+def test_an_old_tool_name_in_the_off_list_switches_the_renamed_tool_off() -> None:
+    """Crew jobs became content flows on 2026-11-23: kickoff_news_job is run_content_flow, and a list saved before
+    that (MCP_ADMIN_TOOLS_OFF, also what the admin's Settings page writes) keeps meaning the same tools."""
+    from app.config import load_settings
+
+    s = load_settings({"MCP_ADMIN_TOOLS_OFF": "kickoff_news_job, List_News_Jobs,run_content_flow,get_overview"})
+    assert s.mcp_admin_tools_off == ("run_content_flow", "list_content_flows", "get_overview")
 
 
 async def test_switching_a_tool_off_while_running_refuses_the_next_call(llm, web) -> None:

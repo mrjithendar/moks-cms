@@ -185,6 +185,16 @@ def _names(raw: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(n.strip().lower() for n in raw.split(",") if n.strip()))
 
 
+# Admin MCP tools renamed when the admin's crew jobs became content flows (2026-11-23, app/mcp/news_tools.py). An old
+# name already saved in MCP_ADMIN_TOOLS_OFF keeps the renamed tool switched off.
+RENAMED_TOOLS = {"list_news_jobs": "list_content_flows", "get_news_job": "get_content_flow", "kickoff_news_job": "run_content_flow"}
+
+
+def _tool_names(raw: str) -> tuple[str, ...]:
+    """_names, with each renamed tool under its current name."""
+    return tuple(dict.fromkeys(RENAMED_TOOLS.get(n, n) for n in _names(raw)))
+
+
 def _models(raw: str) -> dict[str, str]:
     """SEO_CREW_MODELS: JSON object of "<crew>.<agent>" → Claude model id; anything malformed is ignored."""
     import json
@@ -286,7 +296,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         public_mcp_daily_calls=_int("PUBLIC_MCP_DAILY_CALLS", Settings.public_mcp_daily_calls, env),
         admin_mcp_rpm_per_token=max(1, _int("ADMIN_MCP_RPM_PER_TOKEN", Settings.admin_mcp_rpm_per_token, env)),
         admin_kickoffs_per_hour=max(1, _int("ADMIN_MCP_KICKOFFS_PER_HOUR", Settings.admin_kickoffs_per_hour, env)),
-        mcp_admin_tools_off=_names(env.get("MCP_ADMIN_TOOLS_OFF", "")),
+        mcp_admin_tools_off=_tool_names(env.get("MCP_ADMIN_TOOLS_OFF", "")),
         mcp_public_tools_off=_names(env.get("MCP_PUBLIC_TOOLS_OFF", "")),
         mcp_kickoffs_off=_names(env.get("MCP_KICKOFFS_OFF", "")),
         flow_timeout_s=max(60, _int("SEO_FLOW_TIMEOUT_SECONDS", Settings.flow_timeout_s, env)),

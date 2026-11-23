@@ -107,7 +107,7 @@ def create_edge_app(c: Any, *, verifier: Any = None, audit: Any = None, limiter:
     lim = limiter or RateLimiter()
     sec = security(s)
     public = build_public(c, Guard("public", lim, s.public_mcp_rpm_per_ip, s.public_mcp_daily_calls, daily_per_client=public_daily_per_ip(s), off=lambda: c.settings.mcp_public_tools_off), sec)
-    admin_guard = Guard("admin", lim, s.admin_mcp_rpm_per_token, audit=audit if audit is not None else (AuditLog(c.pool) if c.pool is not None else None), caller=caller, extra_limits={"kickoff_flow": (s.admin_kickoffs_per_hour, 3600.0), "kickoff_news_job": (s.admin_kickoffs_per_hour, 3600.0)}, off=lambda: c.settings.mcp_admin_tools_off)
+    admin_guard = Guard("admin", lim, s.admin_mcp_rpm_per_token, audit=audit if audit is not None else (AuditLog(c.pool) if c.pool is not None else None), caller=caller, extra_limits={"kickoff_flow": (s.admin_kickoffs_per_hour, 3600.0), "run_content_flow": (s.admin_kickoffs_per_hour, 3600.0)}, off=lambda: c.settings.mcp_admin_tools_off)
     admin = build_admin(c, admin_guard, sec, verifier if verifier is not None else DbTokenVerifier(c.pool, s.admin_mcp_resource))
     hide_switched_off(public, s.mcp_public_tools_off)
     hide_switched_off(admin, s.mcp_admin_tools_off)

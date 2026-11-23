@@ -401,15 +401,22 @@ async def test_news_mcp_tools_read_run_and_reject_but_never_approve(llm: Any) ->
     app = create_edge_app(c)
     async with as_admin(["seo:read", "seo:flows", "seo:review:reject"]), create_connected_server_and_client_session(app.state.admin) as s:
         names = {t.name for t in (await s.list_tools()).tools}
-        assert {"list_news_jobs", "get_news_run", "kickoff_news_job", "reject_news_draft"} <= names
+        assert {"list_content_flows", "get_content_flow", "get_news_run", "run_content_flow", "reject_news_draft"} <= names
+        assert not [n for n in names if "job" in n]  # crew jobs are content flows since 2026-11-23
         assert not [n for n in names if "approve" in n or "publish" in n]
         drafts = (await s.call_tool("list_news_drafts", {})).structuredContent
         assert drafts["drafts"][0]["review_url"].endswith(art["draft_id"])
-        runs = (await s.call_tool("list_news_runs", {"job_id": JOB})).structuredContent
+        flows = (await s.call_tool("list_content_flows", {})).structuredContent
+        assert flows["flows"][0]["id"] == JOB and flows["admin_url"].endswith("/admin/crewai/flows")
+        one = (await s.call_tool("get_content_flow", {"flow_id": JOB})).structuredContent
+        assert one["edit_url"].endswith(f"/admin/crewai/flows/content/{JOB}")
+        runs = (await s.call_tool("list_news_runs", {"flow_id": JOB})).structuredContent
+        assert runs["runs"][0]["flow_id"] == JOB and "job_id" not in runs["runs"][0]
         detail = (await s.call_tool("get_news_run", {"run_id": runs["runs"][0]["id"]})).structuredContent
         assert any(st["step"] == "select" for st in detail["steps"]) and "untrusted" in str(detail["logs"]).lower()
-        r = await s.call_tool("kickoff_news_job", {"job_id": JOB})
-        assert not r.isError
+        assert detail["run_url"].endswith(f"/admin/crewai/runs/{runs['runs'][0]['id']}")
+        r = await s.call_tool("run_content_flow", {"flow_id": JOB})
+        assert not r.isError and r.structuredContent["runs_url"].endswith(f"/admin/crewai/runs?content={JOB}")
         await c.runner.wait(r.structuredContent["run_id"], 60)
         rej = await s.call_tool("reject_news_draft", {"draft_id": art["draft_id"], "reason": "not for us"})
         assert not rej.isError and store.articles[art["id"]]["status"] == "rejected"

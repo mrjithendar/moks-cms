@@ -334,9 +334,9 @@ def gate_value(draft: NewsDraft, cfg: JobConfig, q: Quality, required: list[str]
         g.fail(f"original analysis is {share:.0%} of the article (min {q.min_analysis_share:.0%}); it reads as a restatement")
     if not draft.digest_items:
         if total < cfg.length_min_words:
-            g.fail(f"{total} words, below the job's minimum of {cfg.length_min_words}")
+            g.fail(f"{total} words, below the content flow's minimum of {cfg.length_min_words}")
         if total > cfg.length_max_words:
-            g.fail(f"{total} words, above the job's maximum of {cfg.length_max_words}")
+            g.fail(f"{total} words, above the content flow's maximum of {cfg.length_max_words}")
     g.detail = {"words": total, "analysis_words": analysis, "analysis_share": round(share, 3), "required_sections": required}
     return g
 

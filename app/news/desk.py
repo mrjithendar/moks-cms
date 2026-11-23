@@ -607,7 +607,7 @@ async def draft_story(d: DeskDeps, rec: RunRecorder, job: Job, cluster_ids: list
     if primary:
         other = await d.store.open_article_for_cluster(primary, exclude_job=job.id)
         if other:
-            dup_reason = f"story already {'published' if other['status'] == 'published' else 'drafted by another job'} (article {other['id']})"
+            dup_reason = f"story already {'published' if other['status'] == 'published' else 'drafted by another content flow'} (article {other['id']})"
     if dup_reason:
         rec.log("info", f"skipped: {dup_reason}", cluster_id=primary, outcome="duplicate")
         metrics.NEWS_DRAFTS.labels(status="duplicate").inc()

@@ -219,7 +219,7 @@ class NewsJobFlow(NewsHelpers, SeoFlow[NewsJobState]):
             s.result = {"reason": f"slot {s.slot} already ran (run {s.news_run_id})"}
             return
         if not d.news.enabled:
-            rec.log("warning", "crew jobs are switched off (AI & SEO → Jobs, or NEWS_DESK_ENABLED=false in the deployment); nothing ran", outcome="disabled")
+            rec.log("warning", "content flows are switched off (AI & SEO → Flows: \"Content flows on\", or NEWS_DESK_ENABLED=false in the deployment); nothing ran", outcome="disabled")
             await self.close_run(d, rec, "skipped", "news desk disabled", job, started)
             s.outcome = "skipped"
             return
@@ -406,7 +406,7 @@ class NewsDispatchFlow(NewsHelpers, SeoFlow[NewsDispatchState]):
         now = d.clock()
         s.result = {"skipped": [], "housekeeping": None}
         if not d.news.enabled:
-            s.result["skipped"].append("crew jobs are switched off")
+            s.result["skipped"].append("content flows are switched off")
             s.outcome = "skipped"
             return
         if now.hour == 3 and now.minute < 15:  # once a day (UTC)

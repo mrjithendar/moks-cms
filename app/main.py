@@ -6,7 +6,7 @@ Every endpoint except /healthz, /readyz and /metrics needs `Authorization: Beare
     GET  /flows                         every flow: input JSON Schema, schedulable, crews (CrewAI console)
     POST /flows/{flow_name}/validate    {inputs} → {inputs} as the flow would get them, or 422
     POST /flows/{flow_name}/kickoff     {inputs, triggered_by: cron|manual, actor?} → {run_id}
-    POST /schedules/dispatch            start every schedule and crew job that is due (one CronJob, every minute; app/schedules.py, app/news/dispatch.py)
+    POST /schedules/dispatch            start every schedule and content flow that is due (one CronJob, every minute; app/schedules.py, app/news/dispatch.py)
     GET  /crews                         each crew's editable configuration as the code defines it (app/crews/config.py)
     POST /crews/{crew}/validate         {config} → {config} as it would be stored (only what differs), or 422
     POST /custom/validate               {kind: crew|flow, spec} → {spec} as it would run, or 422 {issues} (custom crews and flows)
@@ -525,14 +525,14 @@ def create_app(container: Container | None = None) -> FastAPI:
             out = await dispatch_schedules(c.schedules, c.runner, schedulable=CRON_FLOWS, now=c.clock() if c.clock else None, catchup=catchup)
         except SchedulesUnavailable as e:
             return JSONResponse({"error": str(e)}, status_code=503)
-        # The crew jobs (AI & SEO → Jobs) on their own times, from the same tick (app/news/dispatch.py).
+        # The content flows (AI & SEO → Flows → Content flows) on their own times, from the same tick (app/news/dispatch.py).
         news = c.deps.extra.get("news_store")
         if news is not None:
             try:
                 enabled = load_news_settings(await news.settings_row(), c.deps.extra.get("env")).enabled
                 out["jobs"] = await dispatch_jobs(news, c.runner, enabled=enabled, now=datetime.fromisoformat(out["at"]), catchup=catchup)
             except Exception as e:  # the schedules above already ran; say why the jobs did not
-                log.warning("crew job dispatch failed", extra={"event": "job_dispatch_failed", "error": f"{type(e).__name__}: {str(e)[:300]}"})
+                log.warning("content flow dispatch failed", extra={"event": "job_dispatch_failed", "error": f"{type(e).__name__}: {str(e)[:300]}"})
                 out["jobs"] = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
         return JSONResponse(out)
 

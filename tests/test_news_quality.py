@@ -64,7 +64,7 @@ async def test_thin_restatement_fails_value() -> None:
     thin = "Kubernetes released version 1.35 with in-place pod resize promoted to stable and 42 enhancements in this cycle for operators."
     r = await gates(good_draft().model_copy(update={"body_mdx": thin}))
     f = " ".join(r.gates["value"].failures)
-    assert "Why it matters" in f and "original analysis" in f and "below the job's minimum" in f
+    assert "Why it matters" in f and "original analysis" in f and "below the content flow's minimum" in f
 
 
 async def test_style_banned_phrase_missing_section_and_links() -> None:
