@@ -16,7 +16,7 @@ export default async function ContentTopicsPage() {
   const metrics = (typeof m?.metrics === "string" ? JSON.parse(m.metrics) : m?.metrics ?? {}) as { per_topic?: Record<string, never>; macro_f1?: number | null };
   return (
     <>
-      <AdminHeader title="Content topics" description="Topics map to the site's own categories (Posts → Categories; no duplicates) and are shared by every crew job. Your category corrections in review become training labels; the classifier retrains weekly." />
+      <AdminHeader title="Content topics" description="Topics map to the site's own categories (Posts → Categories; no duplicates) and are shared by every content flow. Your category corrections in review become training labels; the classifier retrains weekly." />
       <TopicsEditor
         topics={topics.map((t) => ({ slug: String(t.slug), label: String(t.label), category_slug: (t.category_slug as string | null) ?? null, keywords: (t.keywords as string[]) ?? [], tags: (t.tags as string[]) ?? [], enabled: Boolean(t.enabled) }))}
         categories={categories}

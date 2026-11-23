@@ -94,9 +94,9 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new post", "Categories", "Review queue"]);
     expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories", "Review queue"]);
     expect(by.posts!.items.map((i) => i.heading)).toEqual([undefined, undefined, undefined, "Editorial"]); // the editorial pages sit under Posts
-    // AI & SEO: the crew jobs, content, what the site measures, then its settings; a sub-heading sits on the first page under it.
+    // AI & SEO: flows and crews, content, what the site measures, then its settings; a sub-heading sits on the first page under it.
     expect(by.ai!.label).toBe("AI & SEO");
-    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Crew jobs"], ["Keywords", "Content"], ["Search performance", "Traffic"], ["Settings", "Settings"], ["MCP", undefined]]);
+    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Flows & crews"], ["Keywords", "Content"], ["Search performance", "Traffic"], ["Settings", "Settings"], ["MCP", undefined]]);
     expect(by.comments!.items.map((i) => i.title)).toEqual(["All comments", "Messages", "Bookings"]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
     expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);

@@ -1,10 +1,10 @@
 /**
  * Where each value of the setting row `news` is edited, now that there is no news settings page (2026-11-21: there is
- * no Newsroom; news is one kind of content a crew job writes). The row and its schema (lib/news/schema.ts,
+ * no Newsroom; news is one kind of content a content flow writes). The row and its schema (lib/news/schema.ts,
  * moks-seo-agent app/news/config.py) are unchanged; each group below is drawn by components/news/JobSettingsCard.tsx
  * on the page that owns that subject and saves only its own fields (lib/news/service.ts saveNewsSettings merges).
  *
- * - The switch (`enabled`): AI & SEO → Jobs (components/news/JobsSwitch.tsx).
+ * - The switch (`enabled`): AI & SEO → Flows, "Content flows on" (components/news/JobsSwitch.tsx).
  * - limits:   AI & SEO → Settings → Agent limits.
  * - models:   AI & SEO → Settings → AI & drafts.
  * - quality:  AI & SEO → Settings → AI & drafts.
@@ -30,10 +30,10 @@ const q = (key: string, label: string, step = 0.01): SettingField => ({ key, lab
 export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   limits: {
     id: "limits",
-    title: "Crew job limits",
-    description: "Apply to every crew job together, on top of each job's own caps. LLM spend has no cap here: it counts in the one LLM budget (Settings → LLM providers & budget).",
+    title: "Content flow limits",
+    description: "Apply to every content flow together, on top of each flow's own caps. LLM spend has no cap here: it counts in the one LLM budget (Settings → LLM providers & budget).",
     fields: [
-      { key: "max_drafts_per_day", label: "Drafts per day (all jobs)", kind: "number" },
+      { key: "max_drafts_per_day", label: "Drafts per day (all content flows)", kind: "number" },
       { key: "draft_concurrency", label: "Drafts in parallel", kind: "number", hint: "1–4; each draft is one crew run" },
       { key: "image_daily_usd", label: "Cover images per day (USD)", kind: "number", step: 0.05 },
       { key: "image_monthly_usd", label: "Cover images per month (USD)", kind: "number", step: 0.5 },
@@ -41,8 +41,8 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   },
   models: {
     id: "models",
-    title: "Crew job models",
-    description: "The models a job uses unless the job names its own (Job → AI & ML).",
+    title: "Content flow models",
+    description: "The models a content flow uses unless the flow names its own (its editor → AI & ML).",
     fields: [
       {
         key: "image_provider",
@@ -62,7 +62,7 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   quality: {
     id: "quality",
     title: "Quality gates",
-    description: "Every draft a crew job writes is checked against these before it reaches the review queue; a draft that fails is kept with the reason.",
+    description: "Every draft a content flow writes is checked against these before it reaches the review queue; a draft that fails is kept with the reason.",
     fields: [
       q("max_ngram_overlap", "Max 8-gram overlap per paragraph"),
       q("max_shared_run_words", "Max verbatim run (words)", 1),
@@ -78,7 +78,7 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   ranking: {
     id: "ranking",
     title: "Content topics and ranking",
-    description: "How crew jobs classify items into content topics and when the ranking model may train from your review decisions.",
+    description: "How content flows classify items into content topics and when the ranking model may train from your review decisions.",
     fields: [
       { key: "classifier_threshold", label: "Topic classifier confidence", kind: "number", step: 0.01, hint: "Below this, the fast model is asked" },
       { key: "ranker_min_feedback", label: "Review decisions before the ranker trains", kind: "number" },
@@ -97,9 +97,9 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   },
   logs: {
     id: "logs",
-    title: "Job run logs",
-    description: "How long a crew job run's step log is kept (AI & SEO → Job runs).",
-    fields: [{ key: "log_retention_days", label: "Keep job run logs (days)", kind: "number" }],
+    title: "Content flow run logs",
+    description: "How long a content flow run's step log is kept (AI & SEO → Runs).",
+    fields: [{ key: "log_retention_days", label: "Keep content flow run logs (days)", kind: "number" }],
   },
 };
 

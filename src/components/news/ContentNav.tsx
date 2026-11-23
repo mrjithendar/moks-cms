@@ -8,10 +8,10 @@ const TABS = [
   { href: "/admin/content/topics", label: "Topics" },
   { href: "/admin/content/profiles", label: "Profiles & playground" },
   { href: "/admin/content/analytics", label: "Content analytics" },
-  { href: "/admin/crewai/jobs", label: "Jobs ↗" },
+  { href: "/admin/crewai/flows?kind=content", label: "Content flows ↗" },
 ];
 
-/** Tabs for /admin/content/*: what every crew job writes from (horizontally scrollable on phones). */
+/** Tabs for /admin/content/*: what every content flow writes from (horizontally scrollable on phones). */
 export function ContentNav() {
   const path = usePathname();
   return (

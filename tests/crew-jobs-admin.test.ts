@@ -1,42 +1,72 @@
 import { describe, expect, it } from "vitest";
 import { MENU_GROUPS, MENU_PLACES } from "@/lib/admin-menu";
-import { newsroomTarget } from "@/lib/news/old-addresses";
+import { CONTENT_SWITCH, crewJobsTarget, newsroomTarget } from "@/lib/news/old-addresses";
 import { newsSettingsSchema, qualitySchema } from "@/lib/news/schema";
 import { groupValues, JOB_SETTING_GROUPS } from "@/lib/news/settings-fields";
 
 /**
- * There is no Newsroom since 2026-11-21: crew jobs and the content they write from live under AI & SEO. Old addresses
+ * There is no Newsroom since 2026-11-21 and no jobs since 2026-11-23: AI & SEO has flows and crews only. A crew job is a
+ * content flow (AI & SEO → Flows), its runs are flow runs, and the system jobs are Flows → Schedules. Old addresses
  * redirect, and every value of the news settings page has a home on the page that owns its subject.
  */
 describe("old Newsroom addresses", () => {
   const UUID = "0b6e6a0e-6f3c-4c55-9f0e-3c1d2a9f8b11";
   it("send each page to where it lives now, keeping the run filters", () => {
-    expect(newsroomTarget([])).toBe("/admin/crewai/jobs");
-    expect(newsroomTarget(["jobs", "new"])).toBe("/admin/crewai/jobs/new");
-    expect(newsroomTarget(["jobs", UUID])).toBe(`/admin/crewai/jobs/${UUID}`);
-    expect(newsroomTarget(["runs"], new URLSearchParams({ job: UUID, status: "failed" }))).toBe(`/admin/crewai/jobs/runs?job=${UUID}&status=failed`);
-    expect(newsroomTarget(["runs", UUID])).toBe(`/admin/crewai/jobs/runs/${UUID}`);
+    expect(newsroomTarget([])).toBe("/admin/crewai/flows");
+    expect(newsroomTarget(["jobs", "new"])).toBe("/admin/crewai/flows/content/new");
+    expect(newsroomTarget(["jobs", UUID])).toBe(`/admin/crewai/flows/content/${UUID}`);
+    expect(newsroomTarget(["runs"], new URLSearchParams({ job: UUID, status: "failed" }))).toBe(`/admin/crewai/runs?content=${UUID}&status=failed`);
+    expect(newsroomTarget(["runs", UUID])).toBe(`/admin/crewai/runs/${UUID}`);
     for (const p of ["sources", "topics", "profiles"]) expect(newsroomTarget([p])).toBe(`/admin/content/${p}`);
     expect(newsroomTarget(["analytics"])).toBe("/admin/content/analytics");
-    expect(newsroomTarget(["settings"])).toBe("/admin/crewai/jobs#jobs-switch");
+    expect(newsroomTarget(["settings"])).toBe(CONTENT_SWITCH);
+    expect(CONTENT_SWITCH).toBe("/admin/crewai/flows#content-switch");
   });
 
   it("never builds an address from an odd segment", () => {
-    expect(newsroomTarget(["jobs", "../../evil"])).toBe("/admin/crewai/jobs");
-    expect(newsroomTarget(["runs", "x?y=1"])).toBe("/admin/crewai/jobs/runs");
-    expect(newsroomTarget(["somewhere"])).toBe("/admin/crewai/jobs");
+    expect(newsroomTarget(["jobs", "../../evil"])).toBe("/admin/crewai/flows");
+    expect(newsroomTarget(["runs", "x?y=1"])).toBe("/admin/crewai/runs?flow=news_job_flow");
+    expect(newsroomTarget(["somewhere"])).toBe("/admin/crewai/flows");
+  });
+});
+
+describe("old crew jobs addresses", () => {
+  const UUID = "0b6e6a0e-6f3c-4c55-9f0e-3c1d2a9f8b11";
+  const q = (o: Record<string, string>) => new URLSearchParams(o);
+  it("the Jobs list goes to Flows; its system jobs to Schedules", () => {
+    expect(crewJobsTarget([])).toBe("/admin/crewai/flows");
+    expect(crewJobsTarget([], q({ kind: "content" }))).toBe("/admin/crewai/flows?kind=content");
+    expect(crewJobsTarget([], q({ kind: "system" }))).toBe("/admin/crewai/schedules");
+    expect(crewJobsTarget([], q({ kind: "system", flow: "report_flow" }))).toBe("/admin/crewai/schedules?flow=report_flow");
+    expect(crewJobsTarget([], q({ kind: "system", flow: "x&y=1" }))).toBe("/admin/crewai/schedules");
+  });
+
+  it("a job is a content flow; its runs are flow runs with the same id", () => {
+    expect(crewJobsTarget(["new"])).toBe("/admin/crewai/flows/content/new");
+    expect(crewJobsTarget([UUID])).toBe(`/admin/crewai/flows/content/${UUID}`);
+    expect(crewJobsTarget(["runs"])).toBe("/admin/crewai/runs?flow=news_job_flow");
+    expect(crewJobsTarget(["runs"], q({ job: UUID }))).toBe(`/admin/crewai/runs?content=${UUID}`);
+    expect(crewJobsTarget(["runs"], q({ job: UUID, status: "paused_budget" }))).toBe(`/admin/crewai/runs?content=${UUID}&status=paused_budget`);
+    expect(crewJobsTarget(["runs", UUID])).toBe(`/admin/crewai/runs/${UUID}`);
+  });
+
+  it("never builds an address from an odd segment", () => {
+    expect(crewJobsTarget(["../../evil"])).toBe("/admin/crewai/flows");
+    expect(crewJobsTarget(["runs", "x?y=1"])).toBe("/admin/crewai/runs");
+    expect(crewJobsTarget(["runs"], q({ job: "not-a-uuid", status: "a b" }))).toBe("/admin/crewai/runs?flow=news_job_flow");
   });
 });
 
 describe("the menu", () => {
-  it("has no Newsroom group; jobs and content sit under AI & SEO", () => {
+  it("has no Newsroom group and no jobs; flows, runs, crews and content sit under AI & SEO", () => {
     expect(MENU_GROUPS.map((g) => g.id)).not.toContain("newsroom");
     const place = new Map(MENU_PLACES);
-    for (const href of ["/admin/crewai/jobs", "/admin/crewai/jobs/runs", "/admin/content/sources", "/admin/content/topics", "/admin/content/profiles", "/admin/content/analytics"]) expect(place.get(href)?.group, href).toBe("ai");
-    expect(MENU_PLACES.some(([href]) => href.startsWith("/admin/news"))).toBe(false);
+    for (const href of ["/admin/crewai/flows", "/admin/crewai/runs", "/admin/crewai/crews", "/admin/content/sources", "/admin/content/topics", "/admin/content/profiles", "/admin/content/analytics"]) expect(place.get(href)?.group, href).toBe("ai");
+    expect(MENU_PLACES.some(([href]) => href.startsWith("/admin/news") || href.startsWith("/admin/crewai/jobs"))).toBe(false);
+    expect(MENU_PLACES.some(([, p]) => /\bjobs?\b/i.test(`${p.title ?? ""} ${p.heading ?? ""}`))).toBe(false);
   });
 
-  it("lists no Schedules page: schedules are the system jobs on the Jobs page", () => {
+  it("lists no Schedules page: it is part of Flows", () => {
     expect(MENU_PLACES.some(([href]) => href === "/admin/crewai/schedules")).toBe(false);
   });
 

@@ -1,51 +1,54 @@
-import { LocalTime } from "@/components/LocalTime";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
+import { Card, Table, td, th } from "@/components/admin/ui";
 import { RunLogs } from "@/components/news/RunLogs";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { StatusBadge } from "@/components/seo/badges";
-import { runDetail, runLogs } from "@/lib/news/service";
+import type { runDetail, runLogs } from "@/lib/news/service";
 
-export const metadata = { title: "Run" };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PIPELINE = ["fetch", "dedupe", "classify", "score", "select", "draft", "quality", "image", "save", "notify"];
 
 type Breakdown = { model?: string; v1_score?: number; features?: Record<string, { value: number; weight: number; contribution: number }>; contributions?: Record<string, number> };
+export type ContentRun = NonNullable<Awaited<ReturnType<typeof runDetail>>>;
 
-/** Run detail: step timeline, live log, candidates with score breakdowns and decisions, drafts, retry / rerun. */
-export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  if (!UUID.test(id)) notFound();
-  const d = await runDetail(id);
-  if (!d) notFound();
-  const { run, steps, candidates, articles } = d;
-  const logs = await runLogs(id, 0);
+/**
+ * What a content flow's run did, on its flow run's page (/admin/crewai/runs/<id>; the Job runs page until 2026-11-23):
+ * which content flow and version, the pipeline timeline with counters, the articles it drafted, every candidate with
+ * its score breakdown and decision, and retry / rerun. The flow run page shows the log; `logs` is passed only when
+ * there is no flow run to show (an old run whose flow run is gone).
+ */
+export function ContentRunPanel({ id, detail, logs }: { id: string; detail: ContentRun; logs?: Awaited<ReturnType<typeof runLogs>> }) {
+  const { run, steps, candidates, articles } = detail;
   const live = ["queued", "running"].includes(String(run.status));
   const counters = run.counters as Record<string, number>;
   const byStep = new Map<string, Record<string, unknown>[]>();
   for (const s of steps) byStep.set(String(s.step), [...(byStep.get(String(s.step)) ?? []), s]);
   const extra = [...byStep.keys()].filter((k) => !PIPELINE.includes(k));
+  const cost = Number(run.cost_usd) + Number(run.image_cost_usd);
   return (
-    <>
-      <AdminHeader
-        title={String(run.job_name ?? run.kind)}
-        description={<>Started <LocalTime iso={String(run.started_at)} /> · Trigger {String(run.trigger)}{run.dry_run ? " · dry run (nothing saved to the review queue)" : ""} · job version {String(run.job_version ?? "—")} · ${(Number(run.cost_usd) + Number(run.image_cost_usd)).toFixed(3)} ({Number(run.tokens).toLocaleString("en")} tokens){run.parent_run_id ? <> · retry of <Link className="underline" href={`/admin/crewai/jobs/runs/${String(run.parent_run_id)}`}>{String(run.parent_run_id).slice(0, 8)}</Link></> : null}</>}
-        actions={
-          run.job_id && !live ? (
-            <>
-              <ApiButton url={`/api/admin/news/runs/${id}`} body={{ mode: "failed" }} label="Retry failed drafts" />
-              <ApiButton url={`/api/admin/news/runs/${id}`} body={{ mode: "rerun" }} label="Rerun job" variant="ghost" confirm="Rerun the whole job? Stories already drafted are skipped." />
-            </>
-          ) : undefined
-        }
-      />
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <StatusBadge status={String(run.status)} />
-        {run.error_summary ? <p className="text-sm text-red-700 dark:text-red-300 [overflow-wrap:anywhere]">{String(run.error_summary)}</p> : null}
+    <section id="content" aria-labelledby="content-h" className="space-y-6 rounded-xl border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="content-h" className="text-base font-semibold text-fg">
+            {run.job_id ? <Link href={`/admin/crewai/flows/content/${String(run.job_id)}`} className="hover:underline">{String(run.job_name ?? "Content flow")}</Link> : `Content flow ${String(run.kind).replace(/_/g, " ")} run`}
+          </h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            {String(run.kind) === "job" ? "Content flow run" : `${String(run.kind).replace(/_/g, " ")} run`}
+            {run.job_version != null ? ` · flow version ${String(run.job_version)}` : ""}
+            {run.dry_run ? " · dry run (nothing saved to the review queue)" : ""} · ${cost.toFixed(3)} with cover images ({Number(run.tokens).toLocaleString("en")} tokens)
+            {run.parent_run_id ? <> · retry of <Link className="underline" href={`/admin/crewai/runs/${String(run.parent_run_id)}`}>{String(run.parent_run_id).slice(0, 8)}</Link></> : null}
+          </p>
+          {run.error_summary ? <p className="mt-1 text-sm text-red-700 dark:text-red-300 [overflow-wrap:anywhere]">{String(run.error_summary)}</p> : null}
+        </div>
+        {run.job_id && !live ? (
+          <div className="flex flex-wrap gap-2">
+            <ApiButton url={`/api/admin/news/runs/${id}`} body={{ mode: "failed" }} label="Retry failed drafts" />
+            <ApiButton url={`/api/admin/news/runs/${id}`} body={{ mode: "rerun" }} label="Rerun flow" variant="ghost" confirm="Rerun the whole content flow? Stories already drafted are skipped." />
+          </div>
+        ) : null}
       </div>
-      <section aria-labelledby="timeline" className="mb-8">
-        <h2 id="timeline" className="mb-3 text-sm font-semibold text-fg">Timeline</h2>
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-fg">Timeline</h3>
         <ol className="flex flex-wrap gap-2">
           {[...PIPELINE, ...extra].map((name) => {
             const ss = byStep.get(name) ?? [];
@@ -65,12 +68,14 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           })}
         </ol>
         <p className="mt-3 text-xs text-fg-subtle">{Object.entries(counters).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(" · ") || "No counters yet."}</p>
-      </section>
-      <div className="mb-8"><RunLogs runId={id} initial={logs} live={live} /></div>
-      <section aria-labelledby="drafts" className="mb-8">
-        <h2 id="drafts" className="mb-3 text-sm font-semibold text-fg">Articles from this run</h2>
+      </div>
+
+      {logs && <RunLogs runId={id} initial={logs} live={live} />}
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-fg">Articles from this run</h3>
         {articles.length === 0 ? (
-          <Card><p className="text-sm text-fg-muted">None.</p></Card>
+          <p className="text-sm text-fg-muted">None.</p>
         ) : (
           <ul className="space-y-2">
             {articles.map((a) => {
@@ -87,9 +92,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             })}
           </ul>
         )}
-      </section>
-      <section aria-labelledby="cands">
-        <h2 id="cands" className="mb-3 text-sm font-semibold text-fg">Candidates ({candidates.length})</h2>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-fg">Candidates ({candidates.length})</h3>
         {candidates.length === 0 ? (
           <Card><p className="text-sm text-fg-muted">No candidates were scored in this run.</p></Card>
         ) : (
@@ -120,7 +126,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             })}
           </Table>
         )}
-      </section>
-    </>
+      </div>
+    </section>
   );
 }

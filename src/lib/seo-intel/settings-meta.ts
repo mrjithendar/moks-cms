@@ -8,7 +8,7 @@ export type SettingsTab = { id: string; label: string; sections: string[]; descr
 /** Sections not listed here land in "Other", so a new settings section is never hidden. */
 export const SETTINGS_TABS: SettingsTab[] = [
   { id: "data", label: "Data sources", sections: ["google", "sync", "dataforseo"], description: "Which Google properties are read, how far back, and how long data is kept; DataForSEO for volume, difficulty, live rankings and backlinks." },
-  { id: "schedules", label: "Schedules", sections: ["schedules"], description: "When the web worker runs each job (UTC). While the SEO agent is on, the jobs its flows own run as system jobs on their own schedules instead (AI & SEO → Jobs)." },
+  { id: "schedules", label: "Schedules", sections: ["schedules"], description: "When the web worker runs each job (UTC). While the SEO agent is on, the jobs its flows own run as flows on their own schedules instead (AI & SEO → Flows → Schedules)." },
   { id: "scoring", label: "Scoring & rules", sections: ["weights", "thresholds"], description: "How recommendations are found and ranked (docs/seo/SCORING.md)." },
   { id: "content", label: "Content & links", sections: ["keywords", "links", "submission"], description: "Keyword opportunities, internal-linking limits and search-engine submission." },
   { id: "ai", label: "AI & drafts", sections: ["drafts", "llm", "aiVisibility"], description: "Claude drafting (always stops at human review), the optional explanation model, and AI visibility (are AI assistants citing the site?)." },

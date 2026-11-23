@@ -10,9 +10,9 @@ export const AGENT_KEYS = ["researcher", "analyst", "writer", "fact_checker", "s
 export const SOURCE_TYPES = ["rss", "atom", "json_api", "github_releases", "sitemap", "html_allowlisted"] as const;
 export const REJECT_CATEGORIES = ["off_topic", "low_value", "duplicate", "inaccurate", "style", "other"] as const;
 export const IMAGE_PROVIDERS = ["template", "gemini", "openai"] as const;
-/** What a crew job writes (crew-jobs plan PR 3): news is one kind of content. moks-seo-agent app/news/config.py. */
+/** What a content flow writes (crew-jobs plan PR 3; a crew job until 2026-11-23): news is one kind of content. moks-seo-agent app/news/config.py. */
 export const OUTPUTS = ["news", "article"] as const;
-/** Where a job's candidates come from: the content sources (News Desk crew) and/or the content ideas (Editorial crew). */
+/** Where a content flow's candidates come from: the content sources (News Desk crew) and/or the content ideas (Editorial crew). */
 export const INTAKES = ["sources", "ideas"] as const;
 export const MAX_NEWS_JOBS = 25; // bounds the `job` metric label (seo-agent app/metrics.py MAX_NEWS_JOBS)
 
@@ -159,8 +159,8 @@ export const qualitySchema = z
   .strict();
 
 /**
- * Setting row `news`: the crew jobs' shared settings (where each is edited: lib/news/settings-fields.ts). `enabled` is the
- * jobs' switch (AI & SEO → Jobs; it was the news desk's switch in the Newsroom). It is absent until an admin first
+ * Setting row `news`: the content flows' shared settings (where each is edited: lib/news/settings-fields.ts). `enabled` is the
+ * content flows' switch (AI & SEO → Flows; it was the news desk's switch in the Newsroom, then "Jobs on"). It is absent until an admin first
  * saves it; until then the deployment's NEWS_DESK_ENABLED decides, as before (see newsDeskState). `paused` is the
  * earlier pause box: it is still honoured when a row has it, and the form now writes it as false.
  */
@@ -211,10 +211,10 @@ export function newsDeskState(settings: Pick<NewsSettings, "enabled" | "paused">
   return { on: false, by: "default", envValue };
 }
 
-/** What the admin sees for a state (AI & SEO → Jobs): one sentence, and whether the switch can change it. */
+/** What the admin sees for a state (AI & SEO → Flows): one sentence, and whether the switch can change it. */
 export function newsDeskStateText(st: NewsDeskState): string {
-  if (st.by === "deployment_off") return "Switched off by the deployment: NEWS_DESK_ENABLED is false. Remove NEWS_DESK_ENABLED from the ConfigMaps to control crew jobs here.";
-  if (st.by === "admin") return st.on ? "Crew jobs are on." : "Crew jobs are switched off.";
-  if (st.by === "deployment_legacy") return st.on ? "Crew jobs are on because NEWS_DESK_ENABLED is true in the deployment. Use the switch here to control them from the admin." : "Crew jobs are paused.";
-  return "Crew jobs are off. Switch them on here.";
+  if (st.by === "deployment_off") return "Switched off by the deployment: NEWS_DESK_ENABLED is false. Remove NEWS_DESK_ENABLED from the ConfigMaps to control content flows here.";
+  if (st.by === "admin") return st.on ? "Content flows are on." : "Content flows are switched off.";
+  if (st.by === "deployment_legacy") return st.on ? "Content flows are on because NEWS_DESK_ENABLED is true in the deployment. Use the switch here to control them from the admin." : "Content flows are paused.";
+  return "Content flows are off. Switch them on here.";
 }

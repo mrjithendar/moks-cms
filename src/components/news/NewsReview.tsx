@@ -215,7 +215,7 @@ export function NewsReview({ draft, doc, html, news, categories, editorUrl, live
         {slots.length ? (
           <Field label="Slot"><Select value={slot} onChange={(e) => setSlot(e.target.value)}>{slots.map((s) => <option key={s} value={s}>{formatLocal(s)}</option>)}</Select></Field>
         ) : (
-          <p className="text-sm text-fg-muted">This job has no publishing slots (job editor → Schedule &amp; limits).</p>
+          <p className="text-sm text-fg-muted">This content flow has no publishing slots (its editor → Schedule &amp; limits).</p>
         )}
       </Dialog>
       <Dialog open={dialog === "reject"} onClose={() => setDialog(null)} title="Reject this draft" footer={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => act(() => api(`/api/admin/news/drafts/${draft.id}/reject`, "POST", { category: reject.category, reason: reject.reason || null }), "Rejected.")}>Reject</Button></>}>

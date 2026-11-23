@@ -131,7 +131,7 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id="llm-budget" className="scroll-mt-24 text-lg font-semibold text-fg">LLM budget</h2>
-          <p className="mt-1 text-sm text-fg-muted">One budget for every provider, model and purpose together: drafts, crew jobs and flows, AI visibility, Ask the Blog and this site&apos;s own calls. Kept and enforced by the SEO agent.</p>
+          <p className="mt-1 text-sm text-fg-muted">One budget for every provider, model and purpose together: drafts, content flows and other flows, AI visibility, Ask the Blog and this site&apos;s own calls. Kept and enforced by the SEO agent.</p>
         </div>
         <nav aria-label="Budget period" className="flex shrink-0 rounded-lg border border-line p-0.5 text-sm">
           {(["day", "month"] as const).map((s) => (
@@ -212,7 +212,7 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
                 <Link className="underline" href="/admin/automation?section=ask-the-blog">Ask the Blog</Link>
               </li>
               <li>
-                The crew jobs&apos; own limits, cover image spend included. <Link className="underline" href="/admin/automation?section=agent-limits#job-settings-limits">Crew job limits</Link>
+                The content flows&apos; own limits, cover image spend included. <Link className="underline" href="/admin/automation?section=agent-limits#job-settings-limits">Content flow limits</Link>
               </li>
             </ul>
           </div>

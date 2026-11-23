@@ -10,7 +10,7 @@ export default async function ContentSourcesPage() {
   const [sources, suggestions, settings] = await Promise.all([listSources(), credibilitySuggestions(), getNewsSettings()]);
   return (
     <>
-      <AdminHeader title="Content sources" description="Feeds and official APIs crew jobs read, for news and for any other content. Fetched through the site's SSRF-safe fetcher, robots.txt honoured, paywalled hosts refused (docs/news/SOURCES.md)." />
+      <AdminHeader title="Content sources" description="Feeds and official APIs content flows read, for news and for any other content. Fetched through the site's SSRF-safe fetcher, robots.txt honoured, paywalled hosts refused (docs/news/SOURCES.md)." />
       <SourcesManager sources={JSON.parse(JSON.stringify(sources)) as SourceRow[]} suggestions={suggestions as { id: string; name: string; current: number; suggested: number; basis: string }[]} />
       <JobSettingsCard group="fetching" initial={JSON.parse(JSON.stringify(settings))} />
     </>

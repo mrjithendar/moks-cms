@@ -13,7 +13,7 @@ const body = z.discriminatedUnion("action", [
 
 /** POST /api/admin/news/jobs/{id}/actions — run now, dry run, pause/resume, clone, roll back to a version. */
 export const POST = seoRoute<{ id: string }>("news-job-action", { mutating: true, rate: { max: 20, windowSeconds: 60 } }, async (_req, ctx, p) => {
-  if (!UUID.test(p.id)) throw new SeoApiError("Job not found.", 404, "not_found");
+  if (!UUID.test(p.id)) throw new SeoApiError("Content flow not found.", 404, "not_found");
   const b = parse(body, ctx.body ?? {});
   if (b.action === "run") return json(await runJob(p.id, ctx.actor.label), 202);
   if (b.action === "dry_run") return json(await runJob(p.id, ctx.actor.label, { dryRun: true, llm: b.llm }), 202);
