@@ -25,25 +25,25 @@ Both sides read `NEWS_DESK_ENABLED`:
 - seo-agent: `kubectl -n jithendar patch configmap seo-agent-config -p '{"data":{"NEWS_DESK_ENABLED":"true"}}'`
   then `kubectl -n jithendar rollout restart deploy/seo-agent`.
 - web app: add `NEWS_DESK_ENABLED=true` to ConfigMap `jithendar-com-public` (or the `jithendar-com-env` Secret), then
-  restart the web Deployment. While it is off, AI & SEO → Jobs says so at the top and every job, Run now included, is skipped.
+  restart the web Deployment. While it is off, AI & SEO → Flows says so above the content flows and every content flow run, Run now included, is skipped.
 
-Pausing later needs no deploy: AI & SEO → Jobs → untick "Jobs on".
+Pausing later needs no deploy: AI & SEO → Flows → untick "Content flows on".
 
-## 4. First job
+## 4. First content flow
 
-Follow JOBS.md "First job": import starter sources (disabled), review terms and enable some, create a job (disabled),
+Follow JOBS.md "First content flow": import starter sources (disabled), review terms and enable some, create a content flow (disabled),
 dry run, inspect the candidates, enable.
 
 ## 5. Image providers (optional)
 
 - **Template**: nothing to do (default).
 - **Gemini**: configure Admin → Integrations → Gemini image generation (the same integration the editor uses). Set the
-  job's or profile's provider to `gemini` and Settings → image price. Covers are stored in the media library (R2 needed).
+  content flow's or profile's provider to `gemini` and Settings → image price. Covers are stored in the media library (R2 needed).
 - **OpenAI**: add `OPENAI_API_KEY` to Secret `seo-agent-env`
   (`kubectl -n jithendar patch secret seo-agent-env -p '{"stringData":{"OPENAI_API_KEY":"…"}}'`), optionally
   `NEWS_OPENAI_IMAGE_MODEL`, restart seo-agent. The agent's NetworkPolicy already allows 443 to public IPs (core
   NetworkPolicy cannot restrict by domain; an Istio egress gateway would be needed for that).
-- `NEWS_IMAGE_PROVIDER` (ConfigMap) overrides Settings for every job without a provider override.
+- `NEWS_IMAGE_PROVIDER` (ConfigMap) overrides Settings for every content flow without a provider override.
 
 ## 6. Google News sitemap and feed
 
@@ -60,11 +60,12 @@ claimed by this work (AGENTS.md rule 9). Confirm the publication name used in th
 
 ## 8. Notifications (optional)
 
-The run summary, job failure and budget emails use the SEO alert recipients (SEO → Settings → Drafts digest recipients /
+The run summary, content flow failure and budget emails use the SEO alert recipients (SEO → Settings → Drafts digest recipients /
 report recipients) and Admin → Storage & email. Without them nothing is sent.
 
 ## 9. MCP
 
-The admin MCP server (if enabled, docs/seo/MCP.md) now has news tools: `list_news_jobs`, `get_news_job`,
-`list_news_runs`, `get_news_run`, `kickoff_news_job` (dry run by default), `list_news_drafts`, `get_news_candidates`,
+The admin MCP server (if enabled, docs/seo/MCP.md) now has content flow tools: `list_content_flows`, `get_content_flow`,
+`list_news_runs`, `get_news_run`, `run_content_flow` (dry run by default; `list_news_jobs`, `get_news_job` and
+`kickoff_news_job` until 2026-11-23), `list_news_drafts`, `get_news_candidates`,
 `reject_news_draft`. The public server has `search_news`. No tool approves or publishes.

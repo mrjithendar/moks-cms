@@ -1,6 +1,6 @@
 # Cover images
 
-`moks-seo-agent/app/news/images.py`, `desk.make_cover`. Every news article gets a cover unless the job turns images off.
+`moks-seo-agent/app/news/images.py`, `desk.make_cover`. Every news article gets a cover unless its content flow turns images off.
 
 ## Providers
 
@@ -12,7 +12,7 @@
 | Local Stable Diffusion | not offered | — | On CPU-only Minikube one 1024² image takes minutes and several GiB of RAM; it would starve the cluster for a cover. |
 
 Prices are configuration, not facts: check the provider's current price list and set Settings → image prices; the
-budget uses them for its checks. The image budget (per job and global, per day and month) is checked before generating.
+budget uses them for its checks. The image budget (per content flow and global, per day and month) is checked before generating.
 
 ## Pipeline
 

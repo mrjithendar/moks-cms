@@ -1,5 +1,21 @@
 # Progress log — jithendar.com
 
+## Flows and crews only: crew jobs are content flows, one Runs list (2026-11-23, owner request, D-99)
+
+- AI & SEO → **Flows** is the one list: Content flows (the crew jobs: switch "Content flows on", drafts today, month
+  cost, Run now / Dry run / Pause / Clone; editor `/admin/crewai/flows/content/<id>`), Custom flows (with their
+  schedules) and Built-in flows; chips narrow it (`?kind=content|custom|builtin`). **Schedules** (the system jobs) is
+  `/admin/crewai/schedules` again, linked from Flows.
+- **Runs** is the one list: a content flow's run shows under its name with what it drafted; `?content=<id>` lists one
+  content flow's runs; a run's page adds the content panel (timeline, articles, candidates, Retry failed drafts /
+  Rerun flow). Console tabs: Overview, Flows, Runs, Crews; menu heading "Flows & crews".
+- Old `/admin/crewai/jobs/*` and `/admin/news/*` addresses redirect. Emails link to `/admin/crewai/runs/<id>`.
+- Agent (moks-seo-agent #32): MCP `list_content_flows`, `get_content_flow`, `run_content_flow`; selection reasons,
+  quality gates and budget errors say "content flow".
+- Unchanged: tables, API routes, flow ids, metric and alert names. Migration 0040 rewords one schedule description.
+- Docs: news/JOBS.md (now the content flows guide), RUNBOOK, MANUAL_SETUP, ARCHITECTURE, COSTS, ML, IMAGES, SOURCES,
+  QUALITY_GATES, ADMIN_MENU, DECISIONS D-99; the in-app guide changed with #190.
+
 ## AI & SEO settings reorganised: LLM and MCP sections merged, four headings (2026-11-23, owner request)
 
 - **LLM providers & budget** (`?section=llm`, `sections/llm.tsx`) is one section: the LLM budget card on top, the

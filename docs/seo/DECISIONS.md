@@ -906,3 +906,25 @@ configurations." Phases 2 and 3 of D-97, as accepted on 2026-11-18. Details: FLO
 - **Import is a plan first and only adds or changes** (nothing deleted or paused); crews are checked by the agent,
   schedules matched by name. No secrets, IDs or run history in the file.
 - **No new dependency.** The word diff uses `diff`, already a dependency.
+
+## D-99 Flows and crews only: crew jobs are content flows (owner request 2026-11-23)
+
+"Make only crews, flows, no jobs, merge it." AI & SEO had Jobs (content jobs and system jobs), Job runs, Flow runs,
+Flows and Crews: three words for things that all start a flow. Now it has Flows, Runs and Crews (moks-cms #190,
+moks-seo-agent #32).
+
+- **A crew job is a content flow,** shown with the other flows (AI & SEO → Flows: Content flows, Custom flows, Built-in
+  flows). It is a saved flow configuration with its own schedule, exactly what the `news_jobs` row already was, so it
+  keeps its table, its versions, its editor and its dispatcher path; only the names and pages change.
+- **No data moves.** Tables (`news_jobs`, `news_runs`, `seo_flow_schedules`), API routes (`/api/admin/news/*`), flow ids
+  (`news_job_flow`), metric names and alert names stay. Renaming them would touch both repositories' migrations,
+  dashboards and alerts for no difference anyone sees. Migration 0040 only rewords one built-in schedule's description.
+- **One Runs list.** A content flow's run already has its flow run's id (moks-seo-agent `app/flows/news.py` `open_run`),
+  so the Job runs page is a panel on the flow run's page (timeline, articles, candidates, retry / rerun) and the Runs
+  list shows such a run under the content flow's name; `?content=<id>` filters to one content flow.
+- **Schedules stay one table for the built-in and custom flows** (`/admin/crewai/schedules`, linked from Flows); a
+  content flow's time stays on the content flow. Both are started by the same one dispatcher (D-98), as before.
+- **Old addresses keep working**: `/admin/crewai/jobs/*` and `/admin/news/*` redirect (`src/lib/news/old-addresses.ts`).
+- **MCP follows:** `list_content_flows`, `get_content_flow`, `run_content_flow` replace `list_news_jobs`,
+  `get_news_job`, `kickoff_news_job`; an old name in `MCP_ADMIN_TOOLS_OFF` still switches the renamed tool off. The old
+  names are not kept as aliases: duplicate tools would confuse a client choosing between them.

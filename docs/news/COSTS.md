@@ -42,15 +42,15 @@ The analytics page shows the real figure ("cost per approved article", including
 
 ## Per day and month at the defaults
 
-One job, daily, `max_articles_per_run` 3: ≈ 3 × $0.25 ≈ **$0.75/day**, ≈ $23/month if it found 3 stories every day.
+One content flow, daily, `max_articles_per_run` 3: ≈ 3 × $0.25 ≈ **$0.75/day**, ≈ $23/month if it found 3 stories every day.
 The defaults then stop it earlier, by design:
 
 | Cap | Default | Effect |
 |---|---|---|
-| job LLM per day | $1.00 | ≈ 4 drafts/day |
-| job LLM per month | $15.00 | ≈ 60 drafts/month (≈ 20 days at 3/day) |
-| job images per day / month | $0.50 / $5.00 | only matters with a paid provider |
-| global LLM per day / month | $2.00 / $20.00 | all jobs together |
+| content flow LLM per day | $1.00 | ≈ 4 drafts/day |
+| content flow LLM per month | $15.00 | ≈ 60 drafts/month (≈ 20 days at 3/day) |
+| content flow images per day / month | $0.50 / $5.00 | only matters with a paid provider |
+| global LLM per day / month | $2.00 / $20.00 | all content flows together |
 | global images per day / month | $1.00 / $10.00 | |
 | global drafts per day | 10 | |
 
@@ -60,5 +60,5 @@ lock and then verified against the caps, so parallel drafts cannot all pass the 
 reservation is released when the call ends and the actual cost booked. News spend never counts against the SEO admin
 budget (N-07).
 
-Levers: fewer articles per run/day, Haiku for the researcher/analyst (job → Writing → models per agent), fewer items per
+Levers: fewer articles per run/day, Haiku for the researcher/analyst (content flow → Writing → models per agent), fewer items per
 story, a lower token cap, template covers.

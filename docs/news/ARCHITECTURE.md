@@ -1,6 +1,7 @@
 # AI News Desk: architecture
 
-The news desk adds configurable **news jobs** to the existing SEO platform. A job discovers stories from trusted
+The news desk adds configurable **content flows** (news jobs, then crew jobs, until 2026-11-23; still `news_jobs`
+rows) to the existing SEO platform. A content flow discovers stories from trusted
 sources, ranks them with transparent (and later learned) scores, and has a crew of agents research, write, fact-check
 and edit each one. Code quality gates check the result, a cover is made, and the draft lands in the existing review
 queue. **Nothing auto-publishes**: publishing is the existing approval → `publish_flow` path, started only by a human
@@ -22,8 +23,8 @@ Where things run:
 flowchart LR
   CJ[CronJob news-dispatch<br/>every 15 min] -->|POST /flows/news_dispatch_flow/kickoff| D[news_dispatch_flow]
   D -->|due jobs: cron in job time zone<br/>slot = job + minute| J[news_job_flow]
-  UI[/admin/crewai/jobs<br/>Run now · Dry run/] --> J
-  MCP[admin MCP<br/>kickoff_news_job] --> J
+  UI[/admin/crewai/flows<br/>Run now · Dry run/] --> J
+  MCP[admin MCP<br/>run_content_flow] --> J
   subgraph J1[news_job_flow]
     direction TB
     I[ingest · shared<br/>fetch → normalize → dedupe → cluster → classify → novelty] --> S[select · per job<br/>score v1/v2 → filters → threshold → caps → diversity]
@@ -114,4 +115,4 @@ Embeddings are `real[]`, not pgvector (DECISIONS N-02). CMS posts and review dra
   paywalled hosts refused, size/time limits (DECISIONS N-05).
 - **Prompt injection**: source text enters only as delimited data blocks with closing tags neutralised; agents hold
   read-only tools; outputs are Pydantic-validated and then checked by code gates.
-- **MCP**: news tools read, start a job run (default dry run) or reject a draft. No approve or publish tool exists.
+- **MCP**: content flow tools read, run a content flow (default dry run) or reject a draft. No approve or publish tool exists.

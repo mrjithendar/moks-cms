@@ -5,7 +5,7 @@ have a submenu; no expand on desktop or tablet; expand and collapse on mobile").
 1440, 820 and 390 px against a local build. **WordPress order since 2026-11-21** (owner: "reorganize all the menus in
 wordpress style"; moks-cms #179): Dashboard; the content menus; the plugin-like menus; then Appearance, Users, Tools
 and Settings, with a line between the three parts. There is no Newsroom since the same day: news is one kind of
-content a crew job writes, under AI & SEO.
+content a content flow writes, under AI & SEO (no jobs since 2026-11-23: flows and crews only).
 
 ## What a person sees
 
@@ -27,7 +27,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Pages | All pages, Add new page, Hire me page |
 | Comments | All comments, Messages, Bookings |
 | — | |
-| AI & SEO | **Crew jobs:** CrewAI console, Jobs (content jobs and system jobs), Job runs, Flow runs, Flows (with Custom flows), Crews (with Custom crews), Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
+| AI & SEO | **Flows & crews:** CrewAI console, Flows (Content flows, Custom flows, Built-in flows; Schedules from there), Runs, Crews (with Custom crews), Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | — | |
@@ -44,6 +44,11 @@ of Settings → General: the sections on the left (a select on a phone), one at 
 (`src/lib/news/old-addresses.ts`): Jobs → `/admin/crewai/jobs`, Run history → Job runs, Sources / Topics / Profiles &
 playground / Analytics → `/admin/content/*`. The news settings page is gone; each value is on the page that owns it
 (`src/lib/news/settings-fields.ts`). The CrewAI console's Schedules page is the System jobs tab of Jobs.
+
+**Flows and crews only (2026-11-23, D-99).** There are no jobs: a crew job is a content flow on AI & SEO → Flows
+(editor `/admin/crewai/flows/content/<id>`), its runs are flow runs on Runs (`?content=<id>` for one content flow), and
+the system jobs are Flows → Schedules (`/admin/crewai/schedules`). Every `/admin/crewai/jobs/*` address redirects
+(`crewJobsTarget` in `src/lib/news/old-addresses.ts`), and the old Newsroom addresses go straight to the new pages.
 
 Below the entries: **Help** (the user manual) and **Collapse menu**.
 

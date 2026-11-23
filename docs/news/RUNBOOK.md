@@ -2,7 +2,7 @@
 
 ## Where to look
 
-- **Job runs** (AI & SEO → Job runs) and **run detail**: timeline, live log, candidates with reasons,
+- **Runs** (AI & SEO → Runs; a content flow's runs: *Runs of this flow*) and **run detail**: timeline, live log, candidates with reasons,
   drafts, errors. Every run, including dry runs, image regenerations, training and style reviews.
 - **Grafana** "Jithendar.com · News desk" (`grafana/jithendar-com-news.json` in `moks-tech/jithendar.com`).
 - **Loki**: `{app="seo-agent"} | json | operation=~"news_.*"` (log lines carry `operation=news_<step>` and `outcome`;
@@ -11,7 +11,7 @@
 
 ## Kill switch and rollback
 
-1. Fastest: AI & SEO → Jobs → untick **Jobs on** (no deploy). The dispatcher and every job skip.
+1. Fastest: AI & SEO → Flows → untick **Content flows on** (no deploy). The dispatcher and every content flow skip.
 2. `NEWS_DESK_ENABLED=false` in ConfigMap `seo-agent-config` (and the web app's `jithendar-com-public`), restart.
 3. Suspend the CronJobs: `kubectl -n jithendar patch cronjob news-dispatch -p '{"spec":{"suspend":true}}'`
    (same for `news-train`, `news-style-review`).
@@ -39,14 +39,14 @@
 | `news_job_consecutive_failures`, `news_job_last_draft_timestamp_seconds` | news_job (DB-computed) |
 | `news_source_failing_seconds`, `news_quality_failure_ratio_7d` | — (DB-computed) |
 
-`news_job` is the job id; the web app refuses more than 25 jobs, so it is bounded. (`job` is Prometheus's scrape label.)
+`news_job` is the content flow's id; the web app refuses more than 25 content flows, so it is bounded. (`job` is Prometheus's scrape label.)
 
 ## Alerts (`docs/news/prometheus-alerts.yml`, add to the miniKube repo)
 
 ### job-failing
 Two failed runs in a row. Open the last run: a failed step shows its error. Common: the web callback unreachable (the
-web pods or their callback listener down), Anthropic errors (status page), a bad job config after an edit (roll back the
-version). Retry with *Retry failed drafts* or *Rerun job*.
+web pods or their callback listener down), Anthropic errors (status page), a bad content flow config after an edit (roll back the
+version). Retry with *Retry failed drafts* or *Rerun flow*.
 
 ### source-failing
 An enabled source has not fetched for 24 h. Sources page: last status and HTTP code. 404/410 = moved (find the new feed);
@@ -60,16 +60,16 @@ researcher is not capturing numbers (check the fact sheet) or the writer adds co
 `value`: the structure template lacks analysis sections.
 
 ### budget
-80 % or 100 % of a cap. Runs pause with "paused (budget)". Raise the job's or the global cap (Settings) or wait for the
+80 % or 100 % of a cap. Runs pause with "paused (budget)". Raise the content flow's or the global cap (Settings) or wait for the
 period to reset; check the run detail for an unusually expensive run (token cap per draft).
 
 ### no-drafts
-A job produced nothing for review in 3 days. Open its last runs: every candidate has a reason (threshold too high,
+A content flow produced nothing for review in 3 days. Open its last runs: every candidate has a reason (threshold too high,
 keyword filters too narrow, everything already covered, sources failing).
 
 ## Common tasks
 
-- **Rerun a run**: run detail → *Rerun job* (idempotent: covered stories are skipped). *Retry failed drafts* redrafts only
+- **Rerun a run**: run detail → *Rerun flow* (idempotent: covered stories are skipped). *Retry failed drafts* redrafts only
   the stories that did not reach review.
 - **A draft is stuck "drafting"**: the agent restarted mid-run; runs are failed on start-up (v4 D-57) and the article is
   marked failed; retry from the run.
