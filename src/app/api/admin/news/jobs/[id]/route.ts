@@ -3,13 +3,13 @@ import { deleteJob, getJob, jobVersions, updateJob } from "@/lib/news/service";
 
 export const dynamic = "force-dynamic";
 const id = (v: string) => {
-  if (!UUID.test(v)) throw new SeoApiError("Job not found.", 404, "not_found");
+  if (!UUID.test(v)) throw new SeoApiError("Content flow not found.", 404, "not_found");
   return v;
 };
 
 export const GET = seoRoute<{ id: string }>("news-job", {}, async (_req, _ctx, p) => {
   const job = await getJob(id(p.id));
-  if (!job) throw new SeoApiError("Job not found.", 404, "not_found");
+  if (!job) throw new SeoApiError("Content flow not found.", 404, "not_found");
   return json({ job, versions: await jobVersions(p.id) });
 });
 

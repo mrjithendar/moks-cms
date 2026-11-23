@@ -8,11 +8,14 @@ import { JobEditor, type JobForm } from "@/components/news/JobEditor";
 import { jobConfigSchema } from "@/lib/news/schema";
 import { getJob, jobVersions, listProfiles, listSources, listTopics } from "@/lib/news/service";
 
-export const metadata = { title: "Job" };
+export const metadata = { title: "Content flow" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** /admin/crewai/jobs/new and /admin/crewai/jobs/{id}: the tabbed job editor with versions, diff and rollback. */
-export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * /admin/crewai/flows/content/new and /admin/crewai/flows/content/{id}: the tabbed content flow editor with versions,
+ * diff and rollback. A content flow is a `news_jobs` row (a crew job until 2026-11-23); every run is a news_job_flow run.
+ */
+export default async function ContentFlowPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const isNew = id === "new";
   if (!isNew && !UUID.test(id)) notFound();
@@ -27,7 +30,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     : { name: "", description: "", enabled: false, cron: "0 7 * * *", timezone: "Asia/Kolkata", mode: "single_stories", writing_profile_key: "news-default", image_profile_key: "cover-template", review_priority: 50, config: jobConfigSchema.parse({}) as unknown as JobForm["config"] };
   return (
     <>
-      <AdminHeader title={job ? job.name : "New job"} description={job ? <>Version {job.version}. Every save creates a new version; runs record the version they used. <Link href={`/admin/crewai/jobs/runs?job=${job.id}`} className="underline">Runs of this job</Link></> : "Start disabled, try a dry run, then enable it."} />
+      <nav aria-label="Breadcrumb" className="mb-3 text-sm text-fg-muted">
+        <Link href="/admin/crewai/flows" className="hover:underline">Flows</Link>
+        <span className="mx-1.5 text-fg-subtle">/</span>
+        <Link href="/admin/crewai/flows?kind=content" className="hover:underline">Content flows</Link>
+      </nav>
+      <AdminHeader title={job ? job.name : "New content flow"} description={job ? <>Content flow, version {job.version}. Every save creates a new version; runs record the version they used. <Link href={`/admin/crewai/runs?content=${job.id}`} className="underline">Runs of this flow</Link></> : "A content flow finds stories or ideas in your content sources, ranks them and drafts for your review. Start it disabled, try a dry run, then enable it."} />
       <JobEditor
         id={job?.id ?? null}
         initial={initial}

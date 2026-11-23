@@ -76,10 +76,10 @@ export default async function CrewaiFlowPage({ params }: { params: Promise<{ nam
         <section aria-labelledby="sched-h">
           <div className="mb-3 flex items-baseline justify-between gap-2">
             <h2 id="sched-h" className="text-base font-semibold text-fg">Schedules</h2>
-            {SCHEDULABLE_FLOWS.includes(name) && <Link href={`/admin/crewai/jobs?kind=system&flow=${name}`} className={buttonClass("ghost", "sm")}>Manage schedules</Link>}
+            {SCHEDULABLE_FLOWS.includes(name) && <Link href={`/admin/crewai/schedules?flow=${name}`} className={buttonClass("ghost", "sm")}>Manage schedules</Link>}
           </div>
           {mine.length === 0 ? (
-            <Card><p className="text-sm text-fg-muted">{SCHEDULABLE_FLOWS.includes(name) ? "Not scheduled: it runs only when started." : "This flow is not started by a schedule."}</p></Card>
+            <Card><p className="text-sm text-fg-muted">{name === "news_job_flow" ? <>Each content flow runs on its own time, set in that flow: <Link className="underline" href="/admin/crewai/flows?kind=content">Flows → Content flows</Link>.</> : SCHEDULABLE_FLOWS.includes(name) ? "Not scheduled: it runs only when started." : "This flow is not started by a schedule."}</p></Card>
           ) : (
             <Table head={<tr><th className={th}>Schedule</th><th className={th}>When</th><th className={th}>Next</th></tr>}>
               {mine.map((s) => (

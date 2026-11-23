@@ -24,11 +24,13 @@ function Last({ s }: { s: Schedule }) {
 }
 
 /**
- * The system jobs on AI & SEO → Jobs (until 2026-11-21 the CrewAI console's Schedules page, D-98): when each built-in
- * flow runs (syncs, audits, reports, ML, housekeeping), kept in the database and started by the one dispatcher (the
- * seo-agent's POST /schedules/dispatch, called every minute by a single CronJob), which starts the crew jobs too.
+ * When the built-in flows and the custom flows run (AI & SEO → Flows → Schedules; "system jobs" on the Jobs page from
+ * 2026-11-21 to 2026-11-23, before that the CrewAI console's Schedules page, D-98): syncs, audits, reports, ML,
+ * housekeeping, custom flows. Kept in the database and started by the one dispatcher (the seo-agent's
+ * POST /schedules/dispatch, called every minute by a single CronJob), which starts the content flows too; a content
+ * flow's own time is part of that flow (its editor), not a row here.
  */
-export async function SystemJobs({ flow }: { flow?: string | null }) {
+export async function FlowSchedules({ flow }: { flow?: string | null }) {
   const ready = await hasSchedules().catch(() => false);
   const [schedules, agent] = await Promise.all([ready ? listSchedules() : Promise.resolve([]), agentFlows()]);
   const flows: FlowOption[] = SCHEDULABLE_FLOWS.map((n) => ({ name: n, label: flowInfo(n).label, schema: agent?.get(n)?.inputs_schema ?? null }));
@@ -36,23 +38,19 @@ export async function SystemJobs({ flow }: { flow?: string | null }) {
   const paused = schedules.filter((s) => !s.enabled).length;
   const failing = schedules.filter((s) => s.last.status === "failed").length;
   return (
-    <section aria-labelledby="system-jobs" className="mt-10">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 id="system-jobs" className="text-base font-semibold text-fg">System jobs</h2>
-          <p className="mt-1 max-w-3xl text-sm text-fg-muted">The built-in flows on their schedules: Search Console and GA4 syncs, audits, reports, the ML models, crew job housekeeping. One dispatcher checks these and the crew jobs every minute and starts what is due. Times are a cron expression in a time zone.</p>
-        </div>
-        {ready && <NewScheduleButton flows={flows} />}
-      </div>
+    <section aria-label="Schedules">
       {!ready ? (
-        <Card><p className="text-sm text-fg-muted">System jobs appear once database migration 0037 is applied (the web app applies it when it starts).</p></Card>
+        <Card><p className="text-sm text-fg-muted">Schedules appear once database migration 0037 is applied (the web app applies it when it starts).</p></Card>
       ) : (
         <>
-          <p className="mb-4 text-sm text-fg-muted">
-            {schedules.length} system job{schedules.length === 1 ? "" : "s"}{paused ? `, ${paused} paused` : ""}{failing ? `, ${failing} whose last start failed` : ""}.
-            {flow && <> Showing {flowInfo(flow).label} only · <Link href="/admin/crewai/jobs?kind=system" className="underline">show all</Link>.</>}
-            {" "}Nothing runs unless the dispatcher CronJob is deployed (<code>seo-flow-dispatcher</code>, every minute).
-          </p>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <p className="max-w-3xl text-sm text-fg-muted">
+              {schedules.length} schedule{schedules.length === 1 ? "" : "s"}{paused ? `, ${paused} paused` : ""}{failing ? `, ${failing} whose last start failed` : ""}.
+              {flow && <> Showing {flowInfo(flow).label} only · <Link href="/admin/crewai/schedules" className="underline">show all</Link>.</>}
+              {" "}Nothing runs unless the dispatcher CronJob is deployed (<code>seo-flow-dispatcher</code>, every minute).
+            </p>
+            <NewScheduleButton flows={flows} />
+          </div>
       {/* Only the Schedule column wraps; the others stay on one line so a row is as tall as its description. */}
       <Table head={<tr><th className={th}>Schedule</th><th className={th}>When</th><th className={th}>Next</th><th className={th}>Last</th><th className={th}><span className="sr-only">Actions</span></th></tr>}>
         {shown.map((s) => (

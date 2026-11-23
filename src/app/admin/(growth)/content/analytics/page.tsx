@@ -38,8 +38,8 @@ function RateTable({ rows, label }: { rows: Rate[]; label: string }) {
 const sel = "min-h-11 rounded-lg border border-line bg-surface px-3 text-sm text-fg";
 
 /**
- * AI & SEO → Content analytics: what every crew job drafted (news stories and blog articles) and how it did, filtered
- * as you need (period, job, what it writes, category, topic, source; all in the address, so a view can be bookmarked):
+ * AI & SEO → Content analytics: what every content flow drafted (news stories and blog articles) and how it did, filtered
+ * as you need (period, content flow, what it writes, category, topic, source; all in the address, so a view can be bookmarked):
  * approval rates, edit-distance trend (falling = drafts match your style), time to review, performance, cost, models.
  */
 export default async function ContentAnalyticsPage({ searchParams }: { searchParams?: Promise<Record<string, string | undefined>> } = {}) {
@@ -59,13 +59,13 @@ export default async function ContentAnalyticsPage({ searchParams }: { searchPar
   const review = a.review as { hours: number | null; n: number } | null;
   return (
     <>
-      <AdminHeader title="Content analytics" description={`What crew jobs drafted in the last ${f.days} days and how it did: your own review decisions, and Search Console / GA4 data once it is published.`} />
+      <AdminHeader title="Content analytics" description={`What content flows drafted in the last ${f.days} days and how it did: your own review decisions, and Search Console / GA4 data once it is published.`} />
       <form method="get" className="mb-8 flex flex-wrap items-end gap-3" aria-label="Filters">
         <label className="grid gap-1 text-xs text-fg-subtle">Period
           <select name="days" defaultValue={String(f.days)} className={sel}>{ANALYTICS_PERIODS.map((d) => <option key={d} value={d}>{d === 365 ? "Last year" : `Last ${d} days`}</option>)}</select>
         </label>
-        <label className="grid gap-1 text-xs text-fg-subtle">Job
-          <select name="job" defaultValue={f.jobId ?? ""} className={sel}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
+        <label className="grid gap-1 text-xs text-fg-subtle">Content flow
+          <select name="job" defaultValue={f.jobId ?? ""} className={sel}><option value="">All content flows</option>{jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</select>
         </label>
         <label className="grid gap-1 text-xs text-fg-subtle">Writes
           <select name="output" defaultValue={f.output ?? ""} className={sel}><option value="">News and articles</option><option value="news">News stories</option><option value="article">Blog articles</option></select>
@@ -89,16 +89,16 @@ export default async function ContentAnalyticsPage({ searchParams }: { searchPar
         <Stat label="Edit distance (latest week)" value={trend.length ? Number(trend[trend.length - 1]!.avg).toFixed(2) : "—"} hint="0 = published as drafted, 1 = rewritten" />
       </div>
       <div className="grid gap-8 lg:grid-cols-2">
-        <section aria-labelledby="j" className="min-w-0"><h2 id="j" className="mb-3 text-sm font-semibold">By job</h2><RateTable rows={a.byJob as Rate[]} label="Job" /></section>
+        <section aria-labelledby="j" className="min-w-0"><h2 id="j" className="mb-3 text-sm font-semibold">By content flow</h2><RateTable rows={a.byJob as Rate[]} label="Content flow" /></section>
         <section aria-labelledby="t" className="min-w-0"><h2 id="t" className="mb-3 text-sm font-semibold">By topic</h2><RateTable rows={a.byTopic as Rate[]} label="Topic" /></section>
         <section aria-labelledby="s" className="min-w-0"><h2 id="s" className="mb-3 text-sm font-semibold">By source</h2><RateTable rows={a.bySource as Rate[]} label="Source" /></section>
         <section aria-labelledby="c" className="min-w-0"><h2 id="c" className="mb-3 text-sm font-semibold">By category</h2><RateTable rows={a.byCategory as Rate[]} label="Category" /></section>
         <section aria-labelledby="i" className="min-w-0">
           <h2 id="i" className="mb-3 text-sm font-semibold">From content ideas (Editorial crew)</h2>
           {ideas.length === 0 ? (
-            <Card><p className="text-sm text-fg-muted">No content ideas sent by a job in this period. Jobs that start from content ideas send them to the editorial calendar.</p></Card>
+            <Card><p className="text-sm text-fg-muted">No content ideas sent by a content flow in this period. Content flows that start from content ideas send them to the editorial calendar.</p></Card>
           ) : (
-            <Table head={<tr><th className={th}>Job</th><th className={th}>Ideas sent</th><th className={th}>Published</th></tr>}>
+            <Table head={<tr><th className={th}>Content flow</th><th className={th}>Ideas sent</th><th className={th}>Published</th></tr>}>
               {ideas.map((r) => <tr key={r.name} className="border-t border-line"><td className={td}>{r.name}</td><td className={`${td} tabular-nums`}>{r.sent}</td><td className={`${td} tabular-nums`}>{r.published}</td></tr>)}
             </Table>
           )}

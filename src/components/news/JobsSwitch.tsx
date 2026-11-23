@@ -8,9 +8,10 @@ import { api } from "./api";
 export type DeskView = { on: boolean; by: "deployment_off" | "admin" | "deployment_legacy" | "default"; text: string };
 
 /**
- * The crew jobs' switch (setting row `news`.enabled; it was "News desk on" in the Newsroom until 2026-11-21). Off: no
- * job runs (Run now and dry runs are skipped too: moks-seo-agent app/flows/news.py); jobs, sources and profiles stay as
- * they are. NEWS_DESK_ENABLED=false in the deployment forces it off.
+ * The content flows' switch on AI & SEO → Flows (setting row `news`.enabled; "News desk on" in the Newsroom until
+ * 2026-11-21, "Jobs on" until 2026-11-23). Off: no content flow runs (Run now and dry runs are skipped too:
+ * moks-seo-agent app/flows/news.py); the flows, sources and profiles stay as they are. NEWS_DESK_ENABLED=false in the
+ * deployment forces it off. Other flows (built-in, built from crews) are not affected.
  */
 export function JobsSwitch({ desk }: { desk: DeskView }) {
   const router = useRouter();
@@ -18,9 +19,9 @@ export function JobsSwitch({ desk }: { desk: DeskView }) {
   const [err, setErr] = useState<string | null>(null);
   const forced = desk.by === "deployment_off";
   return (
-    <section id="jobs-switch" aria-labelledby="jobs-switch-title" className={`mb-6 scroll-mt-24 rounded-xl border p-4 text-sm ${desk.on ? "border-line bg-surface" : "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"}`}>
+    <section id="content-switch" aria-labelledby="content-switch-title" className={`mb-6 scroll-mt-24 rounded-xl border p-4 text-sm ${desk.on ? "border-line bg-surface" : "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"}`}>
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id="jobs-switch-title" className="font-semibold">{desk.on ? "Jobs run on their schedules" : "All jobs are paused"}</h2>
+        <h2 id="content-switch-title" className="font-semibold">{desk.on ? "Content flows run on their schedules" : "All content flows are paused"}</h2>
         <label className="ml-auto inline-flex min-h-11 items-center gap-2 font-medium">
           <input
             type="checkbox"
@@ -39,10 +40,10 @@ export function JobsSwitch({ desk }: { desk: DeskView }) {
               }
             }}
           />
-          Jobs on
+          Content flows on
         </label>
       </div>
-      <p className="mt-1" role="status">{desk.text} Off: no job runs, not even Run now or a dry run; jobs, sources and profiles stay as they are.</p>
+      <p className="mt-1" role="status">{desk.text} Off: no content flow runs, not even Run now or a dry run; the flows, sources and profiles stay as they are. Other flows are not affected.</p>
       {err && <div className="mt-2"><Alert>{err}</Alert></div>}
     </section>
   );

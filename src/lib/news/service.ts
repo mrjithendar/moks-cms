@@ -25,6 +25,7 @@ export class NewsError extends Error {
 
 const j = (v: unknown) => JSON.stringify(v ?? null);
 const asJson = <T>(v: unknown, fallback: T): T => (v == null ? fallback : typeof v === "string" ? (JSON.parse(v) as T) : (v as T));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const pgText = (a: string[]) => `{${a.map((x) => `"${x.replace(/(["\\])/g, "\\$1")}"`).join(",")}}`;
 
 function parse<T>(schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false; error: { issues: { path: PropertyKey[]; message: string }[] } } }, raw: unknown): T {
@@ -151,7 +152,7 @@ export async function createJob(actor: Actor, raw: unknown) {
   validateJob(input);
   const db = await getDb();
   const [{ n }] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from news_jobs where deleted_at is null`)) as [{ n: number }];
-  if (n >= MAX_NEWS_JOBS) throw new NewsError(`At most ${MAX_NEWS_JOBS} news jobs (keeps the metrics' job label bounded). Delete or reuse one.`, 409);
+  if (n >= MAX_NEWS_JOBS) throw new NewsError(`At most ${MAX_NEWS_JOBS} content flows (keeps the metrics' label bounded). Delete or reuse one.`, 409);
   const snap = snapshotOf(input);
   const [row] = rowsOf<{ id: string }>(
     await db.execute(sql`
@@ -169,7 +170,7 @@ export async function updateJob(actor: Actor, id: string, raw: unknown, note: st
   validateJob(input);
   const db = await getDb();
   const current = await getJob(id, db);
-  if (!current) throw new NewsError("Job not found.", 404);
+  if (!current) throw new NewsError("Content flow not found.", 404);
   const before = pickJob(current);
   const after = snapshotOf(input);
   const diff = diffSnapshots(before, after);
@@ -201,13 +202,13 @@ export async function rollbackJob(actor: Actor, id: string, toVersion: number) {
 
 export async function cloneJob(actor: Actor, id: string) {
   const j0 = await getJob(id);
-  if (!j0) throw new NewsError("Job not found.", 404);
+  if (!j0) throw new NewsError("Content flow not found.", 404);
   return createJob(actor, { ...pickJob(j0), name: `${j0.name} (copy)`.slice(0, 120), enabled: false });
 }
 
 export async function setJobEnabled(actor: Actor, id: string, enabled: boolean) {
   const j0 = await getJob(id);
-  if (!j0) throw new NewsError("Job not found.", 404);
+  if (!j0) throw new NewsError("Content flow not found.", 404);
   return updateJob(actor, id, { ...pickJob(j0), enabled }, enabled ? "resumed" : "paused");
 }
 
@@ -346,6 +347,19 @@ export async function listRuns(q: { jobId?: string | null; status?: string | nul
   return rowsOf<Record<string, unknown>>(
     await db.execute(sql`select r.*, j.name as job_name, extract(epoch from (coalesce(r.finished_at, now()) - r.started_at))::float8 as seconds from news_runs r left join news_jobs j on j.id = r.job_id where ${sql.join(where, sql` and `)} order by r.started_at desc limit ${limit}`),
   ).map((r) => ({ ...r, counters: asJson<Record<string, number>>(r.counters, {}) }) as Record<string, unknown> & { counters: Record<string, number> });
+}
+
+export type ContentOfRun = { flowId: string | null; name: string | null; kind: string; dryRun: boolean; counters: Record<string, number>; costUsd: number };
+
+/** The content flow behind each of these flow runs, for the one Runs list (a content flow's run has its flow run's id). */
+export async function contentOfRuns(ids: string[], db?: Db): Promise<Map<string, ContentOfRun>> {
+  const ok = ids.filter((id) => UUID.test(id));
+  if (ok.length === 0) return new Map();
+  const d = db ?? (await getDb());
+  const rows = rowsOf<Record<string, unknown>>(
+    await d.execute(sql`select r.id::text as id, r.job_id::text as job_id, j.name as job_name, r.kind, r.dry_run, r.counters, r.cost_usd, r.image_cost_usd from news_runs r left join news_jobs j on j.id = r.job_id where r.id = any(${pgText(ok)}::uuid[])`),
+  );
+  return new Map(rows.map((r) => [String(r.id), { flowId: r.job_id ? String(r.job_id) : null, name: r.job_name ? String(r.job_name) : null, kind: String(r.kind), dryRun: Boolean(r.dry_run), counters: asJson<Record<string, number>>(r.counters, {}), costUsd: Number(r.cost_usd ?? 0) + Number(r.image_cost_usd ?? 0) }]));
 }
 
 export async function runDetail(id: string) {

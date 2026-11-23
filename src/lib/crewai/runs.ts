@@ -72,7 +72,8 @@ export async function hasRunHistory(db?: Db): Promise<boolean> {
 
 // --- Runs ---------------------------------------------------------------------------------------------------------------
 
-export type RunFilter = { flow?: string | null; status?: string | null; trigger?: string | null; q?: string | null; before?: string | null; limit?: number };
+/** `content`: one content flow's id (a `news_jobs` row): its runs and the image, training and other runs it made. */
+export type RunFilter = { flow?: string | null; content?: string | null; status?: string | null; trigger?: string | null; q?: string | null; before?: string | null; limit?: number };
 
 /** Newest first, `limit` per page; `before` is the last row's startedAt. `q`: "#12" (run number), a run id, or text
  * in the target, actor or error. */
@@ -80,6 +81,8 @@ export async function listRuns(f: RunFilter = {}, db?: Db): Promise<RunRow[]> {
   const d = db ?? (await getDb());
   const where: SQL[] = [sql`true`];
   if (f.flow && /^[a-z][a-z0-9_]{2,60}$/.test(f.flow)) where.push(sql`r.flow_name = ${f.flow}`);
+  // A content flow's run has its flow run's id (moks-seo-agent app/flows/news.py open_run).
+  if (f.content && UUID.test(f.content.toLowerCase())) where.push(sql`r.run_id in (select n.id from news_runs n where n.job_id = ${f.content.toLowerCase()}::uuid)`);
   if (f.status && (RUN_STATUSES as readonly string[]).includes(f.status)) where.push(sql`r.status = ${f.status}`);
   if (f.status === "active") where.push(sql`r.status = any(${pgText(ACTIVE_STATUSES)}::text[])`);
   if (f.trigger && (TRIGGERS as readonly string[]).includes(f.trigger)) where.push(sql`r.triggered_by = ${f.trigger}`);

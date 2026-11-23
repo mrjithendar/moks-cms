@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Card, Table, td, th } from "@/components/admin/ui";
 import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
+import { ContentRunPanel } from "@/components/crewai/ContentRunPanel";
 import { LogViewer, type StepView } from "@/components/crewai/LogViewer";
 import { RunActions } from "@/components/crewai/RunActions";
 import { RunStatus, RunStatusIcon } from "@/components/crewai/RunStatusIcon";
@@ -13,6 +14,7 @@ import { LocalTime } from "@/components/LocalTime";
 import { CREW_OF_FLOW, flowInfo, rerunBlocked, TRIGGER_LABELS } from "@/lib/crewai/flows";
 import { formatDuration, formatTokens, formatUsd, runDurationMs } from "@/lib/crewai/format";
 import { runDetail, runLogs, type RunDetail, type RunStep } from "@/lib/crewai/runs";
+import { runDetail as contentRunDetail, runLogs as contentRunLogs } from "@/lib/news/service";
 
 export const metadata = { title: "Run" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -95,13 +97,34 @@ function CrewTestResult({ run }: { run: RunDetail }) {
   );
 }
 
-/** One run: GitHub Actions' run page (steps, annotations, summary, log) plus the crew's cost per agent and model. */
+/**
+ * One run: GitHub Actions' run page (steps, annotations, summary, log) plus the crew's cost per agent and model. A
+ * content flow's run (the same id in news_runs) also shows what it drafted and why (components/crewai/ContentRunPanel.tsx);
+ * it was the Job runs page's run detail until 2026-11-23.
+ */
 export default async function CrewaiRunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const run = await runDetail(id);
-  if (!run) notFound();
+  const content = !run || run.flow.startsWith("news_") ? await contentRunDetail(id).catch(() => null) : null;
+  if (!run) {
+    if (!content) notFound();
+    // An old content flow run whose flow run is gone: what the content run kept, with its own log.
+    return (
+      <>
+        <nav aria-label="Breadcrumb" className="mb-3 text-sm text-fg-muted">
+          <Link href="/admin/crewai/runs" className="hover:underline">Runs</Link>
+        </nav>
+        <h1 className="mb-4 flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight text-fg"><RunStatusIcon status={String(content.run.status)} size={24} />{String(content.run.job_name ?? "Content flow run")}</h1>
+        <p className="mb-6 text-sm text-fg-muted">Started <LocalTime iso={String(content.run.started_at)} /> · {String(content.run.trigger)}. The flow run of this content run is no longer kept.</p>
+        <ContentRunPanel id={id} detail={content} logs={await contentRunLogs(id, 0)} />
+      </>
+    );
+  }
   const info = flowInfo(run.flow);
+  const contentName = content?.run.job_name ? String(content.run.job_name) : null;
+  const contentId = content?.run.job_id ? String(content.run.job_id) : null;
+  const title = contentName && run.flow === "news_job_flow" ? contentName : info.label;
   const logs = await runLogs(id, 0, { limit: FIRST_PAGE });
   const live = run.status === "queued" || run.status === "running";
   const ms = runDurationMs(run.startedAt, run.finishedAt);
@@ -115,13 +138,13 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
       <nav aria-label="Breadcrumb" className="mb-3 text-sm text-fg-muted">
         <Link href="/admin/crewai/runs" className="hover:underline">Runs</Link>
         <span className="mx-1.5 text-fg-subtle">/</span>
-        <Link href={`/admin/crewai/runs?flow=${run.flow}`} className="hover:underline">{info.label}</Link>
+        {contentId && contentName ? <Link href={`/admin/crewai/runs?content=${contentId}`} className="hover:underline">{contentName}</Link> : <Link href={`/admin/crewai/runs?flow=${run.flow}`} className="hover:underline">{info.label}</Link>}
       </nav>
       <header className="mb-6 flex flex-col gap-4 border-b border-line pb-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-semibold tracking-tight text-fg">
             <RunStatusIcon status={run.status} size={24} />
-            <span>{info.label} <span className="font-normal text-fg-subtle">#{run.number ?? "?"}</span></span>
+            <span>{title} <span className="font-normal text-fg-subtle">#{run.number ?? "?"}</span></span>
           </h1>
           <p className="mt-1.5 text-sm text-fg-muted">
             <RunStatus status={run.status} /> · {TRIGGER_LABELS[run.triggeredBy] ?? run.triggeredBy}{run.actor ? ` by ${run.actor}` : ""} · started <Ago iso={run.startedAt} />
@@ -183,6 +206,7 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
             </div>
             <div>
               <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Run details</p>
+              {content && <a href="#content" className="block rounded-md px-2 py-1.5 text-fg-muted hover:bg-surface-sunken hover:text-fg">Content flow</a>}
               <a href="#cost" className="block rounded-md px-2 py-1.5 text-fg-muted hover:bg-surface-sunken hover:text-fg">Cost by agent</a>
               <a href="#io" className="block rounded-md px-2 py-1.5 text-fg-muted hover:bg-surface-sunken hover:text-fg">Inputs and outputs</a>
               {run.children.length > 0 && <a href="#children" className="block rounded-md px-2 py-1.5 text-fg-muted hover:bg-surface-sunken hover:text-fg">Runs it started ({run.children.length})</a>}
@@ -199,7 +223,7 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
                 <Meta label="Started"><LocalTime iso={run.startedAt} /></Meta>
                 <Meta label="Tokens">{formatTokens(run.tokens)}</Meta>
                 <Meta label="Model cost">{formatUsd(run.costUsd || cost)}</Meta>
-                <Meta label="Target"><span className="block truncate font-mono text-xs" title={run.targetId}>{run.targetId}</span></Meta>
+                <Meta label={contentName ? "Content flow" : "Target"}>{contentName && contentId ? <Link href={`/admin/crewai/flows/content/${contentId}`} className="block truncate hover:underline">{contentName}</Link> : <span className="block truncate font-mono text-xs" title={run.targetId}>{run.targetId}</span>}</Meta>
               </dl>
               {(links.length > 0 || run.parent || run.transcripts > 0) && (
                 <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-t border-line pt-3 text-sm">
@@ -216,6 +240,8 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
           </section>
 
           {run.flow === "crew_test_flow" && <CrewTestResult run={run} />}
+
+          {content && <ContentRunPanel id={run.runId} detail={content} />}
 
           <LogViewer runId={run.runId} initial={logs} live={live} steps={steps} runStatus={run.status} hasMore={logs.length === FIRST_PAGE} />
 

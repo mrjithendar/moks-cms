@@ -35,11 +35,12 @@ const crewRoute = await import("@/app/api/admin/crewai/crews/[crew]/route");
 const configRoute = await import("@/app/api/admin/crewai/config/route");
 const { default: FlowsPage } = await import("@/app/admin/crewai/flows/page");
 const { default: FlowPage } = await import("@/app/admin/crewai/flows/[name]/page");
-const { SystemJobs } = await import("@/components/crewai/SystemJobs");
+const { default: SchedulesPage } = await import("@/app/admin/crewai/schedules/page");
 const { default: CrewsPage } = await import("@/app/admin/crewai/crews/page");
 const { default: CrewPage } = await import("@/app/admin/crewai/crews/[crew]/page");
 const { default: ConfigPage } = await import("@/app/admin/crewai/config/page");
 const { default: RunPage } = await import("@/app/admin/crewai/runs/[id]/page");
+const { default: RunsPage } = await import("@/app/admin/crewai/runs/page");
 const { renderToStaticMarkup } = await import("react-dom/server");
 
 const ADMIN: SessionUser = { id: "admin", name: "Admin", email: "admin@example.com", role: "admin", emailVerified: true, image: null, sessionCreatedAt: new Date() };
@@ -134,8 +135,9 @@ describe("migration 0037", () => {
     expect(by.get("gsc-sync")).toMatchObject({ flow: "gsc_sync_flow", cron: "10 6 * * *" });
     expect(by.get("report-monthly")).toMatchObject({ flow: "report_flow", cron: "0 8 2 * *", inputs: { period: "monthly" } });
     expect(by.get("news-dispatch")).toMatchObject({ flow: "news_dispatch_flow", cron: "*/15 * * * *" });
-    // 0038: the agent's one dispatcher starts the crew jobs; this row is their housekeeping now.
-    expect(by.get("news-dispatch")!.description).toMatch(/^Crew jobs: daily clean-up and gauges/);
+    // 0038: the agent's one dispatcher starts the crew jobs; this row is their housekeeping now. 0040: crew jobs are
+    // content flows.
+    expect(by.get("news-dispatch")!.description).toMatch(/^Content flows: daily clean-up and gauges/);
     expect(list.every((s) => s.nextAt !== null)).toBe(true);
   });
 
@@ -336,9 +338,10 @@ describe("pages", () => {
     const flow = renderToStaticMarkup(await FlowPage({ params: Promise.resolve({ name: "report_flow" }) }));
     expect(flow).toContain("report-weekly");
     expect(flow).toContain("weekly | monthly");
-    // The schedules are the system jobs on AI & SEO → Jobs since 2026-11-21 (the Schedules page redirects there).
-    const sched = renderToStaticMarkup(await SystemJobs({}));
-    expect(sched).toContain("System jobs");
+    // AI & SEO → Flows → Schedules (the system jobs of the Jobs page from 2026-11-21 to 2026-11-23).
+    const sched = renderToStaticMarkup(await SchedulesPage({ searchParams: Promise.resolve({}) }));
+    expect(sched).toContain("Schedules");
+    expect(sched).not.toMatch(/\bjobs?\b/i);
     expect(sched).toContain("gsc-sync");
     expect(sched).toContain("Mondays at 07:00");
     expect(sched).toContain("New schedule");
@@ -362,5 +365,64 @@ describe("pages", () => {
     clearAgentCache();
     expect(renderToStaticMarkup(await FlowsPage())).toContain("did not answer");
     expect(renderToStaticMarkup(await CrewPage({ params: Promise.resolve({ crew: "report" }), searchParams: Promise.resolve({}) }))).toContain("did not answer");
+  });
+});
+
+describe("flows and crews only (no jobs since 2026-11-23)", () => {
+  const text = (html: string) => html.replace(/<[^>]+>/g, " ");
+  async function contentFlowWithRun() {
+    const flowId = randomUUID();
+    await db.execute(sql`insert into news_jobs (id, name, enabled, cron, timezone) values (${flowId}::uuid, 'daily digest news', true, '0 7 * * *', 'Asia/Kolkata')`);
+    const runId = await seedRun("news_job_flow");
+    await db.execute(sql`update seo_flow_runs set target_id = ${`job:${flowId}`} where run_id = ${runId}::uuid`);
+    await db.execute(sql`insert into news_runs (id, job_id, job_version, kind, flow_run_id, trigger, status, counters, cost_usd, image_cost_usd, finished_at) values (${runId}::uuid, ${flowId}::uuid, 3, 'job', ${runId}::uuid, 'cron', 'succeeded', '{"fetched":12,"drafted":2}'::jsonb, 0.25, 0.04, now())`);
+    const other = await seedRun("report_flow");
+    return { flowId, runId, other };
+  }
+
+  it("Flows lists the content flows, the custom flows and the built-in ones, and never says job", async () => {
+    const { flowId, runId } = await contentFlowWithRun();
+    const html = renderToStaticMarkup(await FlowsPage());
+    for (const h of ["Content flows", "Custom flows", "Built-in flows", "New content flow", "New custom flow", "Content flows on", "daily digest news"]) expect(html).toContain(h);
+    expect(html).toContain(`/admin/crewai/flows/content/${flowId}`);
+    expect(html).toContain(`/admin/crewai/runs/${runId}`);
+    expect(html).toContain('id="content-switch"');
+    expect(text(html)).not.toMatch(/\bjobs?\b/i);
+    const onlyContent = renderToStaticMarkup(await FlowsPage({ searchParams: Promise.resolve({ kind: "content" }) }));
+    expect(onlyContent).toContain("daily digest news");
+    expect(onlyContent).not.toContain('id="builtin-flows"');
+    expect(onlyContent).not.toContain('id="custom-flows"');
+    const builtin = renderToStaticMarkup(await FlowsPage({ searchParams: Promise.resolve({ kind: "builtin" }) }));
+    expect(builtin).toContain("Run with parameters");
+    expect(builtin).not.toContain("daily digest news");
+  });
+
+  it("Runs shows a content flow's runs under its name and filters to one content flow", async () => {
+    const { flowId, runId, other } = await contentFlowWithRun();
+    const all = renderToStaticMarkup(await RunsPage({ searchParams: Promise.resolve({}) }));
+    expect(all).toContain("daily digest news");
+    expect(all).toContain("2 drafted");
+    expect(all).not.toContain(`job:${flowId.slice(0, 4)}`);
+    const one = renderToStaticMarkup(await RunsPage({ searchParams: Promise.resolve({ content: flowId }) }));
+    expect(one).toContain("daily digest news runs");
+    expect(one).toContain(`/admin/crewai/runs/${runId}`);
+    expect(one).not.toContain(`/admin/crewai/runs/${other}`);
+    expect(text(one)).not.toMatch(/\bjobs?\b/i);
+  });
+
+  it("a content flow's run page shows what it drafted, on the flow run", async () => {
+    const { flowId, runId } = await contentFlowWithRun();
+    const html = renderToStaticMarkup(await RunPage({ params: Promise.resolve({ id: runId }) }));
+    expect(html).toContain("daily digest news");
+    expect(html).toContain("Timeline");
+    expect(html).toContain("Articles from this run");
+    expect(html).toContain("Candidates (0)");
+    expect(html).toContain("flow version 3");
+    expect(html).toContain("$0.290 with cover images");
+    expect(html).toContain(`/admin/crewai/flows/content/${flowId}`);
+    expect(text(html)).not.toMatch(/\bjobs?\b/i);
+    // A run of another flow has no content panel.
+    const plain = renderToStaticMarkup(await RunPage({ params: Promise.resolve({ id: await seedRun("report_flow") }) }));
+    expect(plain).not.toContain("Articles from this run");
   });
 });

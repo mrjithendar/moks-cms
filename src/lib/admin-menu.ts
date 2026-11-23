@@ -51,7 +51,7 @@ export const MENU_GROUPS: GroupDef[] = [
   { id: "media", label: "Media", icon: "media" },
   { id: "pages", label: "Pages", icon: "pages" },
   { id: "comments", label: "Comments", icon: "comments" },
-  // The SEO agent, its crew jobs and what they work from (there is no Newsroom since 2026-11-21).
+  // The SEO agent, its flows and crews and what they work from (no Newsroom since 2026-11-21, no jobs since 2026-11-23).
   { id: "ai", label: "AI & SEO", icon: "ai", separator: true },
   { id: "billing", label: "Billing", icon: "billing" },
   { id: "practice", label: "Practice", icon: "practice" },
@@ -87,13 +87,12 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/messages", { group: "comments" }],
   ["/admin/bookings", { group: "comments" }],
 
-  // The crew jobs and the flows and crews they run, what they write from, the models and data, what the site measures
-  // (traffic, content, authority) and the settings.
-  ["/admin/crewai", { group: "ai", title: "CrewAI console", heading: "Crew jobs" }],
-  ["/admin/crewai/jobs", { group: "ai", title: "Jobs" }],
-  ["/admin/crewai/jobs/runs", { group: "ai", title: "Job runs" }],
-  ["/admin/crewai/runs", { group: "ai", title: "Flow runs" }],
+  // The flows (content flows, custom and built-in) and the crews they run, their runs, what they write from, the models
+  // and data, what the site measures (traffic, content, authority) and the settings. No jobs since 2026-11-23: a crew job
+  // is a content flow, under Flows.
+  ["/admin/crewai", { group: "ai", title: "CrewAI console", heading: "Flows & crews" }],
   ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
+  ["/admin/crewai/runs", { group: "ai", title: "Runs" }],
   ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
   ["/admin/automation/skills", { group: "ai" }],
   ["/admin/crewai/config", { group: "ai", title: "Import / export" }],

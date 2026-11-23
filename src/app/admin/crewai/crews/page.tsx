@@ -60,7 +60,7 @@ function CustomList({ kind, rows, users }: { kind: "crews" | "flows"; rows: Cust
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id={`custom-${kind}`} className="text-base font-semibold text-fg">Custom {kind}</h2>
-          <p className="mt-1 max-w-3xl text-sm text-fg-muted">{kind === "crews" ? "Crews you make here: agents with tools from the allowlist and tasks in order. They run in your custom flows, with the same rules as the built-in crews." : "Flows you make here: your custom crews, conditions on their output and drafts for the review queue. They never publish; start one by hand or from a system job."}</p>
+          <p className="mt-1 max-w-3xl text-sm text-fg-muted">{kind === "crews" ? "Crews you make here: agents with tools from the allowlist and tasks in order. They run in your custom flows, with the same rules as the built-in crews." : "Flows you make here: your custom crews, conditions on their output and drafts for the review queue. They never publish; start one by hand or from a schedule."}</p>
         </div>
         <Link href={`/admin/crewai/${kind}/custom/new`} className={buttonClass("primary", "sm")}>New {one}</Link>
       </div>

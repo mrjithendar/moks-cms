@@ -5,9 +5,8 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/admin/crewai", label: "Overview" },
-  { href: "/admin/crewai/jobs", label: "Jobs" },
-  { href: "/admin/crewai/runs", label: "Flow runs" },
   { href: "/admin/crewai/flows", label: "Flows" },
+  { href: "/admin/crewai/runs", label: "Runs" },
   { href: "/admin/crewai/crews", label: "Crews" },
   { href: "/admin/crewai/config", label: "Import / export" },
   { href: "/admin/automation/skills", label: "Skills ↗" },
@@ -20,7 +19,8 @@ export type AgentPill = { enabled: boolean; version: string | null; reason: stri
 /** Section tabs for /admin/crewai, and whether the SEO agent answers (horizontally scrollable on phones). */
 export function ConsoleNav({ agent }: { agent: AgentPill }) {
   const path = usePathname();
-  const active = (href: string) => (href === "/admin/crewai" ? path === href : path.startsWith(href.split("?")[0]!));
+  // Flows and crews only since 2026-11-23 (no Jobs tab): Schedules belongs to Flows.
+  const active = (href: string) => (href === "/admin/crewai" ? path === href : href === "/admin/crewai/flows" && path.startsWith("/admin/crewai/schedules") ? true : path.startsWith(href.split("?")[0]!));
   return (
     <div className="-mx-4 mb-6 flex items-end gap-4 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
       <nav aria-label="CrewAI console" className="min-w-max">

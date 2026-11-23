@@ -167,7 +167,7 @@ export function CustomFlowEditor({ initial, isNew, enabled, crews }: { initial: 
       {!isNew && enabled && (
         <section aria-labelledby="run" className="space-y-3 rounded-xl border border-line p-4">
           <h2 id="run" className="text-base font-semibold text-fg">Run it</h2>
-          <p className="text-sm text-fg-muted">Test run: every step runs except the draft step, which only shows what it would create. Run now creates the draft for review. Model calls count in the LLM budget either way. To run it on a schedule, add a system job for the Custom flow with these inputs (AI &amp; SEO → Jobs → System jobs → New schedule).</p>
+          <p className="text-sm text-fg-muted">Test run: every step runs except the draft step, which only shows what it would create. Run now creates the draft for review. Model calls count in the LLM budget either way. To run it on a schedule, add one for the Custom flow with these inputs (AI &amp; SEO → Flows → Schedules → New schedule).</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {initial.inputs.map((k) => <Field key={k} label={k}><Input value={run[k] ?? ""} onChange={(e) => setRun({ ...run, [k]: e.target.value })} /></Field>)}
           </div>

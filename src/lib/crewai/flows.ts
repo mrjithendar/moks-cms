@@ -9,15 +9,15 @@
  * - "yes": the console starts the flow again with the same inputs (or edited ones), as a manual run.
  * - "review": drafting flows; their draft is regenerated from the review queue, which keeps one open draft per article.
  * - "approval": publish_flow starts only from a human approval in the review UI (the agent refuses anything else).
- * - "cron": the crew jobs' housekeeping is started by its schedule only.
+ * - "cron": the content flows' housekeeping is started by its schedule only.
  * - "news": per-story news runs; retry them from the news run page.
  */
 
-export type FlowGroup = "Content" | "Insights" | "Data sync" | "Promotion" | "Crew jobs" | "Maintenance" | "Custom" | "Other";
+export type FlowGroup = "Content" | "Insights" | "Data sync" | "Promotion" | "Content flows" | "Maintenance" | "Custom" | "Other";
 export type Rerun = "yes" | "review" | "approval" | "cron" | "news" | "no";
 export type FlowInfo = { name: string; label: string; group: FlowGroup; description: string; rerun: Rerun };
 
-export const FLOW_GROUPS: FlowGroup[] = ["Content", "Insights", "Data sync", "Promotion", "Crew jobs", "Maintenance", "Custom", "Other"];
+export const FLOW_GROUPS: FlowGroup[] = ["Content", "Insights", "Data sync", "Promotion", "Content flows", "Maintenance", "Custom", "Other"];
 
 const F = (name: string, label: string, group: FlowGroup, rerun: Rerun, description: string): FlowInfo => ({ name, label, group, rerun, description });
 
@@ -34,15 +34,15 @@ export const FLOWS: FlowInfo[] = [
   F("ga4_sync_flow", "GA4 sync", "Data sync", "yes", "Imports Google Analytics 4 data."),
   F("promotion_flow", "Promotion", "Promotion", "yes", "The Promotion crew scores where to share new articles and drafts the posts."),
   F("content_ideas_flow", "Content ideas", "Promotion", "yes", "Turns community and search signals into article ideas for the calendar."),
-  F("custom_flow", "Custom flow", "Custom", "yes", "Runs a flow you made (Flows → Custom flows): its custom crews, conditions and drafts for review. It never publishes."),
-  F("news_dispatch_flow", "Crew jobs housekeeping", "Crew jobs", "cron", "Keeps the crew jobs' gauges current on every run (its system job, every 15 minutes as seeded) and does their daily clean-up in the run between 03:00 and 03:15 UTC. The jobs themselves start on their own times (the one dispatcher)."),
-  F("news_job_flow", "News job", "Crew jobs", "yes", "Fetches, ranks and drafts the stories of one news job."),
-  F("news_ingest_flow", "News ingest", "Crew jobs", "yes", "Fetches and stores items from the news sources."),
-  F("news_draft_flow", "News draft", "Crew jobs", "news", "The News desk crew writes one story or digest."),
-  F("news_image_flow", "News image", "Crew jobs", "news", "Generates and checks a cover image for a news draft."),
-  F("news_train_flow", "News model training", "Crew jobs", "yes", "Retrains the news ranking model from editor decisions."),
-  F("news_style_review_flow", "News style review", "Crew jobs", "yes", "Reviews recent edits to keep the news writing profile current."),
-  F("news_playground_flow", "News playground", "Crew jobs", "news", "A trial draft from the profile playground."),
+  F("custom_flow", "Custom flow", "Custom", "yes", "Runs a flow you made from crews (Flows → Custom flows): its custom crews, conditions and drafts for review. It never publishes."),
+  F("news_dispatch_flow", "Content flows housekeeping", "Content flows", "cron", "Keeps the content flows' gauges current on every run (its schedule, every 15 minutes as seeded) and does their daily clean-up in the run between 03:00 and 03:15 UTC. The content flows themselves start on their own times (the one dispatcher)."),
+  F("news_job_flow", "Content flow", "Content flows", "yes", "Runs one content flow (Flows → Content flows): finds stories or ideas in its sources, ranks them and drafts them for review."),
+  F("news_ingest_flow", "News ingest", "Content flows", "yes", "Fetches and stores items from the news sources."),
+  F("news_draft_flow", "News draft", "Content flows", "news", "The News desk crew writes one story or digest."),
+  F("news_image_flow", "News image", "Content flows", "news", "Generates and checks a cover image for a news draft."),
+  F("news_train_flow", "News model training", "Content flows", "yes", "Retrains the news ranking model from editor decisions."),
+  F("news_style_review_flow", "News style review", "Content flows", "yes", "Reviews recent edits to keep the news writing profile current."),
+  F("news_playground_flow", "News playground", "Content flows", "news", "A trial draft from the profile playground."),
   F("reindex_flow", "Reindex", "Maintenance", "yes", "Rebuilds the article search index the agents and Ask the Blog use."),
   F("seo_ml_flow", "ML models", "Maintenance", "yes", "Retrains the SEO models (decay, query clusters, intent, priority, related articles)."),
   F("crew_test_flow", "Crew test run", "Maintenance", "yes", "Runs one crew with edited prompts on the inputs of an earlier run (Crews → Test run, like Jenkins Replay). Saves nothing."),

@@ -71,12 +71,12 @@ describe("content analytics filters", () => {
 });
 
 describe("content profiles & playground (crew-jobs plan PR 5)", () => {
-  it("says which jobs write with each profile, and what they write", async () => {
+  it("says which content flows write with each profile, and what they write", async () => {
     const { default: ProfilesPage } = await import("@/app/admin/(growth)/content/profiles/page");
     await svc.createJob(admin, { name: "Daily news" });
     await svc.createJob(admin, { name: "Weekly article", config: { output: "article" } });
     const html = renderToStaticMarkup(await ProfilesPage());
-    expect(html).toContain("Which jobs write with each profile");
+    expect(html).toContain("Which content flows write with each profile");
     expect(html).toContain("news-default</code><span class=\"text-fg-muted\"> · Daily news (news stories), Weekly article (blog articles)");
     expect(html).toContain("Weekly article (writes blog articles)</option>");
   });

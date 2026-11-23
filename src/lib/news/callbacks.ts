@@ -290,18 +290,18 @@ export async function newsSiteSignals() {
 
 export async function newsNotify(body: unknown, send = sendSeoAlert) {
   const b = parse(z.object({ kind: z.enum(["run_summary", "job_failed", "budget"]), jobId: z.string().optional(), jobName: z.string().max(200).optional(), runId: z.string().optional(), ready: z.number().int().optional(), failedQuality: z.number().int().optional(), other: z.number().int().optional(), error: z.string().max(1000).optional(), detail: z.string().max(1000).optional() }), body);
-  const link = `${siteOrigin().origin}/admin/crewai/jobs/runs/${b.runId ?? ""}`;
+  const link = `${siteOrigin().origin}/admin/crewai/runs/${b.runId ?? ""}`;
   let subject = "";
   let text = "";
   if (b.kind === "run_summary") {
     if (!b.ready && !b.failedQuality) return { sent: false, reason: "nothing to report" };
-    subject = `Crew job: ${b.ready ?? 0} draft${b.ready === 1 ? "" : "s"} ready${b.failedQuality ? `, ${b.failedQuality} failed quality` : ""} (${b.jobName})`;
+    subject = `Content flow: ${b.ready ?? 0} draft${b.ready === 1 ? "" : "s"} ready${b.failedQuality ? `, ${b.failedQuality} failed quality` : ""} (${b.jobName})`;
     text = `${subject}\n\nReview: ${siteOrigin().origin}/admin/review?tab=news\nRun: ${link}`;
   } else if (b.kind === "job_failed") {
-    subject = `Crew job failed: ${b.jobName}`;
+    subject = `Content flow failed: ${b.jobName}`;
     text = `${b.error ?? "Unknown error"}\n\nRun: ${link}`;
   } else {
-    subject = "Crew job budget threshold reached";
+    subject = "Content flow budget threshold reached";
     text = `${b.detail ?? ""}\n\nLimits: ${siteOrigin().origin}/admin/automation?section=agent-limits#job-settings-limits`;
   }
   return { sent: await send(subject, text) };

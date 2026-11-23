@@ -30,7 +30,7 @@ type Version = { version: number; diff: { path: string; before: unknown; after: 
 type Opt = { value: string; label: string };
 
 const TABS = ["General", "Sources", "Selection & ML", "Writing", "Quality", "Images", "Categories", "Schedule & limits", "Budget", "Review"] as const;
-/** The quality gates a job may set for itself (lib/news/schema.ts qualitySchema); empty = the shared value. */
+/** The quality gates a content flow may set for itself (lib/news/schema.ts qualitySchema); empty = the shared value. */
 const QUALITY_FIELDS: [key: string, label: string, step: number][] = [
   ["max_ngram_overlap", "Max 8-gram overlap per paragraph", 0.01],
   ["max_shared_run_words", "Max verbatim run (words)", 1],
@@ -77,7 +77,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
         router.refresh();
       } else {
         const r = await api<{ job: { id: string } }>("/api/admin/news/jobs", "POST", f);
-        router.push(`/admin/crewai/jobs/${r.job.id}`);
+        router.push(`/admin/crewai/flows/content/${r.job.id}`);
       }
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -93,7 +93,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
     try {
       const r = await api<{ run_id?: string; job?: { id: string } }>(`/api/admin/news/jobs/${id}/actions`, "POST", body);
       if (r.run_id) setMsg({ ok: true, text: `Started run ${r.run_id.slice(0, 8)}… (Run history shows it live).` });
-      if (body.action === "clone" && r.job) router.push(`/admin/crewai/jobs/${r.job.id}`);
+      if (body.action === "clone" && r.job) router.push(`/admin/crewai/flows/content/${r.job.id}`);
       if (body.action === "rollback") router.refresh();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -127,7 +127,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div>
-        <div role="tablist" aria-label="Job settings" className="mb-6 flex flex-wrap gap-1">
+        <div role="tablist" aria-label="Content flow settings" className="mb-6 flex flex-wrap gap-1">
           {TABS.map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`min-h-11 whitespace-nowrap rounded-lg px-3 text-sm font-medium ${tab === t ? "bg-accent text-white" : "bg-surface-muted text-fg-muted hover:text-fg"}`}>
               {t}
@@ -139,7 +139,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
             <>
               <Field label="Name"><Input value={f.name} onChange={(e) => set("name", e.target.value)} maxLength={120} /></Field>
               <Field label="Description"><Textarea value={f.description} onChange={(e) => set("description", e.target.value)} rows={3} /></Field>
-              <Field label="Output" hint="What this job writes. News: dated news stories (the news section, NewsArticle). Blog article: evergreen, practical articles from the same grounded facts (the blog, Article).">
+              <Field label="Output" hint="What this flow writes. News: dated news stories (the news section, NewsArticle). Blog article: evergreen, practical articles from the same grounded facts (the blog, Article).">
                 <Select value={c.output ?? "news"} onChange={(e) => setC("output", e.target.value)}>
                   <option value="news">News story</option>
                   <option value="article">Blog article</option>
@@ -147,7 +147,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               </Field>
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium text-fg">Starts from</legend>
-                {([["sources", "Content sources", "Feeds and APIs (Content sources tab), ranked and drafted by the News Desk crew."], ["ideas", "Content ideas", "Promotion's ideas that have an audience, matched to this job's keywords and topics; each goes on the editorial calendar and the Editorial crew writes it."]] as const).map(([k, label, hint]) => {
+                {([["sources", "Content sources", "Feeds and APIs (Content sources tab), ranked and drafted by the News Desk crew."], ["ideas", "Content ideas", "Promotion's ideas that have an audience, matched to this flow's keywords and topics; each goes on the editorial calendar and the Editorial crew writes it."]] as const).map(([k, label, hint]) => {
                   const intake = c.intake ?? ["sources"];
                   const on = intake.includes(k);
                   return (
@@ -171,7 +171,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
           )}
           {tab === "Sources" && (
             <>
-              <p className="text-sm text-fg-muted">No selection = every enabled source. Sources are fetched once per interval and shared by all jobs.</p>
+              <p className="text-sm text-fg-muted">No selection = every enabled source. Sources are fetched once per interval and shared by all content flows.</p>
               {checks("source_ids", sources, "No content sources yet (AI & SEO → Content sources).")}
             </>
           )}
@@ -261,27 +261,27 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
           {tab === "Schedule & limits" && (
             <>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Cron" hint={cronHint(f.cron) ?? "minute hour day month weekday, in the job's time zone"}><Input value={f.cron} onChange={(e) => set("cron", e.target.value)} className="font-mono" /></Field>
+                <Field label="Cron" hint={cronHint(f.cron) ?? "minute hour day month weekday, in the flow's time zone"}><Input value={f.cron} onChange={(e) => set("cron", e.target.value)} className="font-mono" /></Field>
                 <Field label="Time zone"><Input value={f.timezone} onChange={(e) => set("timezone", e.target.value)} /></Field>
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 {num("Max articles per run", Number(c.max_articles_per_run), (n) => setC("max_articles_per_run", n), { min: 0, max: 20 })}
-                {num("Max articles per day", Number(c.max_articles_per_day), (n) => setC("max_articles_per_day", n), { min: 0, max: 40, hint: "In the job's time zone. A limit to keep quality high, not a target." })}
+                {num("Max articles per day", Number(c.max_articles_per_day), (n) => setC("max_articles_per_day", n), { min: 0, max: 40, hint: "In the flow's time zone. A limit to keep quality high, not a target." })}
                 {num("Max per topic per day", Number(c.diversity.max_per_topic_per_day), (n) => setNested("diversity", "max_per_topic_per_day", n), { min: 1, max: 20 })}
                 {num("Max per source per day", Number(c.diversity.max_per_source_per_day), (n) => setNested("diversity", "max_per_source_per_day", n), { min: 1, max: 20 })}
                 {num("Expiry notice after (days, 0 = never)", Number(c.expiry_days ?? 0), (n) => setC("expiry_days", n > 0 ? n : null), { min: 0, max: 3650 })}
               </div>
-              <Field label="Publishing slots (HH:MM, job time zone)" hint="“Schedule” in review offers the next of these."><Input value={c.publishing_slots.join(", ")} onChange={(e) => setC("publishing_slots", list(e.target.value))} /></Field>
+              <Field label="Publishing slots (HH:MM, flow time zone)" hint="“Schedule” in review offers the next of these."><Input value={c.publishing_slots.join(", ")} onChange={(e) => setC("publishing_slots", list(e.target.value))} /></Field>
             </>
           )}
           {tab === "Quality" && (
             <>
-              <p className="text-sm text-fg-muted">Every draft this job writes is checked against these before it reaches the review queue. Leave a field empty to use the shared value (AI &amp; SEO → Settings → AI &amp; drafts → Quality gates).</p>
+              <p className="text-sm text-fg-muted">Every draft this flow writes is checked against these before it reaches the review queue. Leave a field empty to use the shared value (AI &amp; SEO → Settings → AI &amp; drafts → Quality gates).</p>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {QUALITY_FIELDS.map(([k, label, step]) => {
                   const q = c.quality ?? {};
                   return (
-                    <Field key={k} label={label} hint={q[k] === undefined ? "Shared value" : "This job's own value"}>
+                    <Field key={k} label={label} hint={q[k] === undefined ? "Shared value" : "This flow's own value"}>
                       <Input
                         type="number"
                         step={step}
@@ -305,18 +305,18 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               {num("Images per day (USD)", Number(c.budget.image_daily_usd), (n) => setNested("budget", "image_daily_usd", n), { min: 0, max: 100, step: 0.05 })}
               {num("Images per month (USD)", Number(c.budget.image_monthly_usd), (n) => setNested("budget", "image_monthly_usd", n), { min: 0, max: 1000, step: 0.5 })}
               {num("Tokens per draft (crew cap)", Number(c.budget.max_tokens_per_draft), (n) => setNested("budget", "max_tokens_per_draft", n), { min: 10_000, max: 400_000, step: 1000 })}
-              <p className="text-sm text-fg-subtle sm:col-span-2">These are image caps and a token limit per draft. LLM spend has no cap per job: it counts in the one LLM budget (AI &amp; SEO → Settings → LLM providers &amp; budget), and a run stops as “paused (budget)” when that is used up or an image cap is reached. The global image caps (Settings) apply too.</p>
+              <p className="text-sm text-fg-subtle sm:col-span-2">These are image caps and a token limit per draft. LLM spend has no cap per flow: it counts in the one LLM budget (AI &amp; SEO → Settings → LLM providers &amp; budget), and a run stops as “paused (budget)” when that is used up or an image cap is reached. The global image caps (Settings) apply too.</p>
             </div>
           )}
           {tab === "Review" && (
             <>
-              {num("Review priority (0–100)", f.review_priority, (n) => set("review_priority", n), { min: 0, max: 100, hint: "Sorts this job's drafts higher or lower in the review queue (together with score and freshness)." })}
+              {num("Review priority (0–100)", f.review_priority, (n) => set("review_priority", n), { min: 0, max: 100, hint: "Sorts this flow's drafts higher or lower in the review queue (together with score and freshness)." })}
               <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(c.notify)} onChange={(e) => setC("notify", e.target.checked)} /> Email a summary after each run (when SEO alert recipients and email are configured)</label>
             </>
           )}
         </div>
         <div className="sticky bottom-0 mt-8 flex flex-wrap items-center gap-3 border-t border-line bg-surface py-4">
-          <Button onClick={save} loading={busy} disabled={!changedCount && Boolean(id)}>{id ? "Save new version" : "Create job"}</Button>
+          <Button onClick={save} loading={busy} disabled={!changedCount && Boolean(id)}>{id ? "Save new version" : "Create content flow"}</Button>
           {id && <Button variant="secondary" onClick={() => action({ action: "dry_run", llm: true })} disabled={busy}>Dry run</Button>}
           {id && <Button variant="ghost" onClick={() => action({ action: "dry_run", llm: false })} disabled={busy}>Dry run (no LLM)</Button>}
           {id && <Button variant="ghost" onClick={() => action({ action: "run" }, "Run now? It drafts up to the per-run cap and spends budget.")} disabled={busy}>Run now</Button>}
@@ -326,9 +326,9 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               variant="danger"
               disabled={busy}
               onClick={async () => {
-                if (!window.confirm("Delete this job? Its runs and drafts stay in history.")) return;
+                if (!window.confirm("Delete this content flow? Its runs and drafts stay in history.")) return;
                 await api(`/api/admin/news/jobs/${id}`, "DELETE");
-                router.push("/admin/crewai/jobs");
+                router.push("/admin/crewai/flows?kind=content");
               }}
             >
               Delete

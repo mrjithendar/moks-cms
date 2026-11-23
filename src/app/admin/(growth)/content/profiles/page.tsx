@@ -8,7 +8,7 @@ import { listJobs, listProfiles } from "@/lib/news/service";
 
 export const metadata = { title: "Content profiles & playground" };
 
-/** AI & SEO → Profiles & playground: the writing and image profiles crew jobs write with, and a playground to try them. */
+/** AI & SEO → Profiles & playground: the writing and image profiles content flows write with, and a playground to try them. */
 export default async function ContentProfilesPage() {
   const db = await getDb();
   const [writing, image, jobs] = await Promise.all([listProfiles("writing"), listProfiles("image"), listJobs()]);
@@ -20,7 +20,7 @@ export default async function ContentProfilesPage() {
   const keys = (rows: Record<string, unknown>[]) => [...new Set(rows.map((r) => String(r.key)))];
   return (
     <>
-      <AdminHeader title="Content profiles & playground" description="Versioned writing and image profiles that crew jobs write with. Proposed versions come from the weekly style review of your edits; nothing is applied until you approve it." actions={<StyleReviewButton />} />
+      <AdminHeader title="Content profiles & playground" description="Versioned writing and image profiles that content flows write with. Proposed versions come from the weekly style review of your edits; nothing is applied until you approve it." actions={<StyleReviewButton />} />
       <ProfileStudio
         writing={plain(writing) as never}
         image={plain(image) as never}
@@ -28,7 +28,7 @@ export default async function ContentProfilesPage() {
         clusters={clusters.map((c) => ({ value: c.id, label: `${c.title.slice(0, 80)} (${c.source_count} src)` }))}
       />
       <section aria-labelledby="used-by" className="mt-10">
-        <h2 id="used-by" className="mb-3 text-base font-semibold text-fg">Which jobs write with each profile</h2>
+        <h2 id="used-by" className="mb-3 text-base font-semibold text-fg">Which content flows write with each profile</h2>
         <div className="grid gap-4 lg:grid-cols-2">
           {(["writing", "image"] as const).map((kind) => (
             <Card key={kind}>
@@ -39,7 +39,7 @@ export default async function ContentProfilesPage() {
                   return (
                     <li key={key}>
                       <code className="text-xs">{key}</code>
-                      <span className="text-fg-muted"> · {by.length ? by.map((j) => `${j.name} (${writes(j)})`).join(", ") : "no job yet"}</span>
+                      <span className="text-fg-muted"> · {by.length ? by.map((j) => `${j.name} (${writes(j)})`).join(", ") : "no content flow yet"}</span>
                     </li>
                   );
                 })}

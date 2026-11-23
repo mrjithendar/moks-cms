@@ -308,7 +308,7 @@ describe("overview totals", () => {
     expect(o.failures.map((f) => f.flow).sort()).toEqual(["new_article_flow", "news_dispatch_flow"]);
 
     const html = renderToStaticMarkup(await OverviewPage());
-    expect(html).toContain("leave out Crew jobs housekeeping, which ticks on a short fixed schedule (5 runs in 7 days)");
+    expect(html).toContain("leave out Content flows housekeeping, which ticks on a short fixed schedule (5 runs in 7 days)");
     expect(html).toContain("4 of 5 finished runs in the last 7 days succeeded");
     expect(html).toContain("· 80%");
     const { metadata } = await import("@/app/admin/crewai/page");
