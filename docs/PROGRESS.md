@@ -11,6 +11,23 @@
   ideas (the Editorial crew), with its own quality gates. The one dispatcher starts jobs within a minute (agent #26).
 - Custom crews and custom flows are made in the admin (#186, agent #29): allowlisted tools, no publishing step.
 
+## CrewAI console: totals without the housekeeping tick, health over 7 days, tab title (2026-11-23, owner screenshot)
+
+Found reviewing the owner's screenshot of /admin/crewai:
+- The 15-minute **Crew jobs housekeeping** tick (`news_dispatch_flow`, ~96 runs a day at 0.1 s) made up ~85% of the
+  runs, so the cards read "Median run time 0.1s", "97% success" and "102 runs in 24 h" while the crews' own runs
+  failed far more often. The four totals and Runs per day now leave out `BACKGROUND_FLOWS` (`lib/crewai/flows.ts`) and
+  say so under the cards with the count; the flow stays under Flows, Flow runs and Recent failures.
+- A flow's **Health** was over its last ten runs, so "Healthy · 100%" sat next to "663 (2 failed)". It is now over the
+  finished runs of the same 7 days (`healthOf`, falling back to the last ten when none), and `percent()` never rounds
+  up to 100% with a failure (661/663 = 99.7%) or down to 0% with a success.
+- The browser tab said "Overview · Admin": the layout's title template does not apply at its own level. It now says
+  "CrewAI console · Admin".
+- The flow group "News desk" is "Crew jobs" (labels only), and the housekeeping flow's description says what it does:
+  gauges on every run, the clean-up once a day between 03:00 and 03:15 UTC.
+- Tests: `tests/crewai-console.test.ts` +2 (totals and health with ticks seeded, the tab title, percent edges). Ran the
+  crew/news/jobs test files (13 files, 126 tests, all pass), `tsc --noEmit`, eslint on the changed files.
+
 ## Admin settings plan, P6 (first part): System status rows link to the right section (2026-11-21, owner request)
 
 - `src/lib/health.ts`: "Claude (AI drafting)" links to AI & SEO → Settings → LLM providers & models; "News desk" to

@@ -291,7 +291,40 @@ describe("pages", () => {
   });
 });
 
+describe("overview totals", () => {
+  it("leave out the housekeeping tick; each flow's health is over the same 7 days as its run count", async () => {
+    const started = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOString();
+    for (let i = 0; i < 5; i++) await seedRun({ flow: "news_dispatch_flow", started: started(15 * (i + 1)), finished: new Date(Date.now() - 15 * (i + 1) * 60_000 + 100).toISOString(), status: i === 4 ? "failed" : "succeeded" });
+    await seedRun({ flow: "new_article_flow", started: started(30), cost: 0.5, tokens: 10_000 });
+    await seedRun({ flow: "new_article_flow", started: started(60), status: "failed", cost: 0.25 });
+    const o = await runs.overview();
+    expect(o.day).toMatchObject({ runs: 2, succeeded: 1, failed: 1 });
+    expect(o.week).toMatchObject({ runs: 2, succeeded: 1, failed: 1, costUsd: 0.75, tokens: 10_000 });
+    expect(o.week.p50Ms).toBe(65_000); // the article runs only, not the 0.1 s ticks
+    expect(o.background7d).toBe(5);
+    expect(o.perDay.reduce((n, d) => n + d.succeeded + d.failed + d.other, 0)).toBe(2);
+    const tick = o.flows.find((f) => f.flow === "news_dispatch_flow")!; // still listed under Flows
+    expect(tick).toMatchObject({ runs7d: 5, succeeded7d: 4, failed7d: 1 });
+    expect(o.failures.map((f) => f.flow).sort()).toEqual(["new_article_flow", "news_dispatch_flow"]);
+
+    const html = renderToStaticMarkup(await OverviewPage());
+    expect(html).toContain("leave out Crew jobs housekeeping, which ticks on a short fixed schedule (5 runs in 7 days)");
+    expect(html).toContain("4 of 5 finished runs in the last 7 days succeeded");
+    expect(html).toContain("· 80%");
+    const { metadata } = await import("@/app/admin/crewai/page");
+    expect(metadata.title).toBe("CrewAI console"); // "CrewAI console · Admin" in the tab, not "Overview · Admin"
+  });
+});
+
 describe("flow catalogue and formatting", () => {
+  it("never shows 100% beside a failure, nor 0% beside a success", async () => {
+    const { percent, healthOf } = await import("@/lib/crewai/format");
+    expect([percent(661, 663), percent(97, 100), percent(1, 3), percent(0, 5), percent(5, 5), percent(1, 300), percent(1, 2000), percent(9999, 10000), percent(1, 0)]).toEqual(["99.7%", "97%", "33%", "0%", "100%", "0.3%", "<0.1%", "99.9%", "—"]);
+    expect(healthOf({ recent: ["succeeded", "succeeded"], succeeded7d: 661, failed7d: 2 })).toEqual({ ok: 661, done: 663, window: "in the last 7 days" });
+    expect(healthOf({ recent: ["failed", "succeeded", "running"], succeeded7d: 0, failed7d: 0 })).toEqual({ ok: 1, done: 2, window: "of the last 2" });
+  });
+
+
   it("names known flows, keeps unknown ones visible, and formats durations", () => {
     expect(flowInfo("new_article_flow")).toMatchObject({ label: "New article", group: "Content", rerun: "review" });
     expect(flowInfo("future_magic_flow")).toMatchObject({ label: "future magic", group: "Other", rerun: "no" });
