@@ -78,7 +78,7 @@ through the SEO optimisation flow). When pgvector is not available, novelty is 1
 
 ## Ranking (`app/news/scoring.py`)
 
-v1 (transparent): score = Σ wᵢ·fᵢ, weights renormalised to 1 (job overrides allowed). Every candidate stores each
+v1 (transparent): score = Σ wᵢ·fᵢ, weights renormalised to 1 (content flow overrides allowed). Every candidate stores each
 feature's value, weight and contribution.
 
 | Feature | Value |
@@ -87,7 +87,7 @@ feature's value, weight and contribution.
 | source_count | 1 − exp(−(n − 1)/2) |
 | burst | cluster burst (above) |
 | recency | 0.5^(age / half-life), half-life 36 h by default |
-| topic_match | the cluster's probability for the job's topics (or its best topic) |
+| topic_match | the cluster's probability for the content flow's topics (or its best topic) |
 | audience | similarity to the closest site article × (0.5 + 0.5 × its share of top-article clicks, GSC 28 d); 0.3 when unknown |
 | novelty | 1 − similarity to the closest site article |
 | severity | CVSS / 10; known exploited ⇒ ≥ 0.9 |
@@ -101,13 +101,13 @@ rejected = 0, except rejections whose `reject_category` is `style` or `inaccurat
 story choice, and are dropped (`dropped_writing_rejects` in the report). Performance at +7/+28 days is collected in
 `news_feedback` for later use as a stronger label. Trains once there are ≥ `ranker_min_feedback` (100) labelled
 decisions. Time-ordered split (oldest 80 % / newest 20 %). Promoted only if it beats, on the same held-out rows, on
-**both** AUC and NDCG@5 (per run): v1, each row scored with its own job's current weights, **and** the serving v2 if
+**both** AUC and NDCG@5 (per run): v1, each row scored with its own content flow's current weights, **and** the serving v2 if
 there is one. Its explanation is LightGBM's per-feature contributions, shown next to the v1 breakdown. Tests: a
 synthetic signal v1 underweights is learned and promoted; pure noise is not; a copy of the serving model is not.
 
-**Threshold.** v2's probabilities are not on v1's scale, so a job's `min_score` (tuned for v1) is not compared with
+**Threshold.** v2's probabilities are not on v1's scale, so a content flow's `min_score` (tuned for v1) is not compared with
 them directly. Training stores a score map with the model (`metrics.score_map`: 101 quantiles of v1 and v2 scores over
-the last 5,000 candidates of any decision); at serving time the job's `min_score` is mapped to the v2 score that passes
+the last 5,000 candidates of any decision); at serving time the content flow's `min_score` is mapped to the v2 score that passes
 the same share of candidates (`RankerModel.threshold_for`). The mapped threshold is in each candidate's breakdown and
 its rejection reason. LightGBM scores tie, so the v2 pass rate can exceed v1's by the tied mass at the threshold.
 Models trained before the map existed fall back to `min_score`.
@@ -115,8 +115,8 @@ Models trained before the map existed fall back to `min_score`.
 ## Selection (`app/news/select.py`)
 
 In this order, each candidate gets exactly one reason: language → max age → excluded keywords/entities → include
-keywords/entities → job topics → already covered in the dedupe window → existing site article (update candidate) →
-score threshold (v1: `min_score`; v2: the mapped threshold above) → per-run cap → per-day cap (job time zone) → global
+keywords/entities → content flow topics → already covered in the dedupe window → existing site article (update candidate) →
+score threshold (v1: `min_score`; v2: the mapped threshold above) → per-run cap → per-day cap (content flow time zone) → global
 daily cap → diversity (per topic, per source per day).
 
 Exploration (opt-in, `explore_rate` in Settings, default 0, max 0.2): each candidate held back only by the threshold

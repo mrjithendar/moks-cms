@@ -1,6 +1,6 @@
 # Sources
 
-AI & SEO → Content sources. A source is a feed or official API crew jobs read (for news and for other content); nothing is hard-coded.
+AI & SEO → Content sources. A source is a feed or official API content flows read (for news and for other content); nothing is hard-coded.
 
 ## Types
 

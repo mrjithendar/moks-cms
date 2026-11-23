@@ -14,7 +14,7 @@ an error there is gate `web_validation`. Thresholds are global (Settings → Qua
 | `value` | a “Why it matters” section with ≥ 30 words; share of words in analysis sections (why it matters, impact, who is affected, what to do, migration, recommendations) ≥ 25 %; length within the job's range (single stories) | 25 %; job min/max words |
 | `style` | banned phrases (profile), required sections (profile), no H1, balanced code fences, no raw script/iframe/style, Flesch reading ease, links: https and either a cited source or an allowlisted host | Flesch 25–75 |
 | `seo` | title ≤ ~60 (warning above 60, fail above 70), meta 110–160, JSON-LD is a `NewsArticle` with a headline ≤ 110, ≥ 1 category, ≤ 3 internal links, ≥ 1 source | |
-| `duplicate` | no open draft from another job and no published article for the same story; the database's one-active-draft index is the final guard | |
+| `duplicate` | no open draft from another content flow and no published article for the same story; the database's one-active-draft index is the final guard | |
 
 Tests (`tests/test_news_quality.py`): a well-grounded original draft passes every gate; **a draft that copies a source
 paragraph fails** `source_similarity` and reports that source first; **an unsupported number fails** `grounding`, also when the fact sheet invents a claim and snippet for it, and a
