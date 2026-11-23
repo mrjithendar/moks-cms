@@ -350,7 +350,7 @@ class PgNewsStore:
         try:
             r = await self._one(f"insert into news_articles ({', '.join(cols)}) values ({', '.join(f'%({c})s' + ('::uuid[]' if c == 'cluster_ids' else '') for c in cols)}) returning id", vals)  # noqa: S608
         except psycopg.errors.UniqueViolation as e:
-            raise DuplicateArticle("an active draft for this story already exists for this job") from e
+            raise DuplicateArticle("an active draft for this story already exists for this content flow") from e
         return str(r["id"]) if r else ""
 
     async def update_article(self, article_id: str, **fields: Any) -> None:
@@ -697,7 +697,7 @@ class MemoryNewsStore:
         if row.get("cluster_id") and (row.get("status") or "drafting") in ACTIVE_ARTICLE:
             for a in self.articles.values():
                 if a.get("job_id") == row.get("job_id") and a.get("cluster_id") == row["cluster_id"] and a["status"] in ACTIVE_ARTICLE:
-                    raise DuplicateArticle("an active draft for this story already exists for this job")
+                    raise DuplicateArticle("an active draft for this story already exists for this content flow")
         aid = str(uuid.uuid4())
         self.articles[aid] = {"id": aid, "status": "drafting", "mode": "single", "cluster_ids": [], "created_at": self.now(), "updated_at": self.now(), "cost_usd": 0.0, "tokens": 0, "review_outcome": None, "draft_id": None, "post_id": None, **row}
         return aid

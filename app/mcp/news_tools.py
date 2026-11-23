@@ -1,9 +1,14 @@
-"""News desk MCP tools (docs/news/RUNBOOK.md "MCP").
+"""Content flow MCP tools (docs/news/RUNBOOK.md "MCP").
 
-Admin (same OAuth server and scopes as the SEO admin tools): read jobs, runs (steps + recent logs), candidates,
-drafts and stored model versions; start a job run (optionally a dry run); reject a draft. There is no tool that approves or publishes news, and the
-only flow these tools can start is news_job_flow (the runner refuses anything else from MCP). Drafts come back with
+Admin (same OAuth server and scopes as the SEO admin tools): read content flows (the admin's AI & SEO → Flows →
+Content flows; stored as `news_jobs` rows), runs (steps + recent logs), candidates, drafts and stored model versions;
+run a content flow (optionally a dry run); reject a draft. There is no tool that approves or publishes, and the only
+flow these tools can start is news_job_flow (the runner refuses anything else from MCP). Drafts come back with
 `review_url`: approval happens only in the web review page.
+
+Until 2026-11-23 the content flows were called jobs: `list_content_flows`, `get_content_flow` and `run_content_flow`
+were `list_news_jobs`, `get_news_job` and `kickoff_news_job`. An old name in MCP_ADMIN_TOOLS_OFF still switches the
+renamed tool off (RENAMED_TOOLS, app/config.py).
 
 Public: `search_news` returns published news only (title, URL, date, short description), labelled untrusted.
 """
@@ -22,7 +27,7 @@ from ..services import content, review
 from ..services.content import ContentError
 from .common import Guard, guarded
 
-NEWS_ADMIN_TOOLS = ("list_news_jobs", "get_news_job", "list_news_runs", "get_news_run", "kickoff_news_job", "list_news_drafts", "get_news_candidates", "list_news_models", "reject_news_draft")
+NEWS_ADMIN_TOOLS = ("list_content_flows", "get_content_flow", "list_news_runs", "get_news_run", "run_content_flow", "list_news_drafts", "get_news_candidates", "list_news_models", "reject_news_draft")
 NEWS_PUBLIC_TOOLS = ("search_news",)
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 START = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
@@ -38,31 +43,41 @@ def _clean(row: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     return {k: _iso(row.get(k)) for k in keys if k in row}
 
 
+_FLOW_KEYS = {"job_id": "flow_id", "job_name": "flow_name"}
+
+
+def _flow_keys(row: dict[str, Any]) -> dict[str, Any]:
+    """The store's job_id / job_name (table news_jobs) as the admin calls them: the content flow's id and name."""
+    return {_FLOW_KEYS.get(k, k): v for k, v in row.items()}
+
+
 def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -> None:
     store = c.deps.extra["news_store"]
 
-    @mcp.tool(name="list_news_jobs", title="News jobs", annotations=READ)
-    @guarded(guard, "list_news_jobs", scope="seo:read")
-    async def list_news_jobs() -> dict[str, Any]:
-        """News desk jobs: schedule, mode, version, enabled, last/next run."""
+    @mcp.tool(name="list_content_flows", title="Content flows", annotations=READ)
+    @guarded(guard, "list_content_flows", scope="seo:read")
+    async def list_content_flows() -> dict[str, Any]:
+        """Content flows (they find stories and ideas in the content sources and draft for review): schedule, mode,
+        version, enabled, last/next run."""
         rows = await store.list_jobs(enabled_only=False)
-        return {"jobs": [_clean(j, ("id", "name", "enabled", "cron", "timezone", "mode", "version", "last_run_at", "next_run_at")) for j in rows], "admin_url": f"{site}/admin/crewai/jobs"}
+        return {"flows": [_clean(j, ("id", "name", "enabled", "cron", "timezone", "mode", "version", "last_run_at", "next_run_at")) for j in rows], "admin_url": f"{site}/admin/crewai/flows"}
 
-    @mcp.tool(name="get_news_job", title="News job", annotations=READ)
-    @guarded(guard, "get_news_job", scope="seo:read")
-    async def get_news_job(job_id: UUID36) -> dict[str, Any]:
-        """One job's full configuration (caps, filters, budget, profiles)."""
-        j = await store.get_job(job_id)
+    @mcp.tool(name="get_content_flow", title="Content flow", annotations=READ)
+    @guarded(guard, "get_content_flow", scope="seo:read")
+    async def get_content_flow(flow_id: UUID36) -> dict[str, Any]:
+        """One content flow's full configuration (caps, filters, budget, profiles)."""
+        j = await store.get_job(flow_id)
         if not j:
-            raise ContentError("job not found")
-        return {**_clean(j, ("id", "name", "description", "enabled", "cron", "timezone", "mode", "writing_profile_key", "image_profile_key", "review_priority", "version")), "config": j.get("config"), "edit_url": f"{site}/admin/crewai/jobs/{job_id}"}
+            raise ContentError("content flow not found")
+        return {**_clean(j, ("id", "name", "description", "enabled", "cron", "timezone", "mode", "writing_profile_key", "image_profile_key", "review_priority", "version")), "config": j.get("config"), "edit_url": f"{site}/admin/crewai/flows/content/{flow_id}"}
 
     @mcp.tool(name="list_news_runs", title="News runs", annotations=READ)
     @guarded(guard, "list_news_runs", scope="seo:read")
-    async def list_news_runs(job_id: Annotated[str | None, Field(min_length=36, max_length=36)] = None, limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict[str, Any]:
-        """Recent news runs with status, counters, cost and errors."""
-        rows = await store.list_runs(job_id, limit)
-        return {"runs": [_clean(r, ("id", "job_id", "job_name", "kind", "trigger", "status", "dry_run", "counters", "cost_usd", "image_cost_usd", "error_summary", "started_at", "finished_at")) for r in rows]}
+    async def list_news_runs(flow_id: Annotated[str | None, Field(min_length=36, max_length=36, description="a content flow's id (list_content_flows); empty: every run")] = None, limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict[str, Any]:
+        """Recent content flow runs (and the intake, image, training and style-review runs behind them) with status,
+        counters, cost and errors."""
+        rows = await store.list_runs(flow_id, limit)
+        return {"runs": [_flow_keys(_clean(r, ("id", "job_id", "job_name", "kind", "trigger", "status", "dry_run", "counters", "cost_usd", "image_cost_usd", "error_summary", "started_at", "finished_at"))) for r in rows]}
 
     @mcp.tool(name="get_news_run", title="News run", annotations=READ)
     @guarded(guard, "get_news_run", scope="seo:read")
@@ -74,10 +89,10 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
         steps = await store.steps(run_id)
         logs = (await store.logs(run_id))[-100:]
         return {
-            "run": _clean(r, ("id", "job_id", "kind", "trigger", "status", "dry_run", "counters", "tokens", "cost_usd", "image_cost_usd", "error_summary", "started_at", "finished_at")),
+            "run": _flow_keys(_clean(r, ("id", "job_id", "kind", "trigger", "status", "dry_run", "counters", "tokens", "cost_usd", "image_cost_usd", "error_summary", "started_at", "finished_at"))),
             "steps": [_clean(s, ("step", "status", "input_count", "output_count", "error", "started_at", "finished_at")) for s in steps],
             "logs": content.untrusted("\n".join(f"{_iso(x.get('at'))} {x.get('level')} [{x.get('step') or '-'}] {x.get('message')}" for x in logs)),
-            "run_url": f"{site}/admin/crewai/jobs/runs/{run_id}",
+            "run_url": f"{site}/admin/crewai/runs/{run_id}",
         }
 
     @mcp.tool(name="get_news_candidates", title="News candidates", annotations=READ)
@@ -98,7 +113,7 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
         rows = await store.list_articles(status, limit)
         out = []
         for a in rows:
-            item = {**_clean(a, ("id", "job_id", "job_name", "status", "mode", "draft_id", "score", "cost_usd", "created_at")), "title": content.untrusted(str(a.get("title") or "")), "failed_gates": a.get("failed_gates")}
+            item = {**_flow_keys(_clean(a, ("id", "job_id", "job_name", "status", "mode", "draft_id", "score", "cost_usd", "created_at"))), "title": content.untrusted(str(a.get("title") or "")), "failed_gates": a.get("failed_gates")}
             if a.get("draft_id"):
                 item["review_url"] = review.review_link(site, str(a["draft_id"]))
             out.append(item)
@@ -113,17 +128,18 @@ def register_admin(mcp: FastMCP, c: Any, guard: Guard, site: str, caller: Any) -
         keep = ("macro_f1", "macro_f1_human", "brier", "excluded_topics", "current", "v1", "v2", "promoted", "reason", "test", "n")
         return {"models": [{**_clean(r, ("kind", "version", "active", "n_samples", "notes", "trained_at", "has_artifact")), "metrics": {k: v for k, v in (r.get("metrics") or {}).items() if k in keep}} for r in rows]}
 
-    @mcp.tool(name="kickoff_news_job", title="Run a news job", annotations=START)
-    @guarded(guard, "kickoff_news_job", scope="seo:flows")
-    async def kickoff_news_job(job_id: UUID36, dry_run: bool = True) -> dict[str, Any]:
-        """Run a news job now. Default is a dry run (selection and drafting without saving drafts or spending image
-        budget). A real run ends with drafts awaiting review; nothing is published. One run per job at a time; budgets apply."""
+    @mcp.tool(name="run_content_flow", title="Run a content flow", annotations=START)
+    @guarded(guard, "run_content_flow", scope="seo:flows")
+    async def run_content_flow(flow_id: UUID36, dry_run: bool = True) -> dict[str, Any]:
+        """Run a content flow now. Default is a dry run (selection and drafting without saving drafts or spending image
+        budget). A real run ends with drafts awaiting review; nothing is published. One run per content flow at a time;
+        budgets apply."""
         key, _subject, _ = caller()
         try:
-            r = await c.runner.kickoff("news_job_flow", {"job_id": job_id, "dry_run": dry_run, "trigger": "mcp", "actor": f"mcp:{key}"}, triggered_by="mcp", actor=f"mcp:{key}")
+            r = await c.runner.kickoff("news_job_flow", {"job_id": flow_id, "dry_run": dry_run, "trigger": "mcp", "actor": f"mcp:{key}"}, triggered_by="mcp", actor=f"mcp:{key}")
         except RunError as e:
             raise ContentError(str(e)) from None
-        return {**r, "runs_url": f"{site}/admin/crewai/jobs/runs?job={job_id}"}
+        return {**r, "runs_url": f"{site}/admin/crewai/runs?content={flow_id}"}
 
     @mcp.tool(name="reject_news_draft", title="Reject a news draft", annotations=CLOSE)
     @guarded(guard, "reject_news_draft", scope="seo:review:reject")

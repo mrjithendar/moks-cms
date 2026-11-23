@@ -1,6 +1,7 @@
-"""Starting crew jobs when they are due, from the one dispatcher (2026-11-21, crew-jobs plan PR 2).
+"""Starting content flows when they are due, from the one dispatcher (2026-11-21, crew-jobs plan PR 2).
 
-A crew job (a `news_jobs` row: AI & SEO → Jobs in the web app) has its own cron and time zone. Until 2026-11-21 the
+A content flow (a `news_jobs` row: AI & SEO → Flows → Content flows in the web app; called a crew job until
+2026-11-23) has its own cron and time zone. Until 2026-11-21 the
 schedule row `news-dispatch` started `news_dispatch_flow` every 15 minutes, and that flow started the jobs that were
 due. Now `POST /schedules/dispatch` (called every minute by the one CronJob, app/schedules.py) also calls
 `dispatch_jobs`: a job starts within a minute of its time, and after a pause it catches up within the same window as
@@ -32,11 +33,11 @@ def job_slot(due: datetime) -> str:
 
 
 async def dispatch_jobs(store: Any, runner: Any, *, enabled: bool, now: datetime, catchup: timedelta) -> dict[str, Any]:
-    """One tick for the crew jobs: start every enabled job whose time has come and has not run for that time yet.
+    """One tick for the content flows: start every enabled job whose time has come and has not run for that time yet.
     Never raises for one job; each outcome is reported."""
     out: dict[str, Any] = {"checked": 0, "fired": [], "errors": []}
     if not enabled:
-        out["skipped"] = "crew jobs are switched off (AI & SEO → Jobs, or NEWS_DESK_ENABLED=false in the deployment)"
+        out["skipped"] = "content flows are switched off (AI & SEO → Flows: \"Content flows on\", or NEWS_DESK_ENABLED=false in the deployment)"
         return out
     for row in await store.list_jobs(enabled_only=True):
         job = as_job(row)
@@ -63,5 +64,5 @@ async def dispatch_jobs(store: Any, runner: Any, *, enabled: bool, now: datetime
         except Exception as e:  # the next job still runs; this one says why it did not
             fired["error"] = f"{type(e).__name__}: {str(e)[:300]}"
         out["fired"].append(fired)
-        log.info(f"crew job {job.name}: {'started' if not fired['error'] else 'not started'}", extra={"event": "job_fired", **fired})
+        log.info(f"content flow {job.name}: {'started' if not fired['error'] else 'not started'}", extra={"event": "job_fired", **fired})
     return out

@@ -73,7 +73,7 @@ class NewsBudget:
             spent = st[scope][f"{kind}_{period}"] - (estimate_usd if booked else 0.0)
             cap = st[scope]["caps"][f"{kind}_{period}"]
             if spent + estimate_usd > cap:
-                raise BudgetExceeded(f"news_{scope}_{kind}_{period}", f"{'this job' if scope == 'job' else 'the news desk'}'s {'daily' if period == 'day' else 'monthly'} {kind.upper() if kind == 'llm' else 'image'} budget ${cap:.2f} would be exceeded (spent ${spent:.2f}, this call ≈ ${estimate_usd:.3f})")
+                raise BudgetExceeded(f"news_{scope}_{kind}_{period}", f"{'this content flow' if scope == 'job' else 'the content flows'}' {'daily' if period == 'day' else 'monthly'} {kind.upper() if kind == 'llm' else 'image'} budget ${cap:.2f} would be exceeded (spent ${spent:.2f}, this call ≈ ${estimate_usd:.3f})")
 
     async def reserve(self, kind: str, estimate_usd: float) -> float:
         """Image spend: checks the image caps. LLM spend: nothing to do here, the one LLM budget holds the call's

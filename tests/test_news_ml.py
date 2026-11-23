@@ -116,7 +116,7 @@ def test_threshold_caps_and_order() -> None:
     cs = select([cand("c", 0.6), cand("a", 0.9), cand("b", 0.7), cand("d", 0.4)], cfg, Counts(), global_cap=10)
     by = {c.cluster_id: c for c in cs}
     assert [c.cluster_id for c in cs if c.decision == "selected"] == ["a", "b"]
-    assert by["c"].reason.startswith("per-run cap") and "below the job's threshold" in by["d"].reason
+    assert by["c"].reason.startswith("per-run cap") and "below the content flow's threshold" in by["d"].reason
     assert by["a"].rank == 1 and by["b"].rank == 2
 
 
