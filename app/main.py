@@ -543,6 +543,14 @@ def create_app(container: Container | None = None) -> FastAPI:
     async def crews() -> dict[str, Any]:
         return {"items": [crew_config.catalogue(c) for c in crew_config.registry().values()]}
 
+    @app.get("/config-catalogue", dependencies=[Depends(auth)])
+    async def config_catalogue() -> dict[str, Any]:
+        """Everything code-defined that the web app's CrewAI configuration bundle describes: crews, flows, tools,
+        guardrails and models, read from the registries (app/config_catalogue.py)."""
+        from .config_catalogue import catalogue
+
+        return catalogue(VERSION)
+
     @app.post("/custom/validate", dependencies=[Depends(auth)])
     async def custom_validate(request: Request) -> JSONResponse:
         """{kind: crew|flow, spec, crews?: [keys]} → {spec} as it would run, or 422 {issues}: the one check the web app

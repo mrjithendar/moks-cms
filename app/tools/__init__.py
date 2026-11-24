@@ -21,6 +21,18 @@ ALLOWED_TOOLS = frozenset({"read_article", "vector_search", "gsc_queries_for_top
 NEWS_TOOLS = frozenset({"read_news_item", "fetch_allowlisted", "vector_search_site", "fact_sheet", "writing_profile", "image_profile"})
 ALL_TOOLS = ALLOWED_TOOLS | NEWS_TOOLS
 
+# What each SEO tool tells the model it does (the text CrewAI puts in the agent's prompt). Data, not code, so the CrewAI
+# console can list the tools without a run (GET /config-catalogue, app/config_catalogue.py). The News Desk's own
+# descriptions are NEWS_TOOL_DESCRIPTIONS in app/news/tools.py.
+TOOL_DESCRIPTIONS: dict[str, str] = {
+    "read_article": "Read one of this site's articles by path (/blog/slug) or id. Input: the path or id.",
+    "vector_search": "Search this site's articles by meaning. Input: a short query. Returns titles, paths, sections and excerpts.",
+    "gsc_queries_for_topic": "Search Console queries (28 days, aggregated) that contain the topic words. Input: a topic.",
+    "gsc_queries_for_page": "Search Console queries (28 days, aggregated: clicks, impressions, CTR, position) the article being optimised ranks for. Input: anything (the article is fixed).",
+    "style_guide": "The site's writing style guide. Input: anything.",
+    "fetch_allowlisted_docs": "Fetch an official documentation page (https, allowlisted domains only); returns its main text, at most 12,000 characters. Input: the URL. A long page ends with the anchors of the sections that did not fit: add one (url#anchor) to read from that section.",
+}
+
 EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 PHONE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
 SECRETISH = re.compile(r"\b(sk-[A-Za-z0-9_-]{8,}|AKIA[0-9A-Z]{12,}|ya29\.[\w-]+|ghp_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)")
@@ -166,14 +178,15 @@ def build_tools(names: list[str], ctx: ToolContext) -> list[ToolSpec]:
             raise ToolError(f"news tool(s) need a news tool context: {', '.join(news)}")
         reg = specs()
         return [reg[n] for n in names]
-    registry: dict[str, ToolSpec] = {
-        "read_article": ToolSpec("read_article", "Read one of this site's articles by path (/blog/slug) or id. Input: the path or id.", ctx.read_article),
-        "vector_search": ToolSpec("vector_search", "Search this site's articles by meaning. Input: a short query. Returns titles, paths, sections and excerpts.", ctx.vector_search),
-        "gsc_queries_for_topic": ToolSpec("gsc_queries_for_topic", "Search Console queries (28 days, aggregated) that contain the topic words. Input: a topic.", ctx.gsc_queries_for_topic),
-        "gsc_queries_for_page": ToolSpec("gsc_queries_for_page", "Search Console queries (28 days, aggregated: clicks, impressions, CTR, position) the article being optimised ranks for. Input: anything (the article is fixed).", ctx.gsc_queries_for_page),
-        "style_guide": ToolSpec("style_guide", "The site's writing style guide. Input: anything.", ctx.style_guide),
-        "fetch_allowlisted_docs": ToolSpec("fetch_allowlisted_docs", "Fetch an official documentation page (https, allowlisted domains only); returns its main text, at most 12,000 characters. Input: the URL. A long page ends with the anchors of the sections that did not fit: add one (url#anchor) to read from that section.", ctx.fetch_allowlisted_docs),
+    impl: dict[str, Callable[[str], Awaitable[str]]] = {
+        "read_article": ctx.read_article,
+        "vector_search": ctx.vector_search,
+        "gsc_queries_for_topic": ctx.gsc_queries_for_topic,
+        "gsc_queries_for_page": ctx.gsc_queries_for_page,
+        "style_guide": ctx.style_guide,
+        "fetch_allowlisted_docs": ctx.fetch_allowlisted_docs,
     }
+    registry = {n: ToolSpec(n, TOOL_DESCRIPTIONS[n], fn) for n, fn in impl.items()}
     return [registry[n] for n in names]
 
 
