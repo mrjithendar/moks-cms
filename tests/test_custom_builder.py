@@ -63,7 +63,7 @@ def test_a_good_crew_spec_passes_and_keeps_its_shape() -> None:
     [
         ("a tool outside the allowlist", lambda s: s["agents"][0]["tools"].append("read_news_item")),
         ("the per-article tool", lambda s: s["agents"][0]["tools"].append("gsc_queries_for_page")),
-        ("a built-in crew's key", lambda s: s.update(key="editorial")),
+        ("a code crew's key", lambda s: s.update(key="editorial")),
         ("two agents with one key", lambda s: s["agents"].append(dict(s["agents"][0]))),
         ("a task for an agent that does not exist", lambda s: s["tasks"][0].update(agent="ghost")),
         ("context from a later task", lambda s: s["tasks"][0].update(context=["write"])),
@@ -97,7 +97,7 @@ def test_a_flow_spec_is_checked_against_its_inputs_steps_and_crews() -> None:
             cf.validate_flow(bad(mutate, FLOW), {"explainer"})
     with pytest.raises(cc.SpecError) as e:
         cf.validate_flow(FLOW, set())
-    assert "no custom crew explainer" in e.value.issues[0]
+    assert "no crew explainer" in e.value.issues[0]
 
 
 def test_templates_and_conditions() -> None:
@@ -168,7 +168,7 @@ async def test_a_condition_can_stop_the_flow_or_skip_the_next_step(ran: list[dic
 async def test_a_flow_that_is_gone_fails_and_says_why(ran: list[dict[str, Any]]) -> None:
     c, _web = container()
     fr = await go(c, {"flow": "no_such_flow"})
-    assert fr["status"] == "failed" and "no custom flow no_such_flow" in str(fr.get("error") or fr["state_json"]["errors"])
+    assert fr["status"] == "failed" and "no flow no_such_flow" in str(fr.get("error") or fr["state_json"]["errors"])
 
 
 # --- guardrails and the API -------------------------------------------------------------------------------------------

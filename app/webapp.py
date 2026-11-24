@@ -79,6 +79,7 @@ class WebApp(Protocol):
     async def agent_skills(self) -> list[dict[str, Any]]: ...
     async def crew_configs(self) -> list[dict[str, Any]]: ...
     async def run_history_settings(self) -> dict[str, Any]: ...
+    async def flow_switches(self) -> dict[str, Any]: ...
 
 
 class HttpWebApp:
@@ -269,8 +270,12 @@ class HttpWebApp:
         return list((await self._req("GET", "/crew-configs")).get("crews") or [])
 
     async def run_history_settings(self) -> dict[str, Any]:
-        """Run history settings (app/run_history.py): {"transcripts": bool}, whether model calls' prompts are kept."""
+        """Run history settings (app/run_history.py): {"transcripts", "logs", "step_io": bool}."""
         return dict(await self._req("GET", "/run-history/settings"))
+
+    async def flow_switches(self) -> dict[str, Any]:
+        """Flows switched off in the admin (app/flows/switches.py): {"disabled": [{flow, reason}]}."""
+        return dict(await self._req("GET", "/flow-switches"))
 
     async def news_notify(self, body: dict[str, Any]) -> dict[str, Any]:
         return await self._req("POST", "/news/notify", json=body)

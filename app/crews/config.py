@@ -231,10 +231,13 @@ def default_hash(crew: CrewDef) -> str:
 
 def catalogue(crew: CrewDef) -> dict[str, Any]:
     """GET /crews: what the console's crew editor shows and diffs against."""
+    from ..flows import CREW_CATEGORIES
+
     return {
         "crew": crew.crew,
         "label": crew.label,
         "description": crew.description,
+        "categories": list(CREW_CATEGORIES.get(crew.crew, [])),
         "prompt_version": crew.prompt_version,
         "default_hash": default_hash(crew),
         "tools": list(crew.allowed_tools()),

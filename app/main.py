@@ -70,6 +70,7 @@ from .embeddings import HashEmbeddings
 from .flows import CRON_FLOWS, SPECS, check_kickoff
 from .flows import catalogue as flow_catalogue
 from .flows.base import Deps
+from .flows.switches import FlowSwitches
 from .index import MemoryRetriever, PgVectorIndex
 from .lance_admin import LanceAdmin, LanceError
 from .lance_admin import from_env as lance_from_env
@@ -274,6 +275,7 @@ async def build_container(settings: Settings) -> Container:
     _news(deps, PgNewsStore(pool), index.emb)
     _ml(deps, PgMlStore(pool), index.emb)
     runner = FlowRunner(SPECS, store, PgAdvisoryLocks(settings.database_url), lambda: PgFlowPersistence().bind(sync_pool), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
+    runner.switches = FlowSwitches(web)
     deps.runner = runner
     # The admin's Ask the Blog settings (web app → `setting` row "ask_blog") apply on top of the environment's switch.
     ask = AskService(AskPipeline(deps), index, PgAskLog(pool), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=PgAskRuntime(pool), guard=guard)
@@ -301,6 +303,7 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
     _news(deps, MemoryNewsStore(), HashEmbeddings())
     _ml(deps, MemoryMlStore(), HashEmbeddings())
     runner = FlowRunner(SPECS, store, MemoryLocks(), lambda: MemoryFlowPersistence().bind(store), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
+    runner.switches = FlowSwitches(web)
     deps.runner = runner
     guard = getattr(llm, "guard", BudgetGuard(MemorySpendStore(), None, settings.ask_daily_budget_usd))
     ask = AskService(AskPipeline(deps), retriever, MemoryAskLog(), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=StaticAskRuntime(), guard=guard)
@@ -558,6 +561,25 @@ def create_app(container: Container | None = None) -> FastAPI:
         except SpecError as e:
             return JSONResponse({"error": "invalid spec", "issues": e.issues}, status_code=422)
         return JSONResponse({"error": "kind is crew or flow"}, status_code=422)
+
+    @app.post("/crews/{crew}/as-spec", dependencies=[Depends(auth)])
+    async def crew_as_spec(crew: str, request: Request) -> JSONResponse:
+        """{key, label, config?} → {spec}: a crew defined in code (its defaults, plus `config`, the version the admin
+        copies) as a spec crew under a new key: what Duplicate saves (app/crews/custom.py materialize)."""
+        from .crews.custom import SpecError, materialize, validate_crew
+
+        c = crew_config.registry().get(crew)
+        if c is None:
+            raise HTTPException(404, f"unknown crew {crew}")
+        body = await request.json()
+        body = body if isinstance(body, dict) else {}
+        eff = crew_config.Effective(c, crew_config.lenient(c, body.get("config")), "version" if body.get("config") else "code")
+        try:
+            spec = validate_crew(materialize(eff, key=str(body.get("key") or ""), label=str(body.get("label") or "") or None))
+        except SpecError as e:
+            return JSONResponse({"error": "invalid spec", "issues": e.issues}, status_code=422)
+        dropped = sorted({t for a in eff.agents() for t in a.tools} - {t for a in spec.agents for t in a.tools})
+        return JSONResponse({"spec": spec.model_dump(), "dropped_tools": dropped})
 
     @app.post("/crews/{crew}/validate", dependencies=[Depends(auth)])
     async def validate_crew(crew: str, body: CrewConfigBody) -> JSONResponse:

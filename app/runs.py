@@ -360,6 +360,8 @@ class FlowRunner:
         self.deps = deps
         self.timeout_s = timeout_s
         self.tasks: dict[str, asyncio.Task[None]] = {}
+        # Flows switched off in the admin (app/flows/switches.py FlowSwitches); None: nothing is checked.
+        self.switches: Any = None
 
     async def kickoff(self, name: str, inputs: dict[str, Any] | None = None, *, triggered_by: str = "manual", actor: str | None = None, correlation_id: str | None = None) -> dict[str, Any]:
         spec = self.specs.get(name)
@@ -367,6 +369,8 @@ class FlowRunner:
             raise RunError(404, f"unknown flow {name}")
         if self.policy is not None:
             self.policy(name, triggered_by)  # publish_flow: approval only (app/flows/__init__.py check_kickoff)
+        if self.switches is not None:
+            await self.switches.check(name)  # switched off in the admin: refused, whoever starts it
         try:
             clean = spec.input_model.model_validate(inputs or {}).model_dump(exclude_none=True)
         except ValueError as e:
