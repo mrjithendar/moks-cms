@@ -492,7 +492,7 @@ export async function createSkill(actor: Actor, raw: unknown, db?: Db): Promise<
       on conflict (name) do nothing returning ${COLS}`),
   );
   if (!rows[0]) throw new SkillError(`A skill named ${s.name} already exists.`, 409);
-  await audit(actor, "seo.skill.create", s.name, { agents: s.agents, tags: s.tags, enabled: s.enabled });
+  await audit(actor, "seo.skill.create", s.name, { agents: s.agents, tags: s.tags, enabled: s.enabled }, { db: d });
   return toSkill(rows[0]);
 }
 
@@ -511,7 +511,7 @@ export async function updateSkill(actor: Actor, id: string, raw: unknown, db?: D
       where id = ${id} returning ${COLS}`),
   );
   const changed = [...(content ? ["content"] : []), ...(next.enabled !== cur.enabled ? [next.enabled ? "enabled" : "disabled"] : [])];
-  await audit(actor, "seo.skill.update", cur.name, { changed, builtin: cur.builtin });
+  await audit(actor, "seo.skill.update", cur.name, { changed, builtin: cur.builtin }, { db: d });
   return toSkill(r!);
 }
 
@@ -521,7 +521,7 @@ export async function deleteSkill(actor: Actor, id: string, db?: Db): Promise<vo
   const cur = await getSkill(d, id);
   if (cur.builtin) throw new SkillError("Default skills cannot be deleted. Disable it instead.", 409);
   await d.execute(sql`delete from seo_agent_skills where id = ${id}`);
-  await audit(actor, "seo.skill.delete", cur.name, {});
+  await audit(actor, "seo.skill.delete", cur.name, {}, { db: d });
 }
 
 /** Put a default back to the shipped text, agents and tags (enabled or not stays as it is). */
@@ -537,7 +537,7 @@ export async function resetSkill(actor: Actor, id: string, db?: Db): Promise<Ski
         tags = ${pgText(def.tags)}::text[], version = version + 1, updated_at = now(), updated_by = ${actor.label}
       where id = ${id} returning ${COLS}`),
   );
-  await audit(actor, "seo.skill.reset", cur.name, {});
+  await audit(actor, "seo.skill.reset", cur.name, {}, { db: d });
   return toSkill(r!);
 }
 

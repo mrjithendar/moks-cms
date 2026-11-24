@@ -2,8 +2,11 @@ import Link from "next/link";
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
+import { ConfigStatus } from "@/components/crewai/config/ConfigStatus";
 import { RunStatusIcon } from "@/components/crewai/RunStatusIcon";
 import { buttonClass } from "@/components/ui/form";
+import { repoSummary } from "@/lib/crewai/bundle/repo";
+import { syncStatus } from "@/lib/crewai/bundle/sync";
 import { BACKGROUND_FLOWS, flowInfo, STATUS_LABELS } from "@/lib/crewai/flows";
 import { formatDuration, formatTokens, formatUsd, healthOf, percent, runDurationMs } from "@/lib/crewai/format";
 import { overview, type FlowHealth, type Overview } from "@/lib/crewai/runs";
@@ -107,7 +110,7 @@ function FlowTable({ flows }: { flows: FlowHealth[] }) {
 
 /** Overview: what runs now, how the last day and week went, each flow's health, and recent failures. */
 export default async function CrewaiOverviewPage() {
-  const o = await overview();
+  const [o, config, repo] = await Promise.all([overview(), syncStatus().catch(() => null), repoSummary().catch(() => null)]);
   const finished7 = o.week.succeeded + o.week.failed;
   return (
     <>
@@ -127,6 +130,20 @@ export default async function CrewaiOverviewPage() {
         These totals and Runs per day leave out {BACKGROUND_FLOWS.map((f) => flowInfo(f).label).join(", ")}, which ticks on a short fixed schedule
         {o.background7d > 0 ? ` (${o.background7d} runs in 7 days)` : ""}; it is listed under Flows.
       </p>
+      {config && (
+        <Card className="mb-8">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-fg">Configuration</h2>
+            <p className="flex flex-wrap gap-3 text-xs">
+              <Link href="/admin/crewai/config" className="text-fg-muted hover:underline">Overview and sync</Link>
+              <Link href="/admin/crewai/config?tab=repository" className="text-fg-muted hover:underline">Edit in Git</Link>
+              <Link href="/admin/crewai/config?tab=history" className="text-fg-muted hover:underline">History</Link>
+              {repo?.webUrl && <a href={repo.webUrl} target="_blank" rel="noreferrer" className="text-fg-muted hover:underline">{repo.repo}/{repo.path} ↗</a>}
+            </p>
+          </div>
+          <ConfigStatus status={config} repoUrl={repo?.webUrl ?? null} compact />
+        </Card>
+      )}
       <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card>
           <div className="mb-3 flex items-baseline justify-between gap-2">

@@ -14,7 +14,7 @@ const TABS = [
   { href: "/admin/crewai/runs", label: "Runs" },
   { href: "/admin/crewai/crews", label: "Crews" },
   { href: "/admin/crewai/categories", label: "Categories" },
-  { href: "/admin/crewai/config", label: "Import / export" },
+  { href: "/admin/crewai/config", label: "Configuration" },
 ];
 
 export type AgentPill = { enabled: boolean; version: string | null; reason: string };

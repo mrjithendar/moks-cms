@@ -57,7 +57,8 @@ export type SeoCtx = {
   audit: (action: string, target?: string, detail?: Record<string, unknown>) => Promise<void>;
 };
 
-type Opts = { mutating?: boolean; rate?: { max: number; windowSeconds: number } };
+/** `maxBody`: the largest JSON body a mutation takes, in bytes (default 200 000; a configuration bundle needs more). */
+type Opts = { mutating?: boolean; rate?: { max: number; windowSeconds: number }; maxBody?: number };
 
 /** Defaults: reads 120/min, mutations 30/min per admin and route. */
 export function seoRoute<P = Record<string, string>>(name: string, opts: Opts, fn: (req: Request, ctx: SeoCtx, params: P) => Promise<Response>) {
@@ -74,7 +75,7 @@ export function seoRoute<P = Record<string, string>>(name: string, opts: Opts, f
       let body: unknown = undefined;
       if (opts.mutating && req.method !== "DELETE") {
         const type = req.headers.get("content-type") ?? "";
-        const text = await readBodyTextOrNull(req, 200_000);
+        const text = await readBodyTextOrNull(req, opts.maxBody ?? 200_000);
         if (text === null) return json({ error: "Request too large.", code: "too_large" }, 413);
         if (text) {
           if (!type.includes("application/json")) return json({ error: "Send JSON.", code: "unsupported_media_type" }, 415);

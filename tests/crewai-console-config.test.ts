@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, setDbForTests, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
-import type { Bundle, ImportPlan, ImportResult } from "@/lib/crewai/config-io";
+import type { ApplyResult, Plan } from "@/lib/crewai/bundle/import";
 import type { CrewVersion } from "@/lib/crewai/crews";
 import type { Schedule } from "@/lib/crewai/schedules";
 import type { SessionUser } from "@/lib/session";
@@ -23,7 +23,8 @@ vi.mock("@/lib/session", () => ({ getSessionUser: async () => currentUser, requi
 
 const schedules = await import("@/lib/crewai/schedules");
 const crews = await import("@/lib/crewai/crews");
-const io = await import("@/lib/crewai/config-io");
+const io = await import("@/lib/crewai/bundle/import");
+const bundleModel = await import("@/lib/crewai/bundle/model");
 const { nextFire } = await import("@/lib/news/cron");
 const { relative } = await import("@/components/crewai/Ago");
 const { handleCallback } = await import("@/lib/seo-agent/internal-server");
@@ -274,59 +275,62 @@ describe("crew versions", () => {
 });
 
 describe("import and export", () => {
-  it("exports schedules, active crew versions and changed skills, and imports a plan that only adds and changes", async () => {
+  it("exports the whole configuration as files and imports a moks-crewai-config file through the same plan, adding and changing only", async () => {
     await crews.saveVersion({ crew: "report", config: { agents: { analyst: { backstory: "Terse." } } }, note: "v1", source: "editor", baseHash: REPORT_CREW.default_hash, promptVersion: "seo-report-crew-v1", activate: true, actor: "admin" });
-    const res = await configRoute.GET(req("/api/admin/crewai/config?parts=schedules,crews,skills"));
-    expect(res.headers.get("content-disposition")).toMatch(/attachment; filename="crewai-config-.*\.json"/);
-    const bundle = (await res.json()) as Bundle;
-    expect(bundle).toMatchObject({ kind: "moks-crewai-config", format: 1 });
-    expect(bundle.schedules).toHaveLength(15);
-    expect(bundle.crews).toEqual([expect.objectContaining({ crew: "report", version: 1, config: { agents: { analyst: { backstory: "Terse." } } } })]);
-    expect(JSON.stringify(bundle)).not.toMatch(/"id"|last_|armedAt/);
+    const res = await configRoute.GET(req("/api/admin/crewai/config"));
+    const exported = (await res.json()) as { kind: string; format: number; files: Record<string, string>; report: { counts: Record<string, number> } };
+    expect(exported).toMatchObject({ kind: "moks-crewai-bundle", format: 2 });
+    expect(exported.report.counts).toMatchObject({ schedules: 15, crews: 1, agents: 1, tasks: 1 });
+    expect(exported.files["agents/report/analyst.md"]).toMatch(/\n\nTerse\.\n$/); // the crew as it runs: defaults + active version
+    expect(JSON.stringify(exported.files)).not.toMatch(/"id":|armed_at|last_run/);
+    const zip = await configRoute.GET(req("/api/admin/crewai/config?format=zip"));
+    expect(zip.headers.get("content-type")).toBe("application/zip");
+    expect(zip.headers.get("content-disposition")).toMatch(/attachment; filename="crewconfig-.*\.zip"/);
 
-    // The same file on this site: nothing to do.
-    const same = await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle }));
-    const plan0 = ((await same.json()) as { plan: ImportPlan }).plan;
-    expect([...plan0.schedules, ...plan0.crews, ...plan0.skills].every((i) => i.action === "unchanged")).toBe(true);
+    // The site's own export: nothing to do.
+    const same = await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: { files: exported.files } }));
+    expect(((await same.json()) as { plan: Plan }).plan.items.filter((i) => i.action !== "unchanged")).toEqual([]);
 
-    // Another site's file: a changed time, a paused schedule, a new one, a conflicting flow and a new crew version.
-    const edited: Bundle = {
-      ...bundle,
-      schedules: [
-        ...bundle.schedules.map((s) => (s.name === "gsc-sync" ? { ...s, cron: "30 5 * * *" } : s.name === "promotion" ? { ...s, enabled: false } : s.name === "reindex" ? { ...s, flow: "seo_ml_flow" } : s)),
-        { name: "report-quarterly", flow: "report_flow", description: "", cron: "0 9 1 1,4,7,10 *", timezone: "Etc/UTC", inputs: { period: "monthly" }, enabled: true },
-      ],
+    // A format 1 file of another site: a changed time, a paused schedule, a new one, a conflicting flow and a new crew version.
+    const legacy = {
+      kind: "moks-crewai-config",
+      format: 1,
+      schedules: (await schedules.listSchedules()).map((s) => schedules.exportable(s)).map((s) => (s.name === "gsc-sync" ? { ...s, cron: "30 5 * * *" } : s.name === "report-weekly" ? { ...s, enabled: false } : s.name === "reindex" ? { ...s, flow: "seo_ml_flow" } : s)).concat([{ name: "report-quarterly", flow: "report_flow", description: "", cron: "0 9 1 1,4,7,10 *", timezone: "Etc/UTC", inputs: { period: "monthly" }, enabled: true }]),
       crews: [{ crew: "report", version: 4, note: "from staging", config: { agents: { analyst: { backstory: "Very terse." } } }, baseHash: REPORT_CREW.default_hash }],
+      skills: [],
     };
-    const planned = await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: edited }));
-    const plan = ((await planned.json()) as { plan: ImportPlan }).plan;
-    const by = new Map(plan.schedules.map((i) => [i.key, i]));
-    expect(by.get("gsc-sync")).toMatchObject({ action: "update", changes: ["time: 10 6 * * * → 30 5 * * *"] });
-    expect(by.get("promotion")).toMatchObject({ action: "update", changes: ["paused"] });
-    expect(by.get("report-quarterly")?.action).toBe("create");
-    expect(by.get("reindex")).toMatchObject({ action: "error" });
-    expect(plan.crews[0]).toMatchObject({ key: "report", action: "create" });
+    const planned = await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: legacy }));
+    const plan = ((await planned.json()) as { plan: Plan }).plan;
+    const by = new Map(plan.items.map((i) => [i.ref, i]));
+    expect(plan.format).toBe(1);
+    expect(by.get("schedules:gsc-sync")).toMatchObject({ action: "conflict", changes: ["cron: 10 6 * * * → 30 5 * * *", "no earlier sync to compare with"] });
+    expect(by.get("schedules:report-weekly")).toMatchObject({ changes: expect.arrayContaining(["switched off"]) });
+    expect(by.get("schedules:report-quarterly")?.action).toBe("create");
+    expect(by.get("schedules:reindex")).toMatchObject({ action: "error", error: expect.stringMatching(/rename one of them/) });
+    expect(by.get("agents:report.analyst")).toMatchObject({ action: "conflict", changes: expect.arrayContaining(["backstory: Terse. → Very terse."]) });
     expect((await schedules.scheduleByName("gsc-sync"))!.cron).toBe("10 6 * * *"); // a plan changes nothing
 
-    const applied = await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: edited, apply: true, activate: true }));
-    const result = (await applied.json()) as ImportResult;
-    expect(result.applied).toEqual({ schedules: 3, crews: 1, skills: 0 });
-    expect(result.failed).toEqual([]);
+    // One refused item refuses the import; leaving it out applies the rest (conflicts overwritten: the admin saw them).
+    expect((await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: legacy, dryRun: false }))).status).toBe(409);
+    const applied = await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: legacy, dryRun: false, allowPartial: true }));
+    const result = ((await applied.json()) as { result: ApplyResult }).result;
+    expect(result).toMatchObject({ status: "applied", verified: true, applied: { schedules: 3, crews: 1 } });
     expect((await schedules.scheduleByName("gsc-sync"))!.cron).toBe("30 5 * * *");
-    expect((await schedules.scheduleByName("promotion"))!.enabled).toBe(false);
+    expect((await schedules.scheduleByName("report-weekly"))!.enabled).toBe(false);
     expect((await schedules.scheduleByName("reindex"))!.flow).toBe("reindex_flow");
     const versions = await crews.listVersions("report");
     expect(versions[0]).toMatchObject({ version: 2, source: "import", active: true, note: "Imported (v4 in the file): from staging" });
 
     // A crew import needs the agent; schedules still go through without it.
     agentUp = false;
-    const offline = await io.planImport(io.bundleSchema.parse({ ...edited, schedules: [{ name: "late", flow: "gsc_sync_flow", cron: "0 4 * * *" }] }), { crew: () => Promise.reject(Object.assign(new Error("down"), { status: 503 })), inputs: () => Promise.reject(Object.assign(new Error("down"), { status: 503 })) });
-    expect(offline.schedules[0]!.action).toBe("create");
-    expect(offline.crews[0]).toMatchObject({ action: "error", error: expect.stringMatching(/must answer/) });
-    expect(offline.warnings.join(" ")).toMatch(/did not answer/);
+    clearAgentCache();
+    const offline = await io.importBundle({ ...legacy, schedules: [{ name: "late", flow: "gsc_sync_flow", cron: "0 4 * * *" }] }, { dryRun: true }, { id: "admin", role: "admin", label: "admin" }, { source: "admin" });
+    expect(offline.plan.items.find((i) => i.ref === "schedules:late")!.action).toBe("create");
+    expect(offline.plan.issues.map((i) => i.message).join(" ")).toMatch(/must answer/);
+    expect(offline.plan.warnings.join(" ")).toMatch(/did not answer/);
 
     expect((await configRoute.POST(req("/api/admin/crewai/config", "POST", { bundle: { kind: "something-else", format: 1 } }))).status).toBe(400);
-    expect(io.stable({ b: [1, { d: 2, c: 1 }], a: null })).toBe('{"a":null,"b":[1,{"c":1,"d":2}]}');
+    expect(bundleModel.stable({ b: [1, { d: 2, c: 1 }], a: null })).toBe('{"a":null,"b":[1,{"c":1,"d":2}]}');
   });
 });
 
@@ -353,7 +357,8 @@ describe("pages", () => {
     expect(crew).toContain("Write the {kind} SEO briefing.");
     expect(crew).toContain("Test run");
     expect(crew).toContain("Code defaults");
-    expect(renderToStaticMarkup(await ConfigPage())).toContain("Download configuration");
+    expect(renderToStaticMarkup(await ConfigPage({ searchParams: Promise.resolve({ tab: "transfer" }) }))).toContain("Download crewconfig.zip");
+    expect(renderToStaticMarkup(await ConfigPage({ searchParams: Promise.resolve({}) }))).toContain("Configuration version");
     const test = await seedRun("crew_test_flow", "succeeded", { crew: "report", source_run_id: src, config: { tasks: { write: { instructions: "X {kind}" } } } }, { outcome: "done", result: { status: "completed", narrative: "Clicks rose 14.1% to 665.", check: { ok: true } } });
     const run = renderToStaticMarkup(await RunPage({ params: Promise.resolve({ id: test }) }));
     expect(run).toContain("Test run of the report crew");

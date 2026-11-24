@@ -967,3 +967,31 @@ Built in moks-cms (this repository) and moks-seo-agent, one PR each. Guide: [CAT
 - **Logs**: the agent redacts every log line, step detail and transcript (by key and by shape) before storing it; each
   step records attempts, conditions, versions, child runs, tokens, cost and short input/output previews; two new Run
   history switches (`logs`, `stepIo`, both on) decide what is kept. Retention is as before.
+
+## D-101 The CrewAI configuration as files in the site's repository (owner brief 2026-11-24)
+
+The brief: the Import / export file had schedules but empty `crews` and `skills`, and no flows, agents, tasks or tools;
+make the whole configuration exportable, versioned in Git in the site repository (`crewconfig/`), managed from the
+admin, and restored automatically after each Kubernetes deployment. Built in moks-cms (this repository), moks-seo-agent
+(GET /config-catalogue) and jithendar.com (crewconfig/, its check and the deploy stage). Guide:
+[CREWCONFIG.md](CREWCONFIG.md).
+
+- **Root cause.** Format 1 exported crew versions (none while a crew runs on its code defaults) and only added or edited
+  skills (the shipped ones were left out), and nothing else. Format 2 discovers everything when it exports.
+- **Files, not one JSON.** One file per crew, agent, task, flow and skill (Markdown bodies for the long texts) so a
+  change is a readable diff; collections for schedules, sources and categories; JSON Schemas generated from the same zod
+  schemas the importer uses, so the site repository's own check needs no copy of them.
+- **The database stays the runtime; Git is the source a deployment restores.** Rows are not replaced by files: the
+  catalogue, crew versions, skills, schedules and content flows keep their tables and pages. The bundle is their
+  portable form, and `crewai_config_syncs` records each import and export with its Git revision, a baseline for drift,
+  and a snapshot for rollback. A second, file-backed configuration store would have been a duplicate system.
+- **Conflicts have a rule.** An item changed here since the last sync is never overwritten by a deployment (`skip`);
+  the admin, who sees the plan, overwrites by default. Without an earlier sync every difference is a conflict, so the
+  first deployment after bootstrapping crewconfig/ only adds what is missing.
+- **One transaction, verified.** Every write function used by the import takes the caller's transaction; the import
+  exports again inside it and rolls back on any difference. A refused item refuses the import unless asked otherwise.
+- **Code stays code.** Code crews and flows keep their structure in the agent; the bundle changes only what their pages
+  change. Nothing in a bundle runs: YAML core schema, zod, then the agent's own checks.
+- **Git access is one fine-grained token on one repository**, saved sealed in the admin or given to the deployment as a
+  Secret; saves are commits or pull requests with conflict detection by base commit and blob. Deployments use an API key
+  with the new `crewai:read` / `crewai:import` scopes (admins only), never cluster credentials.

@@ -15,9 +15,13 @@ import { getRedis } from "./redis";
  * - posts:write  everything the owner can do in the editor, publishing included, and moving a post to the trash.
  * - images:write push site images (/images/…) to R2 through PUT /api/v1/images/<path>, new ones and replacements, and
  *                list them. Only an admin can create such a key: a site image can be part of any page.
+ * - crewai:read  export the CrewAI configuration bundle and read the configuration's sync status
+ *                (GET /api/v1/crewai/config, /status): no secrets are in either. Admins only.
+ * - crewai:import import a configuration bundle (POST /api/v1/crewai/config/import): a plan, or applied in one
+ *                transaction under the import's rules (a deployment restores crewconfig/ with it). Admins only.
  * No scope deletes a post permanently: that needs a signed-in admin or author (Admin → Posts → Trash).
  */
-export const SCOPES = ["posts:read", "posts:draft", "posts:write", "images:write"] as const;
+export const SCOPES = ["posts:read", "posts:draft", "posts:write", "images:write", "crewai:read", "crewai:import"] as const;
 export type Scope = (typeof SCOPES)[number];
 const RATE_PER_MINUTE = 120;
 
@@ -35,6 +39,7 @@ export async function createApiKey(actor: Actor, raw: unknown): Promise<{ key: s
   const parsed = createInput.safeParse(raw);
   if (!parsed.success) throw new PostError("The key settings are not valid.", 400, parsed.error.issues.map((i) => i.message));
   if (parsed.data.scopes.includes("images:write") && actor.role !== "admin") throw new PostError("Only an admin can create a key with the images:write scope.", 403);
+  if (parsed.data.scopes.some((s) => s.startsWith("crewai:")) && actor.role !== "admin") throw new PostError("Only an admin can create a key with a crewai scope.", 403);
   const key = `jk_${randomBytes(32).toString("base64url")}`;
   const db = await getDb();
   const [row] = await db
