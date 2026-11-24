@@ -154,7 +154,8 @@ def validate(crew: CrewDef, data: Any) -> CrewOverlay:
         if task is None:
             issues.append(f"tasks.{key}: the {crew.crew} crew has no such task ({', '.join(tasks)})")
             continue
-        if t.expected_output is not None and not task.output_editable:
+        # A fixed expected output may be sent as it is (a full export of the crew carries it): only a change is refused.
+        if t.expected_output is not None and not task.output_editable and t.expected_output.strip() != task.expected_output.strip():
             issues.append(f"tasks.{key}.expected_output: fixed by the code (it parses this answer)")
         if t.instructions is not None:
             unknown = sorted({m for m in PLACEHOLDER.findall(t.instructions) if m not in task.variables})

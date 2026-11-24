@@ -150,6 +150,13 @@ This service provides what that catalogue runs and shows:
   optional output schema (checked after each run). A test run (`dry_run`) may carry an unsaved `draft` flow and
   `crew_draft` crew; it never creates drafts or starts other flows.
 - **`POST /crews/{crew}/as-spec`** turns a code crew into a spec under a new key (the admin's Duplicate).
+- **`GET /config-catalogue`** (`app/config_catalogue.py`): everything code-defined that the web app's CrewAI
+  configuration bundle describes (moks-cms docs/seo/CREWCONFIG.md, crewconfig/ in the site repository), read from the
+  registries: every crew with its code defaults, every flow with its input schema, every tool (what it tells the model,
+  which crews and agents hold it, whether a spec crew may), the guardrail rules every system prompt carries, and the
+  priced models. No secrets. Tool descriptions are data (`TOOL_DESCRIPTIONS`, `NEWS_TOOL_DESCRIPTIONS`) so they can be
+  listed without a run. `POST /crews/{crew}/validate` accepts a fixed task's expected output when it is unchanged, so a
+  crew exported in full imports back as no change.
 - **Flow switches**: before every kickoff the runner asks the web app which flows are switched off
   (`GET /internal/seo-agent/flow-switches`, kept 30 s, `app/flows/switches.py`) and refuses them with 409, whoever starts
   them. When the web app cannot be reached the last answer stands (nothing is off until it has said so).

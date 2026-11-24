@@ -19,6 +19,17 @@ from typing import Any
 from ..tools import ToolContext, ToolError, ToolSpec, check_docs_url, data_block, html_to_text
 from .text import host_of
 
+# What each News Desk tool tells the model it does (data, so GET /config-catalogue can list them without a run).
+NEWS_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "read_news_item": "Read the full text of one news item from this story's sources. Input: the item id.",
+    "fetch_allowlisted": "Fetch a primary source (release notes, advisory, docs): https and allowlisted domains only. Input: the URL.",
+    "vector_search_site": "Search this site's own articles by meaning. Input: a short query.",
+    "fact_sheet": "The researcher's fact sheet: every allowed claim with its source URL and snippet. Input: anything.",
+    "writing_profile": "The job's writing profile: style, structure, tone, audience, banned phrases, required sections. Input: anything.",
+    "image_profile": "The job's image profile: style prompt, negative prompt, palette, safety rules. Input: anything.",
+    "gsc_queries_for_topic": "Search Console queries (28 days, aggregated) containing the topic words. Input: a topic.",
+}
+
 
 class NewsToolContext(ToolContext):
     def __init__(self, web: Any, retriever: Any, *, items: list[dict[str, Any]], allow_hosts: tuple[str, ...], writing_profile: dict[str, Any], image_profile: dict[str, Any], on_source: Callable[[str, str, str], None] | None = None):
@@ -32,15 +43,16 @@ class NewsToolContext(ToolContext):
         self.fetched: dict[str, str] = {}  # url → cleaned text (citable)
 
     def news_tool_specs(self) -> dict[str, ToolSpec]:
-        return {
-            "read_news_item": ToolSpec("read_news_item", "Read the full text of one news item from this story's sources. Input: the item id.", self.read_news_item),
-            "fetch_allowlisted": ToolSpec("fetch_allowlisted", "Fetch a primary source (release notes, advisory, docs): https and allowlisted domains only. Input: the URL.", self.fetch_allowlisted),
-            "vector_search_site": ToolSpec("vector_search_site", "Search this site's own articles by meaning. Input: a short query.", self.vector_search),
-            "fact_sheet": ToolSpec("fact_sheet", "The researcher's fact sheet: every allowed claim with its source URL and snippet. Input: anything.", self.fact_sheet),
-            "writing_profile": ToolSpec("writing_profile", "The job's writing profile: style, structure, tone, audience, banned phrases, required sections. Input: anything.", self.writing_profile),
-            "image_profile": ToolSpec("image_profile", "The job's image profile: style prompt, negative prompt, palette, safety rules. Input: anything.", self.image_profile),
-            "gsc_queries_for_topic": ToolSpec("gsc_queries_for_topic", "Search Console queries (28 days, aggregated) containing the topic words. Input: a topic.", self.gsc_queries_for_topic),
+        impl: dict[str, Callable[[str], Any]] = {
+            "read_news_item": self.read_news_item,
+            "fetch_allowlisted": self.fetch_allowlisted,
+            "vector_search_site": self.vector_search,
+            "fact_sheet": self.fact_sheet,
+            "writing_profile": self.writing_profile,
+            "image_profile": self.image_profile,
+            "gsc_queries_for_topic": self.gsc_queries_for_topic,
         }
+        return {n: ToolSpec(n, NEWS_TOOL_DESCRIPTIONS[n], fn) for n, fn in impl.items()}
 
     async def read_news_item(self, item_id: str) -> str:
         self.calls.append(("read_news_item", item_id))
