@@ -81,10 +81,10 @@ describe("search, analytics and calendar admin pages", () => {
     expect(renderToStaticMarkup(await ReportPage({ params: Promise.resolve({ id: rep.id }) }))).toContain("Organic performance");
     // The list shows the R2 PDF once report_flow stored one (the payload pointer storeReportPdf writes).
     const ReportsList = (await import("@/app/admin/(growth)/reports/page")).default as () => Promise<React.ReactElement>;
-    expect(renderToStaticMarkup(await ReportsList())).toContain("Not generated");
+    expect(renderToStaticMarkup(await ReportsList())).toContain("No PDF");
     await db.execute(sql`update seo_reports set payload = payload || ${JSON.stringify({ pdf: { key: "jithendar/www/reports/seo/weekly/x.pdf", bytes: 48_000, generatedAt: NOW.toISOString(), filename: "seo-weekly-report.pdf" }, narrative: "ok" })}::jsonb where id = ${rep.id}`);
     const list = renderToStaticMarkup(await ReportsList());
-    expect(list).toContain(`/api/admin/seo/reports/${rep.id}/pdf`);
+    expect(list).toContain(`/api/admin/crewai/reports/${rep.id}/download?format=pdf`);
     expect(list).toContain("47 KB · summary checked");
   });
 });

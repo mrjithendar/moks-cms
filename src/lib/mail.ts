@@ -303,6 +303,75 @@ async function deliver(to: string, subject: string, text: string): Promise<boole
   }
 }
 
+// --- Rich messages (report email, D-102) ---------------------------------------------------------------------
+
+export type Attachment = { filename: string; content: Buffer; contentType: string };
+export type RichMessage = { to: string; subject: string; text: string; html?: string; attachments?: Attachment[] };
+
+/**
+ * The largest message each provider accepts, as its documentation states (bytes, encoded): SES 40 MB, Mailgun 25 MB.
+ * An SMTP server announces its own limit; without knowing it, 10 MB is what most servers accept. A report's PDF is
+ * attached only when it fits, else the email carries a short-lived download link instead.
+ */
+export const PROVIDER_MAX_BYTES: Record<string, number> = { ses: 40 * 1024 * 1024, mailgun: 25 * 1024 * 1024, smtp: 10 * 1024 * 1024, "env-smtp": 10 * 1024 * 1024 };
+
+/** The provider sendRichMail would use now, or null when email is off or not configured. */
+export async function activeMailProvider(): Promise<string | null> {
+  const config = await readEmailConfig();
+  if (!config) return envSmtp() ? "env-smtp" : null;
+  return config.active !== "disabled" && config[config.active] ? config.active : null;
+}
+
+/**
+ * Send a message with an HTML part and attachments through the active provider. Unlike sendMail it throws (with
+ * secrets redacted), so a caller that keeps a delivery history can record why and retry.
+ */
+export async function sendRichMail(m: RichMessage): Promise<{ provider: string }> {
+  const config = await readEmailConfig();
+  const mail = { to: m.to, subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}), attachments: (m.attachments ?? []).map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })) };
+  try {
+    if (!config) {
+      const env = envSmtp();
+      if (!env) throw new Error("Email is not configured (Settings → Email).");
+      await nodemailer.createTransport(env.url).sendMail({ from: env.from, ...mail });
+      recordMail("env-smtp", "sent");
+      return { provider: "env-smtp" };
+    }
+    if (config.active === "disabled") throw new Error("Email is switched off (Settings → Email).");
+    const provider = config.active;
+    if (provider === "smtp" && config.smtp) {
+      const c = config.smtp;
+      const transport = nodemailer.createTransport({ host: c.host, port: c.port, secure: c.security === "tls", requireTLS: c.security === "starttls", auth: c.username ? { user: c.username, pass: c.password ? unseal(c.password) : "" } : undefined, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 60_000 });
+      await transport.sendMail({ from: fromHeader(c), ...mail, ...(c.replyTo ? { replyTo: c.replyTo } : {}) });
+    } else if (provider === "mailgun" && config.mailgun) {
+      const c = config.mailgun;
+      const base = c.region === "eu" ? "https://api.eu.mailgun.net" : "https://api.mailgun.net";
+      const form = new FormData();
+      form.set("from", fromHeader(c));
+      form.set("to", m.to);
+      form.set("subject", m.subject);
+      form.set("text", m.text);
+      if (m.html) form.set("html", m.html);
+      if (c.replyTo) form.set("h:Reply-To", c.replyTo);
+      for (const a of m.attachments ?? []) form.append("attachment", new Blob([new Uint8Array(a.content)], { type: a.contentType }), a.filename);
+      const res = await fetch(`${base}/v3/${encodeURIComponent(c.domain)}/messages`, { method: "POST", headers: { Authorization: `Basic ${Buffer.from(`api:${unseal(c.apiKey)}`).toString("base64")}` }, body: form, signal: AbortSignal.timeout(60_000) });
+      if (!res.ok) throw new Error(`Mailgun answered ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
+    } else if (provider === "ses" && config.ses) {
+      // Attachments need a raw MIME message: built by nodemailer's stream transport (nothing is sent by it).
+      const c = config.ses;
+      const raw = (await nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "windows" }).sendMail({ from: fromHeader(c), ...mail, ...(c.replyTo ? { replyTo: c.replyTo } : {}) })).message as Buffer;
+      const credentials = c.auth === "keys" && c.secretAccessKey ? { accessKeyId: c.accessKeyId, secretAccessKey: unseal(c.secretAccessKey), ...(c.sessionToken ? { sessionToken: unseal(c.sessionToken) } : {}) } : undefined;
+      const ses = traceAwsClient(new SESv2Client({ region: c.region, ...(credentials ? { credentials } : {}) }), "ses");
+      await ses.send(new SendEmailCommand({ Content: { Raw: { Data: new Uint8Array(raw) } } }));
+    } else throw new Error(`${providerLabels[provider]} is not configured.`);
+    recordMail(provider, "sent");
+    return { provider };
+  } catch (error) {
+    recordMail(config?.active ?? "env-smtp", "failed");
+    throw new Error(redact(error instanceof Error ? error.message : String(error), config));
+  }
+}
+
 // --- Admin actions -----------------------------------------------------------------------------------
 
 export class EmailSettingsError extends PostError {

@@ -103,6 +103,16 @@ const settingsSchema = z.object({
   reports: z.object({
     emailEnabled: z.boolean(),
     recipients: z.array(z.string().trim().toLowerCase().email()).max(10),
+    /** Report email (D-102): {title}, {period} and {site} are filled in. */
+    subjectTemplate: z.string().trim().min(3).max(200),
+    introText: z.string().trim().max(1000),
+    attachPdf: z.boolean(),
+    /** 0 = the email provider's own limit. A bigger PDF is sent as a download link. */
+    attachMaxMb: num(0, 40),
+    /** Download links in emails stay valid this long; 0 = the longest R2 allows (7 days). */
+    linkHours: num(0, 168),
+    /** Reports made in the CrewAI console are deleted (with their files) this many days after they are made; 0 = kept. */
+    keepDays: num(0, 3650),
   }),
   /** v2: Claude-drafted change sets (docs/seo/REVIEW_WORKFLOW.md). Automation stops at "ready for review". */
   drafts: z.object({
@@ -242,7 +252,7 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   },
   crawler: { requestsPerSecond: 1, maxPages: 500, timeoutMs: 10_000, maxBytes: 2_000_000, maxRedirects: 5 },
   llm: { enabled: false, provider: "openai", model: "", baseUrl: "", region: "us-east-1", timeoutMs: 30_000, maxOutputTokens: 900, dailyRequestLimit: 100 },
-  reports: { emailEnabled: false, recipients: [] },
+  reports: { emailEnabled: false, recipients: [], subjectTemplate: "{title} · {period}", introText: "", attachPdf: true, attachMaxMb: 0, linkHours: 0, keepDays: 0 },
   drafts: {
     enabled: true,
     draftModel: "",

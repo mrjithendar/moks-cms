@@ -1,5 +1,23 @@
 # Progress log — jithendar.com
 
+## Reports: CrewAI console reports, SEO-AI report email (2026-11-24, owner brief, D-102)
+
+- **CrewAI console → Reports** (`/admin/crewai/reports`, new, `[id]`): reports on any dates (presets or custom, IST,
+  compared with the period before) for one, several or all of 15 categories, narrowed to crews, flows and sources;
+  library with search and filters; viewer with progress, findings, root causes, fixes, recommendations, action plan,
+  charts, tables, costs, sources and email history; downloads (PDF, HTML, JSON, CSV) through 5-minute signed links;
+  retry, cancel, generate again, edit and generate, delete with confirmation.
+- **SEO-AI reports** (`/admin/reports`): one list of briefings and console reports; Generate and email; Email… with
+  recipients, attach or link and a preview; email history (queued, sent, retried, failed).
+- Migration **0043** (seo_reports columns, partial unique index, seo_report_deliveries) + rollback. Jobs `report`,
+  `report_email`; retention deletes expired reports. Agent callbacks `/site-reports/{id}/data|analysis|pdf|notify`.
+  Settings → Reports: subject, intro, attach, largest PDF, link hours, keep days. `sendRichMail` (HTML, attachments).
+- Agent side: moks-seo-agent report_flow with `report_id` (site analyst, evidence check, ReportLab PDF). Merge and
+  deploy the agent first; until then a report completes without the AI part and PDF and says why.
+- Tests: `reports` (23), `reports-api` (3), `seo-intel-sync` and `seo-intel-ui` updated. Ran: lint, typecheck, full
+  vitest, build (results in the PR).
+- Manual: none required to deploy; reports need R2 (files) and email (sending) configured, which this site may lack
+  (production logs on 2026-11-24 show "email is not configured").
 ## Site health: content flows were "down", the editorial calendar "degraded" (2026-11-24, fix)
 
 - **Content flows: down** was this check's own bug: it read `news_runs.created_at`, a column the table does not have,

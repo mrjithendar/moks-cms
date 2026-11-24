@@ -13,7 +13,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
   { id: "content", label: "Content & links", sections: ["keywords", "links", "submission"], description: "Keyword opportunities, internal-linking limits and search-engine submission." },
   { id: "ai", label: "AI & drafts", sections: ["drafts", "llm", "aiVisibility"], description: "Claude drafting (always stops at human review), the optional explanation model, and AI visibility (are AI assistants citing the site?)." },
   { id: "crawler", label: "Crawler", sections: ["crawler"], description: "Limits for the technical SEO crawl of this site." },
-  { id: "reports", label: "Reports", sections: ["reports"], description: "Weekly and monthly report e-mail." },
+  { id: "reports", label: "Reports", sections: ["reports"], description: "Report email (weekly and monthly briefings, and the reports made in the CrewAI console), the email template, attachments and download links, and how long console reports are kept." },
   { id: "runs", label: "Run history", sections: ["runHistory"], description: "What the CrewAI console keeps of each SEO agent run: model-call transcripts, and how long log lines and transcripts are kept." },
 ];
 
@@ -37,6 +37,13 @@ export const SECTION_LABELS: Record<string, string> = {
 
 /** One line of help per field that isn't self-explanatory, keyed by its dotted path. */
 export const FIELD_HELP: Record<string, string> = {
+  "reports.recipients": "The addresses offered when a report is emailed, and the ones the weekly and monthly briefings go to.",
+  "reports.subjectTemplate": "Subject of report emails: {title}, {period} (the dates) and {site} are filled in.",
+  "reports.introText": "A first paragraph for every report email (optional).",
+  "reports.attachPdf": "Attach the PDF when it fits the size below; otherwise the email carries a download link.",
+  "reports.attachMaxMb": "The largest PDF to attach, in MB. 0 = the email provider's limit (SES 40 MB, Mailgun 25 MB, SMTP 10 MB). A bigger PDF is sent as a download link.",
+  "reports.linkHours": "How long the download link in a report email works, in hours. 0 = the longest Cloudflare R2 allows (7 days). Signing in to the admin always works.",
+  "reports.keepDays": "Console reports and their files are deleted this many days after they were made. 0 = kept until you delete them.",
   "aiVisibility.enabled": "Master switch for the weekly run. Each assistant also needs its switch below and its API key.",
   "aiVisibility.costPerAnswerUsd": "ChatGPT, Perplexity and Gemini do not return a price: each answer is counted at this estimate. Set it from their pricing.",
   "aiVisibility.brandNames": "Names that count as a mention besides the site name and host, e.g. the author's name.",

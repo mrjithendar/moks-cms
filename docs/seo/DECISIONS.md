@@ -995,3 +995,18 @@ admin, and restored automatically after each Kubernetes deployment. Built in mok
 - **Git access is one fine-grained token on one repository**, saved sealed in the admin or given to the deployment as a
   Secret; saves are commits or pull requests with conflict detection by base commit and blob. Deployments use an API key
   with the new `crewai:read` / `crewai:import` scopes (admins only), never cluster credentials.
+
+## D-102 One report system for the CrewAI console and SEO-AI reports (owner brief 2026-11-24)
+
+- **One table.** `seo_reports` (D-59's weekly / monthly briefings) also holds console reports (`request` set) rather
+  than a second table; the briefings' uniqueness moved to a partial index. Deliveries are their own table because one
+  report has many emails and each needs its status. See docs/seo/REPORTS.md.
+- **Who does what.** The web app owns the data (its own database), R2, email, RBAC and audit, and builds reports in its
+  existing job queue; the SEO agent owns every LLM call (budget, run history, cost ledger) and the PDF (ReportLab, as for
+  the briefing), through report_flow with a `report_id`. No new service.
+- **The AI explains, code decides what is true.** Findings are rules over the figures; the Report crew's analysis is
+  kept only where its numbers are the report's figures and its items cite the report's evidence; "confirmed" needs
+  direct evidence. A source that is not there is reported, never filled in; costs are recorded costs only.
+- **Degrade, do not fail.** Without the agent, the LLM budget, R2 or email, a report is still made with what can be
+  made, and says what is missing.
+
