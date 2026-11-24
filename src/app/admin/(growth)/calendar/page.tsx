@@ -9,7 +9,7 @@ import { CalendarItemFields, type CalendarBrief } from "@/components/seo/Calenda
 import { NewCalendarItem } from "@/components/seo/NewCalendarItem";
 import { Empty, fmtInt, Section } from "@/components/seo/ui";
 import { buttonClass } from "@/components/ui/form";
-import { listCalendar, monthRange, PHASES, type CalendarItem } from "@/lib/seo-intel/calendar";
+import { istToday, listCalendar, monthRange, PHASES, weekStartOf, type CalendarItem } from "@/lib/seo-intel/calendar";
 import { addDays } from "@/lib/seo-intel/sqlutil";
 
 export const metadata = { title: "Editorial calendar" };
@@ -23,7 +23,9 @@ const CHIP: Record<string, string> = {
   published: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200",
 };
 
-type Filters = { phase: string; source: string; category: string; cluster: string; draft: string; q: string; sort: Sort };
+/** "past": dated items whose date has passed while their post is not scheduled (System status links here). */
+const DUE = { past: "Past their date" } as const;
+type Filters = { phase: string; source: string; category: string; cluster: string; draft: string; due: string; q: string; sort: Sort };
 
 function readFilters(sp: Record<string, string | undefined>): Filters {
   const pick = (v: string | undefined, allowed: readonly string[]) => (v && allowed.includes(v) ? v : "");
@@ -33,6 +35,7 @@ function readFilters(sp: Record<string, string | undefined>): Filters {
     category: (sp.category ?? "").slice(0, 60),
     cluster: (sp.cluster ?? "").slice(0, 200),
     draft: pick(sp.draft, Object.keys(DRAFT_LABEL)),
+    due: pick(sp.due, Object.keys(DUE)),
     q: (sp.q ?? "").trim().slice(0, 100),
     sort: (pick(sp.sort, Object.keys(SORTS)) || "date") as Sort,
   };
@@ -47,6 +50,7 @@ function applyFilters(items: CalendarItem[], f: Filters, withPhase = true) {
       (!f.category || i.category === f.category) &&
       (!f.cluster || i.cluster === f.cluster) &&
       (!f.draft || i.draft === f.draft) &&
+      (!f.due || i.overdue) &&
       (!q || `${i.title} ${i.cluster ?? ""} ${i.category ?? ""}`.toLowerCase().includes(q)),
   );
 }
@@ -66,7 +70,7 @@ function pendingNote(i: CalendarItem): string | null {
   if (i.phase !== "scheduled" || i.draft === "scheduled") return null;
   // A stored note explains a ready draft that could not be scheduled (fact-check errors, fields the post needs);
   // for every other state the draft's current state says more than a note written when it was different.
-  if (i.draft === "ready" && i.scheduleNote) return i.scheduleNote;
+  if (i.draft === "ready" && i.scheduleNote) return i.overdue ? `Its date (${i.targetDate}) has passed. ${i.scheduleNote}` : i.scheduleNote;
   const why: Record<string, string> = {
     none: "Planned for this date, but there is no draft yet. Generate it, review it, then press Schedule.",
     outline: "Planned for this date, but the draft is only an outline. Generate it, review it, then press Schedule.",
@@ -74,11 +78,13 @@ function pendingNote(i: CalendarItem): string | null {
     failed: "Planned for this date, but the draft failed. Generate it again, review it, then press Schedule.",
     ready: "Planned for this date. The draft is ready: review it, then press Schedule to publish it then.",
   };
-  return why[i.draft] ?? null;
+  const note = why[i.draft] ?? null;
+  // A passed date is the first thing to fix: pick a new date (Schedule), or delete the idea.
+  return note && i.overdue ? `Its date (${i.targetDate}) has passed: choose a new date below, or delete the item. ${note}` : note;
 }
 
 const ist = (iso: string) => `${new Date(iso).toLocaleString("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} IST`;
-const when = (i: CalendarItem) => (i.targetDate ? `${i.targetDate}${i.targetTime ? ` ${i.targetTime}` : ""} IST` : i.publishedAt ? `published ${i.publishedAt.slice(0, 10)}` : null);
+const when = (i: CalendarItem) => (i.targetDate ? `${i.targetDate}${i.targetTime ? ` ${i.targetTime}` : ""} IST${i.overdue ? " · date passed" : ""}` : i.publishedAt ? `published ${i.publishedAt.slice(0, 10)}` : null);
 
 function ItemCard({ item, owners, open }: { item: CalendarItem; owners: { id: string; name: string }[]; open: boolean }) {
   const brief = item.brief as CalendarBrief & { internalLinks?: { title: string; path: string }[] };
@@ -108,7 +114,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const f = readFilters(sp);
   const view = sp.view === "week" ? "week" : "month";
   const { from, to, month } = monthRange(sp.month);
-  const weekStart = sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); })();
+  // This week in the editorial time zone (until 2026-11-24 it was the UTC week: wrong from 00:00 to 05:30 IST on Mondays).
+  const weekStart = sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? weekStartOf(sp.week) : weekStartOf(istToday());
   const range = view === "week" ? { from: weekStart, to: addDays(weekStart, 6) } : { from, to };
   const cal = await listCalendar(range);
   const owners = rowsOf<{ id: string; name: string }>(await (await getDb()).execute(sql`select id, coalesce(nullif(name, ''), email) as name from "user" where role in ('admin', 'author') order by name`));
@@ -133,7 +140,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     for (const [k, v] of Object.entries({ view, ...(sp.month ? { month: sp.month } : {}), ...(sp.week ? { week: sp.week } : {}), ...f, ...over })) if (v && !(k === "sort" && v === "date")) q.set(k, v);
     return `?${q.toString()}`;
   };
-  const filtered = !!(f.source || f.category || f.cluster || f.draft || f.q);
+  const filtered = !!(f.source || f.category || f.cluster || f.draft || f.due || f.q);
+  const pastDue = cal.all.filter((i) => i.overdue).length;
   const select = "min-h-9 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg";
 
   return (
@@ -150,6 +158,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           </Link>
         ))}
       </nav>
+
+      {pastDue > 0 && !f.due && (
+        <p role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          {pastDue} item(s) are past their date and not scheduled. <Link className="font-medium underline" href={keep({ due: "past", phase: "" })}>Show them</Link> to choose a new date, finish the draft or delete the idea.
+        </p>
+      )}
 
       <Card className="mb-6 !p-4">
         <form method="get" className="flex flex-wrap items-end gap-3" aria-label="Filter the calendar">
@@ -176,6 +190,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             </select>
           </label>
           <label className="grid gap-1 text-xs font-medium text-fg-muted">
+            Date
+            <select name="due" defaultValue={f.due} className={select}>
+              <option value="">Any date</option>
+              {Object.entries(DUE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-fg-muted">
             Category
             <select name="category" defaultValue={f.category} className={select}>
               <option value="">Any category</option>
@@ -198,7 +219,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             </select>
           </label>
           <button type="submit" className={buttonClass("primary", "sm")}>Apply</button>
-          {(filtered || f.sort !== "date") && <Link className={buttonClass("ghost", "sm")} href={keep({ source: "", category: "", cluster: "", draft: "", q: "", sort: "date" })}>Clear</Link>}
+          {(filtered || f.sort !== "date") && <Link className={buttonClass("ghost", "sm")} href={keep({ source: "", category: "", cluster: "", draft: "", due: "", q: "", sort: "date" })}>Clear</Link>}
         </form>
       </Card>
 

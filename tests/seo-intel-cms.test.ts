@@ -143,6 +143,32 @@ describe("editorial calendar", () => {
     expect(await item(id)).toMatchObject({ phase: "published", draft: "published", status: "published" });
   });
 
+  it("puts an item whose post was deleted back to approved, and flags a passed date until it is moved", async () => {
+    // Production 2026-11-24: two items stayed "drafting" / "in_review" for days after their posts were deleted, past
+    // their dates, so System status said "Editorial calendar: degraded" with nothing to review.
+    const id = await cal.createItem({ title: "Terraform and IaC: a practical guide", targetDate: "2026-11-18" });
+    const { postId: draftId } = await cal.createDraftFromItem(id, admin);
+    await db.execute(sql`update seo_editorial_calendar set status = 'in_review' where id = ${id}`);
+    expect(await item(id)).toMatchObject({ status: "in_review", postId: draftId, overdue: true });
+    await db.update(schema.post).set({ deletedAt: new Date() }).where(eq(schema.post.id, draftId));
+    expect(await item(id)).toMatchObject({ status: "approved", postId: null, draft: "none", phase: "scheduled", targetDate: "2026-11-18", overdue: true });
+    // A new date in the future: no longer past due. A published item never is.
+    await db.execute(sql`update seo_editorial_calendar set target_date = '2999-01-01' where id = ${id}`);
+    expect(await item(id)).toMatchObject({ overdue: false });
+    const live = await cal.createItem({ title: "Ingress and TLS on Kubernetes", targetDate: "2026-04-01" });
+    expect(await item(live)).toMatchObject({ phase: "published", overdue: false });
+  });
+
+  it("opens on this month and this week in the editorial time zone", () => {
+    // 2026-11-30 19:00 UTC is 2026-12-01 00:30 IST: the calendar opens on December, not November.
+    expect(cal.istToday(new Date("2026-11-30T19:00:00Z"))).toBe("2026-12-01");
+    expect(cal.monthRange(undefined, new Date("2026-11-30T19:00:00Z"))).toEqual({ month: "2026-12", from: "2026-12-01", to: "2026-12-31" });
+    expect(cal.monthRange("2026-02", new Date("2026-11-30T19:00:00Z"))).toEqual({ month: "2026-02", from: "2026-02-01", to: "2026-02-28" });
+    // Sunday 2026-11-29 20:00 UTC is Monday 01:30 IST: the week is the one starting that Monday.
+    expect(cal.weekStartOf(cal.istToday(new Date("2026-11-29T20:00:00Z")))).toBe("2026-11-30");
+    expect(cal.weekStartOf("2026-12-06")).toBe("2026-11-30"); // a Sunday belongs to the week before
+  });
+
   it("checks for a draft first, then a published post, and offers Generate when there is neither", async () => {
     // A linked draft that was trashed: the link is cleared, so the item offers Generate draft instead of a dead link.
     const gone = await cal.createItem({ title: "LLMOps and MLOps: a practical guide" });
