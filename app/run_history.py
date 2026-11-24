@@ -16,6 +16,13 @@ seo_flow_runs gives #N), a step list, and a log grouped by step.
   with its agent, model, tokens, cost and time. While transcripts are on (the web app's setting, read through the
   callback API and kept 60 s; on when it cannot be read) the system prompt, prompt and answer are stored as well and the
   log line carries the transcript's id, which the run page opens.
+- Redaction: every line's message and fields, each step's detail and each transcript pass through app/redaction.py
+  before they are queued, so a password, API key or token never reaches the tables (or stderr: app/logs.py).
+- Switches (the web app's Run history settings, read through the callback API and kept 60 s): `logs` (on by default)
+  keeps the run's log lines; off, only steps, their detail and the run's status are kept (stderr → Loki is unchanged).
+  `step_io` (on by default) keeps each step's input and output metadata (sizes, keys and short redacted previews).
+- Step detail: `step_detail()` merges structured facts into a step's row (attempts, condition results, crew and flow
+  versions, child runs, tokens, cost, the reason for a skip or failure): the run page's step inspector reads them.
 - Never breaks a run: every write is best effort and only logged (to stderr, never into a run). The web app may be
   deployed after this service, or the agent's database role may not have the grants yet (scripts/db-role.sql): then the
   tables are missing or invisible and nothing is written (checked at start-up and again every 5 minutes).
@@ -38,6 +45,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from .logs import _RECORD_ATTRS
+from .redaction import redact, redact_text
 from .runs import CURRENT_RUN_ID
 
 log = logging.getLogger("seo_agent.run_history")  # never copied into a run's log (no recursion)
@@ -89,6 +97,7 @@ class HistorySink(Protocol):
     async def available(self) -> bool: ...
     async def open_step(self, run_id: str, seq: int, step: str) -> int | None: ...
     async def close_step(self, step_id: int, status: str, error: str | None, seconds: float) -> None: ...
+    async def step_detail(self, step_id: int, detail: dict[str, Any]) -> None: ...
     async def close_open_steps(self, run_id: str, status: str, error: str | None) -> None: ...
     async def write_logs(self, lines: list[dict[str, Any]]) -> None: ...
     async def write_call(self, row: dict[str, Any]) -> int | None: ...
@@ -135,9 +144,13 @@ class PgHistorySink:
     async def close_step(self, step_id: int, status: str, error: str | None, seconds: float) -> None:
         async with self.pool.connection() as c:
             await c.execute(
-                "update seo_flow_run_steps set status = %s, error = %s, finished_at = now(), detail = jsonb_build_object('seconds', %s::float8) where id = %s and status = 'running'",
+                "update seo_flow_run_steps set status = %s, error = %s, finished_at = now(), detail = detail || jsonb_build_object('seconds', %s::float8) where id = %s and status = 'running'",
                 (status, error, round(seconds, 3), step_id),
             )
+
+    async def step_detail(self, step_id: int, detail: dict[str, Any]) -> None:
+        async with self.pool.connection() as c:
+            await c.execute("update seo_flow_run_steps set detail = detail || %s::jsonb where id = %s", (json.dumps(detail, default=str), step_id))
 
     async def close_open_steps(self, run_id: str, status: str, error: str | None) -> None:
         async with self.pool.connection() as c:
@@ -188,13 +201,16 @@ class MemoryHistorySink:
     async def open_step(self, run_id: str, seq: int, step: str) -> int | None:
         if not self._exists(run_id):
             return None
-        self.steps.append({"id": len(self.steps) + 1, "run_id": run_id, "seq": seq, "step": step, "status": "running", "error": None, "seconds": None})
+        self.steps.append({"id": len(self.steps) + 1, "run_id": run_id, "seq": seq, "step": step, "status": "running", "error": None, "seconds": None, "detail": {}})
         return len(self.steps)
 
     async def close_step(self, step_id: int, status: str, error: str | None, seconds: float) -> None:
         s = self.steps[step_id - 1]
         if s["status"] == "running":
             s.update(status=status, error=error, seconds=round(seconds, 3))
+
+    async def step_detail(self, step_id: int, detail: dict[str, Any]) -> None:
+        self.steps[step_id - 1].setdefault("detail", {}).update(detail)
 
     async def close_open_steps(self, run_id: str, status: str, error: str | None) -> None:
         for s in self.steps:
@@ -225,7 +241,9 @@ class RunHistory:
         self._open: dict[str, list[tuple[int | None, str]]] = {}  # run id → open steps (step row id, name), newest last
         self._seq: dict[str, int] = {}
         self._transcripts = True
-        self._settings_at = 0.0
+        self._logs = True
+        self._step_io = True
+        self._settings_at: float | None = None
         self.enabled = True  # last known availability; lines are queued while unknown
 
     # steps ---------------------------------------------------------------------------------------------------------------
@@ -236,6 +254,7 @@ class RunHistory:
             return open_[-1][1] if open_ else None
 
     async def step_started(self, run_id: str, step: str) -> int | None:
+        await self.refresh_settings()
         with self._lock:
             seq = self._seq[run_id] = self._seq.get(run_id, 0) + 1
         step_id = None
@@ -262,6 +281,20 @@ class RunHistory:
         except Exception as e:
             log.warning("run history: step not closed", extra={"event": "run_history_write_failed", "what": "step", "error": type(e).__name__})
 
+    async def step_detail(self, step_id: int | None, detail: Mapping[str, Any]) -> None:
+        """Merge structured facts into a step's row (redacted; inputs and outputs only while `step_io` is on)."""
+        if step_id is None or not detail:
+            return
+        data = dict(detail)
+        if not self._step_io:
+            data = {k: v for k, v in data.items() if k not in ("input", "output", "inputs", "outputs")}
+        try:
+            safe = _context(redact(data))
+            if await self._available():
+                await self.sink.step_detail(step_id, safe)
+        except Exception as e:
+            log.warning("run history: step detail not recorded", extra={"event": "run_history_write_failed", "what": "step_detail", "error": type(e).__name__})
+
     async def run_finished(self, run_id: str, status: str) -> None:
         """The run ended: steps still open end with it (cancelled, or failed for any other ending), and the log is
         written out now so the run page shows the last lines with the final status."""
@@ -282,7 +315,10 @@ class RunHistory:
     # log lines -----------------------------------------------------------------------------------------------------------
 
     def add(self, run_id: str, record: logging.LogRecord) -> None:
-        """Called by RunLogHandler on any thread. Builds the row now (the record may change later) and queues it."""
+        """Called by RunLogHandler on any thread. Builds the row now (the record may change later), redacted, and
+        queues it. With the `logs` switch off nothing is queued (the record still goes to stderr)."""
+        if not self._logs:
+            return
         step = getattr(record, "step", None)
         if not isinstance(step, str) or not step:
             step = CURRENT_STEP.get() or self.step_of(run_id)
@@ -308,8 +344,8 @@ class RunHistory:
             "level": level,
             "logger": _cut(record.name, 100),
             "event": _cut(str(event), 80) if event else None,
-            "message": _cut(record.getMessage(), MAX_MESSAGE),
-            "context": _context(fields),
+            "message": _cut(redact_text(record.getMessage()), MAX_MESSAGE),
+            "context": _context(redact(fields)),
             "at": datetime.fromtimestamp(record.created, UTC),
         }
         with self._lock:
@@ -344,6 +380,7 @@ class RunHistory:
         await self._available()
         while True:
             await asyncio.sleep(every_s)
+            await self.refresh_settings()
             while await self.flush() == BATCH:
                 pass
 
@@ -357,18 +394,26 @@ class RunHistory:
 
     # model calls ---------------------------------------------------------------------------------------------------------
 
-    async def transcripts_on(self) -> bool:
-        if self._settings is None:
-            return self._transcripts
-        if time.monotonic() - self._settings_at < SETTINGS_TTL_S:
-            return self._transcripts
+    async def refresh_settings(self) -> None:
+        """The web app's Run history switches, at most once a minute. Each is on until the web app says otherwise."""
+        if self._settings is None or (self._settings_at is not None and time.monotonic() - self._settings_at < SETTINGS_TTL_S):
+            return
         self._settings_at = time.monotonic()
         try:
             got = await asyncio.wait_for(self._settings(), 5)
             self._transcripts = bool(got.get("transcripts", True))
-        except Exception as e:  # keep the last answer (on until the web app says otherwise)
+            self._logs = bool(got.get("logs", True))
+            self._step_io = bool(got.get("step_io", True))
+        except Exception as e:  # keep the last answer
             log.info("run history settings unavailable", extra={"event": "run_history_settings_unavailable", "error": type(e).__name__})
+
+    async def transcripts_on(self) -> bool:
+        await self.refresh_settings()
         return self._transcripts
+
+    async def step_io_on(self) -> bool:
+        await self.refresh_settings()
+        return self._step_io
 
     async def model_call(self, spec: Any, usage: Any, outcome: str, answer: str | None, error: BaseException | None, seconds: float) -> None:
         run_id = getattr(spec, "run_id", None)
@@ -397,10 +442,10 @@ class RunHistory:
                         "run_id": str(run_id),
                         "step": step,
                         **meta,
-                        "system": _cut("\n\n---\n\n".join(spec.cached_system), MAX_TEXT),
-                        "prompt": _cut(prompt, MAX_TEXT),
-                        "response": _cut(answer, MAX_TEXT) if answer is not None else None,
-                        "error": err,
+                        "system": _cut(redact_text("\n\n---\n\n".join(spec.cached_system)), MAX_TEXT),
+                        "prompt": _cut(redact_text(prompt), MAX_TEXT),
+                        "response": _cut(redact_text(answer), MAX_TEXT) if answer is not None else None,
+                        "error": redact_text(err) if err else None,
                     }
                 )
         except Exception as e:

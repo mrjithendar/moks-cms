@@ -12,6 +12,8 @@ import logging
 import os
 from typing import Any
 
+from .redaction import redact, redact_text
+
 # Attributes every LogRecord carries. Anything else on a record was passed with `extra=` and is logged as a field.
 _RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime", "taskName"}
 
@@ -36,15 +38,17 @@ def _context() -> dict[str, str]:
 
 
 class JsonFormatter(logging.Formatter):
+    """One JSON object per record. Secrets are redacted (app/redaction.py): by key in the `extra=` fields, by shape in
+    the message and the traceback, so a credential in an exception or a misnamed field never reaches Loki."""
+
     def format(self, record: logging.LogRecord) -> str:
-        out: dict[str, Any] = {"level": record.levelname, "logger": record.name, "msg": record.getMessage()}
-        for key, value in record.__dict__.items():
-            if key not in _RECORD_ATTRS and key not in out:
-                out[key] = value
+        out: dict[str, Any] = {"level": record.levelname, "logger": record.name, "msg": redact_text(record.getMessage())}
+        fields = {key: value for key, value in record.__dict__.items() if key not in _RECORD_ATTRS and key not in out}
+        out.update(redact(fields))
         for key, value in _context().items():
             out.setdefault(key, value)  # a field passed with extra= (e.g. a crew thread's run_id) wins
         if record.exc_info:
-            out["exc"] = self.formatException(record.exc_info)
+            out["exc"] = redact_text(self.formatException(record.exc_info))
         if record.stack_info:
             out["stack"] = self.formatStack(record.stack_info)
         return json.dumps(out, ensure_ascii=False, default=str)

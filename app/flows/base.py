@@ -4,7 +4,9 @@ Every flow is a CrewAI `Flow[State]` with `@start` / `@listen` / `@router` metho
 - `deps` (settings, LLM, web app client, retriever, run store, the runner for child runs, crew factories);
 - `step(name)`: duration histogram, OTel span and the run's `current_step` while the step runs (CrewAI's persistence
   then records the finished step and the state, app/runs.py), and the step's row in the run history (app/run_history.py:
-  the admin run page's step list and the step its log lines belong to);
+  the admin run page's step list and the step its log lines belong to). It yields a `StepRecord`: facts put in
+  `record.detail` (attempts, condition results, versions, child runs, redacted input/output metadata) are merged into
+  the step's row when it ends, whatever the outcome;
 - `@persist(INSTANCE_ONLY)` (never CrewAI's default SQLite), no auto-created CrewAI memory, quiet console.
 """
 
@@ -71,6 +73,14 @@ async def with_retry(fn: Callable[[], Awaitable[Any]], sleep: Callable[[float], 
     raise AssertionError("unreachable")
 
 
+@dataclass
+class StepRecord:
+    """What `SeoFlow.step()` yields: structured facts about the step, written to its run-history row when it ends."""
+
+    name: str
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
 class SeoFlow(Flow[S]):
     """Base class. Subclasses set FLOW (the registry name) and define their steps."""
 
@@ -89,7 +99,7 @@ class SeoFlow(Flow[S]):
         return self._deps
 
     @asynccontextmanager
-    async def step(self, name: str) -> AsyncIterator[None]:
+    async def step(self, name: str) -> AsyncIterator[StepRecord]:
         started = time.monotonic()
         store = self.deps.store
         run_id = getattr(self.state, "id", None)
@@ -106,8 +116,9 @@ class SeoFlow(Flow[S]):
             with span(f"flow.{self.FLOW}.{name}", {"flow": self.FLOW, "step": name, "run_id": run_id or ""}):
                 failed: str | None = None
                 detail: str | None = None
+                record = StepRecord(name)
                 try:
-                    yield
+                    yield record
                 except BaseException as e:
                     failed = type(e).__name__
                     detail = f"{failed}: {str(e)[:500]}" if str(e) else failed
@@ -117,6 +128,8 @@ class SeoFlow(Flow[S]):
                     metrics.STEP_DURATION.labels(flow=metrics.flow_label(self.FLOW), step=name).observe(seconds)
                     log.info("flow step finished", extra={"event": "flow_step", "flow": self.FLOW, "step": name, "seconds": round(seconds, 3), "status": "error" if failed else "ok", "error": failed})
                     if history is not None:
+                        if record.detail:
+                            await history.step_detail(step_id, record.detail)
                         status = "succeeded" if failed is None else ("cancelled" if failed == "CancelledError" else "failed")
                         await history.step_finished(str(run_id), step_id, name, status, detail, seconds)
         finally:

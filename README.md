@@ -135,6 +135,28 @@ stay in the deployment until a guarded re-embed exists); **Retrieval** (passages
 reranker's switch and limits, how long questions are kept, the LanceDB copy); **MCP servers** (the two switches, live; their rate limits and
 allowed hosts, on restart). It also holds three lists that only take things away: public tools switched off, admin tools switched off (refused at once, out of the tool list after a restart) and flows that may not be started over MCP (narrows the code's allowlist, never widens it). Ask the Blog's own switch, audience, daily limit and cache time stay in Ask the Blog.
 
+## Flows, crews and the flow engine
+
+The admin keeps one catalogue of every flow and crew (moks-cms `crewai_flows` / `crewai_crews`, its docs/seo/CATALOGUE.md).
+This service provides what that catalogue runs and shows:
+
+- **`GET /flows` and `GET /crews`** also serve each one's label, description, default categories and how a run may be
+  started (`FLOW_INFO` / `CREW_CATEGORIES` in `app/flows/__init__.py`). Categories are organisation only: nothing here
+  reads them back.
+- **The flow engine** (`app/flows/custom.py`, flow `custom_flow`) runs a flow made of steps: crew (any crew; a code
+  crew runs from its defaults plus its active version via `app/crews/custom.py` `materialize`), flow (another flow as a
+  child run, within the runner's policy), condition and draft. Each step may have `needs`, `when`, `retry` (attempts,
+  delay, backoff), `timeout_seconds` and `on_failure` (stop, continue, fallback). A crew spec has an input schema and an
+  optional output schema (checked after each run). A test run (`dry_run`) may carry an unsaved `draft` flow and
+  `crew_draft` crew; it never creates drafts or starts other flows.
+- **`POST /crews/{crew}/as-spec`** turns a code crew into a spec under a new key (the admin's Duplicate).
+- **Flow switches**: before every kickoff the runner asks the web app which flows are switched off
+  (`GET /internal/seo-agent/flow-switches`, kept 30 s, `app/flows/switches.py`) and refuses them with 409, whoever starts
+  them. When the web app cannot be reached the last answer stands (nothing is off until it has said so).
+- **Run logs**: each step records attempts, conditions, versions, child runs, tokens, cost and input/output metadata in
+  its run-history row; every log line, step detail and transcript is redacted first (`app/redaction.py`, also used by
+  the stderr JSON formatter). The web app's Run history settings `logs` and `step_io` (on by default) decide what is kept.
+
 ## The reranker and PyTorch
 
 Search can reorder its passages with a cross-encoder (`app/reranker.py`): cross-encoder/ms-marco-MiniLM-L6-v2, int8

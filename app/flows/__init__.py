@@ -122,7 +122,8 @@ def check_kickoff(name: str, triggered_by: str) -> None:
 
 def catalogue() -> list[dict[str, Any]]:
     """GET /flows: every flow with its input model as JSON Schema (the console's Run with parameters form), whether a
-    schedule may start it, and which crews it runs (a crew's test run replays these flows' runs)."""
+    schedule may start it, which crews it runs (a crew's test run replays these flows' runs), and what the admin's
+    catalogue shows until an admin changes it: label, description, categories and how it may be started (FLOW_INFO below)."""
     from ..crews.config import registry
 
     crews: dict[str, list[str]] = {}
@@ -137,6 +138,66 @@ def catalogue() -> list[dict[str, Any]]:
             "schedulable": name in CRON_FLOWS,
             "mcp": name in MCP_KICKOFF_ALLOWLIST,
             "crews": crews.get(name, []),
+            "flow_step": name not in APPROVAL_ONLY and name not in MANUAL_ONLY and name != "custom_flow",
+            **{k: v for k, v in flow_info(name).items() if k in ("label", "description", "categories", "start")},
         }
         for name, spec in SPECS.items()
     ]
+
+
+# --- What the admin's catalogue shows (moks-cms crewai_flows / crewai_crews, migration 0041) ------------------------
+#
+# What the admin shows about each flow and crew defined in code: a name, one line on what it does, the categories it is
+# filed under until an admin changes them, and how a run of it may be started from the console.
+#
+# The admin keeps its own copy of these in its catalogue (moks-cms crewai_flows / crewai_crews, migration 0041): it adds a
+# flow or crew this service reports and the catalogue does not have yet, with these values, and from then on the admin's
+# values win (an admin may rename, recategorise, retag, switch off or delete any of them). Categories are organisation only:
+# nothing in this service reads them to decide how a flow runs.
+#
+# `start` (what Run with parameters may do in the console):
+# - manual: started by hand with parameters, or by a schedule;
+# - review: a drafting flow; its draft is regenerated from the review queue (one open draft per article);
+# - approval: started only by a human approval in the review queue;
+# - schedule: started by its schedule only (Run now on the schedule);
+# - internal: started by other flows (a content flow's story drafts, images, the playground).
+
+
+FLOW_INFO: dict[str, dict[str, Any]] = {
+    "new_article_flow": {"label": "New article", "categories": ["content"], "start": "review", "description": "The Editorial crew researches, writes, reviews and edits a new article from a calendar item; the draft waits for review."},
+    "optimize_article_flow": {"label": "Optimize article", "categories": ["content", "seo"], "start": "review", "description": "The Optimization crew turns recommendations into a change set for a published article; the draft waits for review."},
+    "publish_flow": {"label": "Publish", "categories": ["content"], "start": "approval", "description": "Publishes an approved draft, verifies it live, submits it to search engines and reindexes it. Starts only from an approval."},
+    "weekly_recommendations_flow": {"label": "Weekly recommendations", "categories": ["seo", "content"], "start": "manual", "description": "Picks this week's articles to improve and starts an Optimize article run for each."},
+    "internal_linking_flow": {"label": "Internal linking", "categories": ["seo"], "start": "manual", "description": "Plans internal links between related articles."},
+    "report_flow": {"label": "Report", "categories": ["seo"], "start": "manual", "description": "The Report crew writes the weekly or monthly briefing, checks its numbers, renders the PDF and emails it."},
+    "tech_audit_flow": {"label": "Technical audit", "categories": ["seo", "monitoring"], "start": "manual", "description": "Crawls the site and records technical SEO issues."},
+    "ask_gaps_flow": {"label": "Ask the Blog gaps", "categories": ["research"], "start": "manual", "description": "Groups questions Ask the Blog could not answer into article ideas."},
+    "gsc_sync_flow": {"label": "Search Console sync", "categories": ["seo", "automation"], "start": "manual", "description": "Imports Google Search Console data."},
+    "ga4_sync_flow": {"label": "GA4 sync", "categories": ["seo", "automation"], "start": "manual", "description": "Imports Google Analytics 4 data."},
+    "promotion_flow": {"label": "Promotion", "categories": ["content"], "start": "manual", "description": "The Promotion crew scores where to share new articles and drafts the posts."},
+    "content_ideas_flow": {"label": "Content ideas", "categories": ["content", "research"], "start": "manual", "description": "Turns community and search signals into article ideas for the calendar."},
+    "custom_flow": {"label": "Step flow runner", "categories": ["automation"], "start": "internal", "description": "Runs a flow made of steps (crews, other flows, conditions, drafts). Each such flow is listed under its own name."},
+    "news_dispatch_flow": {"label": "Content flows housekeeping", "categories": ["content", "automation"], "start": "schedule", "description": "Keeps the content flows' gauges current on every run and does their daily clean-up. The content flows themselves start on their own times."},
+    "news_job_flow": {"label": "Content flow runner", "categories": ["content", "automation"], "start": "internal", "description": "Runs one content flow: finds stories or ideas in its sources, ranks them and drafts them for review. Each content flow is listed under its own name."},
+    "news_ingest_flow": {"label": "News ingest", "categories": ["content", "automation"], "start": "manual", "description": "Fetches and stores items from the news sources."},
+    "news_draft_flow": {"label": "News draft", "categories": ["content"], "start": "internal", "description": "The News desk crew writes one story or digest."},
+    "news_image_flow": {"label": "News image", "categories": ["content", "ai"], "start": "internal", "description": "Generates and checks a cover image for a news draft."},
+    "news_train_flow": {"label": "News model training", "categories": ["ai"], "start": "manual", "description": "Retrains the news ranking model from editor decisions."},
+    "news_style_review_flow": {"label": "News style review", "categories": ["content", "ai"], "start": "manual", "description": "Reviews recent edits to keep the news writing profile current."},
+    "news_playground_flow": {"label": "News playground", "categories": ["content"], "start": "internal", "description": "A trial draft from the profile playground."},
+    "reindex_flow": {"label": "Reindex", "categories": ["ai", "automation"], "start": "manual", "description": "Rebuilds the article search index the agents and Ask the Blog use."},
+    "seo_ml_flow": {"label": "ML models", "categories": ["ai", "seo"], "start": "manual", "description": "Retrains the SEO models (decay, query clusters, intent, priority, related articles)."},
+    "crew_test_flow": {"label": "Crew test run", "categories": ["automation"], "start": "internal", "description": "Runs one crew with edited prompts on the inputs of an earlier run (Crews → Test run). Saves nothing."},
+}
+
+CREW_CATEGORIES: dict[str, list[str]] = {
+    "editorial": ["content"],
+    "optimization": ["content", "seo"],
+    "report": ["seo"],
+    "promotion": ["content"],
+    "news": ["content"],
+}
+
+
+def flow_info(name: str) -> dict[str, Any]:
+    return FLOW_INFO.get(name) or {"label": name.removesuffix("_flow").replace("_", " ").capitalize(), "categories": [], "start": "manual", "description": ""}
