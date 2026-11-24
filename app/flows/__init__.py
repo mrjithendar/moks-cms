@@ -74,7 +74,8 @@ SPECS: dict[str, FlowSpec] = {
     "publish_flow": FlowSpec("publish_flow", PublishFlow.create, PublishInput, _draft, _draft_of),
     "reindex_flow": FlowSpec("reindex_flow", ReindexFlow.create, ReindexInput, _site),
     "ask_gaps_flow": FlowSpec("ask_gaps_flow", AskGapsFlow.create, NoInput, _site),
-    "report_flow": FlowSpec("report_flow", ReportFlow.create, ReportInput, lambda i: str(i.get("period", "weekly"))),
+    # One run per console report (its id) or per briefing period, at a time.
+    "report_flow": FlowSpec("report_flow", ReportFlow.create, ReportInput, lambda i: str(i.get("report_id") or i.get("period", "weekly"))),
     # v5 SEO-side ML (docs/seo/ML.md): one run at a time, site-wide.
     "seo_ml_flow": FlowSpec("seo_ml_flow", SeoMlFlow.create, MlInput, _site),
     # Promotion (docs/seo/PROMOTION.md): one run per article (or one site-wide run); ideas are site-wide.
@@ -169,7 +170,7 @@ FLOW_INFO: dict[str, dict[str, Any]] = {
     "publish_flow": {"label": "Publish", "categories": ["content"], "start": "approval", "description": "Publishes an approved draft, verifies it live, submits it to search engines and reindexes it. Starts only from an approval."},
     "weekly_recommendations_flow": {"label": "Weekly recommendations", "categories": ["seo", "content"], "start": "manual", "description": "Picks this week's articles to improve and starts an Optimize article run for each."},
     "internal_linking_flow": {"label": "Internal linking", "categories": ["seo"], "start": "manual", "description": "Plans internal links between related articles."},
-    "report_flow": {"label": "Report", "categories": ["seo"], "start": "manual", "description": "The Report crew writes the weekly or monthly briefing, checks its numbers, renders the PDF and emails it."},
+    "report_flow": {"label": "Report", "categories": ["seo"], "start": "manual", "description": "The Report crew writes the weekly or monthly briefing, or analyses a report from the CrewAI console (any dates and categories), checks every number and piece of evidence, renders the PDF and emails it."},
     "tech_audit_flow": {"label": "Technical audit", "categories": ["seo", "monitoring"], "start": "manual", "description": "Crawls the site and records technical SEO issues."},
     "ask_gaps_flow": {"label": "Ask the Blog gaps", "categories": ["research"], "start": "manual", "description": "Groups questions Ask the Blog could not answer into article ideas."},
     "gsc_sync_flow": {"label": "Search Console sync", "categories": ["seo", "automation"], "start": "manual", "description": "Imports Google Search Console data."},

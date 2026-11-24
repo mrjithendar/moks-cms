@@ -57,6 +57,11 @@ class WebApp(Protocol):
     async def report_narrative(self, report_id: str, narrative: str, check: dict[str, Any]) -> dict[str, Any]: ...
     async def report_notify(self, report_id: str) -> dict[str, Any]: ...
     async def report_pdf(self, report_id: str, pdf: bytes) -> dict[str, Any]: ...
+    # CrewAI console reports (moks-cms/src/lib/reports/callbacks.ts, D-102)
+    async def site_report_data(self, report_id: str) -> dict[str, Any]: ...
+    async def site_report_analysis(self, report_id: str, analysis: dict[str, Any], check: dict[str, Any], crew: dict[str, Any]) -> dict[str, Any]: ...
+    async def site_report_pdf(self, report_id: str, pdf: bytes) -> dict[str, Any]: ...
+    async def site_report_notify(self, report_id: str) -> dict[str, Any]: ...
     async def cluster_ask_gaps(self) -> dict[str, Any]: ...
     # Promotion (moks-cms/src/lib/seo-agent/callbacks-promotion.ts)
     async def promo_collect(self, article_id: str | None, limit: int | None) -> dict[str, Any]: ...
@@ -201,6 +206,24 @@ class HttpWebApp:
         import base64
 
         return await self._req("POST", f"/reports/{report_id}/pdf", json={"pdf": base64.b64encode(pdf).decode()}, timeout=120)
+
+    # --- CrewAI console reports (D-102): the web app owns the data, R2 and email; the agent analyses and renders ---
+
+    async def site_report_data(self, report_id: str) -> dict[str, Any]:
+        """The report the web app built (every category, its sources' status, findings, facts, untrusted error text)."""
+        return await self._req("POST", f"/site-reports/{report_id}/data", json={}, timeout=120)
+
+    async def site_report_analysis(self, report_id: str, analysis: dict[str, Any], check: dict[str, Any], crew: dict[str, Any]) -> dict[str, Any]:
+        return await self._req("POST", f"/site-reports/{report_id}/analysis", json={"analysis": analysis, "check": check, "crew": crew})
+
+    async def site_report_pdf(self, report_id: str, pdf: bytes) -> dict[str, Any]:
+        """The rendered PDF → the web app, which stores it (and the HTML, JSON and CSV) in R2 and completes the report."""
+        import base64
+
+        return await self._req("POST", f"/site-reports/{report_id}/pdf", json={"pdf": base64.b64encode(pdf).decode()}, timeout=180)
+
+    async def site_report_notify(self, report_id: str) -> dict[str, Any]:
+        return await self._req("POST", f"/site-reports/{report_id}/notify", json={})
 
     async def cluster_ask_gaps(self) -> dict[str, Any]:
         return await self._req("POST", "/ask-gaps/cluster", json={})
