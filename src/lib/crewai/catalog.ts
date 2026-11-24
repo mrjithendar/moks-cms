@@ -276,10 +276,13 @@ export async function flowsUsing(crew: string, opts: { enabledOnly?: boolean } =
 // --- create, edit, switch, delete, restore, duplicate ---------------------------------------------------------------------
 
 export type ItemInput = { key?: unknown; label?: unknown; description?: unknown; objective?: unknown; categories?: unknown; tags?: unknown; enabled?: unknown; spec?: unknown; note?: unknown };
+/** `db`: the caller's transaction (a configuration import applies everything in one). `checked`: the spec is the one the
+ * agent already returned for this save (the import checks every spec while it plans), so it is not sent again. */
+export type WriteOpts = { db?: Db; checked?: boolean };
 
 /** A new crew or flow defined by a spec (checked by the agent). The key is new for good: deleted rows keep theirs. */
-export async function createItem(kind: CatalogKind, actor: Actor, input: ItemInput, deps: AgentDeps = {}): Promise<CatalogItem> {
-  const d = await getDb();
+export async function createItem(kind: CatalogKind, actor: Actor, input: ItemInput, deps: AgentDeps = {}, opts: WriteOpts = {}): Promise<CatalogItem> {
+  const d = opts.db ?? (await getDb());
   const key = newKey(input.key ?? (input.spec as { key?: unknown } | undefined)?.key);
   const name = label(input.label ?? (input.spec as { label?: unknown } | undefined)?.label);
   const description = text(input.description ?? (input.spec as { description?: unknown } | undefined)?.description, 1000, "The description");
@@ -289,7 +292,7 @@ export async function createItem(kind: CatalogKind, actor: Actor, input: ItemInp
   const raw = asObject(input.spec) ?? {};
   const [exists] = rowsOf<{ deleted: boolean }>(await d.execute(sql`select deleted_at is not null as deleted from ${TABLE[kind]} where key = ${key}`));
   if (exists) throw new CatalogError(exists.deleted ? `A deleted ${kind} used the key ${key}: restore it, or pick another key (its run history keeps the name).` : `There is already a ${kind} ${key}.`, 409);
-  const spec = await check(kind, { ...raw, key, label: name, description }, d, deps);
+  const spec = opts.checked ? { ...raw, key, label: name, description } : await check(kind, { ...raw, key, label: name, description }, d, deps);
   const enabled = input.enabled === undefined ? true : Boolean(input.enabled);
   if (kind === "crew") {
     await d.execute(sql`insert into crewai_crews (key, label, description, objective, categories, tags, enabled, definition, spec, version, created_by, updated_by)
@@ -299,7 +302,7 @@ export async function createItem(kind: CatalogKind, actor: Actor, input: ItemInp
       values (${key}, ${name}, ${description}, ${pgArray(categories)}, ${pgArray(tags)}, ${enabled}, 'spec', 'custom_flow', 'manual', ${JSON.stringify(spec)}::jsonb, ${pgArray(crewsOfSpec(spec))}, 1, ${actor.label}, ${actor.label})`);
   }
   await addVersion(d, kind, key, 1, spec, actor, text(input.note, 500, "The note") || "created");
-  await audit(actor, `crewai.${kind}.create`, key, { categories, tags });
+  await audit(actor, `crewai.${kind}.create`, key, { categories, tags }, { db: d });
   return (await getItem(kind, key, d))!;
 }
 
@@ -308,8 +311,8 @@ export async function createItem(kind: CatalogKind, actor: Actor, input: ItemInp
  * the spec (checked by the agent; a new version). A code crew's prompts are versions (lib/crewai/crews.ts); a content
  * flow's settings are its own page: their name and description follow to news_jobs.
  */
-export async function updateItem(kind: CatalogKind, actor: Actor, key: string, patch: ItemInput, deps: AgentDeps = {}): Promise<CatalogItem> {
-  const d = await getDb();
+export async function updateItem(kind: CatalogKind, actor: Actor, key: string, patch: ItemInput, deps: AgentDeps = {}, opts: WriteOpts = {}): Promise<CatalogItem> {
+  const d = opts.db ?? (await getDb());
   const cur = await getItem(kind, key, d);
   if (!cur) throw new CatalogError(`No ${kind} ${key}.`, 404);
   if (cur.deletedAt) throw new CatalogError(`The ${kind} ${cur.label} is deleted: restore it first.`, 409);
@@ -324,7 +327,8 @@ export async function updateItem(kind: CatalogKind, actor: Actor, key: string, p
   let version = cur.version;
   if (patch.spec !== undefined) {
     if (cur.definition !== "spec") throw new CatalogError(cur.definition === "code" ? (kind === "crew" ? "This crew's agents and tasks are defined in code: change them as a version in the crew editor." : "This flow's steps are defined in code: duplicate it to build your own steps around it.") : "A content flow's settings are on its settings page.", 400);
-    spec = await check(kind, { ...(asObject(patch.spec) ?? {}), key, label: next.label, description: next.description }, d, deps);
+    const raw = { ...(asObject(patch.spec) ?? {}), key, label: next.label, description: next.description };
+    spec = opts.checked ? raw : await check(kind, raw, d, deps);
     version = cur.version + 1;
     await addVersion(d, kind, key, version, spec, actor, text(patch.note, 500, "The note"));
   } else if (cur.definition === "spec" && spec && (next.label !== cur.label || next.description !== cur.description)) {
@@ -340,7 +344,7 @@ export async function updateItem(kind: CatalogKind, actor: Actor, key: string, p
       await d.execute(sql`update news_jobs set name = ${next.label}, description = ${next.description}, updated_at = now() where id = ${cur.contentJobId}::uuid`);
     }
   }
-  await audit(actor, `crewai.${kind}.update`, key, { version, spec: patch.spec !== undefined, fields: Object.keys(patch).filter((k) => k !== "spec") });
+  await audit(actor, `crewai.${kind}.update`, key, { version, spec: patch.spec !== undefined, fields: Object.keys(patch).filter((k) => k !== "spec") }, { db: d });
   return (await getItem(kind, key, d))!;
 }
 
@@ -349,8 +353,8 @@ export async function updateItem(kind: CatalogKind, actor: Actor, key: string, p
  * first); a flow whose crews are off cannot be switched on. A code flow switched off is refused by the agent, whoever
  * starts it (`reason` is what it says); a content flow's switch is its news_jobs switch.
  */
-export async function setEnabled(kind: CatalogKind, actor: Actor, key: string, enabled: boolean, reason: string | null = null): Promise<CatalogItem> {
-  const d = await getDb();
+export async function setEnabled(kind: CatalogKind, actor: Actor, key: string, enabled: boolean, reason: string | null = null, opts: WriteOpts = {}): Promise<CatalogItem> {
+  const d = opts.db ?? (await getDb());
   const cur = await getItem(kind, key, d);
   if (!cur) throw new CatalogError(`No ${kind} ${key}.`, 404);
   if (cur.deletedAt) throw new CatalogError(`The ${kind} ${cur.label} is deleted: restore it first.`, 409);
@@ -367,7 +371,7 @@ export async function setEnabled(kind: CatalogKind, actor: Actor, key: string, e
   if (kind === "flow" && cur.definition === "content" && cur.contentJobId) {
     await d.execute(sql`update news_jobs set enabled = ${enabled}, updated_at = now() where id = ${cur.contentJobId}::uuid`);
   }
-  await audit(actor, `crewai.${kind}.${enabled ? "enable" : "disable"}`, key, { reason: why });
+  await audit(actor, `crewai.${kind}.${enabled ? "enable" : "disable"}`, key, { reason: why }, { db: d });
   return (await getItem(kind, key, d))!;
 }
 
@@ -376,8 +380,8 @@ export async function setEnabled(kind: CatalogKind, actor: Actor, key: string, e
  * refused. A spec flow's own schedules are removed; a code flow's schedules are paused (restore and resume them); a
  * content flow is deleted in news_jobs as well.
  */
-export async function deleteItem(kind: CatalogKind, actor: Actor, key: string): Promise<{ schedulesRemoved: number; schedulesPaused: number }> {
-  const d = await getDb();
+export async function deleteItem(kind: CatalogKind, actor: Actor, key: string, opts: WriteOpts = {}): Promise<{ schedulesRemoved: number; schedulesPaused: number }> {
+  const d = opts.db ?? (await getDb());
   const cur = await getItem(kind, key, d);
   if (!cur || cur.deletedAt) throw new CatalogError(`No ${kind} ${key}.`, 404);
   if (kind === "crew") {
@@ -396,13 +400,13 @@ export async function deleteItem(kind: CatalogKind, actor: Actor, key: string): 
     await d.execute(sql`update news_jobs set deleted_at = now(), enabled = false, updated_at = now() where id = ${cur.contentJobId}::uuid and deleted_at is null`);
   }
   await d.execute(sql`update ${TABLE[kind]} set deleted_at = now(), enabled = false, updated_at = now(), updated_by = ${actor.label} where key = ${key}`);
-  await audit(actor, `crewai.${kind}.delete`, key, { schedulesRemoved: removed, schedulesPaused: paused });
+  await audit(actor, `crewai.${kind}.delete`, key, { schedulesRemoved: removed, schedulesPaused: paused }, { db: d });
   return { schedulesRemoved: removed, schedulesPaused: paused };
 }
 
 /** Bring a deleted crew or flow back, switched off (switch it on when it is ready). */
-export async function restoreItem(kind: CatalogKind, actor: Actor, key: string): Promise<CatalogItem> {
-  const d = await getDb();
+export async function restoreItem(kind: CatalogKind, actor: Actor, key: string, opts: WriteOpts = {}): Promise<CatalogItem> {
+  const d = opts.db ?? (await getDb());
   const cur = await getItem(kind, key, d);
   if (!cur) throw new CatalogError(`No ${kind} ${key}.`, 404);
   if (!cur.deletedAt) return cur;
@@ -410,7 +414,7 @@ export async function restoreItem(kind: CatalogKind, actor: Actor, key: string):
     await d.execute(sql`update news_jobs set deleted_at = null, enabled = false, updated_at = now() where id = ${cur.contentJobId}::uuid`);
   }
   await d.execute(sql`update ${TABLE[kind]} set deleted_at = null, enabled = false, updated_at = now(), updated_by = ${actor.label} where key = ${key}`);
-  await audit(actor, `crewai.${kind}.restore`, key, {});
+  await audit(actor, `crewai.${kind}.restore`, key, {}, { db: d });
   return (await getItem(kind, key, d))!;
 }
 
@@ -560,8 +564,8 @@ export async function listCategories(db?: Db): Promise<Category[]> {
 
 const slugify = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
 
-export async function createCategory(actor: Actor, input: { slug?: unknown; label?: unknown; description?: unknown; position?: unknown }): Promise<Category> {
-  const d = await getDb();
+export async function createCategory(actor: Actor, input: { slug?: unknown; label?: unknown; description?: unknown; position?: unknown }, opts: WriteOpts = {}): Promise<Category> {
+  const d = opts.db ?? (await getDb());
   const name = text(input.label, 60, "The name");
   if (!name) throw new CatalogError("A category needs a name.", 400);
   const slug = String(input.slug ?? "").trim() || slugify(name);
@@ -569,13 +573,13 @@ export async function createCategory(actor: Actor, input: { slug?: unknown; labe
   const position = Number.isInteger(input.position) ? Number(input.position) : Number((rowsOf<{ p: number }>(await d.execute(sql`select coalesce(max(position), 0)::int + 10 as p from crewai_categories`))[0]?.p ?? 10));
   const r = rowsOf<{ slug: string }>(await d.execute(sql`insert into crewai_categories (slug, label, description, position, updated_by) values (${slug}, ${name}, ${text(input.description, 300, "The description")}, ${position}, ${actor.label}) on conflict (slug) do nothing returning slug`));
   if (!r.length) throw new CatalogError(`There is already a category ${slug}.`, 409);
-  await audit(actor, "crewai.category.create", slug, { label: name });
+  await audit(actor, "crewai.category.create", slug, { label: name }, { db: d });
   return (await listCategories(d)).find((c) => c.slug === slug)!;
 }
 
 /** Rename (the slug stays, so every crew and flow keeps it), describe or reorder a category. */
-export async function updateCategory(actor: Actor, slug: string, patch: { label?: unknown; description?: unknown; position?: unknown }): Promise<Category> {
-  const d = await getDb();
+export async function updateCategory(actor: Actor, slug: string, patch: { label?: unknown; description?: unknown; position?: unknown }, opts: WriteOpts = {}): Promise<Category> {
+  const d = opts.db ?? (await getDb());
   const cur = (await listCategories(d)).find((c) => c.slug === slug);
   if (!cur) throw new CatalogError(`No category ${slug}.`, 404);
   const name = patch.label === undefined ? cur.label : text(patch.label, 60, "The name");
@@ -583,18 +587,18 @@ export async function updateCategory(actor: Actor, slug: string, patch: { label?
   const description = patch.description === undefined ? cur.description : text(patch.description, 300, "The description");
   const position = Number.isInteger(patch.position) ? Number(patch.position) : cur.position;
   await d.execute(sql`update crewai_categories set label = ${name}, description = ${description}, position = ${position}, updated_at = now(), updated_by = ${actor.label} where slug = ${slug}`);
-  await audit(actor, "crewai.category.update", slug, { label: name });
+  await audit(actor, "crewai.category.update", slug, { label: name }, { db: d });
   return (await listCategories(d)).find((c) => c.slug === slug)!;
 }
 
 /** Remove a category: it is taken off every crew and flow (they stay as they are otherwise). */
-export async function deleteCategory(actor: Actor, slug: string): Promise<{ crews: number; flows: number }> {
-  const d = await getDb();
+export async function deleteCategory(actor: Actor, slug: string, opts: WriteOpts = {}): Promise<{ crews: number; flows: number }> {
+  const d = opts.db ?? (await getDb());
   const cur = (await listCategories(d)).find((c) => c.slug === slug);
   if (!cur) throw new CatalogError(`No category ${slug}.`, 404);
   const crews = rowsOf<{ key: string }>(await d.execute(sql`update crewai_crews set categories = array_remove(categories, ${slug}) where ${slug} = any(categories) returning key`)).length;
   const flows = rowsOf<{ key: string }>(await d.execute(sql`update crewai_flows set categories = array_remove(categories, ${slug}) where ${slug} = any(categories) returning key`)).length;
   await d.execute(sql`delete from crewai_categories where slug = ${slug}`);
-  await audit(actor, "crewai.category.delete", slug, { crews, flows });
+  await audit(actor, "crewai.category.delete", slug, { crews, flows }, { db: d });
   return { crews, flows };
 }

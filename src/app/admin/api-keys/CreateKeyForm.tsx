@@ -33,6 +33,12 @@ export function CreateKeyForm() {
           <label className="flex items-center gap-2" title="Push site images (/images/…) to storage: new images and replacements. Admins only: a site image can be part of any page.">
             <input type="checkbox" name="scopes" value="images:write" /> images:write <span className="text-fg-subtle">(site images, admins)</span>
           </label>
+          <label className="flex items-center gap-2" title="Export the CrewAI configuration bundle and read its sync status. No secrets are in either. Admins only.">
+            <input type="checkbox" name="scopes" value="crewai:read" /> crewai:read <span className="text-fg-subtle">(configuration export, admins)</span>
+          </label>
+          <label className="flex items-center gap-2" title="Import a CrewAI configuration bundle: plans, or applied in one transaction. A deployment restores crewconfig/ with it. Admins only.">
+            <input type="checkbox" name="scopes" value="crewai:import" /> crewai:import <span className="text-fg-subtle">(configuration import, admins)</span>
+          </label>
         </fieldset>
         <Field label="Expires" htmlFor="expiresInDays">
           <Select id="expiresInDays" name="expiresInDays" defaultValue="90">

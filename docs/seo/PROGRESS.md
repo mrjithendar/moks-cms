@@ -803,3 +803,18 @@ repository: the same Alloy pipeline for EKS). jithendar.com repository: dashboar
 
 **Manual steps (owner).** Apply the kubernetes repository's Terraform for Prometheus and Loki after merging; the
 dashboards fill once seo-agent runs the new image and Prometheus scrapes it.
+
+## CrewAI configuration as files (2026-11-24, owner brief, D-101)
+
+Owner brief "Complete CrewAI configuration export, GitOps repository and Kubernetes deployment integration": the
+Import / export file had schedules only. Format 2 bundle (`src/lib/crewai/bundle/`, CREWCONFIG.md): complete export
+discovered from what runs, files with schemas and a manifest, an importer with plan, conflicts, one transaction,
+verification, records, rollback; AI & SEO → Configuration (overview with drift and Git revision, repository editor with
+history, compare and revert, import / export, history, settings); the console Overview shows the configuration; API
+keys `crewai:read` / `crewai:import`; migration 0042. moks-seo-agent: `GET /config-catalogue`. jithendar.com:
+`crewconfig/`, `scripts/crewconfig.py`, the deploy workflow's crewconfig stage.
+
+**Manual steps (owner).** Deploy the agent, then this repository. Create an admin API key with `crewai:read` and
+`crewai:import` and save it in jithendar.com as secret `JITHENDAR_CREWAI_KEY`. For editing from the admin: a
+fine-grained GitHub token (Contents and Pull requests, read and write, on the site repository) under AI & SEO →
+Configuration → Settings. Then Overview → Write to Git once, so crewconfig/ holds exactly what production runs.

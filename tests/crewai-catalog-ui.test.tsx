@@ -121,7 +121,7 @@ describe("pages", () => {
 
   it("the console's tabs are crews and flows only: no Skills, Content or Settings links", () => {
     const html = renderToStaticMarkup(<ConsoleNav agent={{ enabled: true, version: "x", reason: "" }} />);
-    for (const h of ["Flows", "Runs", "Crews", "Categories", "Import / export"]) expect(html).toContain(h);
+    for (const h of ["Flows", "Runs", "Crews", "Categories", "Configuration"]) expect(html).toContain(h);
     for (const gone of ["Skills ↗", "Content ↗", "Settings ↗", "/admin/automation/skills"]) expect(html).not.toContain(gone);
   });
 

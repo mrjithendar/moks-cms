@@ -93,3 +93,8 @@ Deploy the agent first (or together). The editors save input and output schemas,
 older agent's check refuses (422, shown in the editor), and an older agent does not enforce flow switches (the admin
 still refuses to start a switched-off flow from the console). A newer agent with an older web app gets 404 from
 /flow-switches and keeps every flow on; specs saved before keep working with both.
+
+## As files
+
+Every crew and flow of the catalogue, with a code crew's agents and tasks as they run, is exported, versioned in the
+site repository and restored by deployments: [CREWCONFIG.md](CREWCONFIG.md) (D-101).

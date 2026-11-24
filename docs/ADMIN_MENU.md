@@ -27,7 +27,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Pages | All pages, Add new page, Hire me page |
 | Comments | All comments, Messages, Bookings |
 | — | |
-| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
+| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Configuration (crewconfig/ in Git, import / export, history; D-101). **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | — | |
@@ -57,7 +57,7 @@ address, so bookmarks and links still work. What moved where:
 
 | Before | Now |
 |---|---|
-| AI room → CrewAI console, Flow runs, Flows, Schedules, Crews, CrewAI import / export, Skills | AI & SEO → Agent (Import / export is the last one) |
+| AI room → CrewAI console, Flow runs, Flows, Schedules, Crews, CrewAI import / export, Skills | AI & SEO → Agent (Configuration, formerly Import / export, is the last one) |
 | AI room → ML models, LanceDB | AI & SEO → Models & data |
 | AI room → Automation & AI | AI & SEO → Settings → Settings |
 | AI room → MCP access | AI & SEO → Settings → MCP (one section with the servers since 2026-11-23) |

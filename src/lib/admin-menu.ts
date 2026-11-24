@@ -97,7 +97,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
   ["/admin/crewai/categories", { group: "ai", title: "Categories" }],
   ["/admin/automation/skills", { group: "ai" }],
-  ["/admin/crewai/config", { group: "ai", title: "Import / export" }],
+  ["/admin/crewai/config", { group: "ai", title: "Configuration" }],
   ["/admin/content/sources", { group: "ai", title: "Content sources", heading: "Content" }],
   ["/admin/content/topics", { group: "ai", title: "Topics" }],
   ["/admin/content/profiles", { group: "ai", title: "Profiles & playground" }],

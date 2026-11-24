@@ -137,6 +137,21 @@ export type AgentCrew = {
   tasks: { key: string; agent: string; label: string; instructions: string; expected_output: string; variables: string[]; contract: string; output_editable: boolean }[];
 };
 export const flowCatalogue = (deps?: AgentDeps) => call<{ items: AgentFlow[] }>("GET", "/flows", undefined, deps, 8_000);
+/** One tool an agent can be given (moks-seo-agent app/config_catalogue.py). */
+export type AgentTool = { name: string; description: string; groups: string[]; read_only: boolean; custom: boolean; crews: string[]; agents: string[] };
+/** Everything the agent defines in code that the configuration bundle describes (GET /config-catalogue, agent ≥ 2026-11-24). */
+export type AgentConfigCatalogue = {
+  format: number;
+  service: string;
+  version: string;
+  crews: AgentCrew[];
+  flows: AgentFlow[];
+  tools: AgentTool[];
+  custom_tools: string[];
+  guardrails: { id: string; title: string; applies_to: string; text: string }[];
+  models: string[];
+};
+export const configCatalogue = (deps?: AgentDeps) => call<AgentConfigCatalogue>("GET", "/config-catalogue", undefined, deps, 10_000);
 export const validateFlowInputs = (flow: string, inputs: Record<string, unknown>, deps?: AgentDeps) => call<{ inputs: Record<string, unknown> }>("POST", `/flows/${encodeURIComponent(flow)}/validate`, { inputs }, deps, 8_000);
 export const crewCatalogue = (deps?: AgentDeps) => call<{ items: AgentCrew[] }>("GET", "/crews", undefined, deps, 8_000);
 /** POST /custom/validate: the agent's one check of a custom crew or flow spec (moks-seo-agent app/crews/custom.py,

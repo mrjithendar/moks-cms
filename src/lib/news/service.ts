@@ -147,28 +147,30 @@ export async function getJob(id: string, db?: Db) {
   return r ? rowToJob(r) : null;
 }
 
-export async function createJob(actor: Actor, raw: unknown) {
+/** `opts.id`: the row's id, when an import recreates a content flow under the key it has elsewhere (its catalogue key is
+ * derived from the id: migration 0041). `opts.db`: the caller's transaction. */
+export async function createJob(actor: Actor, raw: unknown, opts: { db?: Db; id?: string } = {}) {
   const input = parse(jobInput, raw);
   validateJob(input);
-  const db = await getDb();
+  const db = opts.db ?? (await getDb());
   const [{ n }] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from news_jobs where deleted_at is null`)) as [{ n: number }];
   if (n >= MAX_NEWS_JOBS) throw new NewsError(`At most ${MAX_NEWS_JOBS} content flows (keeps the metrics' label bounded). Delete or reuse one.`, 409);
   const snap = snapshotOf(input);
   const [row] = rowsOf<{ id: string }>(
     await db.execute(sql`
-      insert into news_jobs (name, description, enabled, cron, timezone, mode, writing_profile_key, image_profile_key, review_priority, config, version, created_by)
-      values (${input.name}, ${input.description}, ${input.enabled}, ${input.cron}, ${input.timezone}, ${input.mode}, ${input.writing_profile_key}, ${input.image_profile_key}, ${input.review_priority}, ${j(input.config)}::jsonb, 1, ${actor.label}) returning id`),
+      insert into news_jobs (${opts.id ? sql`id, ` : sql``}name, description, enabled, cron, timezone, mode, writing_profile_key, image_profile_key, review_priority, config, version, created_by)
+      values (${opts.id ? sql`${opts.id}::uuid, ` : sql``}${input.name}, ${input.description}, ${input.enabled}, ${input.cron}, ${input.timezone}, ${input.mode}, ${input.writing_profile_key}, ${input.image_profile_key}, ${input.review_priority}, ${j(input.config)}::jsonb, 1, ${actor.label}) returning id`),
   );
   await db.execute(sql`insert into news_job_versions (job_id, version, snapshot, diff, note, created_by) values (${row!.id}, 1, ${j(snap)}::jsonb, '[]'::jsonb, 'created', ${actor.label})`);
-  await audit(actor, "news.job.create", row!.id, { name: input.name });
+  await audit(actor, "news.job.create", row!.id, { name: input.name }, { db });
   return getJob(row!.id, db);
 }
 
 /** Every save is a new immutable version with its diff against the previous one; runs record the version they used. */
-export async function updateJob(actor: Actor, id: string, raw: unknown, note: string | null = null) {
+export async function updateJob(actor: Actor, id: string, raw: unknown, note: string | null = null, dbIn?: Db) {
   const input = parse(jobInput, raw);
   validateJob(input);
-  const db = await getDb();
+  const db = dbIn ?? (await getDb());
   const current = await getJob(id, db);
   if (!current) throw new NewsError("Content flow not found.", 404);
   const before = pickJob(current);
@@ -181,7 +183,7 @@ export async function updateJob(actor: Actor, id: string, raw: unknown, note: st
       writing_profile_key = ${input.writing_profile_key}, image_profile_key = ${input.image_profile_key}, review_priority = ${input.review_priority}, config = ${j(input.config)}::jsonb,
       version = ${version}, updated_at = now(), next_run_at = null where id = ${id} and version = ${current.version}`);
   await db.execute(sql`insert into news_job_versions (job_id, version, snapshot, diff, note, created_by) values (${id}, ${version}, ${j(after)}::jsonb, ${j(diff)}::jsonb, ${note}, ${actor.label})`);
-  await audit(actor, "news.job.update", id, { version, diff: diff.slice(0, 50) });
+  await audit(actor, "news.job.update", id, { version, diff: diff.slice(0, 50) }, { db });
   return { job: await getJob(id, db), version, changed: true, diff };
 }
 
@@ -278,28 +280,28 @@ export async function listSources() {
   );
 }
 
-export async function saveSource(actor: Actor, id: string | null, raw: unknown) {
+export async function saveSource(actor: Actor, id: string | null, raw: unknown, dbIn?: Db) {
   const s = parse(sourceInput, raw);
-  const db = await getDb();
+  const db = dbIn ?? (await getDb());
   const settings = await getNewsSettings(db);
   const host = new URL(s.url).hostname.toLowerCase();
   if (settings.paywalled_hosts.some((h) => host === h || host.endsWith(`.${h}`))) throw new NewsError(`${host} is on the paywalled list; it cannot be a source.`, 400);
   if (id) {
     await db.execute(sql`update news_sources set name = ${s.name}, type = ${s.type}, url = ${s.url}, topic_hints = ${pgText(s.topic_hints)}::text[], credibility = ${s.credibility}, fetch_interval_minutes = ${s.fetch_interval_minutes}, enabled = ${s.enabled}, terms_note = ${s.terms_note}, updated_at = now() where id = ${id} and deleted_at is null`);
-    await audit(actor, "news.source.update", id, { ...s });
+    await audit(actor, "news.source.update", id, { ...s }, { db });
     return { id };
   }
   const [r] = rowsOf<{ id: string }>(
     await db.execute(sql`insert into news_sources (name, type, url, topic_hints, credibility, fetch_interval_minutes, enabled, terms_note, created_by) values (${s.name}, ${s.type}, ${s.url}, ${pgText(s.topic_hints)}::text[], ${s.credibility}, ${s.fetch_interval_minutes}, ${s.enabled}, ${s.terms_note}, ${actor.label}) returning id`),
   );
-  await audit(actor, "news.source.create", r!.id, { ...s });
+  await audit(actor, "news.source.create", r!.id, { ...s }, { db });
   return { id: r!.id };
 }
 
-export async function deleteSource(actor: Actor, id: string) {
-  const db = await getDb();
+export async function deleteSource(actor: Actor, id: string, dbIn?: Db) {
+  const db = dbIn ?? (await getDb());
   await db.execute(sql`update news_sources set deleted_at = now(), enabled = false where id = ${id}`);
-  await audit(actor, "news.source.delete", id, {});
+  await audit(actor, "news.source.delete", id, {}, { db });
 }
 
 /** Suggested credibility from the owner's decisions (approval rate and "inaccurate" rejections). Owner approves. */
