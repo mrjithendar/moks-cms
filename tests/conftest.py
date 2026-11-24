@@ -66,6 +66,7 @@ class FakeWebApp:
     reports: dict[str, dict[str, Any]] = field(default_factory=dict)
     pdfs: dict[str, bytes] = field(default_factory=dict)
     notified: list[str] = field(default_factory=list)
+    site_reports: dict[str, dict[str, Any]] = field(default_factory=dict)
     draft_kind: str = "optimize"
     promo_enabled: bool = True
     promo_articles: list[dict[str, Any]] = field(default_factory=list)
@@ -235,6 +236,25 @@ class FakeWebApp:
     async def report_pdf(self, report_id: str, pdf: bytes) -> dict[str, Any]:
         self.pdfs[report_id] = pdf
         return {"key": f"jithendar/www/reports/seo/{report_id}.pdf", "bytes": len(pdf)}
+
+    async def site_report_data(self, report_id: str) -> dict[str, Any]:
+        from tests.site_report_fixtures import sample_site_report
+
+        self.calls.append(("site_report_data", report_id))
+        rep = self.site_reports.setdefault(report_id, {"report": sample_site_report(report_id)})
+        return {"report": rep["report"]}
+
+    async def site_report_analysis(self, report_id: str, analysis: dict[str, Any], check: dict[str, Any], crew: dict[str, Any]) -> dict[str, Any]:
+        self.site_reports[report_id].update({"analysis": analysis, "check": check, "crew": crew})
+        return {"ok": True}
+
+    async def site_report_pdf(self, report_id: str, pdf: bytes) -> dict[str, Any]:
+        self.site_reports[report_id]["pdf"] = pdf
+        return {"key": f"jithendar/www/reports/t/s/2026/11/{report_id}/report.pdf", "bytes": len(pdf)}
+
+    async def site_report_notify(self, report_id: str) -> dict[str, Any]:
+        self.notified.append(f"site:{report_id}")
+        return {"queued": 0}
 
     async def cluster_ask_gaps(self) -> dict[str, Any]:
         return {"clustered": 3}

@@ -96,7 +96,11 @@ class MlInput(_In):
 
 
 class ReportInput(_In):
+    """Either the weekly / monthly SEO briefing (`period`), or one report from the CrewAI console (`report_id`: the web
+    app's seo_reports row, which holds its date range, categories, crews, flows and sources; D-102)."""
+
     period: Literal["weekly", "monthly"] = "weekly"
+    report_id: str | None = Field(default=None, pattern=UUID)
 
 
 class PromotionInput(_In):
@@ -186,7 +190,10 @@ class AskGapsState(RunState):
 class ReportState(RunState):
     period: str = "weekly"
     report_id: str | None = None
+    # A console report (D-102): the web app's report id came in as the input, not from aggregate.
+    site: bool = False
     numbers: dict[str, Any] = Field(default_factory=dict)
+    analysis: dict[str, Any] = Field(default_factory=dict)
     narrative: str = ""
     check: dict[str, Any] = Field(default_factory=dict)
     crew: dict[str, Any] = Field(default_factory=dict)
