@@ -13,6 +13,7 @@ const TABS = [
   { href: "/admin/crewai/flows", label: "Flows" },
   { href: "/admin/crewai/runs", label: "Runs" },
   { href: "/admin/crewai/crews", label: "Crews" },
+  { href: "/admin/crewai/reports", label: "Reports" },
   { href: "/admin/crewai/categories", label: "Categories" },
   { href: "/admin/crewai/config", label: "Configuration" },
 ];

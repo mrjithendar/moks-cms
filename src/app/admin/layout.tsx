@@ -72,7 +72,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/backlinks", label: "Backlinks", section: "Insights" },
           { href: "/admin/ai-visibility", label: "AI visibility", section: "Insights" },
           { href: "/admin/technical", label: "Technical health", section: "Insights" },
-          { href: "/admin/reports", label: "Reports", section: "Insights" },
+          { href: "/admin/reports", label: "SEO-AI reports", section: "Insights" },
         ]
       : []),
     // Community: people who write to you or book a call.
@@ -101,6 +101,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/crewai/flows", label: "Flows", section: "Site settings" },
           { href: "/admin/crewai/runs", label: "Flow runs", section: "Site settings" },
           { href: "/admin/crewai/crews", label: "Crews", section: "Site settings" },
+          { href: "/admin/crewai/reports", label: "CrewAI reports", section: "Site settings" },
           { href: "/admin/crewai/categories", label: "Crew and flow categories", section: "Site settings" },
           { href: "/admin/crewai/config", label: "CrewAI import / export", section: "Site settings" },
           { href: "/admin/automation", label: "AI & SEO settings", section: "Site settings" },

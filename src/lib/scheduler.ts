@@ -19,7 +19,10 @@ export async function publishTick(now = new Date()) {
 
 export async function workerTick(now = new Date()) {
   const { seoJobHandler, draftJobHandler, verifyJobHandler, submissionJobHandler } = await import("./seo-intel/handlers");
-  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler }, now);
+  // Reports (D-102): building a report and sending its emails run here, never in a request.
+  const { reportJobHandler } = await import("./reports/service");
+  const { reportEmailHandler } = await import("./reports/email");
+  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler, report: reportJobHandler, report_email: reportEmailHandler }, now);
   if (jobs.done || jobs.retried || jobs.failed) log.info("jobs processed", jobs);
   await practiceTick(now);
   await seoDraftTick(now);
@@ -38,6 +41,9 @@ async function retentionTick(now: Date) {
     const { pruneOperationalTables } = await import("./retention");
     const removed = await pruneOperationalTables(now);
     if (removed.jobs || removed.rateLimits || removed.auditLog) log.info("old rows removed", { operation: "retention", ...removed });
+    const { purgeExpiredReports } = await import("./reports/service");
+    const reports = await purgeExpiredReports(now);
+    if (reports) log.info("expired reports deleted", { operation: "retention", reports });
   } catch (error) {
     log.warn("retention tick failed", { operation: "retention", err: error });
   }

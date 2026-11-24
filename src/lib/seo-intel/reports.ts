@@ -118,7 +118,7 @@ export async function generateReport(type: PeriodType, trigger: "schedule" | "ma
   const report = await buildReport(type, now);
   const [row] = await q<{ id: string; emailed_at: string | null }>(db, sql`
     insert into seo_reports (period_type, period_start, period_end, payload, trigger) values (${type}, ${report.period.start}, ${report.period.end}, ${JSON.stringify(report)}::jsonb, ${trigger})
-    on conflict (period_type, period_start) do update set payload = excluded.payload, generated_at = now(), trigger = excluded.trigger
+    on conflict (period_type, period_start) where request is null do update set payload = excluded.payload, generated_at = now(), trigger = excluded.trigger
     returning id, emailed_at`);
   if (deps.notify === false) return { id: row!.id, emailed: 0, report };
   const n = await notifyReport(row!.id, deps);
@@ -232,7 +232,7 @@ export function reportCsv(r: Report): string {
 
 export async function listReports(limit = 50) {
   const db = await getDb();
-  return (await q<Record<string, unknown>>(db, sql`select id, period_type, period_start::text, period_end::text, generated_at, emailed_at, trigger, payload->'pdf' as pdf, payload ? 'narrative' as summarized from seo_reports order by period_start desc, period_type limit ${limit}`)).map((r) => ({
+  return (await q<Record<string, unknown>>(db, sql`select id, period_type, period_start::text, period_end::text, generated_at, emailed_at, trigger, payload->'pdf' as pdf, payload ? 'narrative' as summarized from seo_reports where request is null and deleted_at is null order by period_start desc, period_type limit ${limit}`)).map((r) => ({
     id: String(r.id),
     type: String(r.period_type),
     start: String(r.period_start),

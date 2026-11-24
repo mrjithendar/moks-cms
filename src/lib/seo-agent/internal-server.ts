@@ -70,6 +70,11 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["POST", /^\/reports\/([^/]+)\/narrative$/, (m, b) => v4.reportNarrative(m[1]!, b)],
   ["POST", /^\/reports\/([^/]+)\/pdf$/, (m, b) => v4.reportPdf(m[1]!, b)],
   ["POST", /^\/reports\/([^/]+)\/notify$/, (m) => v4.reportNotify(m[1]!)],
+  // CrewAI console reports (D-102): the agent reads a report's data, returns the checked analysis and the PDF.
+  ["POST", /^\/site-reports\/([^/]+)\/data$/, async (m) => (await import("../reports/callbacks")).siteReportData(m[1]!)],
+  ["POST", /^\/site-reports\/([^/]+)\/analysis$/, async (m, b) => (await import("../reports/callbacks")).siteReportAnalysis(m[1]!, b)],
+  ["POST", /^\/site-reports\/([^/]+)\/pdf$/, async (m, b) => (await import("../reports/callbacks")).siteReportPdf(m[1]!, b)],
+  ["POST", /^\/site-reports\/([^/]+)\/notify$/, async (m) => (await import("../reports/callbacks")).siteReportNotify(m[1]!)],
   ["POST", /^\/ask-gaps\/cluster$/, () => v4.clusterGaps()],
   // v3
   ["POST", /^\/articles\/([^/]+)\/context$/, (m, b) => cb.articleContext(m[1]!, b)],
@@ -134,7 +139,7 @@ export async function handleCallback(method: string, rawUrl: string, authorizati
 
 const MAX_BODY = 1_000_000;
 /** Report PDFs and news cover uploads (base64) are the large bodies: up to ~10 MB. */
-const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/(reports\/[^/]+\/pdf|news\/media)$/.test((url ?? "").split("?")[0]!) ? 14_000_000 : MAX_BODY);
+const maxBody = (url: string | undefined) => (/^\/internal\/seo-agent\/((site-)?reports\/[^/]+\/pdf|news\/media)$/.test((url ?? "").split("?")[0]!) ? 17_000_000 : MAX_BODY);
 
 /** Start the listener once per process (instrumentation.ts). Returns the port, or null when off. */
 export async function startCallbackServer(env: Record<string, string | undefined> = process.env): Promise<number | null> {

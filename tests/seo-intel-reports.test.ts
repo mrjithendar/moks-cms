@@ -10,7 +10,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
 const { reportPeriod, buildReport, generateReport, reportCsv, reportText } = await import("@/lib/seo-intel/reports");
-const { saveSeoSettings } = await import("@/lib/seo-intel/settings");
+const { saveSeoSettings, DEFAULT_SEO_SETTINGS } = await import("@/lib/seo-intel/settings");
 const { runSeoJob } = await import("@/lib/seo-intel/jobs");
 
 describe("report periods", () => {
@@ -61,11 +61,11 @@ describe("reports", () => {
     await generateReport("weekly", "schedule", NOW, { send, mailReady });
     expect(send).not.toHaveBeenCalled();
     // Enabled without recipients: nothing.
-    await saveSeoSettings(settingsInput({ reports: { emailEnabled: true, recipients: [] } }), "admin");
+    await saveSeoSettings(settingsInput({ reports: { ...DEFAULT_SEO_SETTINGS.reports, emailEnabled: true, recipients: [] } }), "admin");
     await generateReport("weekly", "schedule", NOW, { send, mailReady });
     expect(send).not.toHaveBeenCalled();
     // Recipients but the site's email service is not configured: nothing.
-    await saveSeoSettings(settingsInput({ reports: { emailEnabled: true, recipients: ["owner@example.com", "editor@example.com"] } }), "admin");
+    await saveSeoSettings(settingsInput({ reports: { ...DEFAULT_SEO_SETTINGS.reports, emailEnabled: true, recipients: ["owner@example.com", "editor@example.com"] } }), "admin");
     await generateReport("weekly", "schedule", NOW, { send, mailReady: async () => false });
     expect(send).not.toHaveBeenCalled();
     // All set: one email per recipient, once.
