@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ModuleGate } from "@/components/admin/ModuleGate";
 import { ContentNav } from "@/components/news/ContentNav";
 import { ensureNewsDefaults } from "@/lib/news/service";
 
@@ -11,9 +12,11 @@ export const dynamic = "force-dynamic";
 export default async function ContentLayout({ children }: { children: ReactNode }) {
   await ensureNewsDefaults().catch(() => undefined);
   return (
-    <div>
-      <ContentNav />
-      {children}
-    </div>
+    <ModuleGate module="seo-agent">
+      <div>
+        <ContentNav />
+        {children}
+      </div>
+    </ModuleGate>
   );
 }

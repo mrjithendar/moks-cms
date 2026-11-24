@@ -27,7 +27,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Pages | All pages, Add new page, Hire me page |
 | Comments | All comments, Messages, Bookings |
 | — | |
-| AI & SEO | **Flows & crews:** CrewAI console, Flows (Content flows, Custom flows, Built-in flows; Schedules from there), Runs, Crews (with Custom crews), Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
+| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Import / export. **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | — | |
@@ -122,3 +122,8 @@ a place is not lost: it shows in an entry named after its `section`, after the k
 
 The current page is the menu link with the longest matching path; a link with a query (`?section=theme`) matches only
 that page and query, and then wins over the plain link to the same page.
+
+**One catalogue, and AI & SEO as a module (2026-11-24, D-100).** Flows and Crews are one list each (search, categories,
+tags, on/off, last run, sort, pages), with the same filter bar and the same actions for every row. AI & SEO is drawn
+only while the SEO agent module is set up (`lib/modules.ts`, `menuForModules` in `app/admin/layout.tsx`); its pages
+show a set-up notice otherwise, and the agent is set up under Settings → Integrations → SEO agent.

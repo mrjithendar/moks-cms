@@ -40,8 +40,10 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   // Crew jobs whose intake includes the content ideas: put the best matching ideas on the calendar and draft them.
   ["POST", /^\/jobs\/ideas$/, (_m, b) => news.jobsDraftIdeas(b)],
   // Custom crews and flows made in the admin (crew-jobs plan PR 6): the enabled specs, and a flow's draft step.
-  ["GET", /^\/custom-crews$/, async () => (await import("../crewai/custom")).servedCustom("crew")],
-  ["GET", /^\/custom-flows$/, async () => (await import("../crewai/custom")).servedCustom("flow")],
+  // The crews and flows defined by a spec that are on (lib/crewai/catalog.ts), and the agent's flows switched off here.
+  ["GET", /^\/custom-crews$/, async () => (await import("../crewai/catalog")).servedSpecs("crew")],
+  ["GET", /^\/custom-flows$/, async () => (await import("../crewai/catalog")).servedSpecs("flow")],
+  ["GET", /^\/flow-switches$/, async () => (await import("../crewai/catalog")).flowSwitches()],
   ["POST", /^\/custom\/drafts$/, (_m, b) => news.customSaveDraft(b)],
   // Promotion (docs/seo/PROMOTION.md): channel opportunities, drafted posts and content ideas. Never posting.
   ["POST", /^\/promotion\/collect$/, (_m, b) => promo.promoCollect(b)],

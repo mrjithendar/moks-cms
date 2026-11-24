@@ -45,6 +45,8 @@ export const FIELD_HELP: Record<string, string> = {
   "aiVisibility.models.perplexity": "Perplexity Sonar model id (sonar, sonar-pro).",
   "aiVisibility.models.gemini": "Gemini model id with Google Search grounding; required to switch Gemini on.",
   "runHistory.transcripts": "Keep each model call's system prompt, prompt and answer, so a run's log can show exactly what an agent was asked and said. Off: only tokens, cost and time are kept. Applies from the agent's next call (within a minute).",
+  "runHistory.logs": "Keep each run's structured log lines: steps, model and tool calls, retries, conditions and errors, with passwords, keys and tokens redacted. Off: only the steps, their detail and the outcome are kept (the service log still has every line). On by default.",
+  "runHistory.stepIo": "Keep what went into and came out of each step: sizes, keys and short redacted previews, never whole payloads. On by default.",
   "runHistory.logRetentionDays": "Run log lines older than this are deleted by the daily retention job. Runs, their steps, cost and outcome are kept.",
   "runHistory.transcriptRetentionDays": "Model-call transcripts older than this are deleted by the daily retention job.",
   "aiVisibility.providers.google_ai_overview": "The AI Overview on Google's results page, read through DataForSEO (needs its credentials; billed by DataForSEO, counted here).",

@@ -18,6 +18,9 @@ import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
 import { SeoIntegrations } from "@/components/seo/merged/SeoIntegrations";
 import { storageReady } from "@/lib/storage";
+import { SeoAgentCard } from "@/components/seo/SeoAgentCard";
+import { agentStatus } from "@/lib/seo-agent/endpoint";
+import { moduleState } from "@/lib/modules";
 
 export const metadata = { title: "Integrations" };
 
@@ -103,6 +106,9 @@ const SECTIONS = [
   { id: "gemini", label: "Image generation" },
   { id: "image-limits", label: "Image limits" },
   { id: "video-generation", label: "Video generation" },
+  // The SEO agent is an optional module (lib/modules.ts): it is set up here, because AI & SEO (where its own settings
+  // are) appears in the menu only once it is.
+  { id: "seo-agent", label: "SEO agent" },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 /** Old jump links (#social-title, #indexnow-title, #gemini-title) and the runtime groups' own anchors. */
@@ -299,7 +305,24 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
 
         {section === "image-limits" && <RuntimeSettings ids={["image-limits"]} layout="section" />}
         {section === "video-generation" && <RuntimeSettings ids={["video-generation"]} layout="section" />}
+        {section === "seo-agent" && <SeoAgentSection />}
       </SettingsSections>
     </>
+  );
+}
+
+/** The SEO agent module: where it is and whether it answers. AI & SEO is in the menu once it is set up here. */
+async function SeoAgentSection() {
+  const [agent, mod] = await Promise.all([agentStatus(), moduleState("seo-agent")]);
+  return (
+    <section aria-labelledby="seo-agent-title" className="space-y-4">
+      <div>
+        <h2 id="seo-agent-title" className="scroll-mt-24 text-lg font-semibold text-fg">SEO agent</h2>
+        <p className="mt-1 max-w-3xl text-sm text-fg-muted">
+          The SEO agent (moks-seo-agent) runs the crews and flows. {mod.installed ? <>It is set up, so <strong>AI &amp; SEO</strong> is in the menu{mod.available ? "" : " (it does not answer right now: its pages say so)"}.</> : <>It is not set up, so <strong>AI &amp; SEO</strong> is not in the menu. Save its address below, or deploy it as a Service named <code>seo-agent</code> next to this site, and the menu appears within a minute.</>}
+        </p>
+      </div>
+      <SeoAgentCard initial={agent} />
+    </section>
   );
 }

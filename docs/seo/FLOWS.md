@@ -9,6 +9,13 @@ onto the same service functions and the same kickoff, never a second orchestrato
 Related: [CREWS.md](CREWS.md) · [MCP.md](MCP.md) · [RAG.md](RAG.md) · [COSTS.md](COSTS.md) ·
 [MANUAL_SETUP.md](MANUAL_SETUP.md#v4-crewai-flows-mcp-report-pdfs) · [DECISIONS.md](DECISIONS.md) D-54 onward.
 
+## Flows and crews in the admin (D-100)
+
+Every flow and crew of the agent is also a row of the admin's catalogue (moks-cms `crewai_flows` / `crewai_crews`,
+migration 0041), next to the ones made in the admin. The admin can rename, recategorise, retag, switch off, delete or
+duplicate any of them; a code flow switched off there is refused by the runner (`GET /internal/seo-agent/flow-switches`,
+`app/flows/switches.py`). Flows made of steps run on `custom_flow` (`app/flows/custom.py`). See [CATALOGUE.md](CATALOGUE.md).
+
 ## Finding the SEO agent
 
 The agent is optional: it ships as its own image (`moks-tech/moks-seo-agent`). The web app looks for it and uses it only

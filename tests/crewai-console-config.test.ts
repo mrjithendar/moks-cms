@@ -333,9 +333,10 @@ describe("import and export", () => {
 describe("pages", () => {
   it("render the flows, a flow, schedules, crews, a crew, import / export and a test run", async () => {
     const flows = renderToStaticMarkup(await FlowsPage());
-    expect(flows).toContain("Run with parameters");
     expect(flows).toContain("Report");
+    expect(flows).toContain("Search Console sync");
     const flow = renderToStaticMarkup(await FlowPage({ params: Promise.resolve({ name: "report_flow" }) }));
+    expect(flow).toContain("Run with parameters");
     expect(flow).toContain("report-weekly");
     expect(flow).toContain("weekly | monthly");
     // AI & SEO → Flows → Schedules (the system jobs of the Jobs page from 2026-11-21 to 2026-11-23).
@@ -380,21 +381,24 @@ describe("flows and crews only (no jobs since 2026-11-23)", () => {
     return { flowId, runId, other };
   }
 
-  it("Flows lists the content flows, the custom flows and the built-in ones, and never says job", async () => {
+  it("Flows lists every flow in one list (no kinds), and never says job; a content flow's page has its switch and settings", async () => {
     const { flowId, runId } = await contentFlowWithRun();
+    const key = `content_${flowId.replace(/-/g, "").slice(0, 12)}`;
     const html = renderToStaticMarkup(await FlowsPage());
-    for (const h of ["Content flows", "Custom flows", "Built-in flows", "New content flow", "New custom flow", "Content flows on", "daily digest news"]) expect(html).toContain(h);
-    expect(html).toContain(`/admin/crewai/flows/content/${flowId}`);
+    for (const h of ["daily digest news", "Search Console sync", "New content flow", "New flow"]) expect(html).toContain(h);
+    for (const gone of ["Built-in flows", "Custom flows", 'id="builtin-flows"']) expect(html).not.toContain(gone);
+    expect(html).toContain(`/admin/crewai/flows/${key}`);
     expect(html).toContain(`/admin/crewai/runs/${runId}`);
-    expect(html).toContain('id="content-switch"');
     expect(text(html)).not.toMatch(/\bjobs?\b/i);
+    // The old ?kind=content address is the Content category now.
     const onlyContent = renderToStaticMarkup(await FlowsPage({ searchParams: Promise.resolve({ kind: "content" }) }));
     expect(onlyContent).toContain("daily digest news");
-    expect(onlyContent).not.toContain('id="builtin-flows"');
-    expect(onlyContent).not.toContain('id="custom-flows"');
-    const builtin = renderToStaticMarkup(await FlowsPage({ searchParams: Promise.resolve({ kind: "builtin" }) }));
-    expect(builtin).toContain("Run with parameters");
-    expect(builtin).not.toContain("daily digest news");
+    expect(onlyContent).not.toContain("Search Console sync");
+    const page = renderToStaticMarkup(await FlowPage({ params: Promise.resolve({ name: key }) }));
+    expect(page).toContain('id="content-switch"');
+    expect(page).toContain(`/admin/crewai/flows/content/${flowId}`);
+    expect(page).toContain(`/admin/crewai/runs/${runId}`);
+    expect(text(page)).not.toMatch(/\bjobs?\b/i);
   });
 
   it("Runs shows a content flow's runs under its name and filters to one content flow", async () => {

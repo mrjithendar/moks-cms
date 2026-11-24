@@ -928,3 +928,42 @@ moks-seo-agent #32).
 - **MCP follows:** `list_content_flows`, `get_content_flow`, `run_content_flow` replace `list_news_jobs`,
   `get_news_job`, `kickoff_news_job`; an old name in `MCP_ADMIN_TOOLS_OFF` still switches the renamed tool off. The old
   names are not kept as aliases: duplicate tools would confuse a client choosing between them.
+
+## D-100 One catalogue of crews and flows; AI & SEO follows the SEO agent module (owner brief 2026-11-24)
+
+The brief: every crew and every flow can be created, edited, duplicated, switched off, deleted and filtered the same
+way; no system, custom, content or SEO kinds; categories and tags for organisation only; one engine; the AI & SEO menu
+only when the SEO agent is there; no Skills/Content settings inside the crew console; structured, redacted run logs.
+Built in moks-cms (this repository) and moks-seo-agent, one PR each. Guide: [CATALOGUE.md](CATALOGUE.md).
+
+- **One table per entity.** `crewai_crews` and `crewai_flows` (migration 0041) hold every crew and every flow with the
+  same columns: name, description (and a crew's objective), categories, tags, on/off, deleted, created/changed. Where a
+  row's work is defined (`definition`: code, spec, content) only decides how it is edited and run. It is not a kind: it
+  is not shown as one, not filtered on, and every action (edit, duplicate, switch, delete, restore) exists for all.
+- **What stays code, and why.** The agent's own crews and flows are Python with logic around the model (drafts, the
+  approval gate, syncs). Their prompts, models, tools and limits stay editable as versions (D-98); their structure
+  stays in code, because their flows read those agents and tasks by key. Duplicate turns any of them into a spec that
+  can be changed entirely: a code crew becomes a spec crew (materialized by the agent from its active version, with the
+  tools that need no fixed article), a code flow becomes a step flow whose first step starts it.
+- **One engine.** Step flows run on the agent's generic engine, which now runs any crew (spec or code), starts any other
+  flow as a step (never an approval-only one or the console's test run), and gives every step needs, a condition,
+  retries with backoff, a time limit and stop / continue / fallback. Code flows are started by the same runner, which
+  now refuses any flow switched off here, whoever starts it (GET /flow-switches).
+- **Categories are data.** `crewai_categories` is seeded with SEO, Content, AI, Automation, Research, Monitoring and
+  Custom; admins add, rename (the slug stays) and remove them. The agent serves default categories for its own flows
+  (used once, when a row is added) and never reads them; a test checks the engine modules do not mention them.
+- **Old rows move, nothing is lost.** seo_custom_crews / seo_custom_flows rows are copied with their keys, specs,
+  versions, switches, deletions and times; every content flow (news_jobs) gets a row, kept in step by a trigger; the
+  old tables stay until the copy is checked on mk4, then a later migration drops them. Old routes
+  (`/api/admin/crewai/custom/*`, `/admin/crewai/*/custom/*`, `?kind=`) keep working.
+- **Deleting keeps the row** (run history names it) and is restorable; a crew a flow runs cannot be deleted or switched
+  off; a flow whose crew is off cannot be switched on. A spec flow's schedules are removed, a code flow's paused.
+- **The SEO agent is a module** (`lib/modules.ts`): installed when an endpoint is set or found, available when it
+  answers. AI & SEO is drawn only while it is installed, so a set-up agent that is briefly down keeps its menu (its pages
+  say it is off) and a site without one has no menu and no empty pages; it is set up under Settings → Integrations →
+  SEO agent. GET /api/admin/capabilities serves the same answer. No hard-coded flag decides the menu.
+- **The console is crews and flows only**: its Skills ↗, Content ↗ and Settings ↗ tabs are gone (those pages are in the
+  AI & SEO menu); skills work exactly as before (D-96), and Import / export still carries them.
+- **Logs**: the agent redacts every log line, step detail and transcript (by key and by shape) before storing it; each
+  step records attempts, conditions, versions, child runs, tokens, cost and short input/output previews; two new Run
+  history switches (`logs`, `stepIo`, both on) decide what is kept. Retention is as before.

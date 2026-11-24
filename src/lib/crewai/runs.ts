@@ -73,7 +73,33 @@ export async function hasRunHistory(db?: Db): Promise<boolean> {
 // --- Runs ---------------------------------------------------------------------------------------------------------------
 
 /** `content`: one content flow's id (a `news_jobs` row): its runs and the image, training and other runs it made. */
-export type RunFilter = { flow?: string | null; content?: string | null; status?: string | null; trigger?: string | null; q?: string | null; before?: string | null; limit?: number };
+export type RunFilter = {
+  flow?: string | null;
+  content?: string | null;
+  status?: string | null;
+  trigger?: string | null;
+  q?: string | null;
+  before?: string | null;
+  limit?: number;
+  /** A catalogue flow (crewai_flows key, migration 0041): a code flow's runs, a spec flow's custom_flow runs, a content flow's runs. */
+  item?: string | null;
+  /** Runs of the flows filed under this category. */
+  category?: string | null;
+  /** Runs of the flows that run this crew. */
+  crew?: string | null;
+  /** Started on or after / before this day (YYYY-MM-DD, UTC). */
+  from?: string | null;
+  to?: string | null;
+};
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const CATALOG_KEY = /^[a-z][a-z0-9_]{1,39}$/;
+
+/** The runs of the catalogue flows `cond` picks (crewai_flows cf), matched the way each flow's runs are recorded. */
+const ofCatalog = (cond: SQL) => sql`exists (select 1 from crewai_flows cf where ${cond} and (
+  (cf.definition = 'code' and r.flow_name = cf.flow_name)
+  or (cf.definition = 'spec' and r.flow_name = 'custom_flow' and r.target_id = 'custom:' || cf.key)
+  or (cf.definition = 'content' and r.flow_name = 'news_job_flow' and r.target_id = 'job:' || cf.content_job_id::text)))`;
 
 /** Newest first, `limit` per page; `before` is the last row's startedAt. `q`: "#12" (run number), a run id, or text
  * in the target, actor or error. */
@@ -86,6 +112,11 @@ export async function listRuns(f: RunFilter = {}, db?: Db): Promise<RunRow[]> {
   if (f.status && (RUN_STATUSES as readonly string[]).includes(f.status)) where.push(sql`r.status = ${f.status}`);
   if (f.status === "active") where.push(sql`r.status = any(${pgText(ACTIVE_STATUSES)}::text[])`);
   if (f.trigger && (TRIGGERS as readonly string[]).includes(f.trigger)) where.push(sql`r.triggered_by = ${f.trigger}`);
+  if (f.item && CATALOG_KEY.test(f.item)) where.push(ofCatalog(sql`cf.key = ${f.item}`));
+  if (f.category && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(f.category)) where.push(ofCatalog(sql`${f.category} = any(cf.categories)`));
+  if (f.crew && CATALOG_KEY.test(f.crew)) where.push(ofCatalog(sql`${f.crew} = any(cf.crews)`));
+  if (f.from && DAY.test(f.from)) where.push(sql`r.started_at >= ${f.from}::date`);
+  if (f.to && DAY.test(f.to)) where.push(sql`r.started_at < ${f.to}::date + 1`);
   const q = f.q?.trim().slice(0, 100);
   if (q) {
     const num = /^#?(\d{1,9})$/.exec(q);
@@ -108,7 +139,9 @@ export async function flowsWithRuns(db?: Db): Promise<string[]> {
   return rowsOf<{ flow_name: string }>(await d.execute(sql`select distinct flow_name from seo_flow_runs order by flow_name`)).map((r) => r.flow_name);
 }
 
-export type RunStep = { id: number; seq: number; step: string; status: string; startedAt: string; finishedAt: string | null; error: string | null; seconds: number | null };
+/** `detail`: what the agent recorded about the step (moks-seo-agent run_history step_detail, redacted): attempts and their
+ * errors, a condition and whether it held, the crew and its version, a child run, tokens, cost, input and output metadata. */
+export type RunStep = { id: number; seq: number; step: string; status: string; startedAt: string; finishedAt: string | null; error: string | null; seconds: number | null; detail: Record<string, unknown> };
 export type UsageRow = { agent: string | null; model: string; calls: number; inputTokens: number; outputTokens: number; costUsd: number; latencyMs: number; failed: number };
 export type RunDetail = RunRow & {
   inputs: Record<string, unknown>;
@@ -157,7 +190,7 @@ export async function runDetail(runId: string, db?: Db): Promise<RunDetail | nul
     ...run,
     inputs: obj(r.inputs),
     outputs: obj(r.outputs),
-    steps: steps.map((s) => ({ id: Number(s.id), seq: Number(s.seq), step: String(s.step), status: String(s.status), startedAt: iso(s.started_at)!, finishedAt: iso(s.finished_at), error: s.error ? String(s.error) : null, seconds: obj(s.detail).seconds == null ? null : Number(obj(s.detail).seconds) })),
+    steps: steps.map((s) => ({ id: Number(s.id), seq: Number(s.seq), step: String(s.step), status: String(s.status), startedAt: iso(s.started_at)!, finishedAt: iso(s.finished_at), error: s.error ? String(s.error) : null, seconds: obj(s.detail).seconds == null ? null : Number(obj(s.detail).seconds), detail: obj(s.detail) })),
     usage: usage.map((u) => ({ agent: u.agent ? String(u.agent) : null, model: String(u.model), calls: Number(u.calls), inputTokens: Number(u.input_tokens), outputTokens: Number(u.output_tokens), costUsd: Number(u.cost_usd), latencyMs: Number(u.latency_ms), failed: Number(u.failed) })),
     parent: parent[0] ? toRun(parent[0]) : null,
     children: children.map(toRun),
@@ -284,9 +317,9 @@ export async function overview(now: Date = new Date(), db?: Db): Promise<Overvie
 // --- Settings and retention ----------------------------------------------------------------------------------------------
 
 /** GET /internal/seo-agent/run-history/settings: what the agent needs (moks-seo-agent/app/run_history.py). */
-export async function runHistoryCallbackSettings(): Promise<{ transcripts: boolean }> {
+export async function runHistoryCallbackSettings(): Promise<{ transcripts: boolean; logs: boolean; step_io: boolean }> {
   const s = await getSeoSettings();
-  return { transcripts: s.runHistory.transcripts };
+  return { transcripts: s.runHistory.transcripts, logs: s.runHistory.logs ?? true, step_io: s.runHistory.stepIo ?? true };
 }
 
 /** Daily retention job (seo-intel/jobs.ts runRetention): old log lines and transcripts; runs and steps stay. */

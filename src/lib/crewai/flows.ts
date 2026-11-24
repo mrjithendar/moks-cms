@@ -2,8 +2,10 @@
  * The SEO agent's flows as the CrewAI console shows them: a readable name, a group, one line on what each does, and
  * whether a run can be started again from the console. Pure and client-safe.
  *
- * The flows themselves are code in moks-tech/moks-seo-agent (app/flows/__init__.py SPECS). A flow this list does not
- * know (a newer agent) still shows, under its own name in "Other", and cannot be re-run from here.
+ * The flows themselves are code in moks-tech/moks-seo-agent (app/flows/__init__.py SPECS). Since migration 0041 (D-100)
+ * the lists, names, descriptions and categories admins see come from the catalogue (lib/crewai/catalog.ts, crewai_flows),
+ * which the agent's GET /flows fills; this list is the fallback for run pages of flows the catalogue does not list (the
+ * runners) and for the start rules of an older agent.
  *
  * Re-run (`rerun`):
  * - "yes": the console starts the flow again with the same inputs (or edited ones), as a manual run.
@@ -16,8 +18,6 @@
 export type FlowGroup = "Content" | "Insights" | "Data sync" | "Promotion" | "Content flows" | "Maintenance" | "Custom" | "Other";
 export type Rerun = "yes" | "review" | "approval" | "cron" | "news" | "no";
 export type FlowInfo = { name: string; label: string; group: FlowGroup; description: string; rerun: Rerun };
-
-export const FLOW_GROUPS: FlowGroup[] = ["Content", "Insights", "Data sync", "Promotion", "Content flows", "Maintenance", "Custom", "Other"];
 
 const F = (name: string, label: string, group: FlowGroup, rerun: Rerun, description: string): FlowInfo => ({ name, label, group, rerun, description });
 
