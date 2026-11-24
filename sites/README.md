@@ -15,13 +15,12 @@ moks-cms itself deploys nothing.
   content/         blog/ news/ projects/ pages/ authors/ (MDX), python-practice/
   public/images/   images the articles use, served as /images/…
   docs/            sources of the articles' figures, and scripts that check the articles (never shipped)
-  grafana/         the site's Grafana dashboards: JSON files and a kustomization.yaml that makes them one ConfigMap
 ```
 
 | Site | Repository |
 |---|---|
 | [jithendar.com](https://jithendar.com) | [`moks-tech/jithendar.com`](https://github.com/moks-tech/jithendar.com) (here as `sites/jithendar.com/` until 2026-11-16) |
-| moksit.com | [`moksit.com/`](moksit.com/): identity and dashboards only, not built or deployed yet |
+| moksit.com | [`moksit.com/`](moksit.com/): identity only, not built or deployed yet |
 | — | [`_template/`](_template/): the starting point for a new site's repository (folders starting with `_` are never built) |
 
 ## Working on a site
@@ -56,7 +55,7 @@ SITE_DIR=../jithendar.com npm run dev                # a site repository checked
    (jithendar.com's `scripts/check-content.sh`).
 5. Deploy it: a Deployment, Service, route, TLS certificate, Secret and database for the site. `moks-tech/jithendar.com`
    is the worked example (`kubernetes/`, `.github/workflows/content.yml`, `deploy-kubernetes.yml` and its README).
-6. **Dashboards**: copy jithendar.com's `grafana/`, change the `jithendar-com` job, service and namespace names, the
-   uids and the titles, name the ConfigMap after the site, and add an Argo CD Application for the folder (tools repo,
-   next to jithendar.com's in `deploy/minikube/applications/grafana.yaml`). uids and ConfigMap names must be unique
-   across sites, since all sites share one Grafana.
+6. **Dashboards**: in [mrjithendar/monitoring](https://github.com/mrjithendar/monitoring): copy
+   `dashboards/private/Jithendar.com/` to a folder for the site (`dashboards/private/` signed-in only, `public/` for
+   anyone), change the `jithendar-com` job, service and namespace names, the uids and the titles, and add the folder's
+   tag to `FOLDER_TAGS` in its `scripts/dashboards.py`. Its checks keep uids unique; merging deploys.

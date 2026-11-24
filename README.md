@@ -20,7 +20,7 @@ The SEO agent service (Python: CrewAI Flows and Crews, MCP servers, pgvector, As
 | [`docs/`](docs/) | Design and operations docs (content model, media, SEO, news desk, cache bus) |
 | `Dockerfile`, `Dockerfile.ci` | The image: a full local build, and CI's package of a prebuilt `.next/standalone` |
 | [`sites/`](sites/README.md) | The template for a new site's repository (`_template/`) |
-| `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `image-size.sh`, `check-dashboards.py`, `build-alerts.py` |
+| `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `image-size.sh`, `build-alerts.py` |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; when one is merged, tests and pushes the image to Harbor (`registry.jithendar.com/jithendar`) |
 

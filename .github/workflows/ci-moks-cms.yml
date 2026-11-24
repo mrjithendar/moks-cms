@@ -181,7 +181,7 @@ jobs:
               docs/*|*.md|LICENSE|sites/*|runner/*|.claude/*) ;;
               .github/workflows/ci-moks-cms.yml) image=true ;;
               .github/*) ;;
-              scripts/build-alerts.py|scripts/check-dashboards.py|scripts/check-conflict-copies.sh) ;;
+              scripts/build-alerts.py|scripts/check-conflict-copies.sh) ;;
               *) image=true ;;
             esac
           done < "$RUNNER_TEMP/files.txt"
