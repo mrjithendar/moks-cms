@@ -367,7 +367,8 @@ async def test_pg_schedule_store_claims_each_slot_once() -> None:
             await c.execute("update seo_flow_schedules set armed_at = now() - interval '2 days'")
         store = PgScheduleStore(pool)
         rows = await store.enabled()
-        assert len(rows) == 15 and {r["flow_name"] for r in rows} == CRON_FLOWS
+        # custom_flow is schedulable (#34) but has no built-in row: its schedules are the ones an admin adds.
+        assert len(rows) == 15 and {r["flow_name"] for r in rows} == CRON_FLOWS - {"custom_flow"}
         runner = Runner()
         now = datetime.now(UTC).replace(hour=6, minute=10, second=5, microsecond=0)
         out = await dispatch(store, runner, schedulable=CRON_FLOWS, now=now)

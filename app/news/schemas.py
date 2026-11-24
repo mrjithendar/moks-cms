@@ -136,10 +136,20 @@ class NewsDraft(_M):
         }
 
 
-class TopicLabels(_M):
-    """Claude's topic labels (bootstrap and low-confidence fallback)."""
+class TopicLabel(_M):
+    i: int = Field(ge=0, le=999)
+    topics: list[str] = Field(default_factory=list, max_length=3)
 
-    items: list[dict[str, Any]] = Field(default_factory=list, max_length=50)  # {i: int, topics: [slug]}
+
+class TopicLabels(_M):
+    """Claude's topic labels (bootstrap and low-confidence fallback).
+
+    Typed items, never `dict[str, Any]`: structured outputs send a strict schema, where a free-form object becomes
+    `{"properties": {}, "additionalProperties": false}`, so the model can only answer `{}`. Until 2026-11-24 every item
+    came back empty, no label was ever stored and the topic classifier never trained (tests/test_structured_schemas.py).
+    """
+
+    items: list[TopicLabel] = Field(default_factory=list, max_length=50)
 
 
 class ImageVerdict(_M):
@@ -155,6 +165,14 @@ class ImageVerdict(_M):
     decorative: bool = False
 
 
+class StyleExample(_M):
+    """One before/after pair taken from the owner's edits (typed: see TopicLabels)."""
+
+    before: str = Field(default="", max_length=1500)
+    after: str = Field(default="", max_length=1500)
+    why: str = Field(default="", max_length=500)
+
+
 class StyleProposal(_M):
     explanation: str = Field(max_length=3000)
     system_style: str = Field(default="", max_length=6000)
@@ -162,4 +180,4 @@ class StyleProposal(_M):
     tone: str = Field(default="", max_length=1000)
     banned_phrases: list[str] = Field(default_factory=list, max_length=60)
     required_sections: list[str] = Field(default_factory=list, max_length=12)
-    examples: list[dict[str, str]] = Field(default_factory=list, max_length=6)  # {before, after, why}
+    examples: list[StyleExample] = Field(default_factory=list, max_length=6)

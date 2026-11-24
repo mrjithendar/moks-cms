@@ -13,6 +13,7 @@ import asyncio
 import dataclasses
 import difflib
 import logging
+import re
 import uuid
 from collections import Counter
 from collections.abc import Callable
@@ -378,7 +379,13 @@ async def classify_and_novelty(d: DeskDeps, rec: RunRecorder, cluster_ids: list[
         its = items.get(cid, [])
         text = " ".join(_item_text(i) for i in its[:6])
         p = classify_cluster(d, model, topics, its, c.get("centroid"), text)
-        if p.method == "low_confidence" and llm_ok:
+        # Without a model the keyword rules answer, and rules that match nothing (topics without keywords, or a story
+        # in words the keywords miss) are no answer at all: every such cluster was "off-topic" for every content flow,
+        # so nothing was ever selected. They go to Claude like a low-confidence guess does.
+        unanswered = p.method == "rules" and not p.labels
+        if unanswered:
+            rec.count("classified_rules_empty")
+        if (p.method == "low_confidence" or unanswered) and llm_ok:
             pending_llm.append((cid, text[:1500]))
         # A kept low-confidence guess (no Claude, or Claude failed or over budget) is labelled distinctly, so the
         # fallback rate is visible (news_topic_assignments_total{method="model_low_conf"}).
@@ -432,7 +439,7 @@ async def claude_labels(d: DeskDeps, texts: list[str], topics: list[clf.Topic]) 
             max_tokens=1500,
         )
         res, _u = await d.llm.structured(spec, TopicLabels)
-        got = {int(x.get("i", -1)): [s for s in x.get("topics", []) if s in allowed][:3] for x in res.items if isinstance(x, dict)}
+        got = {x.i: [s for s in x.topics if s in allowed][:3] for x in res.items}
         out += [got.get(i, []) for i in range(len(chunk))]
     return out
 
@@ -576,7 +583,26 @@ async def select_for_job(d: DeskDeps, rec: RunRecorder, job: Job, *, dry_run: bo
         rec.count("selected", len(sel))
         o["output"] = len(sel)
         o["detail"] = {"dry_run": dry_run, "rejected": len(cands) - len(sel)}
+        if cands and not sel:
+            # A run that writes nothing is still "succeeded"; it must say why on the run page and in the log, not only
+            # in news_candidates (a content flow wrote nothing for days on 2026-11-21…24 with no visible reason).
+            why = rejection_summary(cands)
+            o["detail"]["why_nothing"] = why
+            rec.log("warning", f"no story selected from {len(cands)} candidate(s): " + "; ".join(f"{n} × {r}" for r, n in why))
     return sel
+
+
+def rejection_summary(cands: list[Candidate], top: int = 3) -> list[tuple[str, int]]:
+    """The most common rejection reasons, with run-specific numbers folded ("too old (343 h > 96 h)" → "too old")."""
+    counts: dict[str, int] = {}
+    for c in cands:
+        if c.decision == "selected":
+            continue
+        key = re.sub(r"\s*\(.*\)$", "", c.reason or "rejected").strip() or "rejected"
+        if key.startswith("score ") and "below" in key:
+            key = "score below the content flow's threshold"
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
 
 
 # --- drafting -------------------------------------------------------------------------------------------------------
@@ -1018,7 +1044,7 @@ async def style_review(d: DeskDeps, rec: RunRecorder, profile_key: str, days: in
         max_tokens=3000,
     )
     prop, _u = await d.llm.structured(spec, StyleProposal)
-    row = await d.store.add_profile_version("writing", {"key": profile_key, "name": current.get("name") or profile_key, "system_style": prop.system_style or current.get("system_style", ""), "structure_template": prop.structure_template or current.get("structure_template", ""), "tone": prop.tone or current.get("tone", ""), "audience": current.get("audience", ""), "banned_phrases": prop.banned_phrases or list(current.get("banned_phrases") or []), "required_sections": prop.required_sections or list(current.get("required_sections") or []), "examples": prop.examples, "temperature": current.get("temperature"), "model": current.get("model"), "explanation": prop.explanation, "created_by": "news_style_review_flow"})
+    row = await d.store.add_profile_version("writing", {"key": profile_key, "name": current.get("name") or profile_key, "system_style": prop.system_style or current.get("system_style", ""), "structure_template": prop.structure_template or current.get("structure_template", ""), "tone": prop.tone or current.get("tone", ""), "audience": current.get("audience", ""), "banned_phrases": prop.banned_phrases or list(current.get("banned_phrases") or []), "required_sections": prop.required_sections or list(current.get("required_sections") or []), "examples": [e.model_dump() for e in prop.examples], "temperature": current.get("temperature"), "model": current.get("model"), "explanation": prop.explanation, "created_by": "news_style_review_flow"})
     rec.count("style_pairs", len(pairs))
     return {"proposed": True, "version": row.get("version"), "pairs": len(pairs)}
 
