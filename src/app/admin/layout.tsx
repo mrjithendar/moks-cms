@@ -10,6 +10,7 @@ import { getDb, schema } from "@/db";
 import { reviewCount } from "@/lib/admin-bar-server";
 import { NAV_PREFS_COOKIE, readNavPrefs, type NavItem } from "@/lib/admin-menu";
 import { moderationCounts } from "@/lib/comments";
+import { menuForModules, moduleStates } from "@/lib/modules";
 import { requireRole } from "@/lib/session";
 import { SignOutButton } from "../account/SignOutButton";
 // The admin stylesheet (search, analytics and calendar components are part of the CMS, so it loads on every admin page).
@@ -22,11 +23,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const user = await requireRole("admin", "author");
   const db = await getDb();
   const isAdmin = user.role === "admin";
-  const [comments, [unread], review, jar] = await Promise.all([
+  const [comments, [unread], review, jar, modules] = await Promise.all([
     moderationCounts(),
     db.select({ n: count() }).from(schema.contactMessage).where(eq(schema.contactMessage.status, "new")),
     isAdmin ? reviewCount(db) : 0,
     cookies(),
+    // Which optional modules are set up (lib/modules.ts): AI & SEO is drawn only while the SEO agent is.
+    isAdmin ? moduleStates().catch(() => []) : [],
   ]);
   // One CMS (D-86): search, analytics, the editorial calendar and AI drafting are ordinary admin pages.
   // This list says which pages this person may open and what their badges count. Where each page sits in the menu
@@ -98,6 +101,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/crewai/flows", label: "Flows", section: "Site settings" },
           { href: "/admin/crewai/runs", label: "Flow runs", section: "Site settings" },
           { href: "/admin/crewai/crews", label: "Crews", section: "Site settings" },
+          { href: "/admin/crewai/categories", label: "Crew and flow categories", section: "Site settings" },
           { href: "/admin/crewai/config", label: "CrewAI import / export", section: "Site settings" },
           { href: "/admin/automation", label: "AI & SEO settings", section: "Site settings" },
           { href: "/admin/automation?section=mcp", label: "MCP", section: "Site settings" },
@@ -130,7 +134,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   return (
     <div data-admin-shell className="min-h-[calc(100dvh-var(--spacing-chrome))] bg-surface-muted md:grid md:grid-cols-[auto_minmax(0,1fr)]">
       {/* The sidebar is the first column and as wide as it draws itself: full, or icons only (components/admin/AdminNav.tsx). */}
-      <AdminSidebar items={items} role={user.demo ? "demo" : user.role} account={account} prefs={readNavPrefs(jar.get(NAV_PREFS_COOKIE)?.value)} />
+      <AdminSidebar items={menuForModules(items, modules)} role={user.demo ? "demo" : user.role} account={account} prefs={readNavPrefs(jar.get(NAV_PREFS_COOKIE)?.value)} />
       <div className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
         <div className="mx-auto max-w-6xl">
           {user.demo && (

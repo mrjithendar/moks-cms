@@ -5,9 +5,10 @@ import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
 import { RunFilters } from "@/components/crewai/RunFilters";
 import { RunStatusIcon } from "@/components/crewai/RunStatusIcon";
-import { FLOW_GROUPS, FLOWS, flowInfo, RUN_STATUSES, STATUS_LABELS, TRIGGER_LABELS, TRIGGERS } from "@/lib/crewai/flows";
+import { FLOWS, flowInfo, RUN_STATUSES, STATUS_LABELS, TRIGGER_LABELS, TRIGGERS } from "@/lib/crewai/flows";
 import { formatDuration, formatTokens, formatUsd, runDurationMs } from "@/lib/crewai/format";
 import { flowsWithRuns, listRuns } from "@/lib/crewai/runs";
+import { allItems, listCategories } from "@/lib/crewai/catalog";
 import { contentOfRuns, getJob } from "@/lib/news/service";
 
 export const metadata = { title: "Runs" };
@@ -21,11 +22,28 @@ const PAGE = 50;
 export default async function CrewaiRunsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const content = sp.content && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.content) ? sp.content.toLowerCase() : null;
-  const filter = { flow: sp.flow ?? null, content, status: sp.status ?? null, trigger: sp.trigger ?? null, q: sp.q ?? null };
-  const [runs, seen, contentFlow] = await Promise.all([listRuns({ ...filter, before: sp.before ?? null, limit: PAGE }), flowsWithRuns(), content ? getJob(content).catch(() => null) : Promise.resolve(null)]);
+  // ?item=<catalogue key> (a flow of AI & SEO → Flows), or ?item=flow:<agent flow> for runs of a flow not listed there.
+  const agentFlow = sp.item?.startsWith("flow:") ? sp.item.slice(5) : null;
+  const filter = { flow: sp.flow ?? agentFlow, content, status: sp.status ?? null, trigger: sp.trigger ?? null, q: sp.q ?? null, item: agentFlow ? null : (sp.item ?? null), category: sp.category ?? null, crew: sp.crew ?? null, from: sp.from ?? null, to: sp.to ?? null };
+  const [runs, seen, contentFlow, catalogFlows, catalogCrews, cats] = await Promise.all([
+    listRuns({ ...filter, before: sp.before ?? null, limit: PAGE }),
+    flowsWithRuns(),
+    content ? getJob(content).catch(() => null) : Promise.resolve(null),
+    allItems("flow").catch(() => []),
+    allItems("crew").catch(() => []),
+    listCategories().catch(() => []),
+  ]);
+  const item = filter.item ? (catalogFlows.find((f) => f.key === filter.item) ?? null) : null;
   const ofRun = await contentOfRuns(runs.filter((r) => r.flow.startsWith("news_")).map((r) => r.runId)).catch(() => new Map<string, never>());
   const names = [...new Set([...FLOWS.map((f) => f.name), ...seen])];
-  const flows = FLOW_GROUPS.map((group) => ({ group, options: names.filter((n) => flowInfo(n).group === group).map((n) => ({ value: n, label: flowInfo(n).label })) })).filter((g) => g.options.length);
+  // Every flow of the catalogue by its name (no kinds of flow); agent flows not in it (runners, a newer agent) after them.
+  const listed = new Set(catalogFlows.filter((f) => f.definition === "code").map((f) => f.flowName));
+  const flows = [
+    { group: "Flows", options: catalogFlows.map((f) => ({ value: f.key, label: f.label })) },
+    { group: "Other runs", options: names.filter((n) => !listed.has(n)).map((n) => ({ value: `flow:${n}`, label: flowInfo(n).label })) },
+  ].filter((g) => g.options.length);
+  const categories = cats.map((c) => ({ value: c.slug, label: c.label }));
+  const crews = catalogCrews.map((c) => ({ value: c.key, label: c.label }));
   const statuses = [{ value: "active", label: "Queued or in progress" }, ...RUN_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] ?? s }))];
   const triggers = TRIGGERS.map((t) => ({ value: t, label: TRIGGER_LABELS[t] ?? t }));
   const older = () => {
@@ -34,7 +52,7 @@ export default async function CrewaiRunsPage({ searchParams }: { searchParams: P
     return `/admin/crewai/runs?${p}`;
   };
   const live = runs.some((r) => r.status === "queued" || r.status === "running");
-  const title = contentFlow ? `${contentFlow.name} runs` : filter.flow ? `${flowInfo(filter.flow).label} runs` : "All runs";
+  const title = contentFlow ? `${contentFlow.name} runs` : item ? `${item.label} runs` : filter.flow ? `${flowInfo(filter.flow).label} runs` : "All runs";
   return (
     <>
       <AutoRefresh active={live} />
@@ -43,7 +61,7 @@ export default async function CrewaiRunsPage({ searchParams }: { searchParams: P
         description={contentFlow ? <>Runs of this content flow, and the cover image, training and other runs it started. <Link className="underline" href={`/admin/crewai/flows/content/${contentFlow.id}`}>Edit the flow</Link> · <Link className="underline" href="/admin/crewai/runs">all runs</Link></> : filter.flow ? (flowInfo(filter.flow).description || <code>{filter.flow}</code>) : "Every run of every flow, content flows included, newest first. Open one for its steps, log, inputs, outputs and cost."}
       />
       <Suspense>
-        <RunFilters flows={flows} statuses={statuses} triggers={triggers} />
+        <RunFilters flows={flows} statuses={statuses} triggers={triggers} categories={categories} crews={crews} flowParam="item" />
       </Suspense>
       {runs.length === 0 ? (
         <Card>

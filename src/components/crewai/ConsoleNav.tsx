@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+/**
+ * The console is about crews and flows: their configuration, runs and logs. Skills, content sources and the AI & SEO
+ * settings have their own places in the AI & SEO menu (the "Skills ↗ / Content ↗ / Settings ↗" links were removed here,
+ * 2026-11-24, D-100); run-history settings are under AI & SEO → Settings → Run history.
+ */
 const TABS = [
   { href: "/admin/crewai", label: "Overview" },
   { href: "/admin/crewai/flows", label: "Flows" },
   { href: "/admin/crewai/runs", label: "Runs" },
   { href: "/admin/crewai/crews", label: "Crews" },
+  { href: "/admin/crewai/categories", label: "Categories" },
   { href: "/admin/crewai/config", label: "Import / export" },
-  { href: "/admin/automation/skills", label: "Skills ↗" },
-  { href: "/admin/content/sources", label: "Content ↗" },
-  { href: "/admin/automation?section=runs", label: "Settings ↗" },
 ];
 
 export type AgentPill = { enabled: boolean; version: string | null; reason: string };

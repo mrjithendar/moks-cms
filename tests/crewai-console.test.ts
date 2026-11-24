@@ -244,10 +244,10 @@ describe("re-run and cancel", () => {
 describe("settings, the agent's callback and retention", () => {
   it("serves the transcripts switch to the agent and follows the saved setting", async () => {
     const get = async () => (await handleCallback("GET", "/internal/seo-agent/run-history/settings", `Bearer ${CB_TOKEN}`, undefined, { ...process.env, SEO_AGENT_CALLBACK_TOKEN: CB_TOKEN })).body;
-    expect(await get()).toEqual({ transcripts: true });
+    expect(await get()).toEqual({ transcripts: true, logs: true, step_io: true });
     const runHistory = (await getSeoSettings()).runHistory;
     await saveSeoSettings({ ...settingsInput(), runHistory: { ...runHistory, transcripts: false } }, "admin");
-    expect(await get()).toEqual({ transcripts: false });
+    expect(await get()).toEqual({ transcripts: false, logs: true, step_io: true });
     await expect(saveSeoSettings({ ...settingsInput(), runHistory: { ...runHistory, transcriptRetentionDays: 365 } }, "admin")).rejects.toThrow();
   });
 
@@ -256,7 +256,7 @@ describe("settings, the agent's callback and retention", () => {
     await seedHistory(id);
     await db.execute(sql`update seo_flow_run_logs set at = now() - interval '100 days' where event = 'flow_started'`);
     await db.execute(sql`update seo_flow_run_calls set at = now() - interval '20 days'`);
-    const r = await runs.purgeRunHistory(db, { transcripts: true, logRetentionDays: 90, transcriptRetentionDays: 14 });
+    const r = await runs.purgeRunHistory(db, { transcripts: true, logs: true, stepIo: true, logRetentionDays: 90, transcriptRetentionDays: 14 });
     expect(r).toEqual({ logs: 1, calls: 1 });
     expect((await runs.runLogs(id)).length).toBe(5);
     expect((await runs.runDetail(id))!.steps).toHaveLength(2);

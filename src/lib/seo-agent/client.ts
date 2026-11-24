@@ -86,7 +86,21 @@ async function call<T>(method: string, path: string, body: unknown, deps: AgentD
 export const kickoff = (flow: FlowName, inputs: Record<string, unknown>, opts: { triggeredBy?: "manual" | "cron"; actor?: string } = {}, deps?: AgentDeps) =>
   call<{ run_id: string; status: string; existing: boolean }>("POST", `/flows/${flow}/kickoff`, { inputs, triggered_by: opts.triggeredBy ?? "manual", actor: opts.actor ?? null }, deps);
 /** One flow as the agent's GET /flows describes it (CrewAI console: Run with parameters, schedules, crews). */
-export type AgentFlow = { name: string; inputs_schema: JsonSchema; approval_only: boolean; schedulable: boolean; mcp: boolean; crews: string[] };
+export type AgentFlow = {
+  name: string;
+  inputs_schema: JsonSchema;
+  approval_only: boolean;
+  schedulable: boolean;
+  mcp: boolean;
+  crews: string[];
+  /** Since the unified catalogue (agent 2026-11-24): what the admin's catalogue starts from (lib/crewai/catalog.ts syncFromAgent). */
+  label?: string;
+  description?: string;
+  categories?: string[];
+  start?: string;
+  /** Whether a step flow may start it (not approval-only, not the console's test run). */
+  flow_step?: boolean;
+};
 /** The JSON Schema subset Pydantic emits for the flows' input models. */
 export type JsonSchema = {
   type?: string | string[];
@@ -118,6 +132,7 @@ export type AgentCrew = {
   tools: string[];
   models: string[];
   replay_flows: string[];
+  categories?: string[];
   agents: { key: string; role: string; goal: string; backstory: string; tools: string[]; max_tokens: number | null }[];
   tasks: { key: string; agent: string; label: string; instructions: string; expected_output: string; variables: string[]; contract: string; output_editable: boolean }[];
 };
@@ -128,6 +143,9 @@ export const crewCatalogue = (deps?: AgentDeps) => call<{ items: AgentCrew[] }>(
  * app/flows/custom.py); 422 with the issues. `crews`: the custom crews a flow may name. */
 export const validateCustomSpec = (kind: "crew" | "flow", spec: Record<string, unknown>, crews?: string[], deps?: AgentDeps) =>
   call<{ spec: Record<string, unknown> }>("POST", "/custom/validate", { kind, spec, ...(crews ? { crews } : {}) }, deps, 8_000);
+/** POST /crews/{crew}/as-spec: a crew defined in code as a spec under a new key (Duplicate). */
+export const crewAsSpec = (crew: string, body: { key: string; label: string; config: Record<string, unknown> | null }, deps?: AgentDeps) =>
+  call<{ spec: Record<string, unknown>; dropped_tools: string[] }>("POST", `/crews/${encodeURIComponent(crew)}/as-spec`, body, deps, 8_000);
 export const validateCrewConfig = (crew: string, config: Record<string, unknown>, deps?: AgentDeps) =>
   call<{ config: Record<string, unknown>; default_hash: string; prompt_version: string }>("POST", `/crews/${encodeURIComponent(crew)}/validate`, { config }, deps, 8_000);
 

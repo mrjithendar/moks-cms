@@ -6,6 +6,7 @@ import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
 import { ContentRunPanel } from "@/components/crewai/ContentRunPanel";
 import { LogViewer, type StepView } from "@/components/crewai/LogViewer";
+import { StepInspector } from "@/components/crewai/StepInspector";
 import { RunActions } from "@/components/crewai/RunActions";
 import { RunStatus, RunStatusIcon } from "@/components/crewai/RunStatusIcon";
 import { SaveTestVersion } from "@/components/crewai/SaveTestVersion";
@@ -242,6 +243,8 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
           {run.flow === "crew_test_flow" && <CrewTestResult run={run} />}
 
           {content && <ContentRunPanel id={run.runId} detail={content} />}
+
+          <StepInspector steps={run.steps} />
 
           <LogViewer runId={run.runId} initial={logs} live={live} steps={steps} runStatus={run.status} hasMore={logs.length === FIRST_PAGE} />
 

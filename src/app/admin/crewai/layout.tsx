@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ModuleGate } from "@/components/admin/ModuleGate";
 import { ConsoleNav } from "@/components/crewai/ConsoleNav";
 import { hasRunHistory } from "@/lib/crewai/runs";
 import { agentStatus } from "@/lib/seo-agent/endpoint";
@@ -17,12 +18,13 @@ export default async function CrewaiLayout({ children }: { children: ReactNode }
   await requireRole("admin");
   const [agent, history] = await Promise.all([agentStatus().catch(() => ({ enabled: false, version: null, reason: "Status unavailable." })), hasRunHistory().catch(() => false)]);
   return (
+    <ModuleGate module="seo-agent">
     <div>
       <ConsoleNav agent={{ enabled: agent.enabled, version: agent.version, reason: agent.reason }} />
       {!agent.enabled && (
         <p role="status" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
           The SEO agent is off ({agent.reason}). Run history stays readable; re-running and cancelling need the agent. Set it up under{" "}
-          <Link className="font-medium underline" href="/admin/automation?section=overview">AI &amp; SEO → Settings → Overview</Link>.
+          <Link className="font-medium underline" href="/admin/integrations?section=seo-agent">Settings → Integrations → SEO agent</Link>.
         </p>
       )}
       {!history && (
@@ -32,5 +34,6 @@ export default async function CrewaiLayout({ children }: { children: ReactNode }
       )}
       {children}
     </div>
+    </ModuleGate>
   );
 }

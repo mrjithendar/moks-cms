@@ -202,6 +202,10 @@ const settingsSchema = z.object({
   runHistory: z.object({
     /** Keep each model call's system prompt, prompt and answer (the agent reads this through GET /run-history/settings). */
     transcripts: z.boolean(),
+    /** Keep each run's structured log lines (redacted). Off: steps, their detail and the outcome only. */
+    logs: z.boolean().default(true),
+    /** Keep each step's input and output metadata (sizes, keys, short redacted previews) in its detail. */
+    stepIo: z.boolean().default(true),
     logRetentionDays: num(7, 365),
     transcriptRetentionDays: num(1, 90),
   }),
@@ -284,7 +288,7 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     providers: { claude: true, chatgpt: false, perplexity: false, gemini: false, google_ai_overview: false },
     models: { claude: "claude-opus-5-5", chatgpt: "", perplexity: "sonar", gemini: "" },
   },
-  runHistory: { transcripts: true, logRetentionDays: 90, transcriptRetentionDays: 14 },
+  runHistory: { transcripts: true, logs: true, stepIo: true, logRetentionDays: 90, transcriptRetentionDays: 14 },
   llmKey: null,
 };
 

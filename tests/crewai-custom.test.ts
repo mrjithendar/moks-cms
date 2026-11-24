@@ -59,7 +59,7 @@ describe("custom crews and flows", () => {
     await expect(custom.saveCustom("crew", admin, { ...CREW, key: "Bad Key" })).rejects.toMatchObject({ status: 400 });
     const served = await cb("GET", "/custom-crews");
     expect(served.status).toBe(200);
-    expect((served.body as { items: { key: string; version: number }[] }).items).toEqual([{ key: "explainer", version: 2, spec: { ...CREW, label: "Explainer 2" } }]);
+    expect((served.body as { items: { key: string; version: number }[] }).items).toEqual([{ key: "explainer", version: 2, spec: { ...CREW, label: "Explainer 2", description: "" } }]);
     expect(((await cb("GET", "/custom-flows")).body as { items: unknown[] }).items).toHaveLength(1);
   });
 

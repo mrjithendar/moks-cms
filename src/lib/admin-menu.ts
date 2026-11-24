@@ -52,6 +52,7 @@ export const MENU_GROUPS: GroupDef[] = [
   { id: "pages", label: "Pages", icon: "pages" },
   { id: "comments", label: "Comments", icon: "comments" },
   // The SEO agent, its flows and crews and what they work from (no Newsroom since 2026-11-21, no jobs since 2026-11-23).
+  // Drawn only while the SEO agent module is set up (lib/modules.ts menuForModules, D-100).
   { id: "ai", label: "AI & SEO", icon: "ai", separator: true },
   { id: "billing", label: "Billing", icon: "billing" },
   { id: "practice", label: "Practice", icon: "practice" },
@@ -94,6 +95,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
   ["/admin/crewai/runs", { group: "ai", title: "Runs" }],
   ["/admin/crewai/crews", { group: "ai", title: "Crews" }],
+  ["/admin/crewai/categories", { group: "ai", title: "Categories" }],
   ["/admin/automation/skills", { group: "ai" }],
   ["/admin/crewai/config", { group: "ai", title: "Import / export" }],
   ["/admin/content/sources", { group: "ai", title: "Content sources", heading: "Content" }],
