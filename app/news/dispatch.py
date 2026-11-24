@@ -64,5 +64,15 @@ async def dispatch_jobs(store: Any, runner: Any, *, enabled: bool, now: datetime
         except Exception as e:  # the next job still runs; this one says why it did not
             fired["error"] = f"{type(e).__name__}: {str(e)[:300]}"
         out["fired"].append(fired)
-        log.info(f"content flow {job.name}: {'started' if not fired['error'] else 'not started'}", extra={"event": "job_fired", **fired})
+        # `name` is a LogRecord attribute: passing it in `extra` raises KeyError at INFO level, after the run started, and
+        # stopped every later content flow due in the same tick (2026-11-23/24 job_dispatch_failed). Log it as job_name.
+        log.info(f"content flow {job.name}: {'started' if not fired['error'] else 'not started'}", extra={"event": "job_fired", **log_fields(fired)})
     return out
+
+
+def log_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    """`extra=` fields safe for logging: keys a LogRecord already has (name, msg, args, …) get a `job_` prefix."""
+    return {(f"job_{k}" if k in _RECORD_ATTRS else k): v for k, v in fields.items()}
+
+
+_RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime", "taskName"}

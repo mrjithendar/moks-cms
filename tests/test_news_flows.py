@@ -263,6 +263,43 @@ async def test_the_one_dispatcher_starts_due_jobs_once_per_slot(llm: Any) -> Non
     assert bad["fired"] == [] and bad["errors"][0]["job"] == JOB
 
 
+async def test_every_due_content_flow_starts_with_info_logging_on(llm: Any, caplog: Any) -> None:
+    # Regression (2026-11-23/24 job_dispatch_failed): the job_fired line passed `name` in extra=, which a LogRecord
+    # refuses with KeyError at INFO (the production level; tests ran at WARNING, so nothing failed here). The first
+    # due content flow had already started; every later one in the same tick never did.
+    import logging
+    from datetime import timedelta
+
+    from app.news.dispatch import dispatch_jobs
+    from tests.news_fixtures import NOW
+
+    llm.queue("news.vision", SAFE, SAFE)
+    c, _web, store = setup(llm)
+    second = "b" * 8 + JOB[8:]
+    store.jobs[second] = {**store.jobs[JOB], "id": second, "name": "Second content flow"}
+    for j in (JOB, second):
+        store.jobs[j]["cron"] = "0 6 * * *"
+        store.jobs[j]["timezone"] = "UTC"
+    with caplog.at_level(logging.INFO, logger="seo_agent.news.dispatch"):
+        out = await dispatch_jobs(store, c.runner, enabled=True, now=NOW + timedelta(minutes=1), catchup=timedelta(minutes=60))
+    assert out["checked"] == 2 and {f["job"] for f in out["fired"]} == {JOB, second}
+    assert all(f["run_id"] and not f["error"] for f in out["fired"])
+    fired = [r for r in caplog.records if getattr(r, "event", None) == "job_fired"]
+    assert len(fired) == 2 and {getattr(r, "job_name", None) for r in fired} == {store.jobs[JOB]["name"], "Second content flow"}
+    for f in out["fired"]:
+        await c.runner.wait(f["run_id"], 60)
+
+
+def test_log_fields_never_collide_with_log_record_attributes() -> None:
+    import logging
+
+    from app.news.dispatch import log_fields
+
+    safe = log_fields({"job": "1", "name": "n", "msg": "m", "args": 1, "slot": "s"})
+    assert safe == {"job": "1", "job_name": "n", "job_msg": "m", "job_args": 1, "slot": "s"}
+    logging.getLogger("t").makeRecord("t", logging.INFO, "f", 1, "x", None, None, extra=safe)  # does not raise
+
+
 async def test_the_dispatch_endpoint_starts_crew_jobs_too(llm: Any) -> None:
     from datetime import timedelta
 

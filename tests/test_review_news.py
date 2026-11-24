@@ -494,3 +494,36 @@ async def test_reservation_is_released_when_the_call_fails() -> None:
     with pytest.raises(RuntimeError):
         await llm.structured(CallSpec(model="claude-haiku-5-5", purpose="news.classify", prompt_version="t", cached_system=[], user="x", max_tokens=100), TopicLabels)
     assert store.runs["r1"]["cost_usd"] == 0
+
+
+async def test_without_a_model_rules_that_match_nothing_ask_claude(llm: Any) -> None:
+    # Production 2026-11-21…24: no classifier yet (no labels) and topics without keywords, so the keyword rules gave
+    # every cluster no topic and content flows rejected every story as off-topic. Rules that match nothing now count as
+    # unanswered and go to Claude like a low-confidence guess.
+    from app.news.runlog import RunRecorder
+
+    store = mem_store()
+    store.topic_rows = [{"slug": "kubernetes", "label": "Kubernetes", "keywords": [], "enabled": True}, {"slug": "mlops", "label": "MLOps", "keywords": [], "enabled": True}]
+    await store.create_run({"id": "r1", "kind": "ingest", "job_id": None})
+    store.clusters["c1"] = {"id": "c1", "title": "Kubernetes 1.40 ships", "centroid": [1.0, 0.0], "entities": {"set": []}, "status": "new", "last_seen": NOW, "topics": []}
+    store.items["i1"] = {"id": "i1", "cluster_id": "c1", "source_id": "s", "title": "Kubernetes 1.40 ships", "excerpt": "", "embedding": [1.0, 0.0], "entities": {}, "fetched_at": NOW}
+    llm.queue("news.classify", TopicLabels(items=[{"i": 0, "topics": ["kubernetes", "not-a-topic"]}]))
+    rec = RunRecorder(store, "r1")
+    await nd.classify_and_novelty(nd.with_news_llm(deps(llm, store, claude_topic_p=0.7), ["r1"]), rec, ["c1"], llm_ok=True)
+    assert store.clusters["c1"]["topics"] == [{"slug": "kubernetes", "p": 0.7, "method": "claude"}]  # unknown slugs dropped
+    assert rec.counters.get("classified_rules_empty") == 1 and rec.counters.get("classified_claude") == 1
+    # Without the LLM (switched off or over budget) the cluster keeps no topic: nothing is invented.
+    store.clusters["c1"]["topics"] = []
+    rec2 = RunRecorder(store, "r1")
+    await nd.classify_and_novelty(nd.with_news_llm(deps(llm, store), ["r1"]), rec2, ["c1"], llm_ok=False)
+    assert store.clusters["c1"]["topics"] == [] and rec2.counters.get("classified_claude") is None
+
+
+def test_rejection_summary_names_why_nothing_was_selected() -> None:
+    from app.news.select import Candidate
+
+    def cand(reason: str) -> Candidate:
+        return Candidate(cluster_id=reason, title="t", score=0.3, breakdown={}, features={}, model_version="v1", topics=[], source_ids=[], text="", reason=reason)
+
+    cands = [cand("off-topic for this content flow (topics: none)")] * 3 + [cand("too old (343 h > 96 h)"), cand("too old (12 h > 6 h)"), cand("score 0.30 below the content flow's threshold 0.45")]
+    assert nd.rejection_summary(cands) == [("off-topic for this content flow", 3), ("too old", 2), ("score below the content flow's threshold", 1)]
