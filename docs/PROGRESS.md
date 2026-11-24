@@ -1,5 +1,24 @@
 # Progress log — jithendar.com
 
+## Site health: content flows were "down", the editorial calendar "degraded" (2026-11-24, fix)
+
+- **Content flows: down** was this check's own bug: it read `news_runs.created_at`, a column the table does not have,
+  so every check failed and `timed()` reported "down". It reads `started_at` now (`contentFlowsProbe`) and also says
+  what the last 72 hours wrote; it is degraded when every recent content flow run selected nothing from the stories it
+  scored (production 2026-11-22…24: 28–39 scored, 0 selected, all "off-topic"; the agent side is moks-seo-agent #35).
+- **Editorial calendar: degraded** was three items past their dates: two whose posts were deleted (11-11, 11-18) but
+  kept the stored status drafting / in_review, one written draft without its description (cannot be scheduled). The
+  reconcile now sets an item with no post back to `approved` (planned); the check (`calendarProbe`) says what each
+  late item needs and links to `/admin/calendar?due=past`. The calendar marks late items ("date passed"), counts them
+  in a note with Show them, has a Date filter (Past their date), and opens on this month and week in IST (it used the
+  UTC date: wrong between 00:00 and 05:30 IST).
+- A draft that fails validation (often incomplete on purpose) is logged once at debug instead of "invalid post skipped"
+  at error level on every request; scheduled and published posts still log an error, once per post and problem.
+- Tests: `health-checks` (+3, against the migrated schema), `seo-intel-cms` (+2), `content-invalid-posts` (new). Ran:
+  lint, typecheck, full vitest (1504 passed; `site-files` run alone without SITE_CONFIG_DIR, 5 passed), build.
+- Manual: none. The two orphaned items are repaired on the next calendar load; the three late items still need a
+  person (new date, finish the LLMOps draft's description, or delete).
+
 ## Flows and crews only: crew jobs are content flows, one Runs list (2026-11-23, owner request, D-99)
 
 - AI & SEO → **Flows** is the one list: Content flows (the crew jobs: switch "Content flows on", drafts today, month

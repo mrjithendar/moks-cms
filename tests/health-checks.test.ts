@@ -3,11 +3,12 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDbForTests, type Db } from "@/db";
+import { rowsOf } from "@/db/rows";
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
 
-const { CHECK_GROUPS, failingFlows } = await import("@/lib/health");
+const { CHECK_GROUPS, failingFlows, contentFlowsProbe, calendarProbe } = await import("@/lib/health");
 let db: Db;
 
 beforeEach(async () => {
@@ -48,3 +49,52 @@ describe("system status", () => {
     }
   });
 });
+
+describe("content flows and editorial calendar checks (real schema)", () => {
+  async function jobRun(status: string, hoursAgo: number, counters: Record<string, number>, kind = "job") {
+    await db.execute(sql`
+      insert into news_runs (id, kind, trigger, status, counters, started_at)
+      values (gen_random_uuid(), ${kind}, 'flow', ${status}, ${JSON.stringify(counters)}::jsonb, now() - make_interval(hours => ${hoursAgo}))`);
+  }
+
+  it("reads news_runs by started_at (the column it has) and reports what the runs wrote", async () => {
+    // Until 2026-11-24 the query asked for news_runs.created_at, which does not exist: the check was always "down".
+    expect(await contentFlowsProbe()).toEqual({ status: "ok", detail: expect.stringMatching(/last 24 h: 0 run\(s\), 0 failed · last 72 h: 0 content flow run\(s\)/) });
+    await jobRun("succeeded", 2, { scored: 12, selected: 3, drafted: 2 });
+    await jobRun("succeeded", 26, { scored: 10, selected: 1, drafted: 1 });
+    await jobRun("succeeded", 3, {}, "ingest");
+    expect(await contentFlowsProbe()).toMatchObject({ status: "ok", detail: expect.stringMatching(/2 run\(s\), 0 failed · last 72 h: 2 content flow run\(s\), 3 draft\(s\) from 4 selected of 22 scored/) });
+  });
+
+  it("is degraded when every recent run selected nothing from the stories it scored, or most runs failed", async () => {
+    // Production 2026-11-22…24: daily runs succeeded, scored 28–39 stories, selected none (every story off-topic).
+    await jobRun("succeeded", 1, { scored: 28, selected: 0, drafted: 0 });
+    await jobRun("succeeded", 25, { scored: 32, selected: 0, drafted: 0 });
+    expect(await contentFlowsProbe()).toMatchObject({ status: "degraded", detail: expect.stringMatching(/every run selected nothing/) });
+    await db.execute(sql`delete from news_runs`);
+    await jobRun("failed", 1, {});
+    await jobRun("failed", 2, {});
+    await jobRun("succeeded", 3, { scored: 5, selected: 1, drafted: 1 });
+    expect(await contentFlowsProbe()).toMatchObject({ status: "degraded", detail: expect.stringMatching(/3 run\(s\), 2 failed/) });
+  });
+
+  it("says what each dated item past its date needs", async () => {
+    await db.execute(sql`insert into "user" (id, name, email, role) values ('admin', 'Admin', 'admin@example.com', 'admin')`);
+    const add = async (title: string, date: string, body: string | null, status = "approved") => {
+      let post: string | null = null;
+      if (body !== null) {
+        const [p] = rowsOf<{ id: string }>(await db.execute(sql`insert into post (collection, slug, title, description, body, category, tags, content_type, status, author_id) values ('blog', ${title.toLowerCase().replace(/\W+/g, "-")}, ${title}, '', ${body}, 'kubernetes', '{}', 'tutorial', 'draft', 'admin') returning id`));
+        post = p!.id;
+      }
+      await db.execute(sql`insert into seo_editorial_calendar (title, status, kind, target_date, post_id, brief) values (${title}, ${status}, 'editorial_idea', ${date}::date, ${post}::uuid, '{}'::jsonb)`);
+    };
+    expect(await calendarProbe()).toEqual({ status: "ok", detail: "0 dated item(s) not scheduled yet" });
+    await add("Python: a practical guide", "2026-11-12", null, "in_review"); // its post was deleted
+    await add("LLMOps and MLOps guide", "2026-11-18", "## Intro\n\nA written draft without its description.\n");
+    await add("Outline only, in the future", "2999-01-01", "> Draft created from the SEO editorial calendar (editorial idea).");
+    const r = await calendarProbe();
+    expect(r.status).toBe("degraded");
+    expect(r.detail).toBe("3 dated item(s) not scheduled yet · 2 past their date (1 no draft, 1 ready, not scheduled): reschedule, generate or schedule them, or delete the idea");
+  });
+});
+

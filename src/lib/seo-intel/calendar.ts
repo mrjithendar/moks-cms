@@ -50,6 +50,12 @@ export class CalendarError extends Error {
   }
 }
 
+/** Today in the editorial time zone (Asia/Kolkata, UTC+05:30 all year), as YYYY-MM-DD. */
+export const istToday = (now = new Date()) => new Date(now.getTime() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+
+/** Monday of the week that holds `day` (YYYY-MM-DD), as YYYY-MM-DD. */
+export const weekStartOf = (day: string) => addDays(day, -((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7));
+
 /** Time of day for a scheduled item, 24-hour HH:MM, in the editorial time zone (Asia/Kolkata). */
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -114,9 +120,11 @@ function draftStateOf(r: Row): DraftState {
   return "ready";
 }
 
-const shape = (r: Row) => {
+const shape = (r: Row, today = istToday()) => {
   const draft = draftStateOf(r);
   const targetDate = r.target_date ? String(r.target_date).slice(0, 10) : null;
+  /** Its date has passed and its post is neither scheduled nor published: it needs a new date, a draft or a decision. */
+  const overdue = !!targetDate && targetDate < today && draft !== "scheduled" && draft !== "published";
   const flags = Array.isArray(r.agent_flags) ? (r.agent_flags as { severity?: string }[]) : [];
   return {
     id: String(r.id),
@@ -131,6 +139,7 @@ const shape = (r: Row) => {
     priorityBand: String(r.priority_band),
     targetDate,
     targetTime: r.target_time ? String(r.target_time).slice(0, 5) : null,
+    overdue,
     ownerId: (r.owner_id as string | null) ?? null,
     ownerName: (r.owner_name as string | null) ?? null,
     recommendationId: (r.recommendation_id as string | null) ?? null,
@@ -175,6 +184,13 @@ export async function reconcileCalendar() {
     update seo_editorial_calendar c set post_id = null, updated_at = now()
     where c.post_id is not null and c.status <> 'published'
       and not exists (select 1 from post p where p.id = c.post_id and p.deleted_at is null)`);
+  // An item without a post is not being drafted or reviewed: its stored status goes back to "approved" (planned, no
+  // draft), so history, filters and the health check no longer call it "in review" with nothing to review (two items
+  // stayed drafting / in_review for days after their posts were deleted, 2026-11-11 and 11-18). A draft the agent is
+  // writing has its post already, so it is never touched.
+  await db.execute(sql`
+    update seo_editorial_calendar set status = 'approved', updated_at = now()
+    where post_id is null and status in ('drafting', 'in_review')`);
   await db.execute(sql`
     update seo_editorial_calendar c set post_id = m.id, updated_at = now()
     from (
@@ -203,7 +219,8 @@ export async function listCalendar(opts: { from?: string; to?: string; status?: 
       left join lateral (select d.status, d.flags, d.failure_reason from seo_drafts d where d.calendar_id = c.id and d.kind = 'new_article' order by d.created_at desc limit 1) sd on true
       where ${sql.join(parts, sql` and `)} order by c.target_date nulls last, c.target_time nulls last, c.priority_score desc limit 500`),
   );
-  const items = rows.map(shape);
+  const today = istToday();
+  const items = rows.map((r) => shape(r, today));
   const inRange = (d: string | null) => d !== null && (!opts.from || d >= opts.from) && (!opts.to || d <= opts.to);
   return { scheduled: items.filter((i) => inRange(i.targetDate)), unscheduled: items.filter((i) => i.phase === "unscheduled"), all: items };
 }
@@ -304,7 +321,8 @@ export async function createDraftFromItem(id: string, actor: Actor, now = new Da
 }
 
 export function monthRange(month: string | undefined, now = new Date()): { from: string; to: string; month: string } {
-  const m = month && /^\d{4}-\d{2}$/.test(month) ? month : now.toISOString().slice(0, 7);
+  // The default month is the editorial one: from 00:00 to 05:30 IST on the 1st, UTC is still in the month before.
+  const m = month && /^\d{4}-\d{2}$/.test(month) ? month : istToday(now).slice(0, 7);
   const from = `${m}-01`;
   const next = new Date(`${from}T00:00:00Z`);
   next.setUTCMonth(next.getUTCMonth() + 1);

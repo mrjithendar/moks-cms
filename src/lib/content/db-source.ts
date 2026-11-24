@@ -8,6 +8,24 @@ import { collections, type Collection } from "@/config/taxonomy";
 
 const iso = (d: Date | null) => (d ? toIsoOffset(d) : undefined);
 
+const reported = new Map<string, string>();
+
+/**
+ * A post that fails validation is left out of the site. A scheduled or published one is a real problem (an error, once
+ * per post and problem per process, not on every page load); a draft is often incomplete on purpose (an outline the
+ * editorial calendar created, an AI draft without its description yet), so it is only noted at debug level. Until
+ * 2026-11-24 every draft like that logged "invalid post skipped" at error level on every request.
+ */
+export function reportInvalidPost(id: string, status: string, issues: string[]) {
+  const key = `${status}:${issues.join("|")}`;
+  if (reported.get(id) === key) return;
+  reported.set(id, key);
+  if (reported.size > 5000) reported.clear();
+  const fields = { postId: id, status, issues };
+  if (status === "draft") log.debug("incomplete draft left out of the site", fields);
+  else log.error("invalid post skipped", fields);
+}
+
 /** Load the whole publication from Postgres, re-validating every row with the same schema as files. */
 export async function loadContentFromDb(): Promise<ContentStore> {
   const db = await getDb();
@@ -69,7 +87,7 @@ export async function loadContentFromDb(): Promise<ContentStore> {
       previewPercent: row.previewPercent ?? undefined,
     });
     if (!parsed.success || !authors.has(parsed.data.author)) {
-      log.error("invalid post skipped", { postId: row.id, issues: parsed.success ? ["unknown author"] : parsed.error.issues.map((i) => i.message) });
+      reportInvalidPost(row.id, row.status, parsed.success ? ["unknown author"] : parsed.error.issues.map((i) => i.message));
       continue;
     }
     articles.push({ id: row.id, collection, slug: row.slug, path: `/${collection}/${row.slug}`, frontmatter: parsed.data, body: row.body, file: `db:post/${row.id}` });

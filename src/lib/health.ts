@@ -181,6 +181,66 @@ export async function failingFlows(): Promise<{ flow: string; at: string; error:
     .map((r) => ({ flow: r.flow, at: r.at.slice(0, 16).replace("T", " "), error: (r.error ?? "no error recorded").slice(0, 160) }));
 }
 
+/**
+ * Content flows (news_runs): failures in the last 24 hours, and whether the runs of the last 72 hours wrote anything.
+ * A content flow whose runs all succeed but select nothing from the stories they scored is not healthy: from 2026-11-21
+ * to 11-24 every story was rejected as off-topic (no topic labels) and nothing said so. Until 2026-11-24 this check read
+ * news_runs.created_at, a column the table does not have, so it always answered "down".
+ */
+export async function contentFlowsProbe(): Promise<Probe> {
+  const db = await getDb();
+  const [day] = rowsOf<{ total: number; failed: number }>(
+    await db.execute(sql`select count(*)::int as total, count(*) filter (where status = 'failed')::int as failed from news_runs where started_at > now() - interval '24 hours'`),
+  );
+  const [wrote] = rowsOf<{ runs: number; scored: number; selected: number; drafted: number }>(
+    await db.execute(sql`
+      select count(*)::int as runs, coalesce(sum((counters->>'scored')::int), 0)::int as scored,
+        coalesce(sum((counters->>'selected')::int), 0)::int as selected, coalesce(sum((counters->>'drafted')::int), 0)::int as drafted
+      from news_runs where kind = 'job' and not dry_run and status = 'succeeded' and started_at > now() - interval '72 hours'`),
+  );
+  const total = Number(day?.total ?? 0);
+  const failed = Number(day?.failed ?? 0);
+  const runs = Number(wrote?.runs ?? 0);
+  const scored = Number(wrote?.scored ?? 0);
+  const selected = Number(wrote?.selected ?? 0);
+  const last72 = `last 72 h: ${runs} content flow run(s), ${Number(wrote?.drafted ?? 0)} draft(s) from ${selected} selected of ${scored} scored stories`;
+  const detail = `on · last 24 h: ${total} run(s), ${failed} failed · ${last72}`;
+  if (total > 0 && failed / total > 0.5) return { status: "degraded", detail };
+  if (runs >= 2 && scored > 0 && selected === 0) return { status: "degraded", detail: `${detail} · every run selected nothing: open the latest run in AI & SEO → Runs for the reasons` };
+  return { status: "ok", detail };
+}
+
+/** Today in the editorial time zone (Asia/Kolkata, no daylight saving), as YYYY-MM-DD. */
+const istDay = () => new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+
+/**
+ * Editorial calendar: dated items whose post is not scheduled yet, and those whose date has passed, by what they need
+ * (no draft, an outline, a failed draft, or a draft that is ready but not scheduled), so the detail says what to do.
+ */
+export async function calendarProbe(): Promise<Probe> {
+  const db = await getDb();
+  const rows = rowsOf<{ target_date: string; post_status: string | null; post_head: string | null; agent: string | null }>(
+    await db.execute(sql`
+      select c.target_date::text as target_date, p.status as post_status, left(p.body, 200) as post_head,
+        (select d.status from seo_drafts d where d.calendar_id = c.id and d.kind = 'new_article' order by d.created_at desc limit 1) as agent
+      from seo_editorial_calendar c left join post p on p.id = c.post_id and p.deleted_at is null
+      where c.target_date is not null and c.status not in ('published', 'dropped') and p.status is distinct from 'scheduled' and p.status is distinct from 'published'`),
+  );
+  const { isOutline } = await import("./seo-intel/calendar");
+  const today = istDay();
+  const past = rows.filter((r) => String(r.target_date).slice(0, 10) < today);
+  const need = { "no draft": 0, outline: 0, "draft failed": 0, "being written": 0, "ready, not scheduled": 0 };
+  for (const r of past) {
+    if (r.agent === "generating") need["being written"]++;
+    else if (!r.post_status) need["no draft"]++;
+    else if (isOutline(r.post_head)) need[r.agent === "generation_failed" ? "draft failed" : "outline"]++;
+    else need["ready, not scheduled"]++;
+  }
+  const why = Object.entries(need).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ");
+  const detail = `${rows.length} dated item(s) not scheduled yet${past.length ? ` · ${past.length} past their date (${why}): reschedule, generate or schedule them, or delete the idea` : ""}`;
+  return { status: past.length ? "degraded" : "ok", detail };
+}
+
 /** The checks added on 2026-11-18 (owner request: "add all the required checks", each with its settings page). */
 function extraChecks(): Promise<Check>[] {
   return [
@@ -235,25 +295,9 @@ function extraChecks(): Promise<Check>[] {
       const { getNewsSettings } = await import("./news/service");
       const desk = newsDeskState(await getNewsSettings().catch(() => null));
       if (!desk.on) return { status: "not configured", detail: desk.by === "deployment_off" ? "switched off by the deployment (NEWS_DESK_ENABLED=false)" : "switched off (AI & SEO → Flows)" };
-      const db = await getDb();
-      const [r] = rowsOf<{ total: number; failed: number }>(await db.execute(sql`select count(*)::int as total, count(*) filter (where status = 'failed')::int as failed from news_runs where created_at > now() - interval '24 hours'`));
-      const total = Number(r?.total ?? 0);
-      const failed = Number(r?.failed ?? 0);
-      return { status: total > 0 && failed / total > 0.5 ? "degraded" : "ok", detail: `on · last 24 h: ${total} run(s), ${failed} failed` };
+      return contentFlowsProbe();
     }),
-    timed("Editorial calendar", { group: "Publishing", href: "/admin/calendar?phase=scheduled" }, async () => {
-      const db = await getDb();
-      const [r] = rowsOf<{ dated: number; waiting: number; overdue: number }>(
-        await db.execute(sql`
-          select count(*)::int as dated,
-            count(*) filter (where p.status is distinct from 'scheduled')::int as waiting,
-            count(*) filter (where p.status is distinct from 'scheduled' and c.target_date < (now() at time zone 'Asia/Kolkata')::date)::int as overdue
-          from seo_editorial_calendar c left join post p on p.id = c.post_id and p.deleted_at is null
-          where c.target_date is not null and c.status not in ('published', 'dropped')`),
-      );
-      const overdue = Number(r?.overdue ?? 0);
-      return { status: overdue ? "degraded" : "ok", detail: `${r?.dated ?? 0} dated item(s) · ${r?.waiting ?? 0} not scheduled yet (draft missing or not reviewed)${overdue ? ` · ${overdue} past their date` : ""}` };
-    }),
+    timed("Editorial calendar", { group: "Publishing", href: "/admin/calendar?due=past" }, () => calendarProbe()),
     timed("Background jobs", { group: "Operations", href: "/admin/sync" }, async () => {
       const db = await getDb();
       const [r] = rowsOf<{ queued: number; failed: number; oldest: number | null }>(
