@@ -112,8 +112,6 @@ class Settings:
     classify_model: str = "claude-haiku-5-5"
     ask_daily_budget_usd: float = 1.0
     ask_enabled: bool = False
-    # D-93: copy the article index into LanceDB on R2 after each reindex (/admin/lancedb → article_chunks).
-    lancedb_article_index: bool = True
     crew_max_tokens_per_run: int = 150_000  # ≈ a normal 4-agent run is ~80k (docs/seo/COSTS.md)
     crew_timeout_s: int = 600
     crew_max_iter: int = 4
@@ -255,7 +253,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         classify_model=env.get("SEO_CLASSIFY_MODEL", "").strip() or Settings.classify_model,
         ask_daily_budget_usd=_float("ASK_BLOG_DAILY_BUDGET_USD", Settings.ask_daily_budget_usd, env),
         ask_enabled=_bool("ASK_BLOG_ENABLED", False, env),
-        lancedb_article_index=_bool("LANCEDB_ARTICLE_INDEX", True, env),
         crew_max_tokens_per_run=_int("CREW_MAX_TOKENS_PER_RUN", Settings.crew_max_tokens_per_run, env),
         crew_timeout_s=_int("CREW_TIMEOUT_SECONDS", Settings.crew_timeout_s, env),
         crew_max_iter=_int("CREW_MAX_ITER", Settings.crew_max_iter, env),

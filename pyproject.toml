@@ -52,9 +52,11 @@ train = [
 
 [tool.uv]
 exclude-newer = "2 weeks"
-# LanceDB (+ pyarrow, +105 MiB of image as stored) is installed since D-91 (owner decision 2026-11-17): CrewAI's memory and the article
-# index are to be stored in LanceDB on Cloudflare R2. Until D-91 it was overridden away (D-47), because nothing used it.
-# chromadb cannot be dropped either way: crewai imports it at load.
+# CrewAI hard-requires LanceDB (+ pyarrow, ~105 MiB of image as stored) for its memory feature, which this service never
+# enables (memory=False). D-91 installed it for a LanceDB copy of the article index on R2; nothing searched that copy, and
+# it was removed on 2026-11-26 (owner decision, D-103), so D-47's override is back. chromadb cannot be dropped: crewai imports
+# it at load.
+override-dependencies = ["lancedb; sys_platform == 'never'"]
 # Security exception to the two-week rule (D-53): oauthlib 4.0.1 (2026-10-31) fixes CVE-2026-49272.
 constraint-dependencies = ["oauthlib>=4.0.1"]
 exclude-newer-package = { oauthlib = "2026-11-10T00:00:00Z" }

@@ -195,27 +195,60 @@ async def test_pgvector_index_reindexes_incrementally_and_retrieves_the_right_ar
     assert all(h.path != "/blog/terraform-state" for h in await idx.search("terraform state locking dynamodb", k=5))
 
 
-async def test_lancedb_copy_of_the_index_has_every_published_chunk(pool, tmp_path) -> None:
-    """D-93: app/lance_index.py's query against the real schema, written to an embedded LanceDB."""
+async def test_chunk_browser_reads_the_live_index_and_a_rebuild(pool) -> None:
+    """app/chunk_browser.py's queries against the real schema: /admin/article-index reads pgvector, never writes."""
     if os.environ.get("SEO_AGENT_TEST_NO_VECTOR"):
         pytest.skip("pgvector is not installed on this PostgreSQL (CI runs pgvector/pgvector:0.8.1-pg18)")
+    from app.chunk_browser import BrowseError, ChunkBrowser
     from app.embeddings import HashEmbeddings
     from app.index import PgVectorIndex
-    from app.lance_admin import LanceAdmin
-    from app.lance_index import TABLE, ArticleMirror, fetch_from
 
     a1, a2 = str(uuid.uuid4()), str(uuid.uuid4())
     async with pool.connection() as c:
         await c.execute("insert into post values (%s, 'blog', 'ingress-tls', 'Ingress and TLS', 'published', null, 'kubernetes'), (%s, 'blog', 'draft', 'A draft', 'draft', null, '')", (a1, a2))
-    idx = PgVectorIndex(pool, HashEmbeddings())
+    emb = HashEmbeddings()
+    idx = PgVectorIndex(pool, emb)
     await idx.ensure_schema()
-    await idx.reindex([{"id": a1, "title": "Ingress and TLS", "body": "## Issuers\n\ncert-manager renews.\n\n## Controller\n\nIt terminates TLS."}, {"id": a2, "title": "A draft", "body": "Not yet."}], force=True)
-    admin = LanceAdmin(str(tmp_path))
-    out = await ArticleMirror(admin, fetch_from(pool)).sync()
-    assert out["synced"] and out["rows"] == 2 and out["articles"] == 1  # the draft's chunk is not copied
-    rows = admin._conn().open_table(TABLE).to_arrow().to_pylist()
-    assert {r["id"] for r in rows} == {f"{a1}:0", f"{a1}:1"}
-    assert rows[0]["path"] == "/blog/ingress-tls" and rows[0]["category"] == "kubernetes" and len(rows[0]["vector"]) == HashEmbeddings().dim
+    await idx.reindex([{"id": a1, "title": "Ingress and TLS", "body": "## Issuers\n\ncert-manager renews 100% of them.\n\n## Controller\n\nIt terminates TLS."}, {"id": a2, "title": "A draft", "body": "Not yet."}], force=True)
+    b = ChunkBrowser(pool, idx)
+
+    ov = await b.overview()
+    assert ov["available"] and ov["model"] == emb.name and ov["dimensions"] == emb.dim and not ov["rebuilding"]
+    [live] = ov["tables"]
+    assert live["table"] == "live" and live["rows"] == 3 and live["articles"] == 2 and live["vector"] == f"vector({emb.dim})"
+    assert live["index"] == "hnsw" and live["models"] == [{"model": emb.name, "rows": 3}] and live["bytes"] > 0
+
+    arts = await b.articles()
+    assert arts["total"] == 2 and [(a["title"], a["status"], a["chunks"]) for a in arts["items"]] == [("A draft", "draft", 1), ("Ingress and TLS", "published", 2)]
+    assert arts["items"][1]["path"] == "/blog/ingress-tls" and arts["items"][1]["models"] == [emb.name]
+    assert [a["article_id"] for a in (await b.articles(q="ingress"))["items"]] == [a1]
+    assert (await b.articles(q="%"))["total"] == 0  # a literal %, not "anything"
+    assert (await b.articles(offset=1, limit=1))["items"][0]["article_id"] == a1
+
+    rows = await b.rows(article_id=a1)
+    assert rows["total"] == 2 and [r["chunk_index"] for r in rows["items"]] == [0, 1]
+    first = rows["items"][0]
+    assert first["heading_path"] == "Issuers" and first["anchor"] == "issuers" and "cert-manager" in first["content"]
+    assert first["vector"]["dims"] == emb.dim and len(first["vector"]["head"]) == 8 and abs(first["vector"]["norm"] - 1) < 1e-3
+    assert [r["article_id"] for r in (await b.rows(q="100%"))["items"]] == [a1]
+    assert (await b.rows(q="terminates"))["total"] == 1
+
+    one = await b.row(first["id"])
+    assert one["chunk"]["content_hash"] and one["chunk"]["content"].endswith("100% of them.") and len(one["chunk"]["vector"]["head"]) == 16
+    assert len(one["similar"]) == 2 and all(s["id"] != first["id"] and -1 <= s["score"] <= 1 for s in one["similar"])
+    with pytest.raises(BrowseError) as e:
+        await b.row(first["id"] + 1000)
+    assert e.value.status == 404
+    with pytest.raises(BrowseError) as e:
+        await b.rows("rebuild")
+    assert e.value.status == 404  # no rebuild is running
+
+    # A model with another vector size: the live table keeps serving, the rebuild table is listed beside it.
+    idx2 = PgVectorIndex(pool, HashEmbeddings(dim=64))
+    await idx2.ensure_schema()
+    ov = await ChunkBrowser(pool, idx2).overview()
+    assert ov["rebuilding"] and [(t["table"], t["rows"], t["vector"]) for t in ov["tables"]] == [("live", 3, f"vector({emb.dim})"), ("rebuild", 0, "vector(64)")]
+    assert (await ChunkBrowser(pool, idx2).rows("rebuild"))["total"] == 0
 
 
 async def test_reindex_refuses_an_empty_article_list_unless_forced(pool) -> None:

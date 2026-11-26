@@ -41,7 +41,7 @@ import logging
 import math
 import os
 import re
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -60,6 +60,7 @@ from .admin_settings.store import apply_live as apply_live_settings
 from .admin_settings.store import effective as effective_settings
 from .ask import AskService, MemoryAskLog, PgAskLog
 from .ask_runtime import PgAskRuntime, StaticAskRuntime
+from .chunk_browser import BrowseError, ChunkBrowser
 from .config import Settings, load_settings
 from .crews import config as crew_config
 from .crews.editorial import EditorialCrew
@@ -72,9 +73,6 @@ from .flows import catalogue as flow_catalogue
 from .flows.base import Deps
 from .flows.switches import FlowSwitches
 from .index import MemoryRetriever, PgVectorIndex
-from .lance_admin import LanceAdmin, LanceError
-from .lance_admin import from_env as lance_from_env
-from .lance_index import ArticleMirror, fetch_from
 from .llm import AnthropicLlm, BudgetExceeded, BudgetGuard, MemorySpendStore, PgSpendStore
 from .llm_budgets import REPLACED, BudgetIn, MemoryBudget, PgBudget, legacy_overview
 from .llm_budgets import overview as llm_overview
@@ -102,19 +100,6 @@ from .webapp import HttpWebApp
 
 log = logging.getLogger("seo_agent")
 VERSION = os.environ.get("GIT_SHA", "dev")
-
-
-class LanceKey(BaseModel):
-    """One row of a LanceDB table, by a scalar key column and its value (/admin/lancedb)."""
-
-    model_config = ConfigDict(extra="forbid")
-    key_column: str = Field(min_length=1, max_length=128)
-    key: str | int | float | bool
-    actor: str | None = Field(default=None, max_length=200)
-
-
-class LanceUpdate(LanceKey):
-    values: dict[str, str | int | float | bool | None] = Field(min_length=1, max_length=50)
 
 
 class Kickoff(BaseModel):
@@ -159,8 +144,6 @@ class Container:
     reasons: list[str] = field(default_factory=list)
     reindex_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bg: list[asyncio.Task[Any]] = field(default_factory=list)
-    lance: LanceAdmin = field(default_factory=lambda: lance_from_env(dict(os.environ)))  # /admin/lancedb (D-92)
-    mirror: ArticleMirror | None = None  # the article index copied into LanceDB (D-93; app/lance_index.py)
     history: RunHistory | None = None  # steps, log lines and model calls of every flow run (app/run_history.py)
     schedules: Any = field(default_factory=MemoryScheduleStore)  # seo_flow_schedules (app/schedules.py)
     clock: Callable[[], Any] | None = None  # tests: the dispatcher's "now"
@@ -173,25 +156,7 @@ class Container:
             if not getattr(self.index, "available", False) or not hasattr(self.index, "reindex"):
                 return {"articles": 0, "embedded": 0, "unchanged": 0, "deleted": 0}
             articles = await self.deps.web.published_articles()
-            stats = await self.index.reindex(articles, full=full, only=set(article_ids) if article_ids else None, force=force)
-            if self.mirror is not None:
-                stats["lancedb_synced"] = int(bool((await self.mirror.after_reindex(stats)).get("synced")))
-            return stats
-
-    async def initial_mirror(self, attempts: int = 30, every_s: float = 60.0, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
-        """Fill LanceDB's article_chunks once after startup if it is missing, as soon as storage is configured."""
-        for _ in range(attempts):
-            if self.mirror is None:
-                return
-            async with self.reindex_lock:
-                try:
-                    out = await self.mirror.sync(only_if_missing=True)
-                except Exception as e:  # R2 unreachable: try again later
-                    log.warning("lancedb article index: startup sync failed", extra={"event": "lancedb_index_failed", "error": type(e).__name__})
-                    out = {"synced": False, "reason": "failed"}
-            if out.get("synced") or out.get("reason", "").startswith(("already", "off", "no chunks")):
-                return
-            await sleep(every_s)
+            return await self.index.reindex(articles, full=full, only=set(article_ids) if article_ids else None, force=force)
 
 
 def _crews(deps: Deps) -> None:
@@ -280,8 +245,6 @@ async def build_container(settings: Settings) -> Container:
     # The admin's Ask the Blog settings (web app → `setting` row "ask_blog") apply on top of the environment's switch.
     ask = AskService(AskPipeline(deps), index, PgAskLog(pool), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=PgAskRuntime(pool), guard=guard)
     c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=index, guard=guard, pool=pool, sync_pool=sync_pool, reasons=reasons, history=history, schedules=PgScheduleStore(pool), budgets=budgets, admin_settings=admin_settings, providers=PgProviderStore(pool))
-    c.lance = lance_from_env(dict(os.environ), resolve=web.lancedb_storage)
-    c.mirror = ArticleMirror(c.lance, fetch_from(pool), enabled=settings.lancedb_article_index)
     deps.reindex = c.reindex
     return c
 
@@ -429,8 +392,6 @@ async def startup(c: Container) -> None:
     if c.history is not None:  # started here, outside any run, so the writer's own log lines never enter a run's log
         install_run_log(c.history)
         c.bg.append(asyncio.create_task(c.history.run_forever()))
-    if c.mirror is not None:
-        c.bg.append(asyncio.create_task(c.initial_mirror()))
 
 
 def create_app(container: Container | None = None) -> FastAPI:
@@ -470,8 +431,8 @@ def create_app(container: Container | None = None) -> FastAPI:
     async def run_error(_r: Request, e: RunError) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=e.status)
 
-    @app.exception_handler(LanceError)
-    async def lance_error(_r: Request, e: LanceError) -> JSONResponse:
+    @app.exception_handler(BrowseError)
+    async def browse_error(_r: Request, e: BrowseError) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=e.status)
 
     @app.exception_handler(ContentError)
@@ -635,27 +596,27 @@ def create_app(container: Container | None = None) -> FastAPI:
             return StreamingResponse(c.ask.stream(body.question, body.ip_hash, history, body.context_slug), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
         return await c.ask.ask(body.question, body.ip_hash, history=history, context_slug=body.context_slug)
 
-    # --- LanceDB browser for /admin/lancedb (D-92; app/lance_admin.py). One row per write, scalar columns only. ---
+    # --- The article index in pgvector, read-only, for /admin/article-index (app/chunk_browser.py). ---
 
-    @app.get("/lancedb", dependencies=[Depends(auth)])
-    async def lance_overview(request: Request) -> dict[str, Any]:
-        return await ctr(request).lance.run("overview")
+    def chunks(request: Request) -> ChunkBrowser:
+        c = ctr(request)
+        return ChunkBrowser(c.pool, c.index)
 
-    @app.get("/lancedb/tables/{name}", dependencies=[Depends(auth)])
-    async def lance_browse(name: str, request: Request, offset: int = 0, limit: int = 25) -> dict[str, Any]:
-        return await ctr(request).lance.run("browse", name, offset, limit)
+    @app.get("/chunks", dependencies=[Depends(auth)])
+    async def chunks_overview(request: Request) -> dict[str, Any]:
+        return await chunks(request).overview()
 
-    @app.post("/lancedb/tables/{name}/row", dependencies=[Depends(auth)])
-    async def lance_row(name: str, body: LanceKey, request: Request) -> dict[str, Any]:
-        return await ctr(request).lance.run("row", name, body.key_column, body.key)
+    @app.get("/chunks/articles", dependencies=[Depends(auth)])
+    async def chunks_articles(request: Request, table: str = "live", q: str | None = None, offset: int = 0, limit: int = 25) -> dict[str, Any]:
+        return await chunks(request).articles(table, q, offset, limit)
 
-    @app.post("/lancedb/tables/{name}/update", dependencies=[Depends(auth)])
-    async def lance_update(name: str, body: LanceUpdate, request: Request) -> dict[str, Any]:
-        return await ctr(request).lance.run("update", name, body.key_column, body.key, body.values, actor=body.actor)
+    @app.get("/chunks/rows", dependencies=[Depends(auth)])
+    async def chunks_rows(request: Request, table: str = "live", article_id: str | None = None, q: str | None = None, offset: int = 0, limit: int = 25) -> dict[str, Any]:
+        return await chunks(request).rows(table, article_id, q, offset, limit)
 
-    @app.post("/lancedb/tables/{name}/delete", dependencies=[Depends(auth)])
-    async def lance_delete(name: str, body: LanceKey, request: Request) -> dict[str, Any]:
-        return await ctr(request).lance.run("delete", name, body.key_column, body.key, actor=body.actor)
+    @app.get("/chunks/rows/{chunk_id}", dependencies=[Depends(auth)])
+    async def chunks_row(chunk_id: int, request: Request, table: str = "live") -> dict[str, Any]:
+        return await chunks(request).row(chunk_id, table)
 
     @app.get("/budget", dependencies=[Depends(auth)])
     async def budget(request: Request) -> dict[str, Any]:

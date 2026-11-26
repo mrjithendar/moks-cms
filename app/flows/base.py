@@ -85,7 +85,7 @@ class SeoFlow(Flow[S]):
     """Base class. Subclasses set FLOW (the registry name) and define their steps."""
 
     FLOW: ClassVar[str] = "flow"
-    _skip_auto_memory: ClassVar[bool] = True  # CrewAI would otherwise create a Memory (LanceDB) per flow
+    _skip_auto_memory: ClassVar[bool] = True  # CrewAI would otherwise create a Memory per flow (LanceDB: not installed)
     _deps: Any = PrivateAttr(default=None)
 
     @classmethod
