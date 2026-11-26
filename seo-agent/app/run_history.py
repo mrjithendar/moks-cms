@@ -18,6 +18,8 @@ seo_flow_runs gives #N), a step list, and a log grouped by step.
   log line carries the transcript's id, which the run page opens.
 - Redaction: every line's message and fields, each step's detail and each transcript pass through app/redaction.py
   before they are queued, so a password, API key or token never reaches the tables (or stderr: app/logs.py).
+- Run-only fields: a record's `extra={"run_only": {...}}` (app/logs.RUN_ONLY) adds those fields to this log's line and
+  never to stderr → Loki (seo_intel_sync_flow's document previews: Search Console data).
 - Switches (the web app's Run history settings, read through the callback API and kept 60 s): `logs` (on by default)
   keeps the run's log lines; off, only steps, their detail and the run's status are kept (stderr → Loki is unchanged).
   `step_io` (on by default) keeps each step's input and output metadata (sizes, keys and short redacted previews).
@@ -44,7 +46,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
-from .logs import _RECORD_ATTRS
+from .logs import _RECORD_ATTRS, RUN_ONLY
 from .redaction import redact, redact_text
 from .runs import CURRENT_RUN_ID
 
@@ -326,6 +328,9 @@ class RunHistory:
         if level == "info" and record.name.split(".")[0] in DEBUG_LOGGERS:
             level = "debug"
         fields = {k: v for k, v in record.__dict__.items() if k not in _RECORD_ATTRS and k not in _DROP_FIELDS}
+        only = fields.pop(RUN_ONLY, None)  # fields for this log only, never stderr (app/logs.py)
+        if isinstance(only, Mapping):
+            fields.update({str(k): v for k, v in only.items() if str(k) not in fields})
         if record.exc_info and record.exc_info[0] is not None:
             fields["exc"] = _cut(logging.Formatter().formatException(record.exc_info), MAX_EXC)
         try:

@@ -197,6 +197,10 @@ async def test_one_log_line_per_request_without_the_token_or_the_text(rag: RagCl
     assert len(done) == 1 and [getattr(r, "event", "") for r in caplog.records].count("moks_rag_retry") == 1
     rec = done[0]
     assert (rec.op, rec.collection, rec.status, rec.attempts, rec.chunks, rec.doc_id) == ("ingest", "seo_intel", 200, 2, 1, "competitor_brief:acme")
+    # the message says what happened and where, without opening the line's fields
+    assert re.fullmatch(r"moks-rag ingest seo_intel competitor_brief:acme: 1 chunk, \d+\.\d s \(2 attempts\)", rec.getMessage())
+    retry = next(r for r in caplog.records if getattr(r, "event", "") == "moks_rag_retry")
+    assert retry.getMessage().startswith("moks-rag ingest seo_intel competitor_brief:acme: 502 upstream failed, retrying in ")
     dumped = json.dumps([r.__dict__ for r in caplog.records], default=str)
     assert TOKEN not in dumped and "SECRET-ISH" not in dumped
 
@@ -248,7 +252,8 @@ def test_gsc_performance_documents_are_per_page_of_this_site_only() -> None:
     assert "jane@" not in docs["gsc_performance:blog-ingress-tls"].text
 
 
-async def test_sync_sends_new_skips_unchanged_deletes_gone_and_resends_on_full(rag: RagClient, fake: FakeRag) -> None:
+async def test_sync_sends_new_skips_unchanged_deletes_gone_and_resends_on_full(rag: RagClient, fake: FakeRag, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
     store = MemoryRagDocStore()
     docs = cluster_docs(CLUSTERS, PERF, SITE) + page_docs(PERF, SITE)
     first = await sync(rag, store, docs)
@@ -259,8 +264,12 @@ async def test_sync_sends_new_skips_unchanged_deletes_gone_and_resends_on_full(r
     assert (again["ingested"], again["unchanged"]) == (0, 3) and len(fake.requests) == 3
     await rag.ingest(doc_id="competitor_brief:acme", text="Acme", metadata={"type": "competitor_brief"})
     await store.save("seo_intel", uploaded_doc("competitor_brief", "Acme", "Acme", doc_id="acme"), 1)
+    caplog.clear()
     shrunk = await sync(rag, store, docs[:1])  # the pages are gone; the uploaded brief is not the sync's
     assert shrunk["deleted"] == 2 and set(fake.docs["seo_intel"]) == {"keyword_cluster:cert-manager-renew", "competitor_brief:acme"}
+    said = [r.getMessage() for r in caplog.records if r.name == "seo_agent.seo_intel"]
+    assert "[delete 1/2] gsc_performance:blog-ingress-tls: the page had no Search Console impressions in the last 28 days" in said
+    assert said[-1] == "seo_intel synced: 0 sent (0 chunks), 1 unchanged, 2 deleted"
     full = await sync(rag, store, docs[:1], full=True)
     assert full["ingested"] == 1
 
@@ -272,6 +281,7 @@ async def test_sync_stops_at_a_failure_and_keeps_what_it_sent(rag: RagClient, fa
     with pytest.raises(SyncStopped) as e:
         await sync(rag, store, docs)
     assert e.value.result["ingested"] == 0 and "500" in e.value.result["error"]
+    assert e.value.__cause__ is not None
     r = await sync(rag, store, docs)
     assert r["ingested"] == 2
 
@@ -360,6 +370,65 @@ async def test_seo_intel_sync_flow(llm: Any, web: Any, rag: RagClient, fake: Fak
     fake.fail = [503] * 3
     failed = await run(c, "seo_intel_sync_flow", {"full": True})
     assert failed["status"] == "failed"
+
+
+async def test_seo_intel_sync_flow_logs_what_it_reads_builds_and_sends_where(llm: Any, web: Any, rag: RagClient, fake: FakeRag) -> None:
+    """The run page's log: the destination, what was read and left out, what was built, each document before it is
+    sent (its preview only in the run's own log, never stderr → Loki), each request's result and a summary."""
+    from app.logs import JsonFormatter
+    from app.run_history import MemoryHistorySink, install, uninstall
+
+    root = logging.getLogger()
+    level = root.level
+    root.setLevel(logging.INFO)
+    c = memory_container(settings(), llm=llm, web=web, history=True)
+    c.deps.extra.update(rag=rag, ml_store=MemoryMlStore(query_pages=PERF, outputs={"seo_ml_query_clusters": CLUSTERS}))
+    stderr: list[str] = []
+    capture = logging.Handler()
+    capture.emit = lambda r: stderr.append(JsonFormatter().format(r))  # type: ignore[method-assign]
+    root.addHandler(capture)
+    install(c.history)
+    try:
+        first = await run(c, "seo_intel_sync_flow", {})
+        second = await run(c, "seo_intel_sync_flow", {})
+        await c.history.flush()
+    finally:
+        uninstall()
+        root.removeHandler(capture)
+        root.setLevel(level)
+    sink: MemoryHistorySink = c.history.sink
+
+    def lines(run_id: str, step: str) -> list[dict[str, Any]]:
+        return [ln for ln in sink.logs if ln["run_id"] == str(run_id) and ln["step"] == step and ln["level"] != "debug"]
+
+    collect = [ln["message"] for ln in lines(first["run_id"], "collect")]
+    assert collect[:3] == [
+        "Destination: moks-rag at http://rag-api.rag.svc.cluster.local:8000, collection seo_intel",
+        "Reading Search Console: page × query totals of the last 28 days, web search (seo_gsc_query_daily, at most 20,000 rows)",
+        "Reading keyword clusters: seo_ml_query_clusters (written by seo_ml_flow's query_clusters model)",
+    ]
+    assert "Search Console: 5 page × query rows: 3 pages, 3 queries, 560 impressions, 16 clicks" in collect
+    assert "Keyword clusters: 3 queries in 2 clusters" in collect
+    assert "Left out 1 query that looks like an e-mail address, a phone number or a secret" in collect
+    assert f"Left out 1 row for pages that are not on {SITE}" in collect
+    assert "Built 3 documents: 1 keyword_cluster (one per cluster), 2 gsc_performance (one per page of the site)" in collect
+
+    ingest = lines(first["run_id"], "ingest")
+    said = [ln["message"] for ln in ingest]
+    assert said[0] == "Compared with the 0 documents sent before (seo_agent_rag_documents): 3 new, 0 changed, 0 unchanged, 0 gone"
+    assert said[1] == "Sending 3 documents to moks-rag http://rag-api.rag.svc.cluster.local:8000, collection seo_intel"
+    doc = next(ln for ln in ingest if ln["event"] == "seo_intel_doc")
+    assert doc["message"].startswith("[1/3] keyword_cluster:cert-manager-renew (new): “Keyword cluster: cert-manager renew”, ")
+    assert doc["context"]["target_keyword"] == "cert-manager renew" and "- cert-manager renew: 455 impressions" in doc["context"]["preview"]
+    assert said[said.index(doc["message"]) + 1].startswith("moks-rag ingest seo_intel keyword_cluster:cert-manager-renew: 1 chunk, ")
+    assert said[-2].startswith("seo_intel synced: 3 sent (3 chunks), 0 unchanged, 0 deleted; slowest: ")
+    assert "jane@" not in json.dumps(sink.logs, default=str)
+    sent = [json.loads(x) for x in stderr if '"seo_intel_doc"' in x]
+    assert len(sent) == 3 and all("preview" not in x and "run_only" not in x for x in sent)  # Search Console numbers stay out of Loki
+
+    again = [ln["message"] for ln in lines(second["run_id"], "ingest")]
+    assert "Not sending 3 unchanged documents: moks-rag http://rag-api.rag.svc.cluster.local:8000, collection seo_intel already holds the same content" in again
+    assert "Nothing to send or delete: moks-rag http://rag-api.rag.svc.cluster.local:8000, collection seo_intel is up to date" in again
 
 
 def _editorial(seen: list[dict[str, Any]]) -> Any:

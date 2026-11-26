@@ -5,6 +5,7 @@ import { Card, Table, td, th } from "@/components/admin/ui";
 import { Ago } from "@/components/crewai/Ago";
 import { AutoRefresh } from "@/components/crewai/AutoRefresh";
 import { ContentRunPanel } from "@/components/crewai/ContentRunPanel";
+import { Facts } from "@/components/crewai/Facts";
 import { LogViewer, type StepView } from "@/components/crewai/LogViewer";
 import { StepInspector } from "@/components/crewai/StepInspector";
 import { RunActions } from "@/components/crewai/RunActions";
@@ -31,9 +32,19 @@ function stepViews(steps: RunStep[]): StepView[] {
   return [...out.values()];
 }
 
-function Json({ value }: { value: Record<string, unknown> }) {
-  const empty = Object.keys(value).length === 0;
-  return <pre className="max-h-96 overflow-auto rounded-lg border border-line bg-surface-muted p-3 font-mono text-xs leading-5 text-fg [overflow-wrap:anywhere] whitespace-pre-wrap">{empty ? "{}" : JSON.stringify(value, null, 2)}</pre>;
+/** Inputs or outputs as labelled values (components/crewai/Facts.tsx); the JSON stays one click away for copying. */
+function IoFacts({ value, empty }: { value: Record<string, unknown>; empty: string }) {
+  return (
+    <div className="space-y-2 text-sm">
+      <Facts value={value} empty={empty} />
+      {Object.keys(value).length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-fg-subtle hover:text-fg">As JSON</summary>
+          <pre className="mt-1 max-h-96 overflow-auto rounded-lg border border-line bg-surface-muted p-3 font-mono leading-5 text-fg [overflow-wrap:anywhere] whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+        </details>
+      )}
+    </div>
+  );
 }
 
 function Meta({ label, children }: { label: string; children: ReactNode }) {
@@ -289,11 +300,11 @@ export default async function CrewaiRunPage({ params }: { params: Promise<{ id: 
             <h2 id="io-h" className="sr-only">Inputs and outputs</h2>
             <div>
               <h3 className="mb-2 text-sm font-semibold text-fg">Inputs</h3>
-              <Json value={run.inputs} />
+              <IoFacts value={run.inputs} empty="No inputs: the flow's defaults." />
             </div>
             <div>
               <h3 className="mb-2 text-sm font-semibold text-fg">Outputs</h3>
-              <Json value={run.outputs} />
+              <IoFacts value={run.outputs} empty={run.status === "queued" || run.status === "running" ? "Not yet: the run is still going." : "No outputs were recorded."} />
             </div>
           </section>
         </div>

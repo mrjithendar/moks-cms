@@ -19,6 +19,10 @@ impressions) is deleted from seo_intel. The other two are never touched by the s
 What the agent sent is recorded in seo_agent_rag_documents (created at start-up, owned by the agent): rag-api has no
 way to list or read a document, and the content hash there is what lets the sync skip unchanged ones.
 
+The sync's run log (the admin run page) says what it read, what it built, and each document it sends or deletes and
+where. A document's preview (its first characters) is a run-only field (app/logs.RUN_ONLY): it holds Search Console
+numbers, so it is never written to stderr → Loki.
+
 Search Console queries are user input: a query that looks like an e-mail address, a phone number or a secret is left
 out (tools.safe_queries), as it is for the crews. seo_intel is readable by every holder of rag-api's shared token and
 through Open WebUI's moks-seo-agent model.
@@ -30,13 +34,15 @@ import hashlib
 import json
 import logging
 import re
-from collections import defaultdict
+import time
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
+from .logs import RUN_ONLY
 from .moks_rag import RagClient, RagError
 from .tools import redact, safe_queries
 
@@ -48,6 +54,16 @@ SYNCED_TYPES: tuple[DocType, ...] = ("keyword_cluster", "gsc_performance")  # re
 UPLOADED_TYPES: tuple[DocType, ...] = ("competitor_brief", "style_guide")  # sent by an admin (or the brief)
 GSC_DAYS = 28  # the same window the crews' Search Console tools use (tools.py)
 SITE_STYLE_GUIDE_ID = "style_guide:site"
+PREVIEW_CHARS = 1200  # of a document's text, in its run log line
+GONE_BECAUSE = {
+    "keyword_cluster": "the cluster is gone (seo_ml_flow clustered the queries again)",
+    "gsc_performance": f"the page had no Search Console impressions in the last {GSC_DAYS} days",
+}
+
+
+def count(n: int, one: str, many: str | None = None) -> str:
+    """A number and its noun, for log lines: 1 document, 1,234 documents."""
+    return f"{n:,} {one if n == 1 else (many or one + 's')}"
 
 
 def slug(text: str, limit: int = 120) -> str:
@@ -208,6 +224,24 @@ def page_docs(performance: list[dict[str, Any]], site_url: str, days: int = GSC_
     return docs
 
 
+def source_summary(clusters: list[dict[str, Any]], performance: list[dict[str, Any]], site_url: str) -> dict[str, int]:
+    """What seo_intel_sync_flow read, in numbers for its run log (never a query): rows, pages, queries, totals, and
+    what the documents leave out."""
+    queries = {str(r.get("query") or "") for r in [*performance, *clusters]} - {""}
+    shared = set(safe_queries(sorted(queries)))
+    return {
+        "performance_rows": len(performance),
+        "pages": len({str(r.get("page") or "") for r in performance} - {""}),
+        "queries": len({str(r.get("query") or "") for r in performance} - {""}),
+        "impressions": int(sum(float(r.get("impressions") or 0) for r in performance)),
+        "clicks": int(sum(float(r.get("clicks") or 0) for r in performance)),
+        "cluster_rows": len(clusters),
+        "clusters": len({str(r.get("cluster_id")) for r in clusters}),
+        "queries_left_out": len(queries - shared),
+        "rows_other_sites": sum(1 for r in _clean(performance) if site_path(str(r.get("page") or ""), site_url) is None),
+    }
+
+
 def uploaded_doc(type_: str, title: str, text: str, *, doc_id: str | None = None, target_keyword: str = "", source: str = "") -> IntelDoc:
     """A competitor brief or a brand/style guideline sent by an admin. The doc_id is `<type>:<slug>`; sending the same
     one again replaces the document."""
@@ -334,29 +368,73 @@ async def remove(rag: RagClient, store: RagDocStore, doc_id: str) -> None:
 async def sync(rag: RagClient, store: RagDocStore, docs: list[IntelDoc], *, types: tuple[str, ...] = SYNCED_TYPES, full: bool = False) -> dict[str, Any]:
     """Make seo_intel hold exactly `docs` for `types`: send new and changed documents (all of them when `full`),
     delete the ones that are gone. Stops at the first request that fails after its retries (rag-api down, token
-    refused): what was sent before it is recorded, so the next run carries on from there."""
+    refused): what was sent before it is recorded, so the next run carries on from there. Logs the plan, each document
+    before it is sent or deleted (the moks-rag client then logs the request's result) and a summary."""
     if any(d.type not in types for d in docs):
         raise ValueError("a document's type is not one of the synced types")
     known = await store.hashes(rag.seo_collection, types)
     wanted = {d.doc_id: d for d in docs}
+    change = {i: "new" if i not in known else ("unchanged" if known[i] == d.content_hash else "changed") for i, d in wanted.items()}
+    send = [d for d in wanted.values() if full or change[d.doc_id] != "unchanged"]
+    gone = sorted(set(known) - set(wanted))
+    n = Counter(change.values())
+    where = f"moks-rag {rag.base_url}, collection {rag.seo_collection}"
     out: dict[str, Any] = {"documents": len(wanted), "ingested": 0, "unchanged": 0, "deleted": 0, "chunks": 0, "by_type": {t: sum(1 for d in wanted.values() if d.type == t) for t in types}}
+    log.info(
+        f"Compared with the {count(len(known), 'document')} sent before (seo_agent_rag_documents): {n['new']} new, {n['changed']} changed, {n['unchanged']} unchanged, {len(gone)} gone"
+        + (f"; full run: the {n['unchanged']} unchanged ones are sent again too" if full and n["unchanged"] else ""),
+        extra={"event": "seo_intel_plan", "known": len(known), "new": n["new"], "changed": n["changed"], "unchanged": n["unchanged"], "gone": len(gone), "full": full},
+    )
+    if not full and n["unchanged"]:
+        skipped = sorted(i for i, c in change.items() if c == "unchanged")
+        log.info(f"Not sending {count(n['unchanged'], 'unchanged document')}: {where} already holds the same content", extra={"event": "seo_intel_unchanged", "count": len(skipped), RUN_ONLY: {"doc_ids": skipped[:500]}})
+    if send or gone:
+        log.info(
+            f"Sending {count(len(send), 'document')} to {where}" + (f", deleting {len(gone)}" if gone else ""),
+            extra={"event": "seo_intel_target", "rag_api_url": rag.base_url, "collection": rag.seo_collection, "send": len(send), "delete": len(gone)},
+        )
+    else:
+        log.info(f"Nothing to send or delete: {where} is up to date", extra={"event": "seo_intel_target", "rag_api_url": rag.base_url, "collection": rag.seo_collection, "send": 0, "delete": 0})
     now = datetime.now(UTC)
+    current = ""
+    slowest: tuple[float, str] = (0.0, "")
+    out["unchanged"] = 0 if full else n["unchanged"]
     try:
-        for d in wanted.values():
-            if not full and known.get(d.doc_id) == d.content_hash:
-                out["unchanged"] += 1
-                continue
+        for i, d in enumerate(send, 1):
+            current = d.doc_id
+            log.info(
+                f"[{i}/{len(send)}] {d.doc_id} ({change[d.doc_id]}): “{d.title}”, {len(d.text):,} characters",
+                extra={
+                    "event": "seo_intel_doc",
+                    "doc_id": d.doc_id,
+                    "doc_type": d.type,
+                    "change": change[d.doc_id],
+                    "characters": len(d.text),
+                    RUN_ONLY: {"title": d.title, "target_keyword": d.target_keyword, "source": d.source, "metadata": dict(d.extra), "preview": d.text[:PREVIEW_CHARS] + ("…" if len(d.text) > PREVIEW_CHARS else "")},
+                },
+            )
+            started = time.monotonic()
             r = await put(rag, store, d, now=now)
+            slowest = max(slowest, (time.monotonic() - started, d.doc_id))
             out["ingested"] += 1
             out["chunks"] += r["chunks"]
-        for doc_id in sorted(set(known) - set(wanted)):
+        for i, doc_id in enumerate(gone, 1):
+            current = doc_id
+            because = GONE_BECAUSE.get(doc_id.split(":", 1)[0], "it is no longer in the data")
+            log.info(f"[delete {i}/{len(gone)}] {doc_id}: {because}", extra={"event": "seo_intel_doc_delete", "doc_id": doc_id})
             await remove(rag, store, doc_id)
             out["deleted"] += 1
     except RagError as e:
         out["error"] = str(e)[:300]
-        log.warning("seo_intel sync stopped", extra={"event": "seo_intel_sync_stopped", "status": e.status, **{k: v for k, v in out.items() if isinstance(v, int)}})
+        log.warning(
+            f"seo_intel sync stopped at {current}: {out['error']}. The {out['ingested']} sent before it are recorded; the next run carries on from there",
+            extra={"event": "seo_intel_sync_stopped", "status": e.status, "doc_id": current, **{k: v for k, v in out.items() if isinstance(v, int)}},
+        )
         raise SyncStopped(out) from e
-    log.info("seo_intel synced", extra={"event": "seo_intel_synced", **{k: v for k, v in out.items() if isinstance(v, int)}})
+    summary = f"seo_intel synced: {out['ingested']} sent ({count(out['chunks'], 'chunk')}), {out['unchanged']} unchanged, {out['deleted']} deleted"
+    if slowest[1]:
+        summary += f"; slowest: {slowest[1]} ({slowest[0]:.1f} s)"
+    log.info(summary, extra={"event": "seo_intel_synced", **{k: v for k, v in out.items() if isinstance(v, int)}, **({"slowest_doc": slowest[1], "slowest_s": round(slowest[0], 1)} if slowest[1] else {})})
     return out
 
 

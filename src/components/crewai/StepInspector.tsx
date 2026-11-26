@@ -1,9 +1,12 @@
 import Link from "next/link";
 import type { RunStep } from "@/lib/crewai/runs";
+import { Facts } from "./Facts";
 import { RunStatusIcon } from "./RunStatusIcon";
 
 type Meta = { type?: string; chars?: number; preview?: string; keys?: string[]; items?: number; values?: Record<string, Meta | string> };
 type Attempt = { attempt: number; status: string; error?: string; seconds?: number };
+/** Detail keys the inspector shows in its own way; any other fact a step recorded is listed under them. */
+const SHOWN = new Set(["attempts", "when", "condition", "outcome", "label", "id", "kind", "failure", "crew", "crew_version", "crew_source", "child_flow", "child_run_id", "child_status", "flow_version", "tokens", "cost_usd", "input", "output", "seconds"]);
 
 function MetaView({ m }: { m: unknown }) {
   if (!m || typeof m !== "object") return <span className="text-fg-subtle">—</span>;
@@ -45,6 +48,7 @@ export function StepInspector({ steps }: { steps: RunStep[] }) {
           const cond = d.condition as { op: string; operand: string; held: boolean; otherwise: string; value?: unknown } | undefined;
           const skipped = d.outcome === "skipped";
           const failed = s.status === "failed";
+          const facts = Object.fromEntries(Object.entries(d).filter(([k]) => !SHOWN.has(k)));
           return (
             <li key={s.id}>
               <details open={failed} className={`rounded-lg border ${failed ? "border-red-300 dark:border-red-500/40" : "border-line"} bg-surface`}>
@@ -77,6 +81,11 @@ export function StepInspector({ steps }: { steps: RunStep[] }) {
                     {"input" in d && <div><dt className="mb-1 font-semibold text-fg-muted">In</dt><dd><MetaView m={d.input} /></dd></div>}
                     {"output" in d && <div><dt className="mb-1 font-semibold text-fg-muted">Out</dt><dd><MetaView m={d.output} /></dd></div>}
                   </dl>
+                  {Object.keys(facts).length > 0 && (
+                    <div className="md:col-span-2">
+                      <Facts value={facts} />
+                    </div>
+                  )}
                 </div>
               </details>
             </li>
