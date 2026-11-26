@@ -34,8 +34,10 @@ COPY . .
 # (SITE=<domain> for another site) before `docker build`, so site/, content/ and public/images/ are real copies.
 RUN test -f site/site.json && test -d content && test ! -L content && test -d public/images && test ! -L public/images \
   || { echo 'Run `npm run site -- --copy` before docker build' >&2; exit 1; }
-# Next.js build cache persists between builds (incremental compilation).
-RUN --mount=type=cache,target=/app/.next/cache npm run build
+# Next.js build cache persists between builds (incremental compilation). `next build` itself, not `npm run build`: its
+# prebuild script (scripts/use-site.mjs) would choose tests/fixtures/site, which is not in the build context
+# (.dockerignore), and fail; the copies checked above are what the build uses.
+RUN --mount=type=cache,target=/app/.next/cache ./node_modules/.bin/next build
 
 # --- The SEO agent's virtualenv and models (docs/seo/FLOWS.md, MCP.md) ---------------------------------------------
 # CPU-only: no torch, no CUDA; ONNX Runtime runs the embeddings; ReportLab (pure Python) renders the report PDFs. The
