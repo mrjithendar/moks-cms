@@ -1,7 +1,9 @@
 node_modules
 .next
 coverage
-tests
+# tests/ stays in the context: `next build` type-checks the whole project (tsconfig **/*.ts), and scripts/e2e-seed.ts
+# and scripts/seo-seed-fixtures.ts import tests/seo-fixtures. Nothing of it reaches the image (the runtime stage copies
+# only .next/standalone, .next/static and public/).
 docs
 **/.site-copy
 deploy

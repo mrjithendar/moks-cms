@@ -92,15 +92,20 @@ FROM node:26-trixie-slim AS node
 # --- The image ---------------------------------------------------------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim-trixie AS runtime
 # libgomp1: OpenMP, which the LightGBM wheel links against (news desk ranker, docs/news/ML.md); scikit-learn/SciPy
-# wheels bundle their own. libstdc++6: Node and ONNX Runtime (already in the base image, which apt needs; named so it
-# stays). User node (1000) as in the node images, for the site; the agent's container runs as 10001, no entry.
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libstdc++6 && rm -rf /var/lib/apt/lists/* \
+# wheels bundle their own. libatomic1: Node's arm64 binary needs libatomic.so.1 (node:26-trixie-slim has it, the Python
+# image does not). libstdc++6: Node and ONNX Runtime (already in the base image, which apt needs; named so it stays).
+# User node (1000) as in the node images, for the site; the agent's container runs as 10001, no entry.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libatomic1 libstdc++6 && rm -rf /var/lib/apt/lists/* \
  && groupadd --gid 1000 node && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # The agent: /srv (run with workingDir /srv)
 COPY --from=agent-build /srv/.venv /srv/.venv
 COPY --from=agent-build /models /models
 COPY seo-agent/app /srv/app
+# Both runtimes must start here, not first in a pod: a missing shared library fails the build and names it (Node needs
+# libatomic.so.1; LightGBM libgomp; ONNX Runtime libstdc++).
+RUN /usr/local/bin/node --version \
+ && /srv/.venv/bin/python -c "import onnxruntime, lightgbm, sklearn; print('python', 'ok')"
 # The site: /app. Standalone output already contains server.js, traced node_modules and content/ (CI builds with the test
 # fixture site's, as defaults; a site's Deployment mounts its own site/, content/ and public/images/ over them).
 WORKDIR /app
