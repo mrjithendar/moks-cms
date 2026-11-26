@@ -123,6 +123,25 @@ async def test_lines_of_unknown_runs_and_own_warnings_are_not_kept(history: RunH
     assert [(ln["logger"], ln["level"]) for ln in history.sink.logs] == [("httpx", "debug")]
 
 
+async def test_run_only_fields_reach_the_run_log_and_never_stderr(history: RunHistory) -> None:
+    from app.logs import RUN_ONLY, JsonFormatter
+
+    records: list[logging.LogRecord] = []
+    keep = logging.Handler()
+    keep.emit = records.append  # type: ignore[method-assign]
+    logging.getLogger().addHandler(keep)
+    try:
+        logging.getLogger("seo_agent.seo_intel").info("[1/1] doc", extra={"run_id": RUN, "doc_id": "d", RUN_ONLY: {"preview": "123 impressions", "doc_id": "not this one", "api_key": "sk-ant-" + "x" * 30}})
+    finally:
+        logging.getLogger().removeHandler(keep)
+    await history.flush()
+    (line,) = history.sink.logs
+    assert line["context"]["preview"] == "123 impressions" and line["context"]["doc_id"] == "d"  # a record's own field wins
+    assert "x" * 30 not in str(line["context"])  # redacted like every field
+    out = JsonFormatter().format(records[0])
+    assert "123 impressions" not in out and RUN_ONLY not in out and '"doc_id": "d"' in out
+
+
 async def test_exceptions_and_long_values_are_kept_short(history: RunHistory) -> None:
     try:
         raise ValueError("bad answer")

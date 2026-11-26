@@ -16,6 +16,9 @@ from .redaction import redact, redact_text
 
 # Attributes every LogRecord carries. Anything else on a record was passed with `extra=` and is logged as a field.
 _RECORD_ATTRS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime", "taskName"}
+# extra={RUN_ONLY: {...}}: fields for the flow run's own log (the admin run page, app/run_history.py), never for stderr →
+# Loki: a document preview, say, which holds Search Console data that Loki's readers should not get.
+RUN_ONLY = "run_only"
 
 
 def _context() -> dict[str, str]:
@@ -43,7 +46,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         out: dict[str, Any] = {"level": record.levelname, "logger": record.name, "msg": redact_text(record.getMessage())}
-        fields = {key: value for key, value in record.__dict__.items() if key not in _RECORD_ATTRS and key not in out}
+        fields = {key: value for key, value in record.__dict__.items() if key not in _RECORD_ATTRS and key not in out and key != RUN_ONLY}
         out.update(redact(fields))
         for key, value in _context().items():
             out.setdefault(key, value)  # a field passed with extra= (e.g. a crew thread's run_id) wins

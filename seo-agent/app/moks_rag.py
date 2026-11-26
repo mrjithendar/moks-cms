@@ -25,7 +25,8 @@ and a query of any collection but the two it is configured with.
 
 Retries: connection errors, timeouts, 408/425/429 and 5xx, with exponential backoff (a Retry-After of up to 30 s
 replaces the backoff). Anything else (401, 404, 422) raises at once. One JSON log line per request, after its
-retries: operation, collection, status, attempts, duration and request id, never the token, the text or the query.
+retries, that says what happened ("moks-rag ingest seo_intel keyword_cluster:x: 2 chunks, 0.5 s"): operation,
+collection, doc_id, status, attempts, duration and request id, never the token, the text or the query.
 """
 
 from __future__ import annotations
@@ -228,7 +229,10 @@ class RagClient:
                 if not error.transient or attempt == self.attempts:
                     break
                 delay = wait if wait is not None else self.backoff_s * (2 ** (attempt - 1))
-                log.warning("moks-rag request retried", extra={"event": "moks_rag_retry", "op": op, "collection": collection, "status": status, "attempt": attempt, "delay_s": round(delay, 2), "request_id": request_id})
+                log.warning(
+                    f"moks-rag {_what(op, collection, doc_id)}: {_answer(status, error.message)}, retrying in {delay:.1f} s (attempt {attempt} of {self.attempts})",
+                    extra={"event": "moks_rag_retry", "op": op, "collection": collection, "status": status, "attempt": attempt, "delay_s": round(delay, 2), "request_id": request_id},
+                )
                 await self.sleep(delay)
         seconds = time.monotonic() - started
         metrics.MOKS_RAG_SECONDS.labels(op=op).observe(seconds)
@@ -237,14 +241,32 @@ class RagClient:
         if doc_id:
             fields["doc_id"] = doc_id[:300]
         if error is not None:
-            log.warning("moks-rag request failed", extra={**fields, "error": error.message[:300]})
+            log.warning(f"moks-rag {_what(op, collection, doc_id)} failed after {_attempts(attempt)}: {_answer(status, error.message[:300])}", extra={**fields, "error": error.message[:300]})
             raise error
+        result = f"HTTP {status}"
         if op == "ingest":
             fields["chunks"] = data.get("chunks_ingested")
+            result = f"{fields['chunks']} chunk{'' if fields['chunks'] == 1 else 's'}"
         elif op == "query":
             fields["hits"] = len(data.get("sources") or [])
-        log.info("moks-rag request", extra=fields)
+            result = f"{fields['hits']} hit{'' if fields['hits'] == 1 else 's'}"
+        elif op == "delete":
+            result = "deleted"
+        log.info(f"moks-rag {_what(op, collection, doc_id)}: {result}, {seconds:.1f} s" + (f" ({_attempts(attempt)})" if attempt > 1 else ""), extra=fields)
         return data if isinstance(data, dict) else {}
+
+
+def _what(op: str, collection: str, doc_id: str | None) -> str:
+    """What a request did, for its log line: `ingest seo_intel keyword_cluster:x` (never the text or the query)."""
+    return f"{op} {collection}" + (f" {doc_id[:300]}" if doc_id else "")
+
+
+def _answer(status: int, message: str) -> str:
+    return f"{status or 'no answer'}" + (f" {message}" if message else "")
+
+
+def _attempts(n: int) -> str:
+    return f"{n} attempt{'' if n == 1 else 's'}"
 
 
 def _quote(doc_id: str) -> str:

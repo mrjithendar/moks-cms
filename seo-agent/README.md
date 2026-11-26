@@ -263,8 +263,8 @@ Off unless both the URL and the token are set; every feature below then says so 
   collection of every service, so the client refuses, before sending, any write except to `seo_intel`, any query
   except of the two collections above, and it always names the collection on DELETE (rag-api's default is `all`).
   Queries always send `include_answer: false`: rag-api's answer would be a Claude call through its own LiteLLM key,
-  outside this service's LLM budget. One JSON log line per request (`event: moks_rag_request`; never the token or the
-  text), metrics `seo_moks_rag_requests_total{op,outcome}` and `seo_moks_rag_request_seconds{op}`.
+  outside this service's LLM budget. One JSON log line per request that says what happened (`moks-rag ingest
+  seo_intel keyword_cluster:x: 2 chunks, 0.5 s`, `event: moks_rag_request`; never the token or the text), metrics `seo_moks_rag_requests_total{op,outcome}` and `seo_moks_rag_request_seconds{op}`.
 - **seo_intel** (`app/seo_intel.py`): `keyword_cluster` (one per seo_ml query cluster, with 28 days of Search Console
   numbers per query) and `gsc_performance` (one per page) are rebuilt by **`seo_intel_sync_flow`**. It sends only new
   and changed documents and deletes the ones that are gone; schedule it after `seo_ml_flow` in the CrewAI console (no
@@ -274,7 +274,11 @@ Off unless both the URL and the token are set; every feature below then says so 
   `target_keyword` and `updated_at`. `GET /seo-intel/documents` lists what the agent sent (table
   `seo_agent_rag_documents`, created at start-up; rag-api cannot list a collection), and `DELETE
   /seo-intel/documents/{doc_id}` removes one. Search Console queries that look like an e-mail address, a phone number
-  or a secret are left out.
+  or a secret are left out. The run's log on the admin run page says where the documents go (rag-api's URL and the
+  collection), what was read (rows, pages, queries, clusters, what is left out), what was built, the plan (new,
+  changed, unchanged, gone), each document before it is sent (with a preview of its text) or deleted (and why), each
+  request's result and a summary naming the slowest document. The previews are in the run's log only, never in
+  stderr → Loki (`extra={"run_only": {...}}`, `app/logs.py`).
 - **Drafting help** (`app/site_context.py`), no model call: `POST /site-context/internal-links` `{title, headings,
   exclude?}` returns up to 5 existing articles with their URL, anchor suggestions and the draft heading each fits
   under. `POST /site-context/cannibalization` `{keyword, topic?, exclude?}` flags a published article whose title has

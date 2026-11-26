@@ -141,8 +141,12 @@ export function LogViewer({ runId, initial, live, steps, runStatus, hasMore }: {
   const lastId = useRef(initial.length ? initial[initial.length - 1]!.id : 0);
   const isLive = live && !FINISHED.includes(status);
 
+  // The server ends a stream after ~5 minutes even while the run goes on: then a new one carries on from the last line
+  // (`stream` counts them). Without it a long run's log stopped at its first 5 minutes until the page was reloaded.
+  const [stream, setStream] = useState(0);
   useEffect(() => {
     if (!live) return;
+    let going = false; // the stream's last status: queued or running
     const es = new EventSource(`/api/admin/crewai/runs/${runId}/logs?after=${lastId.current}`);
     es.addEventListener("log", (e) => {
       const l = JSON.parse((e as MessageEvent).data) as LogLine;
@@ -150,13 +154,18 @@ export function LogViewer({ runId, initial, live, steps, runStatus, hasMore }: {
       lastId.current = l.id;
       setLogs((x) => (x.length >= MAX_LINES ? x : [...x, l]));
     });
-    es.addEventListener("status", (e) => setStatus((JSON.parse((e as MessageEvent).data) as { status: string }).status));
+    es.addEventListener("status", (e) => {
+      const s = (JSON.parse((e as MessageEvent).data) as { status: string }).status;
+      going = s === "queued" || s === "running";
+      setStatus(s);
+    });
     es.addEventListener("end", () => {
       es.close();
       router.refresh();
+      if (going) setStream((n) => n + 1);
     });
     return () => es.close();
-  }, [live, runId, router]);
+  }, [live, runId, router, stream]);
 
   // #L<id> in the URL: open its group and scroll to it.
   useEffect(() => {
