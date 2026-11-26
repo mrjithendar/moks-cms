@@ -158,11 +158,13 @@ describe("the budget card", () => {
     expect([barTone(null), barTone(50), barTone(80), barTone(100)]).toEqual(["none", "ok", "near", "reached"]);
   });
 
-  it("is the top card of AI & SEO settings → LLM providers & budget, with the period from the address", async () => {
+  it("is the top card of Settings → AI & models → LLM providers & budget, with the period from the address", async () => {
     const { scopeOf } = await import("@/lib/llm-budget-view");
     expect([scopeOf("day"), scopeOf("month"), scopeOf(undefined), scopeOf("week")]).toEqual(["day", "month", "month", "month"]);
-    const { AI_SEO_SECTIONS } = await import("@/app/admin/(growth)/automation/sections");
-    expect(AI_SEO_SECTIONS.map((s) => s.id)).toContain("llm");
-    expect(AI_SEO_SECTIONS.map((s) => s.id)).not.toContain("llm-budget"); // merged into "llm" (2026-11-23); the old id redirects
+    const { AI_SEO_RENDERS } = await import("@/app/admin/(growth)/automation/sections");
+    expect(Object.keys(AI_SEO_RENDERS)).toContain("llm");
+    expect(Object.keys(AI_SEO_RENDERS)).not.toContain("llm-budget"); // merged into "llm" (2026-11-23); the old id redirects
+    const { settingsHref } = await import("@/lib/settings-areas");
+    expect(settingsHref("llm")).toBe("/admin/settings/ai?section=llm");
   });
 });

@@ -84,7 +84,7 @@ No newsletter exists, so no newsletter events.
 
 - Publisher Center's site code (`swg-basic.js` plus the `SWG_BASIC` init) is server-rendered on public pages, in
   production only, so the CTAs set up in Reader Revenue Manager (rewarded ads, surveys, contributions, newsletter
-  sign-ups) can show. Product ID: Admin → Integrations → Analytics, ads and consent (`READER_REVENUE_PRODUCT_ID`),
+  sign-ups) can show. Product ID: Admin → Settings → Integrations → Analytics & ads (`READER_REVENUE_PRODUCT_ID`),
   else `readerRevenue.productId` in the site's site.json; `off` turns it off, and nothing loads when neither is set.
   The language comes from `readerRevenue.lang`, else the site's `language`; the theme follows the page (light/dark).
 - Never on admin, login, account, setup, preview or API routes, and not at all when the visitor arrives on one.

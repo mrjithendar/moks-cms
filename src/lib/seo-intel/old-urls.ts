@@ -1,11 +1,11 @@
 /** Old /admin/seo/* paths → their CMS pages (D-86). */
 const MOVED: Record<string, string> = {
   "": "/admin",
-  settings: "/admin/automation",
-  "settings/mcp": "/admin/automation/mcp",
+  settings: "/admin/settings/seo",
+  "settings/mcp": "/admin/settings/assistants?section=mcp",
   pages: "/admin/page-insights",
   content: "/admin/content-audit",
-  integrations: "/admin/integrations",
+  integrations: "/admin/settings/seo?section=search-console",
 };
 
 export function seoRedirectTarget(rest: string[] = []): string {

@@ -31,7 +31,7 @@ editor, the draft is superseded on the next run because its "before" text no lon
 - "Needs credentials" at the top means `ANTHROPIC_API_KEY` is not set; a red banner means the monthly budget is
   reached and drafting is paused (existing drafts can still be reviewed).
 - A weekly digest email lists what is waiting, once Settings → Drafts → digest recipients are set and email is
-  configured (Admin → Storage & email).
+  configured (Admin → Settings → Email).
 
 ## The diff view
 

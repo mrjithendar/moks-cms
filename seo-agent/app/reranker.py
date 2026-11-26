@@ -1,5 +1,5 @@
 """Cross-encoder reranker for article search (Ask the Blog, the crews' vector_search, MCP search). OFF by default
-(RAG_RERANKER_ENABLED, Admin → AI & SEO → Settings → Retrieval, live).
+(RAG_RERANKER_ENABLED, Admin → Settings → AI & models → ML & retrieval, live).
 
 The model: cross-encoder/ms-marco-MiniLM-L6-v2 at revision 233902d (Apache-2.0), its int8 ONNX export
 (`onnx/model_qint8_arm64.onnx`), baked into the image at RAG_RERANKER_DIR=/models/ms-marco-MiniLM-L6-v2 with a pinned

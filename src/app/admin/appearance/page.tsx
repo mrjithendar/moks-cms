@@ -11,11 +11,11 @@ import { turnstileKeys } from "@/lib/turnstile";
 import { effectiveEnv, runtimeAdsTxt, runtimeIntegrations } from "@/lib/runtime-settings";
 import { AppearanceEditor, type EditorContext } from "./AppearanceEditor";
 
-export const metadata: Metadata = { title: "Appearance & site settings" };
+export const metadata: Metadata = { title: "Appearance" };
 export const dynamic = "force-dynamic";
 
 /**
- * Admin → Appearance & Site Settings. Admins only. The editor works on the shared private draft;
+ * Admin → Appearance (the site's design and identity; every other setting is in Settings). Admins only. The editor works on the shared private draft;
  * readers see changes only after "Publish".
  */
 export default async function AppearancePage({ searchParams }: { searchParams: Promise<{ section?: string }> }) {

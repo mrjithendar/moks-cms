@@ -235,7 +235,7 @@ class NewsJobFlow(NewsHelpers, SeoFlow[NewsJobState]):
             # The one LLM budget (no news cap of its own): a job does not start drafting when it is already used up.
             guard = getattr(self.deps.llm, "guard", None)
             if not s.dry_run and guard is not None and used_up(await guard.status()):
-                raise BudgetExceeded("llm", "the LLM budget is used up (Admin → AI & SEO → Settings → LLM budget)")
+                raise BudgetExceeded("llm", "the LLM budget is used up (Admin → Settings → AI & models → LLM providers & budget)")
             # Where the candidates come from (JobConfig.intake): the content sources and/or the content ideas.
             ing: dict[str, Any] = {"new": 0}
             selected: list[Any] = []

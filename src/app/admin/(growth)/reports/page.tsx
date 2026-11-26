@@ -36,9 +36,9 @@ export default async function ReportsPage() {
       />
       <Card className="mb-6">
         <p className="text-sm">
-          Email: {mail ? "configured" : <>not configured (<Link className="link" href="/admin/email">Settings → Email</Link>): nothing is sent until it is</>}.
+          Email: {mail ? "configured" : <>not configured (<Link className="link" href="/admin/settings/email?section=email">Settings → Email</Link>): nothing is sent until it is</>}.
           {" "}Briefings are sent automatically {s.reports.emailEnabled && s.reports.recipients.length ? `to ${s.reports.recipients.join(", ")}` : "to nobody (switch email on and add recipients)"}.
-          {" "}Template, attachments, link lifetime and how long reports are kept: <Link className="link" href="/admin/automation?section=reports">AI & SEO → Settings → Reports</Link>.
+          {" "}Template, attachments, link lifetime and how long reports are kept: <Link className="link" href="/admin/settings/seo?section=reports">Settings → Search & SEO → Reports</Link>.
         </p>
       </Card>
       <Section title="Reports" description="The newest first. Email sends to the recipients you choose, with the PDF attached when it fits or a download link.">

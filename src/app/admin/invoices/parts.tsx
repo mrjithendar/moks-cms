@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AdminHeader } from "@/components/admin/ui";
 import { Alert } from "@/components/ui/form";
 import type { invoiceReadiness } from "@/lib/invoices";
+import { settingsHref } from "@/lib/settings-areas";
 
 /** Demo accounts see the admin as an admin does, except other people's bills: names, addresses and amounts. */
 export function HiddenFromDemo() {
@@ -20,14 +21,14 @@ export function Readiness({ ready }: { ready: Awaited<ReturnType<typeof invoiceR
   if (!ready.business) {
     todo.push(
       <>
-        Add your business name and address in <Link href="/admin/invoices/settings" className="link">Invoice settings</Link>: they are printed on every invoice.
+        Add your business name and address in <Link href={settingsHref("invoices")} className="link">Settings → Invoices</Link>: they are printed on every invoice.
       </>,
     );
   }
   if (!ready.storage) {
     todo.push(
       <>
-        Connect file storage in <Link href="/admin/storage" className="link">Storage</Link>: the invoice PDF is stored there, and an invoice cannot be sent without it.
+        Connect file storage in <Link href={settingsHref("media-storage")} className="link">Settings → Media &amp; storage</Link>: the invoice PDF is stored there, and an invoice cannot be sent without it.
       </>,
     );
   }
@@ -35,14 +36,14 @@ export function Readiness({ ready }: { ready: Awaited<ReturnType<typeof invoiceR
     todo.push(
       <>
         Razorpay is not connected, so invoices go out without a Pay button. Add the Key ID and Key secret in{" "}
-        <Link href="/admin/payments#razorpay" className="link">Payments → Razorpay payments</Link>.
+        <Link href={settingsHref("razorpay")} className="link">Settings → Razorpay</Link>.
       </>,
     );
   }
   if (ready.online && !ready.webhook) {
     todo.push(
       <>
-        Add the Razorpay webhook secret in <Link href="/admin/payments#razorpay" className="link">Payments → Razorpay payments</Link> and switch on the events payment_link.paid, payment_link.cancelled and
+        Add the Razorpay webhook secret in <Link href={settingsHref("razorpay")} className="link">Settings → Razorpay</Link> and switch on the events payment_link.paid, payment_link.cancelled and
         payment_link.expired for the webhook in Razorpay. Without it a payment is only recorded when the client returns to the invoice page after paying.
       </>,
     );

@@ -1100,3 +1100,39 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
 - **Replaces** the "own repository, own image, no cross-repository credentials" layout of 2026-11-18 (moks-cms #145,
   #147; moks-seo-agent #3) and the agent's one-replica rule. `moks-seo-agent#N` in these docs refers to pull requests of
   the archived repository.
+
+## D-106 One Settings area: every setting in one place, by category (owner brief 2026-11-26)
+
+- **What.** Admin → Settings (`/admin/settings`) holds every setting of the admin and nothing else holds one. It is a
+  directory of 13 categories (General, Users & access, Content & publishing, Email, Media & storage, Payments &
+  bookings, AI & models, SEO agent, Assistants, Search & SEO, Integrations, Practice, System) with a search over
+  section names and field labels, and one page per category (`/admin/settings/<category>?section=<id>`). The menu's
+  Settings group lists the overview and the categories; AI & SEO no longer lists Settings and MCP. This is decision
+  D2 of docs/SETTINGS.md ("one home per knob, under Settings by category"), which the owner's brief settles.
+- **Where it is written down.** `src/lib/settings-areas.ts` (pure): the categories, the sections (id unique across
+  all), which belong to the SEO agent module, the old addresses. `src/app/admin/settings/sections/index.ts`: what each
+  section draws. The menu, the redirects, the user guide and the tests read the first; a test fails when the two
+  disagree, when a section is drawn outside Settings, or when a `/admin/settings/...` link names a section of another
+  category.
+- **What moved, unchanged.** The forms of Integrations, Media & storage, Email and AI & SEO → Settings (each a
+  section now), and the settings cards of Users (members-only, profile pictures), Cache (Cloudflare), Payments
+  (Razorpay), Bookings (Cal.com), Invoices → Settings, Practice, Posts → Promotion (Settings tab), Tools → Backups
+  (schedule, encryption, bucket), AI & SEO → Configuration (Settings tab) and Content sources (fetching). Same server
+  actions, stores, validation, audit entries and permissions (admins only); only where they are drawn and where a save
+  returns to changed. The feature pages keep their records and operations and end with a link to their settings.
+- **Not moved.** The Appearance editor stays the one home of the site's design and identity: it is one draft with a
+  live preview and one Publish, so drawing part of it elsewhere would let a Publish there push unrelated draft changes
+  live. Settings → General shows the published identity, features and maintenance mode and links into Appearance;
+  splitting General (D9) remains the owner's call. Per-user pages (Profile, API keys) and records that behave like
+  settings (flow schedules, ML overrides, crews) stay where they are.
+- **Gating.** The SEO agent's sections are listed only while the module is set up (lib/modules.ts), as its menu was;
+  opened by address they say how to set it up. SEO agent → Connection, where it is set up, is always listed. Whether
+  Search & SEO should be reachable without the agent (D7) is unchanged.
+- **Merged.** The SEO agent's endpoint card was drawn twice (Integrations → SEO agent, AI & SEO → Settings → Overview):
+  one section now, Settings → SEO agent → Connection.
+- **Old addresses.** `/admin/integrations`, `/admin/storage`, `/admin/email`, `/admin/automation` (with the ids merged
+  on 2026-11-23), `/admin/automation/mcp`, `/admin/invoices/settings`, `/admin/advanced`, Promotion `?tab=settings` and
+  Configuration `?tab=settings` redirect to the section that has their settings, keeping the rest of the query.
+  `/admin/settings`, which opened Appearance → General, is the overview now.
+- **Fixed on the way.** Saving a runtime-settings group returned to `#group` on a sectioned page, which ignores
+  anchors, so the page opened another section (docs/SETTINGS.md P1.10): it returns to `?section=<id>` now.

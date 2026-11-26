@@ -1,7 +1,7 @@
 import { AgentError, getLlmBudget, type AgentLlmBudgetView, type AgentLlmScope } from "./seo-agent/client";
 
 /**
- * Admin → AI & SEO → Settings → LLM providers & budget (the budget card). The budget belongs to the seo-agent, which makes the LLM calls: it stores
+ * Admin → Settings → AI & models → LLM providers & budget (the budget card). The budget belongs to the seo-agent, which makes the LLM calls: it stores
  * it, validates a save and checks it before every call (seo-agent/app/llm_budgets.py). This page only shows it,
  * through the agent's GET /llm-budget, and saves it through its PUT /llm-budget. Nothing is kept here.
  */

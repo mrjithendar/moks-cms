@@ -93,7 +93,7 @@ on the spot so the client still gets it. A draft's "Preview PDF" is rendered on 
 
 1. **Invoices → Settings:** business name (required to send), address, tax ID, default currency, tax and payment
    terms, payment details.
-2. **Storage** must be connected and verified (Admin → Storage & email): sending is refused without it.
+2. **Storage** must be connected and verified (Admin → Settings → Media & storage): sending is refused without it.
 3. **Email** must be working (same page), or the invoice is issued but the client is not told; the invoice page then
    says so and offers "Email again" and the link to copy.
 4. **Razorpay:** the same keys as paid calls (Payments → Razorpay payments). On the existing webhook

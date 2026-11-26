@@ -204,7 +204,7 @@ export function AppearanceEditor({
         <div className="sticky top-chrome z-20 -mx-4 border-b border-line bg-canvas px-4 py-3 sm:mx-0 sm:rounded-b-xl sm:border sm:border-t-0">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-semibold tracking-tight text-fg">Appearance &amp; site settings</h1>
+              <h1 className="text-xl font-semibold tracking-tight text-fg">Appearance</h1>
               <SaveStatus state={state} issues={issues.length} changes={changes.length} />
             </div>
             <div className="flex flex-wrap gap-2">

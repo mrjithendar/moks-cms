@@ -58,7 +58,7 @@ per draft). v3's graph path had used ~$3–4.5 a month.
 ## Budget controls
 
 > **Since the admin settings plan (P2 part A, 2026-11-21):** there is one LLM budget, a daily and/or monthly limit set
-> in Admin → AI & SEO → Settings → LLM providers & budget and kept by the seo-agent. No limit exists until an admin saves one.
+> in Admin → Settings → AI & models → LLM providers & budget and kept by the seo-agent. No limit exists until an admin saves one.
 > `SEO_LLM_MONTHLY_BUDGET_USD`, the `drafts.monthlyBudgetUsd` setting and AI visibility's own cap are gone; this web
 > app's own calls and AI visibility hold their upper bound against the one budget (`src/lib/seo-intel/llm-gate.ts`).
 > Items 1 and the per-model limits below describe how it worked before and are kept for history.

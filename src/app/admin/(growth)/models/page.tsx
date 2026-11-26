@@ -124,7 +124,7 @@ export default async function ModelsPage() {
                     <ApiButton url="/api/admin/seo/models/decay" method="PUT" body={{ approveReview: true }} label="Reviewed: use the model" variant="primary" />
                   </div>
                 )}
-                {m.kind === "priority" && proposals[0]?.status === "proposed" && <p className="mt-3 text-sm">A weights proposal is waiting: <Link className="underline" href="/admin/automation?section=scoring">Settings → Scoring &amp; rules</Link>.</p>}
+                {m.kind === "priority" && proposals[0]?.status === "proposed" && <p className="mt-3 text-sm">A weights proposal is waiting: <Link className="underline" href="/admin/settings/seo?section=scoring">Settings → Search &amp; SEO → Scoring &amp; rules</Link>.</p>}
                 {m.history.length > 1 && (
                   <details className="mt-3 text-sm">
                     <summary className="cursor-pointer text-fg-muted">Earlier versions ({m.history.length - 1})</summary>

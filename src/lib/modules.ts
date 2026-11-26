@@ -1,6 +1,7 @@
 import "server-only";
 import { agentStatus, type AgentStatus, type EndpointDeps } from "@/lib/seo-agent/endpoint";
 import { MENU_PLACES, type NavItem } from "@/lib/admin-menu";
+import { settingsHref } from "@/lib/settings-areas";
 
 /**
  * Optional modules of the admin and whether this deployment has them (D-100). The admin menu, the module's pages and
@@ -8,7 +9,7 @@ import { MENU_PLACES, type NavItem } from "@/lib/admin-menu";
  * menu is drawn.
  *
  * One module today, the SEO agent (seo-agent/, the same image run as a second container, D-105): AI & SEO is its menu. It is
- * - installed when an endpoint is set for it (SEO_AGENT_URL, or the one saved under Settings → Integrations) or one was
+ * - installed when an endpoint is set for it (SEO_AGENT_URL, or the one saved under Settings → SEO agent) or one was
  *   found by discovery and answers, and SEO_ORCHESTRATOR is not "legacy";
  * - available when it answers now (lib/seo-agent/endpoint.ts agentStatus, cached 30–60 s per process).
  * The menu follows `installed`, so an agent that is set up but briefly down keeps its menu (its pages then say the agent
@@ -34,7 +35,7 @@ export type ModuleState = {
 type ModuleDef = { id: ModuleId; label: string; menuGroups: string[]; setupHref: string; detect: (deps: ModuleDeps) => Promise<Pick<ModuleState, "installed" | "available" | "version" | "reason">> };
 export type ModuleDeps = { agent?: EndpointDeps; status?: () => Promise<AgentStatus> };
 
-export const SEO_AGENT_SETUP = "/admin/integrations?section=seo-agent";
+export const SEO_AGENT_SETUP = settingsHref("seo-agent");
 
 export function seoAgentInstalled(s: AgentStatus): boolean {
   if (s.mode === "forced off") return false;

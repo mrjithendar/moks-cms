@@ -75,7 +75,7 @@ function Breakdown({ title, rows, total }: { title: string; rows: { key: string;
 }
 
 /**
- * Admin → AI & SEO → Settings → LLM providers & budget (top card): ONE budget for every provider, model and purpose together, with an
+ * Admin → Settings → AI & models → LLM providers & budget (top card): ONE budget for every provider, model and purpose together, with an
  * optional daily limit and an optional monthly limit. A Daily | Monthly switch chooses the period shown: its spend
  * against its limit, the one field that sets that limit, and where the period's spend went (for reading; the
  * breakdowns limit nothing). The seo-agent owns the budget (seo-agent/app/llm_budgets.py): this card only reads
@@ -209,10 +209,10 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
             <ul className="mt-1 list-disc space-y-1 pl-5">
               <li>
                 Ask the Blog public usage limit: {spentOf(view.ask_daily.spent_usd, view.ask_daily.limit_usd)} today. It keeps readers from using up the budget.{" "}
-                <Link className="underline" href="/admin/automation?section=ask-the-blog">Ask the Blog</Link>
+                <Link className="underline" href="/admin/settings/assistants?section=ask-the-blog">Ask the Blog</Link>
               </li>
               <li>
-                The content flows&apos; own limits, cover image spend included. <Link className="underline" href="/admin/automation?section=agent-limits#job-settings-limits">Content flow limits</Link>
+                The content flows&apos; own limits, cover image spend included. <Link className="underline" href="/admin/settings/agent?section=agent-limits#job-settings-limits">Content flow limits</Link>
               </li>
             </ul>
           </div>

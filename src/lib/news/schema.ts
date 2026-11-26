@@ -64,7 +64,7 @@ export const jobConfigSchema = z
       .max(2)
       .refine((v) => new Set(v).size === v.length, "list sources and ideas at most once each")
       .default(["sources"]),
-    // The job's own quality-gate values, by field; a field left out uses the shared value (AI & SEO → Settings → AI &
+    // The job's own quality-gate values, by field; a field left out uses the shared value (Settings → AI & models → AI &
     // drafts → Quality gates). Checked against the gates' own ranges when parsed (qualitySchema, below).
     quality: z
       .record(z.string(), z.number())

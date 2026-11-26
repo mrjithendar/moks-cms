@@ -1,13 +1,34 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
-export function AdminHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+/**
+ * The top of an admin page: its name, one or two sentences on what it is for, and its main actions (beside the name
+ * from `lg`, below it on tablets and phones, where the admin menu takes the room; they wrap onto more lines rather
+ * than push the page sideways). `breadcrumbs`: the pages above this one (Settings / Users & access), drawn above the
+ * name; they wrap, never widen the page.
+ */
+export function AdminHeader({ title, description, actions, breadcrumbs }: { title: string; description?: ReactNode; actions?: ReactNode; breadcrumbs?: { href: string; label: string }[] }) {
   return (
-    <div className="mb-8 flex flex-col gap-4 border-b border-line pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-8 flex flex-col gap-4 border-b border-line pb-6 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0">
+        {breadcrumbs && breadcrumbs.length > 0 && (
+          <nav aria-label="Breadcrumb" className="mb-1.5">
+            <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-fg-subtle">
+              {breadcrumbs.map((b) => (
+                <li key={b.href} className="flex min-w-0 items-center gap-1.5">
+                  <Link href={b.href} className="font-medium hover:text-fg hover:underline">
+                    {b.label}
+                  </Link>
+                  <span aria-hidden="true">/</span>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )}
         <h1 className="text-2xl font-semibold tracking-tight text-fg [overflow-wrap:anywhere]">{title}</h1>
         {description && <p className="mt-1.5 max-w-2xl text-[0.9375rem] leading-6 text-fg-muted">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex min-w-0 flex-wrap gap-2 lg:justify-end">{actions}</div>}
     </div>
   );
 }
@@ -64,10 +85,11 @@ const statusTones: Record<string, string> = {
   critical: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-300",
 };
 
+/** A state as a small coloured label, in sentence case ("Not configured", "Test failed"). */
 export function StatusPill({ status }: { status: string }) {
   return (
-    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ring-1 ring-inset ${statusTones[status] ?? statusTones.draft}`}>
-      {status}
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${statusTones[status] ?? statusTones.draft}`}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );
 }
@@ -75,9 +97,15 @@ export function StatusPill({ status }: { status: string }) {
 export const th = "whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold text-fg-subtle";
 export const td = "px-4 py-3 align-top text-sm text-fg-muted";
 
+/**
+ * A table in its own frame: a table wider than the page scrolls sideways inside the frame, never the page. The frame is
+ * `relative` so that what is positioned inside it (the `sr-only` label of an actions column) is placed in the frame:
+ * without it, such a label is placed at its spot in the wide table relative to the page, and the whole page scrolled
+ * sideways (Flows → Schedules on a phone, 2026-11-26).
+ */
 export function Table({ head, children }: { head: ReactNode; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-line bg-surface" tabIndex={0} role="region" aria-label="Table (scrolls sideways)">
+    <div className="relative overflow-x-auto rounded-xl border border-line bg-surface" tabIndex={0} role="region" aria-label="Table (scrolls sideways)">
       <table className="min-w-full divide-y divide-line">
         <thead className="bg-surface-muted">{head}</thead>
         <tbody className="divide-y divide-line [&>tr]:transition-colors [&>tr:hover]:bg-surface-muted">{children}</tbody>

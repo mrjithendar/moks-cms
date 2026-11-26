@@ -1,15 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminHeader, Card } from "@/components/admin/ui";
 import { ApiButton } from "@/components/seo/ApiButton";
 import { Badge, type Tone } from "@/components/seo/badges";
 import { CopyText } from "@/components/seo/CopyText";
 import { PromoDraftEditor } from "@/components/seo/PromoDraftEditor";
-import { PromotionSettingsForm } from "@/components/seo/PromotionSettingsForm";
 import { Empty, fmtInt, fmtWhen, Section } from "@/components/seo/ui";
 import { orchestrator } from "@/lib/seo-agent/endpoint";
-import { CHANNELS } from "@/lib/seo-intel/promotion/channels";
 import { redditState } from "@/lib/seo-intel/promotion/reddit";
-import { CHANNEL_IDS, getPromotionSettings } from "@/lib/seo-intel/promotion/settings";
+import { settingsHref } from "@/lib/settings-areas";
+import { getPromotionSettings } from "@/lib/seo-intel/promotion/settings";
 import { listIdeas, listOpportunities, promotionCounts, type Idea, type Opportunity, type PromotedArticle } from "@/lib/seo-intel/promotion/store";
 import { promotionPlan, type Strategy } from "@/lib/seo-intel/promotion/strategies";
 
@@ -21,7 +21,6 @@ const TABS = [
   ["opportunities", "Opportunities"],
   ["posted", "Posted"],
   ["ideas", "Content ideas"],
-  ["settings", "Settings"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -176,6 +175,8 @@ function IdeaCard({ idea }: { idea: Idea }) {
 
 export default async function PromotionPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
+  // The Settings tab moved to Settings → Content & publishing → Promotion (2026-11-26).
+  if (sp.tab === "settings") redirect(settingsHref("promotion"));
   const tab: Tab = TABS.some(([t]) => t === sp.tab) ? (sp.tab as Tab) : "strategies";
   const ideaStatus = sp.show === "dismissed" || sp.show === "sent" ? sp.show : undefined;
   const [settings, counts, reddit] = await Promise.all([getPromotionSettings(), promotionCounts(), redditState()]);
@@ -184,7 +185,7 @@ export default async function PromotionPage({ searchParams }: { searchParams: Pr
   const articles = tab === "drafts" ? await listOpportunities({ status: "drafted" }) : tab === "opportunities" ? await listOpportunities({ status: sp.status === "dismissed" ? "dismissed" : "open" }) : tab === "posted" ? await listOpportunities({ status: "posted" }) : [];
   const ideas = tab === "ideas" ? await listIdeas({ status: ideaStatus }) : [];
   const plan = tab === "strategies" ? await promotionPlan() : [];
-  const count: Record<Tab, number | null> = { strategies: null, drafts: counts.drafted, opportunities: counts.open, posted: counts.posted, ideas: counts.ideas, settings: null };
+  const count: Record<Tab, number | null> = { strategies: null, drafts: counts.drafted, opportunities: counts.open, posted: counts.posted, ideas: counts.ideas };
   return (
     <>
       <AdminHeader
@@ -197,9 +198,9 @@ export default async function PromotionPage({ searchParams }: { searchParams: Pr
           </>
         ) : undefined}
       />
-      {!settings.enabled && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion is switched off. Turn it on under <Link className="underline" href="?tab=settings">Settings</Link>.</p>}
-      {settings.enabled && !crewai && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion runs as CrewAI flows in the SEO agent, which is disabled. Add its endpoint under <Link href="/admin/automation#seo-agent" className="underline">Automation &amp; AI → SEO agent</Link> to start runs from here.</p>}
-      {settings.enabled && !reddit.configured && tab !== "settings" && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Reddit is not connected yet, so threads are not used as a signal. See <Link className="underline" href="?tab=settings">Settings</Link>.</p>}
+      {!settings.enabled && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion is switched off. Turn it on in <Link className="underline" href={settingsHref("promotion")}>Settings → Promotion</Link>.</p>}
+      {settings.enabled && !crewai && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Promotion runs as CrewAI flows in the SEO agent, which is disabled. Add its endpoint in <Link href={settingsHref("seo-agent")} className="underline">Settings → SEO agent</Link> to start runs from here.</p>}
+      {settings.enabled && !reddit.configured && <p className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg-muted">Reddit is not connected yet, so threads are not used as a signal. See <Link className="underline" href={settingsHref("promotion")}>Settings → Promotion</Link>.</p>}
       <nav aria-label="Promotion views" className="mb-6 flex flex-wrap gap-x-4 gap-y-2 text-sm">
         {TABS.map(([t, label]) => (
           <Link key={t} href={`?tab=${t}`} aria-current={tab === t ? "page" : undefined} className={tab === t ? "font-semibold text-fg" : "underline text-fg-muted"}>
@@ -244,26 +245,6 @@ export default async function PromotionPage({ searchParams }: { searchParams: Pr
         </Section>
       )}
 
-      {tab === "settings" && (
-        <>
-          <Section title="Reddit (read-only)" description="Used to find threads about your subjects. The site only reads public listings; it never posts, votes or messages.">
-            <Card>
-              <p className="text-sm text-fg">{reddit.configured ? "Configured." : "Requires manual configuration."} <span className="text-fg-muted">{fmtInt(reddit.threads)} thread{reddit.threads === 1 ? "" : "s"} stored · last read {fmtWhen(reddit.lastFetched)}</span></p>
-              {!reddit.configured && (
-                <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-fg-muted">
-                  <li>Create an app of type “script” at reddit.com/prefs/apps (Reddit may ask you to accept its API terms first).</li>
-                  <li>Put its client id and secret in the Secret <code>jithendar-com-env</code> as <code>REDDIT_CLIENT_ID</code> and <code>REDDIT_CLIENT_SECRET</code> (<code>scripts/set-reddit-config.sh</code>), then restart the site.</li>
-                  <li>Come back here and test the connection.</li>
-                </ol>
-              )}
-              <div className="mt-3"><ApiButton url="/api/admin/seo/promotion/reddit/test" label="Test connection" /></div>
-            </Card>
-          </Section>
-          <Section title="Promotion settings">
-            <Card><PromotionSettingsForm settings={settings} channels={CHANNEL_IDS.map((id) => ({ id, label: CHANNELS[id].label }))} /></Card>
-          </Section>
-        </>
-      )}
     </>
   );
 }

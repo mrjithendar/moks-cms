@@ -91,7 +91,7 @@ class JobConfig(BaseModel):
     # from: the content sources (ingest → dedupe → rank, drafted by the News Desk crew) and/or the content ideas
     # (Promotion's ideas with an audience; the web app puts the best matching ones on the editorial calendar and the
     # Editorial crew writes them). `quality`: this job's own quality-gate values, by field; a field left out uses the
-    # shared value (AI & SEO → Settings → AI & drafts → Quality gates). Rows saved before keep news from sources.
+    # shared value (Settings → AI & models → AI & drafts → Quality gates). Rows saved before keep news from sources.
     output: Literal["news", "article"] = "news"
     intake: list[Intake] = Field(default_factory=lambda: list[Intake](["sources"]), min_length=1, max_length=2)
     quality: dict[str, float] = Field(default_factory=dict)

@@ -1,31 +1,14 @@
 import { redirect } from "next/navigation";
-import { SettingsSections } from "@/components/admin/SettingsSections";
-import { AdminHeader } from "@/components/admin/ui";
-import { AI_SEO_SECTIONS, AI_SEO_SETTINGS_PATH, aliasTarget } from "./sections";
+import { movedTo } from "@/lib/settings-areas";
 
-export const metadata = { title: "AI & SEO settings" };
+export const dynamic = "force-dynamic";
 
 /**
- * Admin → AI & SEO → Settings (called "Automation & AI" until 2026-11-21; the address is unchanged). One section at
- * a time, chosen with ?section=<id> (sections/index.ts), listed under four headings; a section loads its own data and
- * saves on its own. An id from before two sections were merged (llm-providers, llm-budget, mcp-access) is sent on to
- * the section that has it now.
+ * AI & SEO → Settings until 2026-11-26 ("Automation & AI" until 2026-11-21). Its sections are in the Settings area now,
+ * under AI & models, SEO agent, Assistants and Search & SEO; old section ids (and the ids merged on 2026-11-23) open
+ * the section that has them, with the rest of the query kept (&scope=day) (lib/settings-areas.ts OLD_ADDRESSES).
+ * Kept so bookmarks, old links and e-mails still open the right form.
  */
-export default async function AiSeoSettingsPage({ searchParams }: { searchParams?: Promise<Record<string, string | undefined>> } = {}) {
-  const query = (await searchParams) ?? {};
-  const moved = aliasTarget(query);
-  if (moved) redirect(moved);
-  const current = AI_SEO_SECTIONS.find((s) => s.id === query.section) ?? AI_SEO_SECTIONS[0]!;
-  const panel = await current.render(query);
-  return (
-    <>
-      <AdminHeader
-        title="AI & SEO settings"
-        description="The SEO agent (its connections, limits and run history), the models it calls (LLM providers and the one budget, AI and drafts, ML and retrieval), the assistants that reach the site (Ask the Blog, MCP), then the SEO settings by area. Each section saves on its own; saved changes are audit-logged."
-      />
-      <SettingsSections sections={AI_SEO_SECTIONS.map(({ id, label, group }) => ({ id, label, group }))} current={current.id} basePath={AI_SEO_SETTINGS_PATH} label="AI & SEO settings sections">
-        {panel}
-      </SettingsSections>
-    </>
-  );
+export default async function OldAiSeoSettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  redirect(movedTo("/admin/automation", await searchParams));
 }

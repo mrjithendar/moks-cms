@@ -4,8 +4,8 @@ import { schema } from "@/db";
 import type { Actor } from "@/lib/posts";
 import { freshDb } from "./db-helpers";
 
-// Runtime settings have no page of their own: each group is drawn on the page it configures (Integrations, Bookings,
-// Payments, Storage, Users) by components/admin/RuntimeSettings.tsx, and saving returns to that page and group.
+// Runtime settings: each group is a section of the Settings area with the same id (lib/settings-areas.ts), drawn by
+// components/admin/RuntimeSettings.tsx, and saving returns to that section.
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ getAll: () => [] }) }));
@@ -32,13 +32,13 @@ async function render(ids: string[], layout?: "card" | "section") {
   return renderToStaticMarkup(await RuntimeSettings({ ids, layout }));
 }
 
-describe("runtime settings on their own pages", () => {
-  it("every group belongs to a real admin page", async () => {
+describe("runtime settings in the Settings area", () => {
+  it("every group is a section of Settings", async () => {
     const { GROUPS, settingHref } = await import("@/lib/runtime-settings");
-    const pages = new Set(GROUPS.map((g) => g.page));
-    expect([...pages].sort()).toEqual(["/admin/bookings", "/admin/cache", "/admin/integrations", "/admin/payments", "/admin/storage", "/admin/users"]);
-    expect(settingHref("razorpay")).toBe("/admin/payments#razorpay");
-    expect(settingHref("calcom")).toBe("/admin/bookings#calcom");
+    const { settingsSection } = await import("@/lib/settings-areas");
+    for (const g of GROUPS) expect(settingsSection(g.id), g.id).toBeDefined();
+    expect(settingHref("razorpay")).toBe("/admin/settings/payments?section=razorpay");
+    expect(settingHref("calcom")).toBe("/admin/settings/payments?section=calcom");
     expect(() => settingHref("nope")).toThrow();
   });
 
@@ -53,7 +53,7 @@ describe("runtime settings on their own pages", () => {
     expect(html).toContain("rzp_test_abcdefghij12");
     expect(html).toContain("Stored here (encrypted)");
     expect(html).not.toContain("supersecretvalue123");
-    expect(html).toContain(">configured<");
+    expect(html).toContain(">Configured<"); // StatusPill: sentence case
 
     const section = await render(["verification", "analytics"], "section");
     expect(section).toContain('id="verification"');
@@ -62,19 +62,19 @@ describe("runtime settings on their own pages", () => {
     await expect(render(["no-such-group"])).rejects.toThrow(/Unknown settings group/);
   });
 
-  it("saving returns to the group on its page, with the message before the anchor", async () => {
+  it("saving returns to the group's section of Settings, with the message (it returned to #group before, which the sectioned pages ignored)", async () => {
     const { saveRuntimeSettings } = await import("@/app/admin/_actions/runtime-settings");
     const form = new FormData();
     form.set("group", "calcom");
     form.set("CAL_WEBHOOK_SECRET", "0123456789abcdef0123");
     await expect(saveRuntimeSettings(form)).rejects.toThrow("NEXT_REDIRECT");
-    expect(redirects.at(-1)).toMatch(/^\/admin\/bookings\?ok=Cal\.com%20bookings%20saved[^#]*#calcom$/);
+    expect(redirects.at(-1)).toMatch(/^\/admin\/settings\/payments\?section=calcom&ok=Cal\.com%20bookings%20saved[^#]*$/);
     expect((await (await import("@/lib/runtime-settings")).effectiveEnv()).CAL_WEBHOOK_SECRET).toBe("0123456789abcdef0123");
 
     const bad = new FormData();
     bad.set("group", "members");
     bad.set("MEMBERS_PREVIEW_PERCENT", "500");
     await expect(saveRuntimeSettings(bad)).rejects.toThrow("NEXT_REDIRECT");
-    expect(redirects.at(-1)).toMatch(/^\/admin\/users\?error=[^#]+#members$/);
+    expect(redirects.at(-1)).toMatch(/^\/admin\/settings\/access\?section=members&error=[^#]+$/);
   });
 });

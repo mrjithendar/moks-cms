@@ -18,7 +18,7 @@ a separate thing and unchanged: see [MEDIA.md](MEDIA.md).
 | Serve | `GET /images/<path>` (`src/app/images/[...path]/route.ts`) |
 | Size and URL for pages | `resolveImage()` in `src/lib/media.ts` |
 
-- **Object keys:** `jithendar/www/site-images/<path below /images/>`, in the media bucket (Admin → Storage).
+- **Object keys:** `jithendar/www/site-images/<path below /images/>`, in the media bucket (Admin → Settings → Media & storage).
 - **URLs do not change.** A file that is still on disk in `public/images/` is served from disk and wins, exactly as
   before: Next serves `public/` before any route, and `resolveImage()` looks on disk first. Only a path that is not on
   disk is answered from R2. So pushing images changes nothing for readers until the files leave the pod.
@@ -103,7 +103,7 @@ in doubt. It cannot read, publish or change posts. There is no delete through th
 ## Moving an existing site to R2
 
 1. Deploy this version (migration `0033_site_image.sql` runs at start). Nothing changes yet.
-2. Configure R2 if it is not (Admin → Storage) and create an `images:write` key.
+2. Configure R2 if it is not (Admin → Settings → Media & storage) and create an `images:write` key.
 3. Push every file under `public/images/`. Pages are unchanged, because the files on disk still win.
 4. Check a few: `/images/<path>.webp` for a pushed PNG answers `200 image/webp`; `GET /api/v1/images` lists them all.
 5. Stop copying `public/images/` into the pod. From then on `/images/…` is answered from R2.

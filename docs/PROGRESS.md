@@ -1,5 +1,30 @@
 # Progress log — jithendar.com
 
+## One Settings area and admin layout fixes (2026-11-26, owner brief, D-106)
+
+- **Settings** (`/admin/settings`): every setting in one place, 13 categories, 42 sections, a search over section names
+  and the field labels of the guide's settings reference. `/admin/settings/<category>?section=<id>`: categories beside
+  the form from `xl` (sticky, scrolls on its own only when taller than the window), a Category select and wrapping
+  section buttons below `xl`; breadcrumbs; unsaved-changes guard shared with Appearance (`UnsavedChangesBoundary`).
+  Registry `src/lib/settings-areas.ts`; sections `src/app/admin/settings/sections/`; nav `components/admin/SettingsHub.tsx`,
+  overview `components/admin/SettingsDirectory.tsx`, `SettingsParts.tsx` (section heading, see-also, "settings are in…").
+- **Moved, not changed**: Integrations, Media & storage, Email, AI & SEO → Settings, and the settings cards of Users,
+  Cache, Payments, Bookings, Invoices, Practice, Promotion, Backups, Configuration, Content sources (D-106 lists them).
+  Old addresses redirect (`movedTo`). Menu: Settings = All settings + categories (agent-only ones while it is set up);
+  AI & SEO → Settings and MCP entries removed; "Appearance & settings" is "Appearance" (menu, admin bar, page title).
+- **Layout, every admin page**: `overflow-wrap: anywhere` in the admin (tables keep `break-word` and scroll in their
+  frame), `fieldset { min-width: 0 }`, buttons wrap their label instead of overflowing from `sm` up, status pills in
+  sentence case, the ML overrides row and select can shrink. Measured with a Playwright sweep of every admin route at
+  1440/1280/1024/768/390/320 px: before, 5 views scrolled sideways (dashboard checklist, Media storage and Cache at
+  320, Practice at 320, Database at 768); after, none (see the PR).
+- Links to settings across the admin, site health, dashboard, reports, the agent's budget messages and the MCP
+  documentation URL point at the new sections. User guide: new Settings entry, entries and FAQs updated, settings
+  reference areas are "Settings → <category>".
+- Tests: `settings-area` (new, 15: registry, every section drawn through the page, gating, one home per form, every
+  settings link valid, redirects), `settings-sections` (hub), `settings-layout`, `seo-settings-ui`, `admin-nav`,
+  `user-guide`, `runtime-settings-pages`, `health-checks`, `crewai-catalog-ui`, `seo-old-urls`, `seo-intel-ui`,
+  `llm-budget` updated. Results in the PR.
+
 ## Hybrid RAG: published posts synced to moks-rag's cms_content (2026-11-26, owner brief, D-104)
 
 - **Client** `src/lib/rag/client.ts`: `POST /ingest`, `DELETE /documents/{doc_id}?collection=`, `POST /query`

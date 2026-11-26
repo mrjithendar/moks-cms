@@ -24,7 +24,7 @@ export default async function ReportsLibrary({ searchParams }: { searchParams: P
   const { items, total } = await listReports({ ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)), limit: PAGE, offset: (page - 1) * PAGE });
   const keep = (over: Record<string, string>) => `?${new URLSearchParams(Object.entries({ ...f, ...over }).filter(([, v]) => v) as [string, string][]).toString()}`;
   const filtered = Object.values(f).some(Boolean);
-  const select = "min-h-9 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg";
+  const select = "min-h-9 max-w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-fg";
   return (
     <>
       <AdminHeader
@@ -35,11 +35,11 @@ export default async function ReportsLibrary({ searchParams }: { searchParams: P
       <Card className="mb-6 !p-4">
         <form method="get" className="flex flex-wrap items-end gap-3" aria-label="Filter reports">
           <label className="grid min-w-48 flex-1 gap-1 text-xs font-medium text-fg-muted">Search<input type="search" name="q" defaultValue={f.q} placeholder="Title" className={select} /></label>
-          <label className="grid gap-1 text-xs font-medium text-fg-muted">Category<select name="category" defaultValue={f.category} className={select}><option value="">Any category</option>{CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
-          <label className="grid gap-1 text-xs font-medium text-fg-muted">Status<select name="status" defaultValue={f.status} className={select}><option value="">Any status</option>{REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
-          <label className="grid gap-1 text-xs font-medium text-fg-muted">Type<select name="type" defaultValue={f.type} className={select}><option value="">Any type</option>{Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}<option value="briefing">Weekly / monthly briefing</option></select></label>
-          <label className="grid gap-1 text-xs font-medium text-fg-muted">Made from<input type="date" name="from" defaultValue={f.from} className={select} /></label>
-          <label className="grid gap-1 text-xs font-medium text-fg-muted">Made until<input type="date" name="to" defaultValue={f.to} className={select} /></label>
+          <label className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-xs font-medium text-fg-muted">Category<select name="category" defaultValue={f.category} className={select}><option value="">Any category</option>{CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
+          <label className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-xs font-medium text-fg-muted">Status<select name="status" defaultValue={f.status} className={select}><option value="">Any status</option>{REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
+          <label className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-xs font-medium text-fg-muted">Type<select name="type" defaultValue={f.type} className={select}><option value="">Any type</option>{Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}<option value="briefing">Weekly / monthly briefing</option></select></label>
+          <label className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-xs font-medium text-fg-muted">Made from<input type="date" name="from" defaultValue={f.from} className={select} /></label>
+          <label className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-xs font-medium text-fg-muted">Made until<input type="date" name="to" defaultValue={f.to} className={select} /></label>
           <button type="submit" className={buttonClass("primary", "sm")}>Apply</button>
           {filtered && <Link className={buttonClass("ghost", "sm")} href="/admin/crewai/reports">Clear</Link>}
         </form>

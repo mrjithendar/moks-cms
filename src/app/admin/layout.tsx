@@ -11,6 +11,7 @@ import { reviewCount } from "@/lib/admin-bar-server";
 import { NAV_PREFS_COOKIE, readNavPrefs, type NavItem } from "@/lib/admin-menu";
 import { moderationCounts } from "@/lib/comments";
 import { menuForModules, moduleStates } from "@/lib/modules";
+import { settingsMenuItems } from "@/lib/settings-areas";
 import { requireRole } from "@/lib/session";
 import { SignOutButton } from "../account/SignOutButton";
 // The admin stylesheet (search, analytics and calendar components are part of the CMS, so it loads on every admin page).
@@ -90,13 +91,11 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     // Site settings and operations (admins only).
     ...(isAdmin
       ? [
-          { href: "/admin/appearance", label: "Appearance & settings", section: "Site settings" },
-          // Sections of Appearance & settings that people look for by name.
+          { href: "/admin/appearance", label: "Appearance", section: "Site settings" },
+          // Sections of Appearance that people look for by name.
           { href: "/admin/appearance?section=navigation", label: "Menus", section: "Site settings" },
           { href: "/admin/appearance?section=homepage", label: "Homepage", section: "Site settings" },
           { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
-          { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
-          { href: "/admin/integrations", label: "Integrations", section: "Site settings" },
           { href: "/admin/crewai", label: "CrewAI console", section: "Site settings" },
           { href: "/admin/crewai/flows", label: "Flows", section: "Site settings" },
           { href: "/admin/crewai/runs", label: "Flow runs", section: "Site settings" },
@@ -104,11 +103,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/crewai/reports", label: "CrewAI reports", section: "Site settings" },
           { href: "/admin/crewai/categories", label: "Crew and flow categories", section: "Site settings" },
           { href: "/admin/crewai/config", label: "CrewAI import / export", section: "Site settings" },
-          { href: "/admin/automation", label: "AI & SEO settings", section: "Site settings" },
-          { href: "/admin/automation?section=mcp", label: "MCP", section: "Site settings" },
           { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
-          { href: "/admin/storage", label: "Storage", section: "Site settings" },
-          { href: "/admin/email", label: "Email", section: "Site settings" },
           { href: "/admin/users", label: "Users", section: "Site settings" },
           { href: "/admin/system", label: "System status", section: "Operations" },
           { href: "/admin/cache", label: "Cache", section: "Operations" },
@@ -118,6 +113,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           { href: "/admin/database", label: "Database", section: "Operations" },
           { href: "/admin/article-index", label: "Article index", section: "Operations" },
           { href: "/admin/audit", label: "Audit log", section: "Operations" },
+          // Every setting, in one place (lib/settings-areas.ts): the overview and its categories. The SEO agent's
+          // categories only while the agent is set up, as its menu.
+          ...settingsMenuItems({ seoAgent: modules.some((m) => m.id === "seo-agent" && m.installed) }),
         ]
       : []),
     { href: "/admin/profile", label: "Author profile", section: "Account" },

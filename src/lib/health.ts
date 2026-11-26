@@ -110,7 +110,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
     }),
     timed("Redis (optional)", { group: "Core", env: "REDIS_URL" }, () => redisCheck()),
     timed("Cache bus (Valkey pub/sub)", { group: "Core", env: "CACHE_BUS_REDIS_URL or REDIS_URL" }, async () => cacheBusCheck()),
-    timed("Media storage", { group: "Core", href: "/admin/storage" }, checkStorage),
+    timed("Media storage", { group: "Core", href: "/admin/settings/storage?section=media-storage" }, checkStorage),
     timed("Scheduled publishing & IndexNow", { group: "Publishing", href: "/admin/posts?status=scheduled" }, async () => {
       const db = await getDb();
       const [r] = rowsOf<{ scheduled: number; overdue: number }>(
@@ -124,7 +124,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
         detail: `${r?.scheduled ?? 0} scheduled${overdue ? `, ${overdue} overdue (worker not running?)` : ""} · IndexNow ${(await indexNowKey()) ? "on" : "off"}: last 7 days ${jobs.done ?? 0} sent, ${jobs.queued ?? 0} queued, ${jobs.failed ?? 0} failed`,
       };
     }),
-    timed("Image generation (Gemini)", { group: "Integrations", href: "/admin/integrations" }, async () => {
+    timed("Image generation (Gemini)", { group: "Integrations", href: "/admin/settings/ai?section=gemini" }, async () => {
       const c = await resolveGeminiImageConfig();
       if (!c) return { status: "not configured", detail: "add a Gemini API key in Admin → Integrations to enable “Generate image”" };
       const usage = await generationUsage();
@@ -133,7 +133,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
       // No live call: every request to the model costs money. Failures in the last day show here instead.
       return { status: total > 2 && failed / total > 0.5 ? "degraded" : "ok", detail: `${c.model} · ${c.imageSize} · last 24 h: ${total} request(s), ${usage.accepted ?? 0} accepted, ${failed} failed/cancelled` };
     }),
-    timed("Email", { group: "Integrations", href: "/admin/email" }, async () => {
+    timed("Email", { group: "Integrations", href: "/admin/settings/email?section=email" }, async () => {
       // Status from saved settings only: a live check would send an email.
       const e = await emailSummary();
       if (e.envFallback) return { status: "ok", detail: "SMTP from the deployment (SMTP_URL)" };
@@ -143,7 +143,7 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
       if (p.lastError) return { status: "degraded", detail: `${label} · ${String(p.fields.fromEmail)} · last test failed` };
       return { status: "ok", detail: `${label} · ${String(p.fields.fromEmail)} · ${p.testedAt ? "test email succeeded" : "not tested yet"}` };
     }),
-    timed("Cloudflare Turnstile", { group: "Integrations", href: "/admin/integrations?section=turnstile" }, async () => {
+    timed("Cloudflare Turnstile", { group: "Integrations", href: "/admin/settings/access?section=turnstile" }, async () => {
       const t = await turnstileKeys();
       if (!t.siteKey || !t.secret) return { status: "down", detail: "keys missing (Admin → Integrations → Turnstile): sign-in, comments and contact are blocked" };
       const r = await reachable("https://challenges.cloudflare.com/turnstile/v0/api.js");
@@ -244,7 +244,7 @@ export async function calendarProbe(): Promise<Probe> {
 /** The checks added on 2026-11-18 (owner request: "add all the required checks", each with its settings page). */
 function extraChecks(): Promise<Check>[] {
   return [
-    timed("SEO agent (CrewAI flows)", { group: "SEO & AI", href: "/admin/automation?section=overview" }, async () => {
+    timed("SEO agent (CrewAI flows)", { group: "SEO & AI", href: "/admin/settings/agent?section=seo-agent" }, async () => {
       const { agentStatus } = await import("./seo-agent/endpoint");
       const { agentToken } = await import("./seo-agent/config");
       const s = await agentStatus();
@@ -257,21 +257,21 @@ function extraChecks(): Promise<Check>[] {
       if (failing.length) return { status: "degraded", detail: `ready · latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} (${f.at} UTC: ${f.error})`).join("; ")}` };
       return { status: "ok", detail: "ready · no flow's latest run failed in the last 24 h" };
     }),
-    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/automation?section=llm#llm-providers" }, async () => {
+    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/settings/ai?section=llm#llm-providers" }, async () => {
       const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
       const c = claudeConfig(await getSeoSettings());
       if (!c.apiKey) return { status: "not configured", detail: "ANTHROPIC_API_KEY is not set: drafting, Improve and reviews use rules only" };
       return { status: "ok", detail: "key set" };
     }),
     ...(["gsc", "ga4"] as const).map((p) =>
-      timed(p === "gsc" ? "Search Console sync" : "Google Analytics 4 sync", { group: "SEO & AI", href: "/admin/integrations" }, async () => {
+      timed(p === "gsc" ? "Search Console sync" : "Google Analytics 4 sync", { group: "SEO & AI", href: "/admin/settings/seo?section=search-console" }, async () => {
         const { integrationsView } = await import("./seo-intel/queries");
         const st = (await integrationsView()).status[p];
         const status = st.state === "ok" ? "ok" : st.state === "disconnected" ? "not configured" : st.state === "stale" || st.state === "never_synced" ? "degraded" : "down";
         return { status, detail: st.message };
       }),
     ),
-    timed("LLM budget", { group: "SEO & AI", href: "/admin/automation?section=llm#llm-budget" }, async () => {
+    timed("LLM budget", { group: "SEO & AI", href: "/admin/settings/ai?section=llm#llm-budget" }, async () => {
       // The one budget lives in the seo-agent. No limit at all is reported as degraded: nothing then stops LLM spending.
       const { loadLlmBudget } = await import("./llm-budget-view");
       const { view, error, tooOld } = await loadLlmBudget("month");
@@ -306,7 +306,7 @@ function extraChecks(): Promise<Check>[] {
       const oldest = Number(r?.oldest ?? 0);
       return { status: oldest > 60 || Number(r?.failed ?? 0) > 0 ? "degraded" : "ok", detail: `${r?.queued ?? 0} queued${oldest ? ` (oldest ${oldest} min)` : ""} · ${r?.failed ?? 0} failed in 24 h` };
     }),
-    timed("Social sign-in", { group: "Integrations", href: "/admin/integrations" }, async () => {
+    timed("Social sign-in", { group: "Integrations", href: "/admin/settings/access?section=social" }, async () => {
       const { activeProviders } = await import("./integrations");
       const p = await activeProviders();
       return p.length ? { status: "ok", detail: p.map((x) => (x === "github" ? "GitHub" : "Google")).join(", ") } : { status: "not configured", detail: "email and password only" };

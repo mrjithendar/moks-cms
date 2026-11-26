@@ -7,7 +7,7 @@
 | Provider | Default | Cost | Status |
 |---|---|---|---|
 | `template` | **yes** | free | Generated with Pillow: category colour gradient, an abstract node-graph illustration seeded by the article, the category label, the headline and "jithendar.com · News". Always available; the fallback for everything else. **Verified locally.** |
-| `gemini` | no | per image (set `image_prices.gemini`; default estimate $0.04) | Through the web app's existing Gemini image integration (Admin → Integrations, `GEMINI_API_KEY` + `GEMINI_IMAGE_MODEL`). The agent never holds that key. **Mock-tested only** (needs the key). |
+| `gemini` | no | per image (set `image_prices.gemini`; default estimate $0.04) | Through the web app's existing Gemini image integration (Admin → Settings → AI & models → Image generation, `GEMINI_API_KEY` + `GEMINI_IMAGE_MODEL`). The agent never holds that key. **Mock-tested only** (needs the key). |
 | `openai` | no | per image (`image_prices.openai`; default estimate $0.04) | OpenAI Images API `POST /v1/images/generations`, b64 output, 1536×1024, model `NEWS_OPENAI_IMAGE_MODEL` (default `gpt-image-1`; `gpt-image-2` exists but its sizes were not confirmed, N-15). Needs `OPENAI_API_KEY` in Secret `seo-agent-env`. **Mock-tested only.** |
 | Local Stable Diffusion | not offered | — | On CPU-only Minikube one 1024² image takes minutes and several GiB of RAM; it would starve the cluster for a cover. |
 

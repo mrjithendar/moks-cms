@@ -136,7 +136,7 @@ export function CustomCrewEditor({ initial, isNew, categories = [] }: { initial:
         </div>
         {s.inputs.length === 0 && <p className="text-sm text-fg-muted">No inputs: the crew works from its instructions alone.</p>}
         {s.inputs.map((inp, i) => (
-          <div key={i} className="grid gap-3 rounded-lg border border-line p-3 sm:grid-cols-[10rem_minmax(0,1fr)_10rem_auto_auto] sm:items-end">
+          <div key={i} className="grid gap-3 rounded-lg border border-line p-3 xl:grid-cols-[10rem_minmax(0,1fr)_10rem_auto_auto] xl:items-end">
             <Field label="Name"><Input value={inp.name} onChange={(e) => setInput(i, { name: e.target.value.trim() })} /></Field>
             <Field label="Description"><Input value={inp.description ?? ""} maxLength={500} onChange={(e) => setInput(i, { description: e.target.value })} /></Field>
             <Field label="Default (optional)"><Input value={inp.default ?? ""} onChange={(e) => setInput(i, { default: e.target.value })} /></Field>
@@ -149,7 +149,7 @@ export function CustomCrewEditor({ initial, isNew, categories = [] }: { initial:
       <section aria-labelledby="crew-llm" className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <h2 id="crew-llm" className="text-base font-semibold text-fg">Model</h2>
-          <p className="text-sm text-fg-muted">The crew&apos;s default model; an agent can name its own below. Empty: the SEO agent&apos;s default model (AI &amp; SEO → Settings → LLM providers).</p>
+          <p className="text-sm text-fg-muted">The crew&apos;s default model; an agent can name its own below. Empty: the SEO agent&apos;s default model (Settings → AI &amp; models → LLM providers &amp; budget).</p>
         </div>
         <Field label="Default model (optional)"><Input value={s.model ?? ""} placeholder="claude-…" onChange={(e) => setS({ ...s, model: e.target.value.trim() || null })} /></Field>
       </section>

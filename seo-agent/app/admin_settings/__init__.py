@@ -1,4 +1,4 @@
-"""Settings an admin can change from the web app (Admin → AI & SEO → Settings) instead of the deployment's
+"""Settings an admin can change from the web app (Admin → Settings, the SEO agent's categories) instead of the deployment's
 environment. See store.py for precedence and the API, registry.py for the field model, groups/ for the fields."""
 
 from __future__ import annotations

@@ -110,7 +110,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Fla
           <p className="mt-4 text-sm text-fg-muted">
             Change these in{" "}
             <Link href="/admin/appearance?section=general" className="link">
-              Appearance &amp; settings → General → Features
+              Appearance → General → Features
             </Link>{" "}
             (applies when published).
           </p>

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { SETTINGS_CATEGORIES, settingsHref, settingsMenuItems } from "@/lib/settings-areas";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -27,6 +28,8 @@ function adminRoutes(): Set<string> {
     }
   };
   walk(path.join(ROOT, "src/app/admin"), "/admin");
+  // The Settings area's one dynamic page is a page per category (lib/settings-areas.ts).
+  if (out.delete("/admin/settings/[category]")) for (const c of SETTINGS_CATEGORIES) out.add(`/admin/settings/${c.id}`);
   return out;
 }
 
@@ -47,12 +50,13 @@ describe("user guide content", () => {
   it("covers every page in the admin menu", async () => {
     const { GUIDE } = await import("@/lib/user-guide");
     const { settingsReference } = await import("@/lib/user-guide-settings");
-    const nav = [...read("src/app/admin/layout.tsx").matchAll(/href: "(\/admin[^"]*)"/g)].map((m) => pathOf(m[1]!));
+    const settings = settingsMenuItems({ seoAgent: true });
+    const nav = [...[...read("src/app/admin/layout.tsx").matchAll(/href: "(\/admin[^"]*)"/g)].map((m) => pathOf(m[1]!)), ...settings.map((i) => i.href)];
     expect(nav.length).toBeGreaterThan(20);
     const covered = new Set([...GUIDE.map((e) => e.href), ...settingsReference().map((g) => g.href)].filter(Boolean).map((h) => pathOf(h!)));
     // A page is covered by an entry for it, or mentioned by name in one (several pages share an article).
     const text = norm(GUIDE.map((e) => `${e.title} ${e.body.join(" ")}`).join(" "));
-    const labels = new Map([...read("src/app/admin/layout.tsx").matchAll(/href: "(\/admin[^"]*)", label: "([^"]+)"/g)].map((m) => [pathOf(m[1]!), m[2]!]));
+    const labels = new Map([...[...read("src/app/admin/layout.tsx").matchAll(/href: "(\/admin[^"]*)", label: "([^"]+)"/g)].map((m) => [pathOf(m[1]!), m[2]!] as const), ...settings.map((i) => [i.href, i.label] as const)]);
     const missing = nav.filter((h) => !covered.has(h) && !text.includes(norm(labels.get(h) ?? "\u0000")));
     expect(missing, `Admin pages without a guide entry (add one to src/lib/user-guide.ts): ${missing.join(", ")}`).toEqual([]);
   });
@@ -147,10 +151,13 @@ describe("settings reference", () => {
     expect(missing).toEqual([]);
   });
 
-  it("mentions every field label of the Appearance, Integrations, Storage and Email forms", async () => {
+  it("mentions every field label of the Appearance forms and the Settings sections that were Integrations, Storage and Email", async () => {
     const { settingsReference } = await import("@/lib/user-guide-settings");
     const text = norm(settingsReference().map((g) => `${g.title} ${g.description ?? ""} ${g.rows.map((r) => `${r.name} ${r.help ?? ""}`).join(" ")}`).join(" "));
-    const files = ["src/app/admin/appearance/panels.tsx", "src/app/admin/integrations/page.tsx", "src/app/admin/storage/page.tsx", "src/app/admin/storage/StorageForm.tsx", "src/app/admin/email/EmailSettings.tsx"];
+    const files = [
+      "src/app/admin/appearance/panels.tsx",
+      ...["social", "indexnow", "gemini", "rag", "storage", "StorageForm", "EmailSettings"].map((f) => `src/app/admin/settings/sections/${f}.tsx`),
+    ];
     const missing: string[] = [];
     for (const f of files) {
       for (const m of read(f).matchAll(/\blabel="([^"]{3,})"/g)) {
@@ -168,17 +175,17 @@ describe("settings reference", () => {
     expect(runtime.every((r) => r.default === "off" || r.default === "from the environment")).toBe(true);
   });
 
-  it("puts every runtime setting under the page that shows it, with no Advanced settings page left", async () => {
-    const { settingsReference, RUNTIME_SETTINGS_AREA } = await import("@/lib/user-guide-settings");
+  it("puts every runtime setting under its section of Settings, with no Advanced settings page left", async () => {
+    const { areaOf, settingsReference } = await import("@/lib/user-guide-settings");
     const { GROUPS } = await import("@/lib/runtime-settings");
     const { GUIDE } = await import("@/lib/user-guide");
+    const { SECTION_RENDERS } = await import("@/app/admin/settings/sections");
     for (const g of GROUPS) {
-      expect(RUNTIME_SETTINGS_AREA[g.page], `${g.id}: ${g.page} needs a guide area`).toBeTruthy();
-      const page = read(`src/app${g.page}/page.tsx`);
-      expect(page, `${g.page} must render the ${g.id} group`).toMatch(new RegExp(`<RuntimeSettings ids=\\{\\[[^\\]]*"${g.id}"`));
+      expect(SECTION_RENDERS[g.id], `${g.id} needs a section of Settings`).toBeDefined();
+      expect(areaOf(g.id), g.id).toMatch(/^Settings → /);
     }
     const ref = settingsReference().filter((g) => g.id.startsWith("runtime-"));
-    expect(ref.map((g) => g.href)).toEqual(GROUPS.map((g) => `${g.page}#${g.id}`));
+    expect(ref.map((g) => g.href)).toEqual(GROUPS.map((g) => settingsHref(g.id)));
     expect(GUIDE.some((e) => e.href === "/admin/advanced")).toBe(false);
     expect(read("src/app/admin/layout.tsx")).not.toContain("/admin/advanced");
     expect(read("src/components/guide/GuideBrowser.tsx")).not.toContain("Advanced settings");

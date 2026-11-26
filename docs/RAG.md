@@ -14,7 +14,7 @@ meaning. Decision: D-104 in `docs/seo/DECISIONS.md`. Code: `src/lib/rag/client.t
 | `RAG_COLLECTION` | `cms_content` | One of rag-api's collections. |
 | `RAG_SERVICE_NAME` | `moks-cms` | Sent as `X-Service-Name`; rag-api logs every call under it. |
 
-All four are runtime settings too (Admin → Integrations → Hybrid RAG): a value saved there wins, an empty field uses
+All four are runtime settings too (Admin → Settings → Integrations → Hybrid RAG): a value saved there wins, an empty field uses
 the deployment's. The token is sealed with `SETTINGS_ENCRYPTION_KEY` and never shown again. Every request carries
 `Authorization: Bearer <token>` and `X-Service-Name`.
 
@@ -61,12 +61,12 @@ synced; after importing them, use Reindex.
 - A refusal (401 wrong token, 422 bad payload) fails the job at once: retrying will not help.
 - One pending job per address: a second save while one is waiting adds nothing; a save while one is running queues
   one more run after it. A job that finds the post changed while it was sending it sends it once more.
-- Admin → Integrations → Hybrid RAG shows the last 7 days (synced, waiting, failed) and the last failure. Logs:
+- Admin → Settings → Integrations → Hybrid RAG shows the last 7 days (synced, waiting, failed) and the last failure. Logs:
   `event` `rag_sync` / `rag_sync_queue_failed`, `job will retry`, `job failed` with `operation=rag_sync`.
 
 ## Backfill
 
-Admin → Integrations → Hybrid RAG → **Reindex all posts** queues one job for every post in the database: published
+Admin → Settings → Integrations → Hybrid RAG → **Reindex all posts** queues one job for every post in the database: published
 posts are indexed, every other post is removed (this also clears drafts and unpublished posts left in the collection
 while the sync was off). rag-api has no way to list documents, so a post deleted while the sync was off, or the old
 address of a post renamed then, stays in the collection; remove it with `DELETE /documents/{doc_id}`.
@@ -76,6 +76,6 @@ address of a post renamed then, stays in the collection; remove it with `DELETE 
 `searchPublished(query, { limit, filters })` in `lib/rag/sync.ts` calls `POST /query` with `include_answer: false` (no
 LLM, no cost) and the filter `status: "published"` (any other filters are added; `status` cannot be overridden). It
 returns the best chunk of each post, best first, and throws `RagError` when the sync is off or rag-api fails, so a
-caller can fall back to the keyword search. Admin → Integrations → Hybrid RAG → Test search uses it. The public
+caller can fall back to the keyword search. Admin → Settings → Integrations → Hybrid RAG → Test search uses it. The public
 `/search` page still uses its keyword index (`/search-index.json`); putting semantic search there needs a public
 route with rate limits (like `/api/ask`) and is not part of this change.

@@ -6,8 +6,11 @@
  * layout lists but this file does not know is not lost: it lands in a group named after its old category, after the
  * known groups, so adding a page never needs a change here to be reachable.
  *
- * Pure and dependency-free: the layout (server), the menu (browser) and the tests all import it.
+ * Pure and dependency-free: the layout (server), the menu (browser) and the tests all import it. The Settings group is
+ * lib/settings-areas.ts's categories (also pure).
  */
+
+import { SETTINGS_CATEGORIES, SETTINGS_PATH, settingsCategoryHref } from "./settings-areas";
 
 export type NavItem = { href: string; label: string; badge?: number; section: string; exact?: boolean };
 
@@ -43,7 +46,8 @@ type GroupDef = {
  * Top-level groups, in menu order: WordPress's own (owner, 2026-11-21: "reorganize all the menus in wordpress style").
  * Dashboard; the content menus (Posts, Media, Pages, Comments); then, like plugin menus (WooCommerce, Yoast), AI & SEO,
  * Billing and Practice; then Appearance, Users, Tools and Settings. Every group opens a submenu, even one with a
- * single page.
+ * single page. Settings is the one home of every setting (owner, 2026-11-26): its submenu is the overview and the
+ * categories of lib/settings-areas.ts; no other group lists a settings page.
  */
 export const MENU_GROUPS: GroupDef[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
@@ -89,8 +93,8 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/bookings", { group: "comments" }],
 
   // The flows (content flows, custom and built-in) and the crews they run, their runs, what they write from, the models
-  // and data, what the site measures (traffic, content, authority) and the settings. No jobs since 2026-11-23: a crew job
-  // is a content flow, under Flows.
+  // and data, and what the site measures (traffic, content, authority). No jobs since 2026-11-23: a crew job is a content
+  // flow, under Flows. Its settings are in Settings (AI & models, SEO agent, Assistants, Search & SEO) since 2026-11-26.
   ["/admin/crewai", { group: "ai", title: "CrewAI console", heading: "Flows & crews" }],
   ["/admin/crewai/flows", { group: "ai", title: "Flows" }],
   ["/admin/crewai/runs", { group: "ai", title: "Runs" }],
@@ -116,8 +120,6 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/technical", { group: "ai" }],
   ["/admin/models", { group: "ai", heading: "Models & data" }],
   ["/admin/article-index", { group: "ai" }],
-  ["/admin/automation", { group: "ai", title: "Settings", heading: "Settings" }],
-  ["/admin/automation?section=mcp", { group: "ai", title: "MCP" }],
 
   ["/admin/invoices", { group: "billing" }],
   ["/admin/payments", { group: "billing" }],
@@ -141,10 +143,9 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/database", { group: "tools" }],
   ["/admin/audit", { group: "tools" }],
 
-  ["/admin/appearance?section=general", { group: "settings", title: "General" }],
-  ["/admin/integrations", { group: "settings" }],
-  ["/admin/storage", { group: "settings", title: "Media & storage" }],
-  ["/admin/email", { group: "settings" }],
+  // Settings: the overview, then every category (lib/settings-areas.ts), each opening its first section.
+  [SETTINGS_PATH, { group: "settings", title: "All settings" }],
+  ...SETTINGS_CATEGORIES.map((c): [string, Place] => [settingsCategoryHref(c.id), { group: "settings", title: c.label }]),
 ];
 
 /** The manual is help, not a place to work: it is drawn at the foot of the menu, outside the groups. */

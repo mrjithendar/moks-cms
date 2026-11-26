@@ -5,6 +5,7 @@ import { buttonClass } from "@/components/ui/form";
 import { formatDate, formatMoney, isOverdue } from "@/lib/invoice-math";
 import { INVOICE_FILTERS, invoiceContext, invoiceReadiness, invoiceSummary, listInvoices, type InvoiceFilter } from "@/lib/invoices";
 import { requireRole } from "@/lib/session";
+import { settingsHref } from "@/lib/settings-areas";
 import { HiddenFromDemo, Readiness } from "./parts";
 
 export const metadata = { title: "Invoices" };
@@ -27,7 +28,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Fla
         description="Send invoices to clients, take payment through a Razorpay link, and keep every invoice as a PDF in your storage."
         actions={
           <>
-            <Link href="/admin/invoices/settings" className={buttonClass("secondary")}>Settings</Link>
+            <Link href={settingsHref("invoices")} className={buttonClass("secondary")}>Settings</Link>
             <Link href="/admin/invoices/new" className={buttonClass("primary")}>New invoice</Link>
           </>
         }

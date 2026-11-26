@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { adminActor } from "@/lib/admin";
 import { EmailSettingsError, saveEmailSettings, sendTestEmail, type EmailSummary } from "@/lib/mail";
 import { PostError } from "@/lib/posts";
+import { settingsCategoryHref } from "@/lib/settings-areas";
 
 export type EmailFormState = { ok?: string; error?: string; fieldErrors?: Record<string, string>; summary?: EmailSummary };
 
@@ -24,7 +25,7 @@ export async function saveEmailAction(_prev: EmailFormState, form: FormData): Pr
     for (const k of FIELDS) if (form.has(k)) raw[k] = String(form.get(k) ?? "");
     const provider = String(form.get("provider") ?? "");
     const summary = await saveEmailSettings(actor, provider, raw);
-    revalidatePath("/admin/email");
+    revalidatePath(settingsCategoryHref("email"));
     return {
       summary,
       ok: provider === "disabled" ? "Email is turned off. Saved provider settings are kept." : "Saved. Send a test email to confirm the settings work.",
@@ -38,7 +39,7 @@ export async function testEmailAction(_prev: EmailFormState, form: FormData): Pr
   const actor = await adminActor();
   try {
     const r = await sendTestEmail(actor, String(form.get("provider") ?? ""), String(form.get("testTo") ?? ""));
-    revalidatePath("/admin/email");
+    revalidatePath(settingsCategoryHref("email"));
     return r.ok ? { ok: `Test email sent to ${String(form.get("testTo"))}. Check that it arrived (and not in spam).` } : { error: `The test email failed: ${r.error}` };
   } catch (error) {
     return failure(error);

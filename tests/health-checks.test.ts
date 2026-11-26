@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDbForTests, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
+import { settingsSection } from "@/lib/settings-areas";
 import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
@@ -41,8 +42,9 @@ describe("system status", () => {
     for (const c of checks) expect(c.where, c.name).toMatch(new RegExp(`group: "(${CHECK_GROUPS.join("|")})"`));
     const unconfigurable = checks.filter((c) => !/href:|env:/.test(c.where)).map((c) => c.name).sort();
     expect(unconfigurable).toEqual(["Breached-password check", "TLS certificate"]); // public services nothing configures
-    // The admin pages linked from System status exist.
-    for (const href of new Set(checks.flatMap((c) => [...c.where.matchAll(/href: "([^"?#]+)/g)].map((m) => m[1]!)))) {
+    // The admin pages linked from System status exist (a Settings link: its section, in its own category).
+    for (const m of checks.flatMap((c) => [...c.where.matchAll(/href: "\/admin\/settings\/([a-z]+)\?section=([a-z0-9-]+)/g)])) expect(settingsSection(m[2]!)?.category, m[0]).toBe(m[1]);
+    for (const href of new Set(checks.flatMap((c) => [...c.where.matchAll(/href: "([^"?#]+)/g)].map((m) => m[1]!)).filter((h) => !h.startsWith("/admin/settings/")))) {
       const dir = path.resolve(import.meta.dirname, "..", "src/app", href.replace(/^\/admin/, "admin"));
       const grown = path.resolve(import.meta.dirname, "..", "src/app/admin/(growth)", href.replace(/^\/admin\//, ""));
       expect(fs.existsSync(path.join(dir, "page.tsx")) || fs.existsSync(path.join(grown, "page.tsx")), href).toBe(true);

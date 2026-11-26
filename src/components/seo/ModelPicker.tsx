@@ -25,7 +25,7 @@ export function pickerGroups(models: AgentLlmModel[], current: string): { provid
 }
 
 /**
- * Pick one of the models that are switched on in AI & SEO → Settings → LLM providers & budget. Pass `models` when
+ * Pick one of the models that are switched on in Settings → AI & models → LLM providers & budget. Pass `models` when
  * the page already has them (server-rendered); otherwise the list is fetched once from /api/admin/seo/llm-models.
  * `allowEmpty` adds a first option with `emptyLabel` (e.g. "Default").
  */

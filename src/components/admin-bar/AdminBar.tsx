@@ -180,9 +180,9 @@ function Bar({ data, pathname, admin, pref, onPreference }: { data: AdminBarData
               {isAdmin && (
                 <>
                   <Sep />
-                  <Item href="/admin/appearance">Appearance &amp; settings</Item>
+                  <Item href="/admin/appearance">Appearance</Item>
                   <Item href="/admin/appearance?section=navigation">Menus</Item>
-                  <Item href="/admin/integrations">Integrations</Item>
+                  <Item href="/admin/settings">Settings</Item>
                   <Item href="/admin/system">System status</Item>
                 </>
               )}

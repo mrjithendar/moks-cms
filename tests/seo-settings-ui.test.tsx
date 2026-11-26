@@ -6,10 +6,15 @@ import { freshDb } from "./db-helpers";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ getAll: () => [] }) }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }), usePathname: () => "/admin/automation", useSearchParams: () => new URLSearchParams(), redirect: () => {}, notFound: () => {} }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }), usePathname: () => "/admin/settings/seo", useSearchParams: () => new URLSearchParams(), redirect: () => {}, notFound: () => {} }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }));
 const admin: SessionUser = { id: "admin", name: "Admin", email: "admin@example.com", role: "admin", emailVerified: true, image: null, sessionCreatedAt: new Date() };
 vi.mock("@/lib/session", () => ({ getSessionUser: async () => admin, requireRole: async () => admin, requireUser: async () => admin }));
+// The SEO agent's sections of Settings are listed only while the agent is set up (lib/modules.ts): here it is.
+vi.mock("@/lib/modules", async (orig) => ({
+  ...(await orig<typeof import("@/lib/modules")>()),
+  moduleState: async () => ({ id: "seo-agent", label: "SEO agent", installed: true, available: false, version: null, reason: "Not reachable in tests.", menuGroups: ["ai"], setupHref: "" }),
+}));
 
 const meta = await import("@/lib/seo-intel/settings-meta");
 const { DEFAULT_SEO_SETTINGS, publicSettings } = await import("@/lib/seo-intel/settings");
@@ -44,38 +49,36 @@ describe("settings metadata", () => {
   });
 });
 
-describe("settings page", () => {
-  type PageFn = (props?: { searchParams?: Promise<{ section?: string }> }) => Promise<React.ReactElement>;
-  const page = async (section?: string) => {
-    const Page = (await import("@/app/admin/(growth)/automation/page")).default as PageFn;
-    return renderToStaticMarkup(await Page(section ? { searchParams: Promise.resolve({ section }) } : undefined));
+describe("the SEO agent's sections of Settings (AI & SEO → Settings until 2026-11-26)", () => {
+  type PageFn = (props: { params: Promise<{ category: string }>; searchParams: Promise<Record<string, string>> }) => Promise<React.ReactElement>;
+  const page = async (category: string, section?: string) => {
+    const Page = (await import("@/app/admin/settings/[category]/page")).default as unknown as PageFn;
+    return renderToStaticMarkup(await Page({ params: Promise.resolve({ category }), searchParams: Promise.resolve<Record<string, string>>(section ? { section } : {}) }));
   };
 
-  it("opens on Overview with the list of sections; no secret values", async () => {
+  it("SEO agent opens on Connection: the agent's endpoint and the connections; every section of the category is listed; no secret values", async () => {
     vi.stubEnv("PAGESPEED_API_KEY", "pk-secret-value");
     vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-secret-value");
-    const html = await page();
-    expect(html).toContain("AI &amp; SEO settings");
+    const html = await page("agent");
+    expect(html).toContain("SEO agent");
     expect(html).toContain("Connections");
     expect(html).toContain("PageSpeed Insights / CrUX");
-    // Every section is in the list (links on a wide screen, a select on a narrow one), and Overview is the open one.
-    const { AI_SEO_SECTIONS } = await import("@/app/admin/(growth)/automation/sections");
-    for (const s of AI_SEO_SECTIONS) expect(html, s.id).toContain(`href="/admin/automation?section=${s.id}"`);
-    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*>Overview/);
+    for (const id of ["seo-agent", "agent-limits", "runs", "content-fetching", "crewai-repository"]) expect(html, id).toContain(`href="/admin/settings/agent?section=${id}"`);
+    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>Connection</);
     expect(html).not.toContain("All changes saved"); // no settings form: that is another section
     expect(html).not.toContain("pk-secret-value");
     expect(html).not.toContain("sk-ant-secret-value");
   });
 
   it("shows one area of the SEO settings as a section of its own, without the tab strip", async () => {
-    const html = await page("data");
+    const html = await page("seo", "data");
     expect(html).toContain("Google properties");
     expect(html).toContain("All changes saved");
     expect(html).not.toContain('role="tablist"');
     expect(html).not.toContain("Scoring weights"); // another area's card
     expect(html).not.toContain("Connections"); // another section
-    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*>Data sources/);
-    expect(await page("no-such-section")).toContain("Connections"); // an unknown section opens the first
+    expect(html).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>Data sources/);
+    expect(await page("seo", "no-such-section")).toContain("Search engine verification"); // an unknown section opens the first
   });
 
   it("the form on its own still has the tab strip and every area", async () => {
@@ -86,48 +89,42 @@ describe("settings page", () => {
     expect(html).toContain("Google properties"); // first tab open
   });
 
-  it("every section has its own file, a unique id, and the SEO areas are the settings tabs", async () => {
+  it("every section has its own file, the SEO areas are the settings tabs, and each is a section of Settings owned by the agent", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const { AI_SEO_SECTIONS } = await import("@/app/admin/(growth)/automation/sections");
-    const ids = AI_SEO_SECTIONS.map((s) => s.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ["overview", "llm", "agent-limits", "ask-the-blog", "ml", "mcp"]) expect(ids).toContain(id);
-    for (const old of ["llm-providers", "llm-budget", "mcp-access"]) expect(ids, old).not.toContain(old); // merged; paths.ts SECTION_ALIASES
+    const { AI_SEO_RENDERS } = await import("@/app/admin/(growth)/automation/sections");
+    const { settingsSection } = await import("@/lib/settings-areas");
+    const ids = Object.keys(AI_SEO_RENDERS);
+    for (const id of ["llm", "agent-limits", "ask-the-blog", "ml", "mcp"]) expect(ids).toContain(id);
+    for (const old of ["overview", "llm-providers", "llm-budget", "mcp-access"]) expect(ids, old).not.toContain(old); // merged; lib/settings-areas.ts OLD_ADDRESSES
     for (const t of meta.SETTINGS_TABS) expect(ids, t.id).toContain(t.id); // an old #tab-<id> link maps onto ?section=<id>
+    for (const id of ids) expect(settingsSection(id)?.module, id).toBe("seo-agent");
     const dir = path.resolve(import.meta.dirname, "../src/app/admin/(growth)/automation/sections");
     const files = fs.readdirSync(dir).filter((f) => f.endsWith(".tsx") && f !== "seo-area.tsx").map((f) => f.replace(/\.tsx$/, ""));
     expect(files.sort()).toEqual(ids.map((id) => (meta.SETTINGS_TABS.some((t) => t.id === id) ? `seo-${id}` : id)).sort());
   });
 
-  it("lists the sections under four headings, and an id from before a merge is sent on to the section that has it now", async () => {
-    const { AI_SEO_SECTIONS, aliasTarget } = await import("@/app/admin/(growth)/automation/sections");
-    const { groupSections } = await import("@/components/admin/SettingsSections");
-    // Each heading once: the sections under one heading are next to each other in the list.
-    expect(groupSections(AI_SEO_SECTIONS).map((g) => g.group)).toEqual(["SEO agent", "Models & AI", "Assistants", "SEO"]);
-    const html = await page();
-    for (const g of ["SEO agent", "Models &amp; AI", "Assistants", "SEO"]) {
-      expect(html).toContain(`<optgroup label="${g}">`); // the phone's select
-      expect(html).toContain(`<ul aria-label="${g}"`); // the list on a wide screen
-    }
-    expect(aliasTarget({ section: "llm-budget", scope: "day" })).toBe("/admin/automation?section=llm&scope=day#llm-budget");
-    expect(aliasTarget({ section: "llm-providers" })).toBe("/admin/automation?section=llm#llm-providers");
-    expect(aliasTarget({ section: "mcp-access" })).toBe("/admin/automation?section=mcp#mcp-clients-h");
-    expect(aliasTarget({ section: "llm" })).toBeNull();
-    expect(aliasTarget({})).toBeNull();
+  it("an old address, or an id from before a merge, is sent on to the section that has it now", async () => {
+    const { movedTo } = await import("@/lib/settings-areas");
+    expect(movedTo("/admin/automation", { section: "llm-budget", scope: "day" })).toBe("/admin/settings/ai?section=llm&scope=day#llm-budget");
+    expect(movedTo("/admin/automation", { section: "llm-providers" })).toBe("/admin/settings/ai?section=llm#llm-providers");
+    expect(movedTo("/admin/automation", { section: "mcp-access" })).toBe("/admin/settings/assistants?section=mcp#mcp-clients-h");
+    expect(movedTo("/admin/automation", { section: "overview" })).toBe("/admin/settings/agent?section=seo-agent");
+    expect(movedTo("/admin/automation", {})).toBe("/admin/settings/agent?section=seo-agent");
+    expect(movedTo("/admin/automation", { section: "data" })).toBe("/admin/settings/seo?section=data");
   });
 
   it("LLM providers & budget has the budget, the providers and this site's usage; MCP has the servers, the clients and their settings", async () => {
-    const llm = await page("llm");
-    expect(llm).toMatch(/<a[^>]*aria-current="page"[^>]*>LLM providers &amp; budget/);
+    const llm = await page("ai", "llm");
+    expect(llm).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>LLM providers &amp; budget/);
     // The ids the old addresses scroll to are there even while the SEO agent cannot be asked (as here).
     expect(llm).toContain('id="llm-budget"');
     expect(llm).toContain('id="llm-providers"');
     expect(llm).toContain("LLM usage this month");
     expect(llm.indexOf('id="llm-budget"')).toBeLessThan(llm.indexOf('id="llm-providers"'));
-    expect(llm).toContain('href="/admin/automation?section=llm&amp;scope=day"'); // the budget's Daily tab stays in this section
-    const mcp = await page("mcp");
-    expect(mcp).toMatch(/<a[^>]*aria-current="page"[^>]*>MCP</);
+    expect(llm).toContain('href="/admin/settings/ai?section=llm&amp;scope=day"'); // the budget's Daily tab stays in this section
+    const mcp = await page("assistants", "mcp");
+    expect(mcp).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>MCP</);
     expect(mcp).toContain("Admin server");
     expect(mcp).toContain('id="mcp-clients-h"');
     expect(mcp).toContain("No clients connected.");

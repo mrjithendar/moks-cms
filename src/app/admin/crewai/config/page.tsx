@@ -1,14 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminHeader, Card, Table, td, th } from "@/components/admin/ui";
 import { Ago } from "@/components/crewai/Ago";
 import { BundleTransfer } from "@/components/crewai/config/BundleTransfer";
 import { ConfigStatus, syncLabel } from "@/components/crewai/config/ConfigStatus";
 import { RepoBrowser } from "@/components/crewai/config/RepoBrowser";
-import { RepoSettingsForm } from "@/components/crewai/config/RepoSettingsForm";
 import { RepoSync } from "@/components/crewai/config/RepoSync";
 import { RollbackButton } from "@/components/crewai/config/RollbackButton";
 import { repoSummary } from "@/lib/crewai/bundle/repo";
 import { hasSyncTable, listSyncs, syncStatus, type SyncRecord, type SyncStatus } from "@/lib/crewai/bundle/sync";
+import { settingsHref } from "@/lib/settings-areas";
 
 export const metadata = { title: "Configuration" };
 export const dynamic = "force-dynamic";
@@ -18,7 +19,6 @@ const TABS = [
   { id: "repository", label: "Repository" },
   { id: "transfer", label: "Import / export" },
   { id: "history", label: "History" },
-  { id: "settings", label: "Settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -26,10 +26,12 @@ type Tab = (typeof TABS)[number]["id"];
  * AI & SEO → Configuration (D-101): the CrewAI configuration as files in the site's repository (crewconfig/). Overview:
  * what runs, its version, Git revision, drift, and the two directions between the site and Git. Repository: browse,
  * edit, validate, history, compare, revert. Import / export: a bundle as a file. History: every import and export, with
- * rollback. Settings: the repository and its token.
+ * rollback. The repository and its token are set in Settings → SEO agent → Configuration repository (a tab here until
+ * 2026-11-26; ?tab=settings is sent there).
  */
 export default async function CrewaiConfigPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const sp = await searchParams;
+  if (sp.tab === "settings") redirect(settingsHref("crewai-repository"));
   const tab: Tab = TABS.some((t) => t.id === sp.tab) ? (sp.tab as Tab) : "overview";
   const ready = await hasSyncTable().catch(() => false);
   const summary = await repoSummary();
@@ -40,7 +42,12 @@ export default async function CrewaiConfigPage({ searchParams }: { searchParams:
       <AdminHeader
         title="Configuration"
         description="Every crew, agent, task, flow, skill, schedule and content source as reviewable files in the site's repository: edited here or in Git, imported after every deployment, with history, drift and rollback."
-        actions={summary.webUrl ? <a className="text-sm text-fg-muted underline" href={summary.webUrl} target="_blank" rel="noreferrer">{summary.repo}/{summary.path}</a> : null}
+        actions={
+          <>
+            {summary.webUrl && <a className="text-sm text-fg-muted underline" href={summary.webUrl} target="_blank" rel="noreferrer">{summary.repo}/{summary.path}</a>}
+            <Link href={settingsHref("crewai-repository")} className="text-sm text-fg-muted underline">Repository settings</Link>
+          </>
+        }
       />
       {!ready && <Card className="mb-6"><p className="text-sm text-fg-muted">Import and export work once database migration 0042 is applied (the web app applies it when it starts).</p></Card>}
       <nav aria-label="Configuration" className="-mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -53,16 +60,9 @@ export default async function CrewaiConfigPage({ searchParams }: { searchParams:
         </ul>
       </nav>
       {status && <Overview status={status} configured={summary.configured} mode={summary.mode} webUrl={summary.webUrl} ready={ready} />}
-      {tab === "repository" && (summary.configured ? <RepoBrowser webUrl={summary.webUrl} /> : <Card><p className="text-sm text-fg-muted">Set up the repository first (Settings).</p></Card>)}
+      {tab === "repository" && (summary.configured ? <RepoBrowser webUrl={summary.webUrl} /> : <Card><p className="text-sm text-fg-muted">Set up the repository first, in <Link href={settingsHref("crewai-repository")} className="link">Settings → SEO agent → Configuration repository</Link>.</p></Card>)}
       {tab === "transfer" && <BundleTransfer disabled={!ready} />}
       {tab === "history" && <History ready={ready} items={syncs} />}
-      {tab === "settings" && (
-        <Card>
-          <h2 className="mb-1 text-base font-semibold text-fg">Repository</h2>
-          <p className="mb-4 text-sm text-fg-muted">The site repository whose folder holds the configuration. The token stays on the server, sealed with SETTINGS_ENCRYPTION_KEY, and is never shown again; the deployment can give it instead as CREWAI_CONFIG_GITHUB_TOKEN from a Kubernetes Secret.</p>
-          <RepoSettingsForm summary={summary} />
-        </Card>
-      )}
     </>
   );
 }

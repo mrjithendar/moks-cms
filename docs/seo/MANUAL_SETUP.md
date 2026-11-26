@@ -1,6 +1,6 @@
 # SEO intelligence platform: manual setup
 
-Steps only a person can do. Until they are done, the admin Dashboard's Search & traffic view and Admin → Integrations show **Disconnected** and no Google data is fetched.
+Steps only a person can do. Until they are done, the admin Dashboard's Search & traffic view and Admin → Settings → Search & SEO → Search Console & GA4 show **Disconnected** and no Google data is fetched.
 
 ## 1. Google Cloud project and APIs
 1. https://console.cloud.google.com → select or create a project (e.g. `jithendar-seo`). No billing is needed for these
@@ -56,7 +56,7 @@ Admin → SEO intelligence → Settings (which then win).
   daily limit. Check the provider's pricing first; nothing is enabled by default.
 - **URL Inspection**: Settings → Google → URL inspection enabled + daily limit (≤ 2,000/day per property; Full permission).
 - **PageSpeed**: Settings → Google → PageSpeed enabled (needs `PAGESPEED_API_KEY`).
-- **Report emails**: Admin → Storage & email must be configured; then Settings → Reports: enable and add recipients.
+- **Report emails**: Admin → Settings → Email must be configured; then Settings → Search & SEO → Reports: enable and add recipients.
 - **Alerts**: copy `docs/seo/prometheus-alerts.yml` into the miniKube repo (OPERATIONS.md#alerts).
 - **Dashboard**: sync the `grafana` Argo CD app after merge.
 
@@ -94,7 +94,7 @@ to **Full**. The app requests the write scope only for that call; syncing stays 
 
 ## 10. IndexNow
 Nothing to do: the key is generated automatically on the first SEO submission and served at
-`https://jithendar.com/{key}.txt` (or set `INDEXNOW_KEY` yourself). If you turned IndexNow off in Admin → Integrations,
+`https://jithendar.com/{key}.txt` (or set `INDEXNOW_KEY` yourself). If you turned IndexNow off in Admin → Settings → Content & publishing → IndexNow,
 it stays off. Optional: verify the site in **Bing Webmaster Tools** (https://www.bing.com/webmasters, import from Search
 Console) to see IndexNow submissions and crawl reports there — the app does not need it.
 
@@ -103,7 +103,7 @@ Console) to see IndexNow submissions and crawl reports there — the app does no
 submissions (each event is still logged as `skipped`).
 
 ## 12. Digest recipients
-Settings → Drafts → digest → recipients (requires email in Admin → Storage & email). Until a recipient is set, nothing
+Settings → Drafts → digest → recipients (requires email in Admin → Settings → Email). Until a recipient is set, nothing
 is emailed.
 
 # agents (CrewAI Flows and Crews, pgvector)
@@ -240,7 +240,7 @@ needed. Status of each item: PROGRESS.md "v4".
 ## 21. Secrets
 No new secret: v4 uses `seo-agent-env` (ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN) as in §14. The
 admin MCP's OAuth tokens are opaque and stored as SHA-256 hashes in Postgres, so **no OAuth signing keys** exist to
-create or rotate. R2 credentials are the site's existing ones (Admin → Storage, or `R2_*` in `jithendar-com-env`).
+create or rotate. R2 credentials are the site's existing ones (Admin → Settings → Media & storage, or `R2_*` in `jithendar-com-env`).
 
 ## 22. Switch to the CrewAI flows
 The web app finds the agent by itself ([FLOWS.md](FLOWS.md#finding-the-seo-agent)): `http://seo-agent:8080` in its own
@@ -266,7 +266,7 @@ Edit `schedule:` in `kubernetes/seo-agent-60-flow-triggers.yaml` and re-apply, o
 schedule fields only apply to the legacy path.
 
 ## 24. Report PDFs in R2
-They use the site's existing R2 bucket and client (Admin → Storage must be configured; check Admin → System status).
+They use the site's existing R2 bucket and client (Admin → Settings → Media & storage must be configured; check Admin → System status).
 Objects go to the private prefix `jithendar/www/reports/seo/{weekly|monthly}/{yyyy}/…-{uuid}.pdf` with
 `Cache-Control: private, no-store`; admins download them via a 5-minute presigned link. If the bucket has a public
 delivery domain, the random UUID makes keys unguessable, but consider an R2 rule that blocks public access to

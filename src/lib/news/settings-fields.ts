@@ -5,12 +5,12 @@
  * on the page that owns that subject and saves only its own fields (lib/news/service.ts saveNewsSettings merges).
  *
  * - The switch (`enabled`): AI & SEO → Flows, "Content flows on" (components/news/JobsSwitch.tsx).
- * - limits:   AI & SEO → Settings → Agent limits.
- * - models:   AI & SEO → Settings → AI & drafts.
- * - quality:  AI & SEO → Settings → AI & drafts.
- * - ranking:  AI & SEO → Settings → ML & retrieval.
+ * - limits:   Settings → SEO agent → Agent limits.
+ * - models:   Settings → AI & models → AI & drafts.
+ * - quality:  Settings → AI & models → AI & drafts.
+ * - ranking:  Settings → AI & models → ML & retrieval.
  * - fetching: AI & SEO → Content sources.
- * - logs:     AI & SEO → Settings → Run history.
+ * - logs:     Settings → SEO agent → Run history.
  *
  * The values themselves (and their defaults) are the row's, as before: nothing new is preset here.
  * Pure data, no I/O: the card (browser), the section files (server) and the tests import it.

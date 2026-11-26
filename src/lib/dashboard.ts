@@ -95,11 +95,11 @@ export async function dashboardData(user: { id: string; role: string }) {
       activity,
       security,
       health: [
-        { label: "Media storage (R2)", ok: storage, detail: storage ? "Connected" : "Not configured", href: "/admin/storage" },
-        { label: "Email", ok: email.active !== "disabled" || email.envFallback, detail: email.envFallback ? "SMTP (deployment)" : email.active === "disabled" ? "Disabled" : email.active.toUpperCase(), href: "/admin/email" },
-        { label: "Turnstile", ok: Boolean(turnstile.siteKey && turnstile.secret), detail: turnstile.production ? "Production keys" : "Test keys", href: "/admin/integrations?section=turnstile" },
-        { label: "Social sign-in", ok: providers.length > 0, detail: providers.length ? providers.map((x) => (x === "github" ? "GitHub" : "Google")).join(", ") : "Off", href: "/admin/integrations" },
-        { label: "Image generation", ok: Boolean(gemini), detail: gemini ? gemini.model : "Off", href: "/admin/integrations" },
+        { label: "Media storage (R2)", ok: storage, detail: storage ? "Connected" : "Not configured", href: "/admin/settings/storage?section=media-storage" },
+        { label: "Email", ok: email.active !== "disabled" || email.envFallback, detail: email.envFallback ? "SMTP (deployment)" : email.active === "disabled" ? "Disabled" : email.active.toUpperCase(), href: "/admin/settings/email?section=email" },
+        { label: "Turnstile", ok: Boolean(turnstile.siteKey && turnstile.secret), detail: turnstile.production ? "Production keys" : "Test keys", href: "/admin/settings/access?section=turnstile" },
+        { label: "Social sign-in", ok: providers.length > 0, detail: providers.length ? providers.map((x) => (x === "github" ? "GitHub" : "Google")).join(", ") : "Off", href: "/admin/settings/access?section=social" },
+        { label: "Image generation", ok: Boolean(gemini), detail: gemini ? gemini.model : "Off", href: "/admin/settings/ai?section=gemini" },
         {
           label: "Backups",
           ok: lastBackup?.status === "success",
