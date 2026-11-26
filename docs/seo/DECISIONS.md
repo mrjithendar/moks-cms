@@ -1038,3 +1038,20 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
   would no longer match its vector, and the next reindex rewrites it anyway: change the article instead.
 - **Left to the owner.** The files under `jithendar/seo-agent/lancedb/` in the media bucket: nothing reads or writes
   them any more; delete them in the Cloudflare dashboard.
+
+## D-104 Published posts synced to the shared Hybrid RAG service, moks-rag (owner brief 2026-11-26)
+
+- **What.** Published posts are kept in moks-rag's `cms_content` collection (rag-api in namespace `rag`: bge-m3
+  dense + BM25 sparse vectors in Qdrant, RRF fusion), so Open WebUI's `moks-cms` model and other services can search the
+  site's content by meaning. `docs/RAG.md`.
+- **How.** Every post change that readers could or can see queues a `rag_sync` job per address (Postgres job queue,
+  run by the worker in the site pods). The job reads the post when it runs: visible → `POST /ingest`; otherwise
+  `DELETE /documents/{collection}:{slug}?collection=cms_content`. Saving and publishing never call rag-api, so its
+  outage never blocks the editor: 10 s timeout, two quick retries on 5xx/timeouts, then the queue's backoff
+  (8 attempts, about two hours). Admin → Integrations → Hybrid RAG: settings, sync status, Reindex all posts
+  (the backfill) and a test search (`POST /query`, `include_answer: false`).
+- **Same rule as the SEO agent's index.** Only what every reader can see: members-only posts send their free preview,
+  noindex posts are left out. This is a second, independent index: the SEO agent keeps its own pgvector index for Ask
+  the Blog and the crews; nothing here changes it.
+- **Off by default.** Nothing is sent until `RAG_BEARER_TOKEN` is set (deployment Secret `jithendar-com-rag`, or the
+  admin). A site that buys moks-cms without moks-rag sees no change.
