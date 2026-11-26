@@ -286,7 +286,7 @@ synchronous API with prompt caching, with concurrency capped at 2. The legacy pa
 difference is about $1 a month at the current size (COSTS.md).
 
 ## D-47 CrewAI's unused stores
-**The lancedb half is replaced by D-91 (2026-11-17): LanceDB is installed again.** The chromadb half stands.
+**The lancedb half was replaced by D-91 (2026-11-17) and is back since D-103 (2026-11-26): LanceDB is overridden away again.** The chromadb half stands.
 
 crewai 1.15 hard-requires chromadb and lancedb for memory features this service never enables (`memory=False`).
 lancedb (with pyarrow, ~290 MB) is excluded with a uv override marker that never matches; a test asserts it isn't
@@ -694,6 +694,8 @@ admin." See [RAG.md](RAG.md) "Sitewide chat".
   does not matter.
 
 ## D-91 LanceDB on Cloudflare R2 for CrewAI's memory and the article index (owner request 2026-11-17)
+**Withdrawn by D-103 (2026-11-26): LanceDB is removed.** Kept for the record.
+
 
 "Lancedb data should be stored on cloudflare r2 and this can be managed from seo dashboard: can see and edit and
 delete." Asked what LanceDB should hold, the owner chose **agent memory and the article index**, with the R2 keys
@@ -726,6 +728,8 @@ database: the existing PostgreSQL holds the vectors, no vector database" (v3 gro
   derived from fetched pages, so the dashboard has to show where each record came from.
 
 ## D-92 A LanceDB browser in the admin, and the R2 connection from Admin → Storage (owner request 2026-11-18)
+**Withdrawn by D-103 (2026-11-26): LanceDB is removed.** Kept for the record.
+
 
 "Enable feature that can browse lancedb data, can be viewed and modified from jithendar.com/admin." This delivers the
 R2 connection of D-91 step 1 and a generic form of step 2 (see, edit, delete), before anything writes to LanceDB.
@@ -752,6 +756,8 @@ R2 connection of D-91 step 1 and a generic form of step 2 (see, edit, delete), b
   known limit) belongs to step 1.
 
 ## D-93 The article index copied into LanceDB (owner request 2026-11-18; D-91 step 3, first half)
+**Withdrawn by D-103 (2026-11-26): LanceDB is removed.** Kept for the record.
+
 
 "Tables and rows are 0 … I want real data", with the owner choosing both D-91 steps, the article index first. This puts
 the real article index in LanceDB without changing what any search reads.
@@ -1010,3 +1016,25 @@ admin, and restored automatically after each Kubernetes deployment. Built in mok
 - **Degrade, do not fail.** Without the agent, the LLM budget, R2 or email, a report is still made with what can be
   made, and says what is missing.
 
+## D-103 LanceDB removed; the article index is browsed in pgvector (owner decision 2026-11-26)
+
+Replaces D-91, D-92 and D-93; D-47's override is back.
+
+- **Why.** LanceDB only ever held D-93's copy of `seo_article_chunks` on R2, and nothing searched it: Ask the Blog and
+  the crews search pgvector, CrewAI memory (D-91 step 1) was never built, and the LanceDB retriever (step 3, second
+  half) never came. Measured on 2026-11-24: a query on the R2 copy took about 730 ms against 3.5 ms in pgvector, and
+  the copy drifted (a deleted article's chunks stayed). The owner asked for it to be removed completely.
+- **Removed.** In the agent: `app/lance_index.py` (the copy), `app/lance_admin.py` and `/lancedb*` (the browser), the
+  `LANCEDB_ARTICLE_INDEX` setting, and the dependency (`override-dependencies` drops lancedb, pyarrow and
+  lance-namespace, about 105 MiB of image). In the web app: `/admin/lancedb` (now a redirect), its client calls and
+  `GET /internal/seo-agent/storage/lancedb`, which handed the agent the media bucket's keys. The agent no longer gets
+  any storage keys from the web app.
+- **Added: Article index (AI & SEO → Models & data, `/admin/article-index`).** A read-only view of pgvector through the
+  agent's `GET /chunks…` routes (moks-seo-agent `app/chunk_browser.py`), because the agent owns the tables and their
+  vector size follows the model: counts, model, vector column, index method, size; articles with chunk counts and
+  status; one article's chunks; a text search over chunks; one chunk in full with its nearest chunks. During a
+  rebuild after an embeddings model change it shows the new table beside the live one and how far the rebuild has got.
+- **Read-only on purpose.** D-92 allowed one-row edits because LanceDB was a copy. In pgvector a chunk edited by hand
+  would no longer match its vector, and the next reindex rewrites it anyway: change the article instead.
+- **Left to the owner.** The files under `jithendar/seo-agent/lancedb/` in the media bucket: nothing reads or writes
+  them any more; delete them in the Cloudflare dashboard.

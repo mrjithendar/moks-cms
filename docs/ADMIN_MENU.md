@@ -27,7 +27,7 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Pages | All pages, Add new page, Hire me page |
 | Comments | All comments, Messages, Bookings |
 | — | |
-| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Configuration (crewconfig/ in Git, import / export, history; D-101). **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, LanceDB. **Settings:** Settings, MCP |
+| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Configuration (crewconfig/ in Git, import / export, history; D-101). **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, Article index (replaced LanceDB 2026-11-26, D-103; `/admin/lancedb` redirects). **Settings:** Settings, MCP |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | — | |

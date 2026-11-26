@@ -233,7 +233,7 @@ finished_at, updated_at, triggered_by (cron · manual · approval · flow · mcp
 - **Persistence:** `PgFlowPersistence` implements CrewAI's `FlowPersistence` and writes the state, step, tokens and cost
   into the run's row after every step (CrewAI calls it synchronously; a 2-connection sync pool). CrewAI's default SQLite
   persistence is never used: every flow class is decorated with `@persist(INSTANCE_ONLY)`, a backend that refuses to
-  work, and each instance gets the Postgres one. Flows also skip CrewAI's auto-created memory (`_skip_auto_memory`; LanceDB is installed since D-91, but a flow gets no memory of its own).
+  work, and each instance gets the Postgres one. Flows also skip CrewAI's auto-created memory (`_skip_auto_memory`; it would need LanceDB, which is not installed, D-103).
 - **One active run per flow + target:** a partial unique index (`flow_name, target_id` where queued/running) refuses a
   second row; a Postgres **session advisory lock** on a dedicated connection is held for the whole run (a dead pod's
   connection closes and releases it). A second kickoff returns the existing run (`existing: true`).
