@@ -92,8 +92,6 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["POST", /^\/fetch-docs$/, (_m, b) => cb.fetchDocs(b)],
   ["POST", /^\/weekly\/candidates$/, (_m, b) => cb.weeklyCandidates(b)],
   ["GET", /^\/calendar\/([^/]+)\/brief$/, (m) => cb.calendarBrief(m[1]!)],
-  ["GET", /^\/storage\/lancedb$/, () => cb.lancedbStorage()],
-  ["GET", /^\/storage\/lancedb$/, () => cb.lancedbStorage()],
 ];
 
 const PREFIX = "/internal/seo-agent";

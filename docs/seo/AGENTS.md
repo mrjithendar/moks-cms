@@ -9,4 +9,4 @@ v3's LangGraph orchestration was replaced in v4 by CrewAI Flows; LangGraph and L
 
 The v3 text is in git history (`git show 7ac533f:services/www/docs/seo/AGENTS.md`). What carried over unchanged: the
 approval gate in the web app (D-43, `publishWithApproval`), the callback API pattern (D-44), the pgvector index and
-chunker (D-45), CrewAI's unused stores (D-47; LanceDB is installed again, D-91), Ask-the-Blog budget separation (D-48).
+chunker (D-45), CrewAI's unused stores (D-47; LanceDB is not installed, D-103), Ask-the-Blog budget separation (D-48).

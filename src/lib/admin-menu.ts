@@ -115,7 +115,7 @@ export const MENU_PLACES: [href: string, place: Place][] = [
   ["/admin/ai-visibility", { group: "ai" }],
   ["/admin/technical", { group: "ai" }],
   ["/admin/models", { group: "ai", heading: "Models & data" }],
-  ["/admin/lancedb", { group: "ai" }],
+  ["/admin/article-index", { group: "ai" }],
   ["/admin/automation", { group: "ai", title: "Settings", heading: "Settings" }],
   ["/admin/automation?section=mcp", { group: "ai", title: "MCP" }],
 

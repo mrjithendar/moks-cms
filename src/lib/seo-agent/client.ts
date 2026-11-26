@@ -200,28 +200,61 @@ export async function askStream(question: string, ipHash: string | null, deps: A
   return res;
 }
 
-/** LanceDB browser (/admin/lancedb; seo-agent app/lance_admin.py, D-92). */
-export type LanceColumn = { name: string; type: string; kind: "string" | "bool" | "int" | "float" | "timestamp" | "vector" | "list" | "other"; editable: boolean; nullable: boolean };
-export type LanceTable = { name: string; rows: number; version: number; columns: LanceColumn[] };
-export type LanceCell = string | number | boolean | null | { text: string; length: number } | { dims: number; head: number[] } | { items: number; head: string[] };
-export type LanceKey = { keyColumn: string; key: string | number | boolean; actor?: string };
+/**
+ * The article index in pgvector, read-only (/admin/article-index; seo-agent app/chunk_browser.py, D-103). The agent owns
+ * the tables (their vector size follows the embeddings model), so the web app reads them through it. `live` is
+ * seo_article_chunks; `rebuild` is seo_article_chunks_next, which exists only while a rebuild after a model change runs.
+ */
+export type ChunkTable = "live" | "rebuild";
+export type ChunkVector = { dims: number; norm: number; head: number[] };
+export type ChunkTableInfo = {
+  table: ChunkTable;
+  name: string;
+  rows: number;
+  articles: number;
+  updated_at: string | null;
+  models: { model: string; rows: number }[];
+  vector: string | null;
+  bytes: number | null;
+  index: string | null;
+};
+export type ChunkOverview = { available: boolean; reason: string; pgvector: string | null; model: string | null; dimensions: number | null; rebuilding: boolean; tables: ChunkTableInfo[] };
+/** published / draft / deleted / missing: a chunk stays until the next full reindex after its article goes. */
+export type ChunkArticle = { article_id: string; title: string; path: string | null; status: string; chunks: number; updated_at: string; models: string[] };
+export type ChunkRow = {
+  id: number;
+  article_id: string;
+  title: string;
+  path: string | null;
+  status: string;
+  chunk_index: number;
+  part: number;
+  parts: number;
+  heading_path: string;
+  anchor: string | null;
+  length: number;
+  model: string;
+  updated_at: string;
+  content: string;
+  vector: ChunkVector;
+};
+export type ChunkDetail = ChunkRow & { content_hash: string; embed_text: string | null; identifiers: string[] };
+export type ChunkNeighbour = { id: number; article_id: string; title: string; path: string | null; chunk_index: number; heading_path: string; anchor: string | null; score: number };
+export type ChunkPage<T> = { table: ChunkTable; total: number; offset: number; limit: number; items: T[] };
+export type ChunkQuery = { table?: ChunkTable; q?: string; offset?: number; limit?: number };
 
-export const lanceOverview = (deps?: AgentDeps) => call<{ configured: boolean; location: string | null; tables: LanceTable[] }>("GET", "/lancedb", undefined, deps, 15_000);
-export const lanceBrowse = (table: string, offset: number, limit: number, deps?: AgentDeps) =>
-  call<{ table: string; version: number; total: number; offset: number; limit: number; columns: LanceColumn[]; rows: Record<string, LanceCell>[] }>(
-    "GET",
-    `/lancedb/tables/${encodeURIComponent(table)}?offset=${offset}&limit=${limit}`,
-    undefined,
-    deps,
-    15_000,
-  );
-const lanceBody = (k: LanceKey) => ({ key_column: k.keyColumn, key: k.key, actor: k.actor ?? null });
-export const lanceRow = (table: string, k: LanceKey, deps?: AgentDeps) =>
-  call<{ table: string; columns: LanceColumn[]; row: Record<string, LanceCell> }>("POST", `/lancedb/tables/${encodeURIComponent(table)}/row`, { key_column: k.keyColumn, key: k.key }, deps);
-export const lanceUpdate = (table: string, k: LanceKey, values: Record<string, string | number | boolean | null>, deps?: AgentDeps) =>
-  call<{ updated: number; version: number }>("POST", `/lancedb/tables/${encodeURIComponent(table)}/update`, { ...lanceBody(k), values }, deps);
-export const lanceDelete = (table: string, k: LanceKey, deps?: AgentDeps) =>
-  call<{ deleted: number; version: number }>("POST", `/lancedb/tables/${encodeURIComponent(table)}/delete`, lanceBody(k), deps);
+function chunkQs(p: Record<string, string | number | undefined>): string {
+  const q = new URLSearchParams(Object.entries(p).filter((e): e is [string, string | number] => e[1] !== undefined && e[1] !== "").map(([k, v]) => [k, String(v)]));
+  return q.size ? `?${q}` : "";
+}
+
+export const chunkOverview = (deps?: AgentDeps) => call<ChunkOverview>("GET", "/chunks", undefined, deps, 15_000);
+export const chunkArticles = (o: ChunkQuery = {}, deps?: AgentDeps) =>
+  call<ChunkPage<ChunkArticle>>("GET", `/chunks/articles${chunkQs({ table: o.table, q: o.q, offset: o.offset, limit: o.limit })}`, undefined, deps, 15_000);
+export const chunkRows = (o: ChunkQuery & { articleId?: string } = {}, deps?: AgentDeps) =>
+  call<ChunkPage<ChunkRow>>("GET", `/chunks/rows${chunkQs({ table: o.table, article_id: o.articleId, q: o.q, offset: o.offset, limit: o.limit })}`, undefined, deps, 15_000);
+export const chunkRow = (id: number, table: ChunkTable = "live", deps?: AgentDeps) =>
+  call<{ table: ChunkTable; chunk: ChunkDetail; similar: ChunkNeighbour[] }>("GET", `/chunks/rows/${encodeURIComponent(String(id))}${chunkQs({ table })}`, undefined, deps, 15_000);
 
 /**
  * The one LLM budget (moks-seo-agent app/llm_budgets.py): an optional daily and an optional monthly limit for every

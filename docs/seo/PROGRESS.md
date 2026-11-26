@@ -818,3 +818,23 @@ keys `crewai:read` / `crewai:import`; migration 0042. moks-seo-agent: `GET /conf
 `crewai:import` and save it in jithendar.com as secret `JITHENDAR_CREWAI_KEY`. For editing from the admin: a
 fine-grained GitHub token (Contents and Pull requests, read and write, on the site repository) under AI & SEO →
 Configuration → Settings. Then Overview → Write to Git once, so crewconfig/ holds exactly what production runs.
+
+## LanceDB removed; Article index browses pgvector (2026-11-26, owner decision, D-103)
+
+Owner: "LanceDB removed completely and enable browse pgvector's chunks from cluster". LanceDB only held D-93's copy of
+the article index, which nothing searched.
+
+**What changed (this repository).** `src/app/admin/article-index/` (new): AI & SEO → Models & data → Article index,
+read-only (counts, model, vector column, index, size; articles; one article's chunks; text search; one chunk with its
+nearest chunks; the rebuild table beside the live one during a model change). `src/lib/seo-agent/client.ts`:
+`chunkOverview`, `chunkArticles`, `chunkRows`, `chunkRow` replace the `lance*` calls. `src/app/admin/lancedb/page.tsx`:
+a redirect. `src/lib/seo-agent/callbacks.ts`, `internal-server.ts`: `GET /storage/lancedb` and `LANCEDB_PREFIX` gone.
+Menu, nav, user guide. Tests: `tests/seo-agent-chunks.test.ts` replaces `seo-agent-lancedb.test.ts` and
+`seo-agent-lancedb-storage.test.ts`.
+
+**Elsewhere.** moks-seo-agent #38: `app/chunk_browser.py` and `GET /chunks…`; `app/lance_index.py`, `app/lance_admin.py`,
+`/lancedb…`, `LANCEDB_ARTICLE_INDEX` and the lancedb dependency removed (D-47's override back, about 105 MiB of image).
+
+**Manual steps (owner).** Merge and release the agent first (its release restarts the pod: not during a reindex), then
+this repository. Delete `jithendar/seo-agent/lancedb/` in the media bucket on R2.
+
