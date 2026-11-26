@@ -15,8 +15,8 @@ Act as a senior engineer covering Next.js, technical SEO, AI workflow automation
 
 The site is a **greenfield** Next.js app at the root of its own repository (until 2026-11-18 in `services/www/`)
 (`github.com/moks-tech/moks-cms`, formerly `moks-tech/jithendar.com`, default branch `master`; moved out of the `roboshop-ai`
-monorepo on 2026-10-29). The repository root also holds `scripts/` and `runner/`
-(self-hosted CI runners for this repository). Since 2026-11-16 the site itself (content, `site.json`, `config/`), its
+monorepo on 2026-10-29). The repository root also holds `scripts/`. CI runs on GitHub-hosted runners
+(the self-hosted `runner/` setup was removed on 2026-11-26). Since 2026-11-16 the site itself (content, `site.json`, `config/`), its
 cluster manifests (`kubernetes/`) and every deploy and cluster script live in `moks-tech/jithendar.com`: this
 repository tests the code and pushes images, and deploys nothing. The previous
 self-hosted WordPress (Helm chart `minikube/wordpress`, namespace `jithendar`) was

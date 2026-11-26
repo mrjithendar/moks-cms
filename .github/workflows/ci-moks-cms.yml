@@ -5,14 +5,15 @@ name: moks-cms
 # mrjithendar/jithendar.com) whose Kubernetes manifests run the image, as the site and as the agent (two containers
 # of the same pod). The image reads the site's files at run time (src/config/site-files.ts), so one image serves any site.
 #
-# check     → pull requests (opened, updated) and manual runs: lint and typecheck, against the test fixture site
-#             (tests/fixtures/site; scripts/use-site.mjs). The production build is the `image` job's.
-# test      → the same events, after `check` has passed: the web app's test suite in 2 shards.
-# seo-agent → the same events: the SEO agent's checks (seo-agent/): ruff, mypy, pytest with a pgvector PostgreSQL
-#             (including the contract tests against this repository's migrations, callback routes and constants), the
-#             RAG eval smoke, pip-audit of its locked production dependencies.
-# image     → pull requests, after `check`, `test` and `seo-agent` have passed: the arm64 image built from Dockerfile
-#             and smoke-tested as the site and as the agent; not pushed.
+# All four start at once on pull requests (opened, updated); `check`, `test` and `seo-agent` on manual runs too:
+# check     → lint and typecheck, against the test fixture site (tests/fixtures/site; scripts/use-site.mjs). The
+#             production build is the `image` job's.
+# test      → the web app's test suite in 2 shards.
+# seo-agent → the SEO agent's checks (seo-agent/): ruff, mypy, pytest with a pgvector PostgreSQL (including the
+#             contract tests against this repository's migrations, callback routes and constants), the RAG eval smoke,
+#             pip-audit of its locked production dependencies.
+# image     → pull requests only: the arm64 image built from Dockerfile and smoke-tested as the site and as the agent;
+#             not pushed. A pull request's checks take as long as the slowest of these, not their sum.
 # release   → ONLY when a pull request is merged into the default branch, and only when it changed something that is
 #             in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
 #             same image and smoke tests, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
@@ -23,16 +24,12 @@ name: moks-cms
 #             that is enough; a pull request merged while its own run was still going is waited for first. Otherwise
 #             (merged while a check was red or cancelled, or a manual run, which has no pull request) `check`, `test`
 #             and `seo-agent` run again on the merge commit, and `release` starts only once they have passed. The
-#             workflow has to check this itself: the repository is private on GitHub Free, which has no branch
-#             protection or required status checks, so nothing else stops a pull request from being merged before its
+#             workflow has to check this itself: the default branch has no required status checks (its only ruleset
+#             blocks deletion and force-pushes), so nothing else stops a pull request from being merged before its
 #             checks pass.
 #
-# One stage at a time, from when these jobs ran on the mk4 runner pods: the mk4 workers have 4 cores and 8 GiB each, a runner pod reserves 0.5 core and
-# 1 GiB but a test shard or the production build uses 1.5–3 GiB and 2–3 cores. On 2026-11-21 one merge started 7 such
-# pods at once (lint, 4 test shards and the release build next to each other); w3 ran out of memory, killed cluster
-# components and 5 of the jobs ("The self-hosted runner lost communication"), and the retried shards timed out in
-# PGlite set-up. Now a push needs at most 2 runner pods at a time, and a failed lint or typecheck, or a newer push
-# (which cancels the run), stops the run before the tests and the build start.
+# The jobs ran one stage at a time while they ran on the mk4 runner pods (8 GiB workers; 7 pods at once ran a worker
+# out of memory on 2026-11-21). On GitHub's hosted runners each job has its own machine, so they run side by side.
 #
 # There is deliberately NO `push` trigger: a commit pushed straight to the default branch builds nothing.
 #
@@ -44,12 +41,10 @@ on:
   workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    # The app is the repository root: everything except the site template, the runner notes, the Claude skills and
-    # the other workflows.
+    # The app is the repository root: everything except the site template, the Claude skills and the other workflows.
     paths:
       - '**'
       - '!sites/**'
-      - '!runner/**'
       - '!.claude/**'
       - '!.github/**'
       - '.github/workflows/ci-moks-cms.yml'
@@ -69,7 +64,7 @@ jobs:
   check:
     # Pull requests from forks never run CI here (nothing in it needs them). Branches of this repository,
     # including Dependabot's, still run. On a merge it runs again only when `scope` could not verify the pull
-    # request's head commit (then `test` and `release` wait for it).
+    # request's head commit (then `release` waits for it and for `test` and `seo-agent`).
     needs: scope
     if: >-
       !cancelled() && (github.event_name != 'pull_request' ||
@@ -94,15 +89,9 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
 
-  # The release image, built and smoke-tested exactly as `release` does, without pushing it. Last, after lint, typecheck
-  # and the tests have passed: the build is the heaviest job (up to ~3 GiB), and a pull request that fails those, or is
-  # pushed to again meanwhile, never builds. The result checks are spelled out: `check` needs the skipped `scope`, and a
-  # bare condition would skip this job too.
+  # The release image, built and smoke-tested exactly as `release` does, without pushing it, next to the other checks.
   image:
-    needs: [check, test, seo-agent]
     if: >-
-      !cancelled() && needs.check.result == 'success' && needs.test.result == 'success' &&
-      needs.seo-agent.result == 'success' &&
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04-arm
@@ -132,14 +121,16 @@ jobs:
       - name: Smoke-test the image as the SEO agent
         run: scripts/smoke-seo-agent-image.sh moks-cms:ci "postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test"
 
-  # The test suite split by file over 2 runners, once `check` has passed (so it runs on the same events as `check`,
-  # including a merge `scope` could not verify). Each shard runs 2 vitest workers with a PGlite each (vitest.config.ts)
-  # and uses ~1.5 GiB and 2+ cores. With 4 shards next to the build and lint, the pods outgrew their worker
-  # (see the top of the file); 2 shards do the same work with half the set-up (checkout, npm ci) and half the peak.
-  # Keep the shard count in step with TEST_SHARDS in `scope`.
+  # The test suite split by file over 2 runners, on the same events as `check` (including a merge `scope` could not
+  # verify), next to it. Each shard runs 2 vitest workers with a PGlite each (vitest.config.ts). 2 shards, not more:
+  # a shard (~3 min) already finishes with `image` and `seo-agent`, and every extra shard is one more job against the
+  # account's concurrent-job limit. Keep the shard count in step with TEST_SHARDS in `scope`.
   test:
-    needs: [scope, check]
-    if: ${{ !cancelled() && needs.check.result == 'success' }}
+    needs: scope
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (needs.scope.outputs.image == 'true' && needs.scope.outputs.verified != 'true'))
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
@@ -161,7 +152,7 @@ jobs:
       - run: npm run site -- --copy
       - run: npm test -- --shard=${{ matrix.shard }}/2
 
-  # The SEO agent's checks (seo-agent/, Python), on the same events as `check`, next to it: one runner. The contract
+  # The SEO agent's checks (seo-agent/, Python), on the same events as `check`, next to it. The contract
   # tests read this repository's own migrations, callback routes and constants (seo-agent/tests/moks_cms.py), so a web
   # change that breaks the agent fails here. Only the CronJob manifest test skips (it reads jithendar.com's kubernetes/).
   seo-agent:
@@ -257,7 +248,7 @@ jobs:
           image=false
           while IFS= read -r f; do
             case "$f" in
-              docs/*|*.md|LICENSE|sites/*|runner/*|.claude/*) ;;
+              docs/*|*.md|LICENSE|sites/*|.claude/*) ;;
               seo-agent/tests/*|seo-agent/scripts/*) ;;
               .github/workflows/ci-moks-cms.yml) image=true ;;
               .github/*) ;;
