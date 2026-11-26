@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 /**
  * The news desk's switch (plan P5, PD-7): an admin setting, with NEWS_DESK_ENABLED=false in the deployment as an
- * emergency override. The same rule lives in the seo-agent (moks-seo-agent app/news/config.py, tests/test_news_*.py).
+ * emergency override. The same rule lives in the seo-agent (seo-agent/app/news/config.py, tests/test_news_*.py).
  */
 describe("newsDeskState", () => {
   it("NEWS_DESK_ENABLED=false in the deployment wins over everything", async () => {

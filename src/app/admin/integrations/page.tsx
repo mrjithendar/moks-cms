@@ -412,7 +412,7 @@ async function SeoAgentSection() {
       <div>
         <h2 id="seo-agent-title" className="scroll-mt-24 text-lg font-semibold text-fg">SEO agent</h2>
         <p className="mt-1 max-w-3xl text-sm text-fg-muted">
-          The SEO agent (moks-seo-agent) runs the crews and flows. {mod.installed ? <>It is set up, so <strong>AI &amp; SEO</strong> is in the menu{mod.available ? "" : " (it does not answer right now: its pages say so)"}.</> : <>It is not set up, so <strong>AI &amp; SEO</strong> is not in the menu. Save its address below, or deploy it as a Service named <code>seo-agent</code> next to this site, and the menu appears within a minute.</>}
+          The SEO agent (seo-agent, part of the moks-cms image) runs the crews and flows. {mod.installed ? <>It is set up, so <strong>AI &amp; SEO</strong> is in the menu{mod.available ? "" : " (it does not answer right now: its pages say so)"}.</> : <>It is not set up, so <strong>AI &amp; SEO</strong> is not in the menu. Save its address below, or deploy it as a Service named <code>seo-agent</code> next to this site, and the menu appears within a minute.</>}
         </p>
       </div>
       <SeoAgentCard initial={agent} />

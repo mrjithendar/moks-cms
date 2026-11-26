@@ -31,7 +31,7 @@ export const CREWS = {
 } as const;
 export type CrewId = keyof typeof CREWS;
 
-/** Every crew agent a skill can be given to. Pinned to the agents in moks-seo-agent/app (tests/test_skills.py). */
+/** Every crew agent a skill can be given to. Pinned to the agents in seo-agent/app (tests/test_skills.py). */
 export const CREW_AGENTS: { key: string; crew: CrewId; label: string }[] = [
   { key: "editorial.researcher", crew: "editorial", label: "Researcher" },
   { key: "editorial.writer", crew: "editorial", label: "Technical writer" },

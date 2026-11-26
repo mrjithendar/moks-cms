@@ -46,7 +46,7 @@ let refuse: (path: string, body: Record<string, unknown>) => string | null;
 
 const stable = (v: unknown) => model.stable(v);
 
-/** The agent's overlay normalisation (moks-seo-agent app/crews/config.py normalize), for the fake. */
+/** The agent's overlay normalisation (seo-agent/app/crews/config.py normalize), for the fake. */
 function overlay(crew: string, cfg: Record<string, Record<string, Record<string, unknown>>>) {
   const def = CATALOGUE.crews.find((c) => c.crew === crew)!;
   const out: Record<string, Record<string, Record<string, unknown>>> = { agents: {}, tasks: {} };

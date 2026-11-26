@@ -2,7 +2,7 @@ import { AgentError, getAgentSettings, type AgentSettingsView } from "./client";
 
 /**
  * Settings the seo-agent lets an admin change (Admin → Automation & AI). The agent owns them: its registry says which
- * fields exist, it validates a save, stores it in its own table and applies it (moks-seo-agent/app/admin_settings).
+ * fields exist, it validates a save, stores it in its own table and applies it (seo-agent/app/admin_settings).
  * This app only shows the agent's answer and hands a save to it. Nothing is kept here.
  */
 export type AgentSettingsLoad = {

@@ -1,7 +1,7 @@
 /**
  * Where each value of the setting row `news` is edited, now that there is no news settings page (2026-11-21: there is
  * no Newsroom; news is one kind of content a content flow writes). The row and its schema (lib/news/schema.ts,
- * moks-seo-agent app/news/config.py) are unchanged; each group below is drawn by components/news/JobSettingsCard.tsx
+ * seo-agent/app/news/config.py) are unchanged; each group below is drawn by components/news/JobSettingsCard.tsx
  * on the page that owns that subject and saves only its own fields (lib/news/service.ts saveNewsSettings merges).
  *
  * - The switch (`enabled`): AI & SEO → Flows, "Content flows on" (components/news/JobsSwitch.tsx).

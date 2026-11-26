@@ -54,7 +54,7 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/skills$/, () => skills.agentSkills()],
   // Crew configuration (CrewAI console → Crews, D-98): the active version of each crew. Read only.
   ["GET", /^\/crew-configs$/, () => crewConfigsCallback()],
-  // Run history (CrewAI console): whether the agent keeps model-call transcripts (moks-seo-agent/app/run_history.py).
+  // Run history (CrewAI console): whether the agent keeps model-call transcripts (seo-agent/app/run_history.py).
   ["GET", /^\/run-history\/settings$/, () => runHistoryCallbackSettings()],
   // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns
   ["POST", /^\/jobs\/run$/, (_m, b) => v4.runJob(b)],

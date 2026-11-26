@@ -1,20 +1,26 @@
-# moks-seo-agent
+# seo-agent
 
-The SEO agent service of [moks-cms](https://github.com/moks-tech/moks-cms). It's written in Python and runs CrewAI
-Flows and Crews as the only job engine. It also hosts the MCP servers, pgvector retrieval, Ask the Blog and report
-PDFs. It reads and writes the web app's PostgreSQL database and calls the web app's internal callback API. It was
-split out of moks-cms (`services/seo-agent`) with its history on 2026-11-18, so `moks-tech/moks-cms#N` in old commit
-messages refers to moks-cms pull requests.
+The SEO agent of moks-cms. It's written in Python and runs CrewAI Flows and Crews as the only job engine. It also hosts
+the MCP servers, pgvector retrieval, Ask the Blog and report PDFs. It reads and writes the web app's PostgreSQL
+database and calls the web app's internal callback API.
+
+**Part of moks-cms since 2026-11-26 (D-105).** It lived in its own repository, mrjithendar/moks-seo-agent, from
+2026-11-18 (split out of `services/seo-agent`) until it was merged back here with its history. So `moks-seo-agent#N` in
+docs and old commit messages refers to that repository's pull requests, and `moks-tech/moks-cms#N` in its old commit
+messages to this repository's. There is one image, `moks-cms`, built from the repository's one `Dockerfile`: the web app
+and this agent. A site's pod runs it as two containers: the site (`node server.js`) and the agent
+(`python -m app.main` in `/srv`).
 
 | Path | What |
 |---|---|
 | `app/` | The service: internal API on port 8080 (`app/main.py`), MCP edge on port 8090 (`app/mcp`), flows, crews, tools |
-| `tests/` | pytest; `tests/moks_cms.py` finds the moks-cms checkout for the contract tests |
-| `scripts/` | RAG eval and calibration, the reranker's PyTorch tooling (`reranker_model.py`), the database role (`db-role.sql`), CI helpers |
-| `Dockerfile` | The image: locked dependencies, the bge-small-en-v1.5 ONNX model and the reranker's int8 ONNX model (checksums verified in the build) |
+| `tests/` | pytest; `tests/moks_cms.py` points the contract tests at the web app (the parent folder) |
+| `scripts/` | RAG eval and calibration, the reranker's PyTorch tooling (`reranker_model.py`), the database role (`db-role.sql`) |
+| `../Dockerfile` | The image (stages `agent-build` and `runtime`): locked dependencies, the bge-small-en-v1.5 ONNX model and the reranker's int8 ONNX model (checksums verified in the build) |
 
-The design docs are in moks-cms under `docs/seo/` (FLOWS, CREWS, RAG, MCP, ML, OPERATIONS, SECURITY, MANUAL_SETUP,
-DECISIONS) and `docs/news/`. A path written as `moks-cms/<path>` in code comments means that file in moks-cms.
+The design docs are in `../docs/seo/` (FLOWS, CREWS, RAG, MCP, ML, OPERATIONS, SECURITY, MANUAL_SETUP, DECISIONS) and
+`../docs/news/`. A path written as `moks-cms/<path>` in code comments means that file in this repository (`../<path>`
+from here).
 
 ## Local development
 
@@ -25,13 +31,24 @@ uv run mypy app
 uv run pytest -q -rs
 ```
 
-Some tests check that the agent and the web app still agree. They read moks-cms's migrations, the callback server's
-route table and a few shared constants. They find moks-cms at `$MOKS_CMS_DIR`, or in `../moks-cms` next to this
-checkout, and are skipped when it's in neither place. CI has no moks-cms checkout (no cross-repository credentials, by
-choice), so run them locally before merging a change that touches the database, the callback API or shared constants.
+Run these in `seo-agent/`. Some tests check that the agent and the web app still agree: they read the web app's
+migrations, the callback server's route table and a few shared constants from the parent folder, so they run
+everywhere, CI included (`$MOKS_CMS_DIR` points them at another moks-cms checkout).
 
 The Postgres tests need `SEO_AGENT_TEST_DATABASE_URL` (pgvector, PostgreSQL 18) or Docker for testcontainers. The CronJob test reads jithendar.com's
-`kubernetes/seo-agent-*.yaml` (`$SEO_AGENT_K8S_DIR` or `../jithendar.com`): one dispatcher CronJob, every minute.
+`kubernetes/seo-agent-*.yaml` (`$SEO_AGENT_K8S_DIR`, or jithendar.com checked out next to moks-cms): one dispatcher CronJob, every minute.
+
+## Several agents at once
+
+Since D-105 every site pod has an agent container, so there are as many agents as the site has pods (KEDA scales them).
+A flow run executes in the agent that started it; the run's Postgres advisory lock says that agent is alive.
+`app/runs.py` makes this safe: each agent sweeps, at start-up and every minute, only the queued/running runs whose lock
+nobody holds (or that are older than the flow wall-clock limit plus 5 minutes), never rows younger than 30 seconds,
+and stops within 5 seconds a run of its own that another agent cancelled or swept, keeping the status that agent wrote.
+The schedule dispatcher already claims each time slot in the database, so a second agent starts nothing twice. The site
+talks to its own pod's agent (`SEO_AGENT_URL=http://127.0.0.1:8080`), so the LLM budget holds it takes are settled by
+the same process. Budget reservations are per agent: with N pods, calls that start at the same moment in different pods
+can go over the budget by at most N-1 calls' estimates (`app/llm.py` BudgetGuard).
 
 ## The LLM budget
 
@@ -272,18 +289,14 @@ Off unless both the URL and the token are set; every feature below then says so 
 
 ## CI and release
 
-- `.github/workflows/ci.yml` is one job on one mk4 runner. On every run it runs lint, types, tests (without the
-  moks-cms contract tests), the RAG eval smoke and pip-audit.
-- A pull request also builds and smoke-tests the image only when it changes an input of the image beyond the Python
-  code (`Dockerfile`, `.dockerignore`, `pyproject.toml`, `uv.lock`, the image scripts or size baseline, `ci.yml`). A
-  manual run always does.
-- When a pull request is merged, the same job runs the checks on the merge commit, then builds the arm64 image,
-  smoke-tests it and pushes `registry.jithendar.com/jithendar/seo-agent:latest`. Merges release one at a time. That's
-  all: it tells no site and deploys nothing, so each site pulls and restarts the agent itself.
-- `.github/workflows/rag-eval.yml` is the manual retrieval evaluation with the production embedding model.
+- moks-cms's `.github/workflows/ci-moks-cms.yml` runs the agent's checks as the job `seo-agent` on every pull request:
+  ruff, mypy, pytest with a pgvector PostgreSQL (with the contract tests), the RAG eval smoke and pip-audit.
+- The `image` job (pull requests) and `release` (merges into the default branch) build the one `moks-cms` image from
+  `../Dockerfile` and smoke-test it as the site (`scripts/smoke-site-image.sh`) and as the agent
+  (`scripts/smoke-seo-agent-image.sh`: both ports, the guarded endpoints, a PDF and an embedding). `release` pushes
+  `registry.jithendar.com/jithendar/moks-cms:pr-<n>` and `:latest`. It tells no site and deploys nothing; the
+  `seo-agent:latest` image is no longer built.
+- `.github/workflows/seo-agent-rag-eval.yml` is the manual retrieval evaluation with the production embedding model.
 
-Repository settings (private repository on GitHub Free, so these are set at repository level):
-
-| Name | Kind | What |
-|---|---|---|
-| `HARBOR_USERNAME`, `HARBOR_PASSWORD` | Actions secret | The Harbor robot that pushes to project `jithendar` |
+Repository settings: moks-cms's own `HARBOR_USERNAME` and `HARBOR_PASSWORD` (the Harbor robot that pushes to project
+`jithendar`); the agent needs nothing of its own.

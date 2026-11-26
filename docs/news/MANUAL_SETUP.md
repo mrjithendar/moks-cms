@@ -23,7 +23,7 @@ want covers stored. pgvector is optional (novelty vs the site is skipped without
 Both sides read `NEWS_DESK_ENABLED`:
 
 - seo-agent: `kubectl -n jithendar patch configmap seo-agent-config -p '{"data":{"NEWS_DESK_ENABLED":"true"}}'`
-  then `kubectl -n jithendar rollout restart deploy/seo-agent`.
+  then `kubectl -n jithendar rollout restart deploy/jithendar-com`.
 - web app: add `NEWS_DESK_ENABLED=true` to ConfigMap `jithendar-com-public` (or the `jithendar-com-env` Secret), then
   restart the web Deployment. While it is off, AI & SEO → Flows says so above the content flows and every content flow run, Run now included, is skipped.
 

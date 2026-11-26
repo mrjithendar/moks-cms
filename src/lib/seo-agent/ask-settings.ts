@@ -15,7 +15,7 @@ import { agentEnabled } from "./endpoint";
  * - ASK_BLOG_ENABLED (environment, web app and seo-agent): the deployment's master kill switch;
  * - the seo-agent, which answers the questions, is found and on (endpoint.ts agentStatus());
  * - `enabled` here: the admin's switch, applied without a restart.
- * All three must be on. The seo-agent reads the same row (moks-seo-agent/app/ask_runtime.py) for the fields it owns:
+ * All three must be on. The seo-agent reads the same row (seo-agent/app/ask_runtime.py) for the fields it owns:
  * enabled, audience, dailyBudgetUsd, cacheTtlSeconds, answerLength, fallbackMessage and conversation.{followUps, turns,
  * pageContext, feedback}. Keep the defaults in step.
  */

@@ -7,7 +7,7 @@ import { MENU_PLACES, type NavItem } from "@/lib/admin-menu";
  * GET /api/admin/capabilities all ask `moduleStates()`, so nothing decides by a hard-coded flag whether a module's
  * menu is drawn.
  *
- * One module today, the SEO agent (moks-seo-agent, its own image): AI & SEO is its menu. It is
+ * One module today, the SEO agent (seo-agent/, the same image run as a second container, D-105): AI & SEO is its menu. It is
  * - installed when an endpoint is set for it (SEO_AGENT_URL, or the one saved under Settings → Integrations) or one was
  *   found by discovery and answers, and SEO_ORCHESTRATOR is not "legacy";
  * - available when it answers now (lib/seo-agent/endpoint.ts agentStatus, cached 30–60 s per process).

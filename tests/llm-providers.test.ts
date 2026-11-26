@@ -15,7 +15,7 @@ const as = (role: "admin" | "author", id: string = role): SessionUser => ({ id, 
 
 /**
  * Admin → AI & SEO → Settings → LLM providers & models. The seo-agent owns providers, sealed keys and models
- * (moks-seo-agent/app/llm_providers, tested in moks-seo-agent/tests/test_llm_providers.py); this app shows them and
+ * (seo-agent/app/llm_providers, tested in seo-agent/tests/test_llm_providers.py); this app shows them and
  * hands a save over through the agent's GET/PUT /llm-providers. It keeps nothing, and a key never comes back.
  */
 const SECRET = "sk-test-not-a-real-key-777888";

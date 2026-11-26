@@ -12,7 +12,7 @@ web worker (lib/scheduler.ts) ─ job "report" ─▶ lib/reports/build.ts: ever
     findings; each source's status; facts; untrusted error text ─▶ payload; HTML, JSON, CSV ─▶ R2
     ─▶ kickoff report_flow {report_id} in the SEO agent (retried while the agent is unreachable, 3 attempts;
        without the agent the report completes with every figure and no AI part / PDF, and says why)
-seo-agent report_flow (moks-seo-agent app/flows/report.py):
+seo-agent report_flow (seo-agent/app/flows/report.py):
     aggregate  ─ POST /internal/seo-agent/site-reports/{id}/data
     narrate    ─ Report crew, agent site_analyst (task "analyse", SiteAnalysis output)
     check      ─ check_analysis: numbers must be the report's figures; every item cites evidence ids; "confirmed"

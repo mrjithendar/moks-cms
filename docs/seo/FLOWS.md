@@ -256,8 +256,8 @@ runs it started, and Re-run / Cancel. Web migration 0036:
 | Table | Written by | What |
 |---|---|---|
 | `seo_flow_runs.run_number` | a `BEFORE INSERT` trigger (`seo_flow_run_counters`, `SECURITY DEFINER`) | `#N` per flow; a refused second active run takes no number |
-| `seo_flow_run_steps` | `SeoFlow.step()` (moks-seo-agent/app/flows/base.py) | one row per step: running → succeeded · failed · cancelled, seconds, error |
-| `seo_flow_run_logs` | `RunLogHandler` (moks-seo-agent/app/run_history.py) | the agent's own log records that belong to the run, written in batches every 0.5 s |
+| `seo_flow_run_steps` | `SeoFlow.step()` (seo-agent/app/flows/base.py) | one row per step: running → succeeded · failed · cancelled, seconds, error |
+| `seo_flow_run_logs` | `RunLogHandler` (seo-agent/app/run_history.py) | the agent's own log records that belong to the run, written in batches every 0.5 s |
 | `seo_flow_run_calls` | `RecordingLlm` (same file) | each model call's system prompt, prompt and answer, while Run history → transcripts is on |
 
 - **Which lines:** a record belongs to a run when `CURRENT_RUN_ID` is set or the record carries `run_id` (crew worker
@@ -331,7 +331,10 @@ review UI is unchanged (it reads the latest `seo_flow_runs` row for a draft).
 - **Stale flows:** `SeoFlowStale` fires when a flow hasn't succeeded within twice its schedule (from
   `seo_flow_last_success_timestamp_seconds`). Check the schedule's Last column in CrewAI console → Schedules,
   `kubectl -n jithendar get cronjob seo-flow-dispatcher` (and its last Jobs' logs) and the last runs.
-- **Restarts:** Deployment strategy `Recreate` (never two pods). Interrupted runs are failed on start; rerun them.
+- **Restarts:** since D-105 the agent is a container of every site pod (2–8 with KEDA), so several agents run at once.
+  A run executes in the agent that started it; when that pod stops, any other agent fails the run within a minute
+  ("interrupted by a restart", once its advisory lock is free); rerun it. A cancel that reaches another pod stops the
+  run where it runs within 5 s (app/runs.py).
 - **Cancel:** the review page's run strip or `POST /api/admin/seo/agent/runs/{draftId}/cancel`.
 - **Metrics:** `seo_flow_runs_total{flow,status}`, `seo_flow_duration_seconds{flow}`, `seo_flow_step_duration_seconds{flow,step}`,
   `seo_crew_runs_total{crew,status}`, `seo_llm_tokens_total{model,purpose}`, `seo_llm_cost_usd_total{purpose}`,

@@ -12,8 +12,8 @@ vi.mock("@/lib/session", () => ({ getSessionUser: async () => currentUser, requi
 const as = (role: "admin" | "author", id: string = role): SessionUser => ({ id, name: role, email: `${id}@example.com`, role, emailVerified: true, image: null, sessionCreatedAt: new Date() });
 
 /**
- * Admin → AI & SEO → Settings → LLM budget. The seo-agent owns the one budget (moks-seo-agent/app/llm_budgets.py,
- * tested in moks-seo-agent/tests/test_llm_budgets.py); this app only shows and edits it through the agent's GET/PUT
+ * Admin → AI & SEO → Settings → LLM budget. The seo-agent owns the one budget (seo-agent/app/llm_budgets.py,
+ * tested in seo-agent/tests/test_llm_budgets.py); this app only shows and edits it through the agent's GET/PUT
  * /llm-budget, and keeps nothing itself.
  */
 let db: Db;

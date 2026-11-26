@@ -1,7 +1,7 @@
 # SEO v4: MCP servers
 
 Two Model Context Protocol servers expose the platform to AI clients. **MCP is an interface only**: every tool is a thin
-wrapper over a function in `moks-seo-agent/app/services/`, the same function the internal API and the crews' tools
+wrapper over a function in `seo-agent/app/services/`, the same function the internal API and the crews' tools
 use, and every "start" goes through the same run manager and kickoff as the admin UI and the CronJobs.
 
 | | `/mcp/public` | `/mcp/admin` |
@@ -63,8 +63,9 @@ All tools: `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true
 Limits: `PUBLIC_MCP_RPM_PER_IP` (30/min per client IP, from Kong's X-Forwarded-For hop), `PUBLIC_MCP_DAILY_CALLS_PER_IP`
 (500/day per client IP; 0 = off) so one client cannot use up the day, `PUBLIC_MCP_DAILY_CALLS` (5,000/day for the
 server, the global backstop; a refused call counts against neither), Kong 60/min and 1,200/h per IP, 64 KB request
-bodies. The counters live in the seo-agent's memory (one replica; there is no Valkey/Redis client in the service and
-the shared Valkey carries only the web app's cache-bus pub/sub), so a restart resets the day's counts. The site shows how to connect on
+bodies. The counters live in each agent's memory (there is no Valkey/Redis client in the service and the shared Valkey
+carries only the web app's cache-bus pub/sub), so a restart resets the day's counts, and since D-105 (one agent per
+site pod, Kong spreading calls over them) each limit counts per pod. The site shows how to connect on
 `/ai-assistants` (and a footer link) only while it's enabled.
 
 ## Admin server (`/mcp/admin`)
@@ -182,7 +183,7 @@ npx @modelcontextprotocol/inspector@2.12.0 --cli https://jithendar.com/mcp/admin
 
 ## Tests
 
-`moks-seo-agent/tests/test_mcp.py` (in-process client sessions and HTTP through the ASGI app): tool registries and
+`seo-agent/tests/test_mcp.py` (in-process client sessions and HTTP through the ASGI app): tool registries and
 schemas/annotations; the approval-boundary guard (static registry + `kickoff_flow("publish_flow")` refused + the run
 manager refusing the mcp trigger); public tools return published content only and never touch admin data; paging and
 size caps; `ask_blog`; injected instructions labelled and inert; every admin tool through its service with audit rows

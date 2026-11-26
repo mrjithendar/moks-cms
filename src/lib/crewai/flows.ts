@@ -2,7 +2,7 @@
  * The SEO agent's flows as the CrewAI console shows them: a readable name, a group, one line on what each does, and
  * whether a run can be started again from the console. Pure and client-safe.
  *
- * The flows themselves are code in moks-tech/moks-seo-agent (app/flows/__init__.py SPECS). Since migration 0041 (D-100)
+ * The flows themselves are code in the SEO agent (seo-agent/app/flows/__init__.py SPECS). Since migration 0041 (D-100)
  * the lists, names, descriptions and categories admins see come from the catalogue (lib/crewai/catalog.ts, crewai_flows),
  * which the agent's GET /flows fills; this list is the fallback for run pages of flows the catalogue does not list (the
  * runners) and for the start rules of an older agent.
@@ -67,7 +67,7 @@ export const CREW_OF_FLOW: Record<string, string> = {
   news_playground_flow: "news",
 };
 
-/** Flows a schedule may start: moks-seo-agent app/flows/__init__.py CRON_FLOWS (the agent refuses any other). */
+/** Flows a schedule may start: seo-agent/app/flows/__init__.py CRON_FLOWS (the agent refuses any other). */
 export const SCHEDULABLE_FLOWS: readonly string[] = [
   "custom_flow",
   "gsc_sync_flow",

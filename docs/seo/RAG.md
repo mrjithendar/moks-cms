@@ -151,7 +151,7 @@ estimate, `error_code` `schema_estimated`), `truncated` (`stop_reason` `max_toke
 snapshot and streamed characters ÷ 3.5, never more than `max_tokens`). Rows are priced on the model that answered
 (`msg.model`; a server-side fallback can switch models; dated ids price as their family). The budget guard
 **reserves** each call's upper-bound estimate (per scope, under an asyncio lock) until it is booked, so concurrent
-calls can't all pass on the same spend; the reservation is in-process (the agent runs one replica). Each call also
+calls can't all pass on the same spend; the reservation is in-process (per agent; since D-105 one per site pod, so with N pods it can go over by at most N-1 calls' estimates). Each call also
 emits one `llm.call` span (model, purpose, prompt version, token counts, `cost_usd`, outcome, `run_id`/`agent` when
 the call spec carries them) and `seo_llm_calls_total{purpose,outcome}`. `run_id`/`agent` are also written to
 `seo_llm_usage` once web-app migration 0022 has added the columns (checked once per process, so either side can deploy
@@ -175,7 +175,7 @@ crew can then draft.
 
 ## Chunking (v5: token budget)
 
-The splitter in `moks-seo-agent/app/embeddings.py` is fence-aware. It splits by h1–h3, then packs paragraphs to a
+The splitter in `seo-agent/app/embeddings.py` is fence-aware. It splits by h1–h3, then packs paragraphs to a
 **token** budget measured with the embedding model's own tokenizer (ONNX: `tokenizer.json`; ollama/api/hash: ≈ 4
 characters per token). The budget counts the **title + heading-path prefix** embedded with every chunk:
 
@@ -276,7 +276,7 @@ half-built table and serves the old one again.
 
 ## Evaluation
 
-The question set `moks-seo-agent/tests/fixtures/rag_eval.yaml`: **55 questions** (plus the 40-question hard set
+The question set `seo-agent/tests/fixtures/rag_eval.yaml`: **55 questions** (plus the 40-question hard set
 below) written from the published
 articles (14 concept, 12 how-to, 11 exact-term, 10 troubleshooting, **8 no-answer**), each with its expected article(s)
 and acceptable section anchors. `scripts/rag_eval.py` reports Recall@1/3/6, MRR, section-anchor hit rate, the

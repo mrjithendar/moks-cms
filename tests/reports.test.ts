@@ -142,7 +142,7 @@ describe("building a report", () => {
   });
 
   it("analyses LLM cost from the usage ledger: by model, crew, flow and agent, budgets, unknown prices", async () => {
-    // The agent creates its budget table at start-up (moks-seo-agent app/llm_budgets.py); here, with no limit set.
+    // The agent creates its budget table at start-up (seo-agent/app/llm_budgets.py); here, with no limit set.
     await db.execute(sql`create table seo_agent_llm_budget (id boolean primary key, daily_usd float8, monthly_usd float8)`);
     await db.execute(sql`insert into seo_agent_llm_budget values (true, null, null)`);
     const r = await build(["llm_cost", "ai_usage", "agents"]);

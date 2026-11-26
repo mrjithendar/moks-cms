@@ -87,7 +87,7 @@ keyword filters too narrow, everything already covered, sources failing).
 
 ## Postgres test database (developers)
 
-`moks-seo-agent/tests/test_news_postgres.py` runs the store against the real migration when
+`seo-agent/tests/test_news_postgres.py` runs the store against the real migration when
 `SEO_AGENT_TEST_DATABASE_URL` is set. On macOS, LightGBM needs an OpenMP runtime: run pytest with
 `DYLD_FALLBACK_LIBRARY_PATH=.venv/lib/python3.13/site-packages/sklearn/.dylibs` (scikit-learn bundles libomp), or
 `brew install libomp`. The image installs `libgomp1`.

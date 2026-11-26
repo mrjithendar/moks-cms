@@ -1055,3 +1055,48 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
   the Blog and the crews; nothing here changes it.
 - **Off by default.** Nothing is sent until `RAG_BEARER_TOKEN` is set (deployment Secret `jithendar-com-rag`, or the
   admin). A site that buys moks-cms without moks-rag sees no change.
+
+## D-105 The SEO agent is part of moks-cms again: one repository, one Dockerfile, one image, one Deployment (owner decision 2026-11-26)
+
+- **What.** mrjithendar/moks-seo-agent is merged into this repository as `seo-agent/`, with its whole history (a
+  subtree merge of its master at b4f058f). There is one `Dockerfile` (`Dockerfile.ci` is gone) and one image,
+  `registry.jithendar.com/jithendar/moks-cms`: the web app's standalone build and the agent's virtualenv and ONNX
+  models, on python:3.13-slim-trixie with Node's binary from node:26-trixie-slim (Debian: the agent's wheels and sharp
+  need glibc). `seo-agent:latest` is no longer built. The owner's words: "only 1 application one docker file for cms
+  and seo", and, asked how it runs, "one container runs both" over two Deployments.
+- **How it runs.** One Deployment, the site's: each site pod runs the image as two containers, `web` (the default
+  command, `node server.js`) and `seo-agent` (`python -m app.main`, workingDir `/srv`, user 10001). The site calls its
+  own pod's agent (`SEO_AGENT_URL=http://127.0.0.1:8080`). The `seo-agent` and `seo-agent-mcp` Services, the metrics
+  Service (Prometheus job `seo-agent`) and the agent's NetworkPolicy select the site's pods. The dispatcher CronJob runs
+  the same image (`python -m app.trigger dispatch`). Manifests: jithendar.com `kubernetes/30-jithendar-com.yaml`.
+- **Two containers, not one process.** The site and the agent share variable names with different values
+  (`OTEL_SERVICE_NAME` jithendar-com / seo-agent, `LOG_LEVEL` info / INFO), and each needs its own memory limit (a crew
+  run that runs out of memory must restart the agent, not the site) and probes. Containers of one pod give all of that
+  and still start, scale and stop together.
+- **Several agents (app/runs.py).** KEDA runs 2 to 8 site pods, so 2 to 8 agents share one database. Until now the agent
+  assumed one replica (Recreate): at start-up it failed every queued/running run, and a cancel only stopped a run in its
+  own process. Now each run executes in the agent that started it and its Postgres advisory lock says that agent is
+  alive. Every agent sweeps, at start-up and every 60 s, only runs whose lock nobody holds (or older than the flow
+  wall-clock limit + 5 min, for a lock a dead node's connection still holds), never rows younger than 30 s (a kickoff
+  takes its lock just after creating its row). Every 5 s it cancels a run of its own whose row another agent ended (a
+  cancel that reached another pod, or a sweep), keeping that agent's status. `wait()` on another agent's run follows
+  its row. The schedule dispatcher already claimed each time slot in the database, the MCP servers are stateless and
+  live settings were already re-read every period. Tests: `seo-agent/tests/test_several_agents.py`, and on Postgres
+  `test_an_agent_sweeps_only_the_runs_whose_lock_nobody_holds`.
+- **Known limits.** The LLM budget's in-flight reservations are per agent: with N pods, calls that start at the same
+  moment in different pods can go over the budget by at most N-1 calls' estimates (booked spend is shared). The public
+  MCP server's daily limits are counted per agent, so per pod (MCP.md). A manual news ingest in one pod while a
+  scheduled one runs in another can fetch a source twice (items stay unique). Every site
+  rollout and scale-down now ends the flow runs of the pods it stops (they are swept as "interrupted by a restart"; a
+  rerun starts from the beginning), where before only agent releases did. Every site pod pulls the agent's layers
+  (about 480 MB compressed) and reserves its memory too (request 768Mi, limit 1280Mi per pod). Gauges every agent sets
+  from the database (drafts awaiting review, last success, budget ratio) now come from every pod: read them with
+  `max()`, not `sum()` (the dashboards and alerts already do).
+- **CI.** `ci-moks-cms.yml` has a `seo-agent` job (ruff, mypy, pytest with pgvector, the RAG eval smoke, pip-audit) on
+  the same events as `check`. The contract tests read this repository directly (`seo-agent/tests/moks_cms.py`), so they
+  run in CI for the first time. `image` and `release` build `Dockerfile` and smoke-test the image as the site and as
+  the agent (`scripts/smoke-seo-agent-image.sh`); `release` waits for `seo-agent` like it waits for `check` and `test`.
+  The manual retrieval evaluation is `seo-agent-rag-eval.yml`. Dependabot updates `seo-agent/` (uv) from here.
+- **Replaces** the "own repository, own image, no cross-repository credentials" layout of 2026-11-18 (moks-cms #145,
+  #147; moks-seo-agent #3) and the agent's one-replica rule. `moks-seo-agent#N` in these docs refers to pull requests of
+  the archived repository.

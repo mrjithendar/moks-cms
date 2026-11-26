@@ -129,7 +129,7 @@ database write. The one write in the system (create/update a draft) is a flow st
 | `fetch_allowlisted_docs` | official documentation | checked in Python (https, default port, no credentials, no IP literal, allowlisted host), then fetched by the web app's SSRF-safe fetcher (DNS resolved inside the socket, private ranges refused, redirects re-checked). The web app sends 300,000 characters from the page's `<main>` (else `<article>`) element, so a long sidebar cannot push the content out; the agent returns that element's text, at most 12,000 characters. A cut page ends with the anchors of its later sections, and `url#anchor` reads from that section (the fragment is never sent). A short page (a "moved" notice) ends with its links |
 
 Docs allowlist (`SEO_AGENT_DOCS_ALLOWLIST`, read by both services; a host or its subdomains): the default is the list of
-official documentation sites in `moks-seo-agent/app/config.py` (`DEFAULT_DOCS_ALLOWLIST`), mirrored in
+official documentation sites in `seo-agent/app/config.py` (`DEFAULT_DOCS_ALLOWLIST`), mirrored in
 `src/lib/seo-agent/config.ts`; a test keeps the two equal. It covers the tools the site writes about
 (Kubernetes, Helm, Docker, Istio, Kong, Argo CD, Karpenter, KEDA, Velero, Cilium, Linkerd, Prometheus, Grafana,
 OpenTelemetry, AWS, Google Cloud, Azure, Terraform, Ansible, GitHub, GitLab, Cloudflare, PostgreSQL, Redis, Next.js,

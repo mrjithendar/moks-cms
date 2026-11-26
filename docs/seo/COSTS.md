@@ -77,7 +77,7 @@ per draft). v3's graph path had used ~$3–4.5 a month.
 7. **Kill switches:** `SEO_ORCHESTRATOR=legacy`, `ASK_BLOG_ENABLED=false`, `PUBLIC_MCP_ENABLED=false`,
    `ADMIN_MCP_ENABLED=false`, and suspending the CronJobs.
 8. **LLM budgets (per model and per provider):** owned by the **seo-agent**, which makes the platform's LLM calls
-   (`moks-seo-agent/app/llm_budgets.py`, its own table `seo_agent_llm_budgets`). An optional daily and monthly limit
+   (`seo-agent/app/llm_budgets.py`, its own table `seo_agent_llm_budgets`). An optional daily and monthly limit
    for each model, and for each provider (all of its models together, e.g. the credit on the Anthropic account).
    Empty = no limit; nothing is preset. The agent checks them before every call, for every purpose (drafts, flows,
    Ask the Blog, the news desk), counting all of `seo_llm_usage` (this app's own few Claude calls included) plus legacy

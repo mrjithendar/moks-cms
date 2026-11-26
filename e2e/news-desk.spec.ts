@@ -4,7 +4,7 @@ import { noHorizontalScroll, signIn } from "./helpers";
 /**
  * News desk admin UI against a production build seeded by scripts/e2e-seed.ts + scripts/news-e2e-seed.ts (demo data,
  * local PGlite). The seo-agent is not running in this setup: actions that start flows (run, dry run, regenerate) are
- * expected to report that the agent is unreachable; the agent's side is covered by moks-seo-agent tests.
+ * expected to report that the agent is unreachable; the agent's side is covered by the seo-agent/ tests.
  * NEWS_SCREENSHOTS=1 writes the PR screenshots to docs/news/ui/.
  */
 const shot = async (page: Page, name: string) => {
