@@ -220,7 +220,9 @@ jobs:
         # ~/.cache) refuses a world-writable home directory, which the old mk4 runner image had.
         run: |
           set -euo pipefail
-          uv export --frozen --no-dev --format requirements-txt > "$RUNNER_TEMP/requirements.txt"
+          # --no-emit-package lancedb: pyproject.toml switches LanceDB off (override-dependencies, `sys_platform ==
+          # 'never'`, D-103), so it is never installed, and its export line has no hash, which --disable-pip refuses.
+          uv export --frozen --no-dev --format requirements-txt --no-emit-package lancedb > "$RUNNER_TEMP/requirements.txt"
           # chromadb 1.5.9 (pinned by crewai, no fixed release): the advisories concern a running Chroma server/client,
           # which this service never starts or connects to (memory=False); it is only imported. Accepted, D-53.
           uvx --from "pip-audit==2.10.1" pip-audit --strict --progress-spinner off --disable-pip \
