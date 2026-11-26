@@ -1,27 +1,31 @@
 name: moks-cms
 
-# moks-cms tests its code and pushes the CMS image. It deploys nothing: each website has its own repository (jithendar.com:
-# moks-tech/jithendar.com) that ships its site.json, config/, articles and images in a content image, and names the
-# CMS image tag it runs in its Kubernetes manifests. The image reads the site's files at run time
-# (src/config/site-files.ts), so one image serves any site.
+# moks-cms tests its code and pushes the one moks-cms image: the web app AND the SEO agent (seo-agent/), built from the
+# repository's one Dockerfile (D-105). It deploys nothing: each website has its own repository (jithendar.com:
+# mrjithendar/jithendar.com) whose Kubernetes manifests run the image, as the site and as the agent (two containers
+# of the same pod). The image reads the site's files at run time (src/config/site-files.ts), so one image serves any site.
 #
-# check   → pull requests (opened, updated) and manual runs: lint and typecheck, against the test fixture site
-#           (tests/fixtures/site; scripts/use-site.mjs). The production build is the `image` job's.
-# test    → the same events, after `check` has passed: the test suite in 2 shards.
-# image   → pull requests, after `check` and `test` have passed: the production build packaged as the arm64 image
-#           (Dockerfile.ci) and smoke-tested; not pushed.
-# release → ONLY when a pull request is merged into the default branch, and only when it changed something that is
-#           in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
-#           same image and smoke test, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
-#           (:manual-<run number> for manual runs) and :latest (the same image). Nothing else: no site is told,
-#           each site pulls the image it names.
-#           `release` builds only after lint, typecheck and the tests have passed. When `scope` finds that the pull
-#           request's head commit passed `check` and every `test` shard in an earlier run, that is enough; a pull
-#           request merged while its own run was still going is waited for first. Otherwise (merged while a check was
-#           red or cancelled, or a manual run, which has no pull request) `check` and `test` run again on the merge
-#           commit, and `release` starts only once they have passed. The workflow has to check this itself: the
-#           repository is private on GitHub Free, which has no branch protection or required status checks, so nothing
-#           else stops a pull request from being merged before its checks pass.
+# check     → pull requests (opened, updated) and manual runs: lint and typecheck, against the test fixture site
+#             (tests/fixtures/site; scripts/use-site.mjs). The production build is the `image` job's.
+# test      → the same events, after `check` has passed: the web app's test suite in 2 shards.
+# seo-agent → the same events: the SEO agent's checks (seo-agent/): ruff, mypy, pytest with a pgvector PostgreSQL
+#             (including the contract tests against this repository's migrations, callback routes and constants), the
+#             RAG eval smoke, pip-audit of its locked production dependencies.
+# image     → pull requests, after `check`, `test` and `seo-agent` have passed: the arm64 image built from Dockerfile
+#             and smoke-tested as the site and as the agent; not pushed.
+# release   → ONLY when a pull request is merged into the default branch, and only when it changed something that is
+#             in the image (job `scope`), or on a manual run (workflow_dispatch) started on the default branch: the
+#             same image and smoke tests, then push registry.jithendar.com/jithendar/moks-cms:pr-<number>
+#             (:manual-<run number> for manual runs) and :latest (the same image). Nothing else: no site is told,
+#             each site pulls the image it names.
+#             `release` builds only after lint, typecheck and both test suites have passed. When `scope` finds that
+#             the pull request's head commit passed `check`, every `test` shard and `seo-agent` in an earlier run,
+#             that is enough; a pull request merged while its own run was still going is waited for first. Otherwise
+#             (merged while a check was red or cancelled, or a manual run, which has no pull request) `check`, `test`
+#             and `seo-agent` run again on the merge commit, and `release` starts only once they have passed. The
+#             workflow has to check this itself: the repository is private on GitHub Free, which has no branch
+#             protection or required status checks, so nothing else stops a pull request from being merged before its
+#             checks pass.
 #
 # One stage at a time, from when these jobs ran on the mk4 runner pods: the mk4 workers have 4 cores and 8 GiB each, a runner pod reserves 0.5 core and
 # 1 GiB but a test shard or the production build uses 1.5–3 GiB and 2–3 cores. On 2026-11-21 one merge started 7 such
@@ -95,13 +99,23 @@ jobs:
   # pushed to again meanwhile, never builds. The result checks are spelled out: `check` needs the skipped `scope`, and a
   # bare condition would skip this job too.
   image:
-    needs: [check, test]
+    needs: [check, test, seo-agent]
     if: >-
       !cancelled() && needs.check.result == 'success' && needs.test.result == 'success' &&
+      needs.seo-agent.result == 'success' &&
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 40
+    services:
+      # The agent's smoke test starts it against this: a database without the web app's tables.
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_PASSWORD: ci-only-not-secret
+          POSTGRES_DB: seo_agent_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -109,17 +123,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci --no-audit --no-fund
+      # site/, content/ and public/images/ as copies of the test fixture site (plain Node, no packages needed)
       - run: npm run site -- --copy
-      - run: npm run build
-        env:
-          APP_ENV: production
-      - name: Package image
-        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$GITHUB_SHA" -t moks-cms:ci .
-      - name: Smoke-test the image
+      - name: Build the image (web app + SEO agent, Dockerfile)
+        run: docker build --platform linux/arm64 --provenance=false --build-arg "GIT_SHA=$GITHUB_SHA" -t moks-cms:ci .
+      - name: Smoke-test the image as the site
         run: scripts/smoke-site-image.sh moks-cms:ci "$GITHUB_SHA"
+      - name: Smoke-test the image as the SEO agent
+        run: scripts/smoke-seo-agent-image.sh moks-cms:ci "postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test"
 
   # The test suite split by file over 2 runners, once `check` has passed (so it runs on the same events as `check`,
   # including a merge `scope` could not verify). Each shard runs 2 vitest workers with a PGlite each (vitest.config.ts)
@@ -150,8 +161,74 @@ jobs:
       - run: npm run site -- --copy
       - run: npm test -- --shard=${{ matrix.shard }}/2
 
+  # The SEO agent's checks (seo-agent/, Python), on the same events as `check`, next to it: one runner. The contract
+  # tests read this repository's own migrations, callback routes and constants (seo-agent/tests/moks_cms.py), so a web
+  # change that breaks the agent fails here. Only the CronJob manifest test skips (it reads jithendar.com's kubernetes/).
+  seo-agent:
+    needs: scope
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' ||
+      (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (needs.scope.outputs.image == 'true' && needs.scope.outputs.verified != 'true'))
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    services:
+      postgres:
+        # Same pgvector minor as the cluster's CloudNativePG image (0.8.x), PostgreSQL 18.
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_PASSWORD: ci-only-not-secret
+          POSTGRES_DB: seo_agent_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: seo-agent
+    env:
+      SEO_AGENT_TEST_DATABASE_URL: postgresql://postgres:ci-only-not-secret@localhost:5432/seo_agent_test
+      UV_PYTHON_DOWNLOADS: never
+      # The image's thread limits (Dockerfile): without them OpenMP/OpenBLAS (LightGBM, scikit-learn, NumPy) and the
+      # tokenizers start one thread per core of the host, not of the container.
+      OMP_NUM_THREADS: "2"
+      RAYON_NUM_THREADS: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      MALLOC_ARENA_MAX: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || '' }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Install uv (pinned)
+        run: pip install --quiet "uv==0.13.5"
+      - name: Install locked dependencies
+        run: uv sync --frozen --python python3.13
+      - name: Lint (ruff)
+        run: uv run --frozen ruff check app tests
+      - name: Types (mypy)
+        run: uv run --frozen mypy app
+      - name: Tests (pytest, incl. Postgres + pgvector and the contract tests against this repository)
+        run: uv run --frozen pytest -q -rs
+      - name: RAG eval smoke (hashed embeddings; only that it runs; the real run is seo-agent-rag-eval.yml)
+        run: uv run --frozen python scripts/rag_eval.py --embeddings hash --configs baseline-v4,token-hybrid --dsn "$SEO_AGENT_TEST_DATABASE_URL" --out "$RUNNER_TEMP/rag-eval"
+      - name: Dependency audit (pip-audit on the locked production set)
+        # Isolated: pip-audit's own dependencies conflict with crewai's pins, so it audits an exported requirements file.
+        # The export pins and hashes every transitive dependency, so --disable-pip audits it as is instead of having pip
+        # resolve all of it again in a throwaway virtualenv. --cache-dir: pip-audit's default cache (platformdirs, under
+        # ~/.cache) refuses a world-writable home directory, which the old mk4 runner image had.
+        run: |
+          set -euo pipefail
+          uv export --frozen --no-dev --format requirements-txt > "$RUNNER_TEMP/requirements.txt"
+          # chromadb 1.5.9 (pinned by crewai, no fixed release): the advisories concern a running Chroma server/client,
+          # which this service never starts or connects to (memory=False); it is only imported. Accepted, D-53.
+          uvx --from "pip-audit==2.10.1" pip-audit --strict --progress-spinner off --disable-pip \
+            --cache-dir "$RUNNER_TEMP/pip-audit-cache" -r "$RUNNER_TEMP/requirements.txt" \
+            --ignore-vuln PYSEC-2026-311 --ignore-vuln PYSEC-2026-3813 --ignore-vuln PYSEC-2026-3814 --ignore-vuln PYSEC-2026-3815
+
   # Did the merged pull request change anything that is in the image? Notes and READMEs are not (.dockerignore: docs,
-  # *.md), so merging only those must not build or push a new image.
+  # *.md), and neither are the agent's tests and scripts, so merging only those must not build or push a new image.
   scope:
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
     runs-on: ubuntu-24.04-arm
@@ -179,6 +256,7 @@ jobs:
           while IFS= read -r f; do
             case "$f" in
               docs/*|*.md|LICENSE|sites/*|runner/*|.claude/*) ;;
+              seo-agent/tests/*|seo-agent/scripts/*) ;;
               .github/workflows/ci-moks-cms.yml) image=true ;;
               .github/*) ;;
               scripts/build-alerts.py|scripts/check-conflict-copies.sh) ;;
@@ -220,12 +298,12 @@ jobs:
             fi
             sleep 30
           done
-      # `release` skips lint and the tests only when this says "true": the pull request's head commit passed `check`
-      # and every `test` shard in an earlier run of this workflow. Nothing else guarantees it (no branch protection
-      # on this plan, see the top of the file): a pull request can be merged while a check is red, still running or
+      # `release` skips lint and the tests only when this says "true": the pull request's head commit passed `check`,
+      # every `test` shard and `seo-agent` in an earlier run of this workflow. Nothing else guarantees it (no branch
+      # protection on this plan, see the top of the file): a pull request can be merged while a check is red, still running or
       # cancelled. Never fails the job: anything unexpected, including an API error, means "not verified", and
       # `release` then runs lint and the tests itself.
-      - name: Did the pull request's head commit pass check and test?
+      - name: Did the pull request's head commit pass check, test and seo-agent?
         id: checks
         env:
           GH_TOKEN: ${{ github.token }}
@@ -247,23 +325,24 @@ jobs:
           newest=""
           for run in $runs; do
             jobs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?filter=latest&per_page=100" \
-              --jq '.jobs[] | select(.name == "check" or (.name | startswith("test ("))) | "\(.name)=\(.conclusion)"')" \
+              --jq '.jobs[] | select(.name == "check" or .name == "seo-agent" or (.name | startswith("test ("))) | "\(.name)=\(.conclusion)"')" \
               || { [[ -n "$newest" ]] || newest="run $run: its jobs could not be read"; continue; }
-            check=false tests=0 other=""
+            check=false agent=false tests=0 other=""
             while IFS= read -r job; do
               case "$job" in
                 "") ;;
                 "check=success") check=true ;;
+                "seo-agent=success") agent=true ;;
                 "test ("*"=success") tests=$((tests + 1)) ;;
                 *) other="${other:+$other, }$job" ;;
               esac
             done <<<"$jobs"
-            if [[ "$check" == true && "$tests" -eq "$TEST_SHARDS" && -z "$other" ]]; then
-              verified=true reason="run $run passed check and all $tests test shards"
+            if [[ "$check" == true && "$agent" == true && "$tests" -eq "$TEST_SHARDS" && -z "$other" ]]; then
+              verified=true reason="run $run passed check, seo-agent and all $tests test shards"
               break
             fi
             # Reported when no run passed: what the newest run looked like.
-            [[ -n "$newest" ]] || newest="run $run: check passed: $check, test shards passed: $tests of $TEST_SHARDS${other:+, not successful: $other}"
+            [[ -n "$newest" ]] || newest="run $run: check passed: $check, seo-agent passed: $agent, test shards passed: $tests of $TEST_SHARDS${other:+, not successful: $other}"
           done
           [[ "$verified" == true || -z "$newest" ]] || reason="$newest"
           echo "verified=$verified" >> "$GITHUB_OUTPUT"
@@ -275,18 +354,28 @@ jobs:
           fi
 
   release:
-    # Starts after `check` and `test` when they run (a merge `scope` could not verify, or a manual run), and only when
-    # both passed; when `scope` verified the head commit they are skipped and this starts at once. scope is skipped on
+    # Starts after `check`, `test` and `seo-agent` when they run (a merge `scope` could not verify, or a manual run), and
+    # only when all passed; when `scope` verified the head commit they are skipped and this starts at once. scope is skipped on
     # manual runs, so !cancelled() keeps this job from being skipped with it. Manual runs release only from the
     # default branch.
-    needs: [scope, check, test]
+    needs: [scope, check, test, seo-agent]
     if: >-
       !cancelled() && (needs.scope.outputs.image == 'true' ||
       (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch)) &&
-      (needs.scope.outputs.verified == 'true' || (needs.check.result == 'success' && needs.test.result == 'success'))
-    # Native arm64, like the cluster nodes (sharp's prebuilt binaries match the image).
+      (needs.scope.outputs.verified == 'true' ||
+      (needs.check.result == 'success' && needs.test.result == 'success' && needs.seo-agent.result == 'success'))
+    # Native arm64, like the cluster nodes.
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 45
+    services:
+      # The agent's smoke test starts it against this: a database without the web app's tables.
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_PASSWORD: ci-only-not-secret
+          POSTGRES_DB: seo_agent_test
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     permissions:
       contents: read
     # Releases go one at a time, in the order the pull requests were merged.
@@ -308,30 +397,20 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci --no-audit --no-fund
       # site/, content/ and public/images/ as copies of the test fixture site. The image ships them as defaults, so it
       # starts bare; a site's Deployment mounts its own site/, content/ and public/images/ over them.
       - run: npm run site -- --copy
-      # Next's build cache (webpack/turbopack artefacts): an unchanged module is not compiled again.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .next/cache
-          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
-          restore-keys: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}-
-      # The production build type-checks the whole project, so no separate typecheck is needed here.
-      - run: npm run build
-        env:
-          APP_ENV: production
-      - name: Package image
-        run: docker build --platform linux/arm64 --provenance=false -f Dockerfile.ci --build-arg "GIT_SHA=$RELEASE_SHA" -t "$REGISTRY_IMAGE:$PR_TAG" -t "$REGISTRY_IMAGE:latest" .
+      # The production build (inside the Dockerfile) type-checks the whole project, so no separate typecheck is needed.
+      - name: Build the image (web app + SEO agent, Dockerfile)
+        run: docker build --platform linux/arm64 --provenance=false --build-arg "GIT_SHA=$RELEASE_SHA" -t "$REGISTRY_IMAGE:$PR_TAG" -t "$REGISTRY_IMAGE:latest" .
       # Before the push: a release whose image grew more than 15 % over the stored baseline stops here.
       - name: Image size (summary; fails above +15 % of the stored baseline)
         run: scripts/image-size.sh "$REGISTRY_IMAGE:latest" image-size-baseline.json
-      # Never push an image that cannot start or optimise images.
-      - name: Smoke-test the image
+      # Never push an image that cannot start, optimise images, or run the agent.
+      - name: Smoke-test the image as the site
         run: scripts/smoke-site-image.sh "$REGISTRY_IMAGE:latest" "$RELEASE_SHA"
+      - name: Smoke-test the image as the SEO agent
+        run: scripts/smoke-seo-agent-image.sh "$REGISTRY_IMAGE:latest" "postgresql://postgres:ci-only-not-secret@host.docker.internal:5432/seo_agent_test"
       - name: Log in to Harbor
         env:
           HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
@@ -350,7 +429,7 @@ jobs:
         run: |
           digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$REGISTRY_IMAGE:latest")"
           {
-            echo '### moks-cms image'
+            echo '### moks-cms image (web app + SEO agent)'
             echo
             if [[ "$PR_TAG" == pr-* ]]; then source="pull request #${PR_TAG#pr-}"; else source="manual run #${PR_TAG#manual-}"; fi
             echo "- Tags: \`$REGISTRY_IMAGE:$PR_TAG\` and \`:latest\` ($source, commit \`$RELEASE_SHA\`)"

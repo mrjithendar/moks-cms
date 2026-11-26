@@ -19,10 +19,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_the_eval_set_ships_in_the_image() -> None:
+    # The image is the repository's one Dockerfile (D-105): it copies seo-agent/app and leaves seo-agent/tests out.
     assert EVAL_PATH.exists() and EVAL_PATH.is_relative_to(ROOT / "app")  # app/ is copied into the image
-    ignored = [line.strip() for line in (ROOT / ".dockerignore").read_text().splitlines()]
-    assert "tests" in ignored and "app" not in ignored
-    assert "COPY app ./app" in (ROOT / "Dockerfile").read_text()
+    ignored = [line.strip() for line in (ROOT.parent / ".dockerignore").read_text().splitlines()]
+    assert "seo-agent/tests" in ignored and not any(i in ("seo-agent", "seo-agent/app") for i in ignored)
+    assert "COPY seo-agent/app /srv/app" in (ROOT.parent / "Dockerfile").read_text()
     assert len(load_eval_set()) >= 20
 
 

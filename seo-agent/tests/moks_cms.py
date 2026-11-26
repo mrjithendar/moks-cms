@@ -1,13 +1,9 @@
 """The web app (moks-cms) that the contract tests compare the agent with.
 
 The agent reads and writes the web app's database and calls its callback API, and some tests check that both sides
-still agree by reading moks-cms source: its migrations, the callback server's route table and a few shared constants.
-moks-cms is a separate repository (moks-tech/moks-cms), found here as
-
-- $MOKS_CMS_DIR, a moks-cms checkout (a wrong path is an error, never a skip), or
-- ../moks-cms, a checkout next to this repository (local development).
-
-With neither, the tests that need it are skipped. CI has no moks-cms checkout, so they run only locally.
+still agree by reading the web app's source: its migrations, the callback server's route table and a few shared
+constants. Since D-105 the agent is part of moks-cms (seo-agent/), so the web app is always the parent folder and these
+tests run everywhere, CI included. MOKS_CMS_DIR still points them at another checkout (a wrong path is an error).
 """
 
 from __future__ import annotations
@@ -15,26 +11,21 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pytest
+ROOT = Path(__file__).resolve().parents[1]  # seo-agent/
+REPO = ROOT.parent  # moks-cms
 
-ROOT = Path(__file__).resolve().parents[1]
 
-
-def _checkout() -> Path | None:
+def _checkout() -> Path:
     env = os.environ.get("MOKS_CMS_DIR")
-    if env:
-        if not (Path(env) / "src" / "db" / "migrations").is_dir():
-            raise RuntimeError(f"MOKS_CMS_DIR={env} is not a moks-cms checkout (no src/db/migrations)")
-        return Path(env)
-    sibling = ROOT.parent / "moks-cms"
-    return sibling if (sibling / "src" / "db" / "migrations").is_dir() else None
+    path = Path(env) if env else REPO
+    if not (path / "src" / "db" / "migrations").is_dir():
+        raise RuntimeError(f"{path} is not a moks-cms checkout (no src/db/migrations)")
+    return path
 
 
 CHECKOUT = _checkout()
 
 
 def www(rel: str) -> Path:
-    """`<rel>` in the moks-cms checkout; skips the calling test when there is none."""
-    if CHECKOUT is None:
-        pytest.skip("moks-cms not found: set MOKS_CMS_DIR to a moks-cms checkout, or check it out next to this repository")
+    """`<rel>` in the moks-cms checkout (the web app)."""
     return CHECKOUT / rel

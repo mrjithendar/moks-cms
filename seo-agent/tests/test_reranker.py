@@ -184,12 +184,12 @@ def test_the_passage_text_is_title_heading_and_clipped_content() -> None:
 
 
 def test_the_model_is_baked_pinned_and_pytorch_stays_out_of_the_image_and_ci() -> None:
-    docker = (ROOT / "Dockerfile").read_text()
+    docker = (ROOT.parent / "Dockerfile").read_text()  # the repository's one Dockerfile (D-105)
     assert "ARG RERANKER_REV=233902d25c440f23af6f7d6e94d2946bac0bee0a" in docker
     assert 'echo "${RERANKER_SHA256}  /models/ms-marco-MiniLM-L6-v2/model.onnx" | sha256sum -c -' in docker
     assert "RAG_RERANKER_DIR=/models/ms-marco-MiniLM-L6-v2" in docker
     assert "uv sync --frozen --no-dev --no-install-project" in docker  # installs no dependency group
-    assert "torch" not in docker.split("FROM python:${PYTHON_VERSION}-slim\n", 1)[1].lower()  # the runtime stage
+    assert "torch" not in docker.split("FROM python:${PYTHON_VERSION}-slim-trixie AS runtime\n", 1)[1].lower()  # the runtime stage
     py = tomllib.loads((ROOT / "pyproject.toml").read_text())
     deps = " ".join(py["project"]["dependencies"]).lower()
     assert "torch" not in deps and "transformers" not in deps
@@ -197,9 +197,9 @@ def test_the_model_is_baked_pinned_and_pytorch_stays_out_of_the_image_and_ci() -
     assert "default-groups" not in py["tool"]["uv"]  # only `dev` is installed by `uv sync` (CI)
     assert py["tool"]["uv"]["sources"]["torch"] == [{"index": "pytorch-cpu"}]
     assert {"name": "pytorch-cpu", "url": "https://download.pytorch.org/whl/cpu", "explicit": True} in py["tool"]["uv"]["index"]
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    ci = (ROOT.parent / ".github" / "workflows" / "ci-moks-cms.yml").read_text()
     assert "--group train" not in ci and "--all-groups" not in ci
-    assert "scripts" in (ROOT / ".dockerignore").read_text().split()
+    assert "seo-agent/scripts" in (ROOT.parent / ".dockerignore").read_text().split()
 
 
 MODEL_DIR = os.environ.get("RAG_RERANKER_DIR", "/models/ms-marco-MiniLM-L6-v2")

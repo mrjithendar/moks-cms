@@ -1,8 +1,8 @@
 {
-  "image": "registry.jithendar.com/jithendar/moks-cms:latest (linux/arm64, the release build in ci-moks-cms.yml, with the test fixture site's files as defaults)",
+  "image": "registry.jithendar.com/jithendar/moks-cms:latest (linux/arm64, the release build in ci-moks-cms.yml from Dockerfile: the web app and the SEO agent, D-105; with the test fixture site's files as defaults)",
   "uncompressed_bytes": null,
   "compressed_bytes": null,
   "measured": null,
   "commit": null,
-  "note": "Not measured yet: the first release run after this change prints both numbers (job summary); record them here to arm the gate."
+  "note": "Not measured yet for the combined image (D-105; the SEO agent alone was 480,937,987 bytes compressed on 2026-11-21): the first release run after this change prints both numbers (job summary); record them here to arm the gate."
 }

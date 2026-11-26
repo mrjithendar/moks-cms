@@ -11,6 +11,8 @@
 /* News desk admin (docs/news): same split as the SEO admin (D-37); the admin layout loads admin/(growth)/seo.css. */
 @source not "../components/news";
 @source not "./admin/news";
+/* The SEO agent (Python, its test fixtures' MDX): not part of the web app. */
+@source not "../../seo-agent";
 
 
 /* --- Base ---------------------------------------------------------------------------------- */

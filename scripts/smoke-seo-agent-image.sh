@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# Start the seo-agent image against a database without the web app's tables and check that it answers on both ports
-# (internal API 8080, MCP edge 8090), keeps its guarded endpoints closed, and can render a PDF and embed text with the
-# bundled ONNX model. Never push an image that fails this.
+# Start the moks-cms image as the SEO agent (D-105: the same image runs the site and the agent), the way the site's pod
+# runs its seo-agent container (workingDir /srv, `python -m app.main`, user 10001, read-only root, /tmp writable),
+# against a database without the web app's tables, and check that it answers on both ports (internal API 8080, MCP edge
+# 8090), keeps its guarded endpoints closed, and can render a PDF and embed text with the bundled ONNX model. Never push
+# an image that fails this. ci-moks-cms.yml runs it next to scripts/smoke-site-image.sh.
 #
-#   scripts/smoke-image.sh <image> <database url>
+#   scripts/smoke-seo-agent-image.sh <image> <database url>
 #
 # <database url> is as seen from inside the container (CI: the job's PostgreSQL service via host.docker.internal).
+# APP_ENV=development: the image defaults to production, which requires 32-character tokens (the cluster's secrets).
 set -euo pipefail
 IMAGE="${1:?usage: $0 <image> <database url>}"
 DATABASE_URL="${2:?usage: $0 <image> <database url>}"
 name="seo-agent-smoke-${GITHUB_RUN_ID:-local}-$$"
 
-docker run -d --name "$name" -e SEO_AGENT_TOKEN=ci -e DATABASE_URL="$DATABASE_URL" \
-  --add-host host.docker.internal:host-gateway -p 8080:8080 -p 8090:8090 "$IMAGE" >/dev/null
+docker run -d --name "$name" -e APP_ENV=development -e SEO_AGENT_TOKEN=ci -e DATABASE_URL="$DATABASE_URL" \
+  --user 10001:10001 --read-only --tmpfs /tmp --workdir /srv \
+  --add-host host.docker.internal:host-gateway -p 8080:8080 -p 8090:8090 "$IMAGE" python -m app.main >/dev/null
 trap 'docker logs "$name" 2>&1 | tail -50; docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 # A fresh database without the web app's tables: the service must still start and say so on /readyz.
 for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 2; done

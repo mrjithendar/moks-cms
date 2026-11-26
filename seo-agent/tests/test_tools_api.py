@@ -233,7 +233,7 @@ def test_the_cluster_runs_one_dispatcher_cronjob() -> None:
     trigger's name check and is a flow a schedule may start.
 
     The CronJob manifests live in the jithendar.com repository (kubernetes/seo-agent-*.yaml), not here. Point
-    SEO_AGENT_K8S_DIR at that kubernetes/ directory, or check jithendar.com out next to this repository, to run this.
+    SEO_AGENT_K8S_DIR at that kubernetes/ directory, or check jithendar.com out next to moks-cms, to run this.
     """
     import os
     import re
@@ -243,7 +243,8 @@ def test_the_cluster_runs_one_dispatcher_cronjob() -> None:
     from app.flows import CRON_FLOWS
 
     repo = Path(__file__).resolve().parents[1]
-    candidates = [Path(os.environ["SEO_AGENT_K8S_DIR"])] if os.environ.get("SEO_AGENT_K8S_DIR") else [repo.parent / "jithendar.com" / "kubernetes"]
+    # repo is moks-cms/seo-agent: jithendar.com is checked out next to moks-cms
+    candidates = [Path(os.environ["SEO_AGENT_K8S_DIR"])] if os.environ.get("SEO_AGENT_K8S_DIR") else [repo.parent.parent / "jithendar.com" / "kubernetes"]
     manifests = sorted(f for d in candidates for f in d.glob("seo-agent-*.yaml"))
     if not manifests:
         pytest.skip("CronJob manifests not found: set SEO_AGENT_K8S_DIR to jithendar.com's kubernetes/ directory")

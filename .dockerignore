@@ -10,6 +10,14 @@ Dockerfile
 .env*
 !.env.example
 *.md
+# The SEO agent: only seo-agent/pyproject.toml, uv.lock and app/ go into the image (Dockerfile stage agent-build)
+seo-agent/.venv
+seo-agent/tests
+seo-agent/scripts
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
 # Repository files outside the app (it moved to the repository root on 2026-11-18)
 .git
 .github

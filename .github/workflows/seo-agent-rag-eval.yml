@@ -1,10 +1,11 @@
-name: RAG eval (manual)
+name: SEO agent RAG eval (manual)
 
-# The real retrieval evaluation (moks-cms docs/seo/RAG.md "Evaluation"): the eval set in
-# app/data/rag_eval.yaml against the blog's MDX files (tests/fixtures/rag_corpus), with the production embedding model
-# (bge-small-en-v1.5 ONNX at the image's pinned revision and checksums) and Postgres full-text search (pgvector
-# service; the vector list is exact cosine in numpy). Run it after changing the chunker, retrieval or the eval set.
-# The reports are written to the job summary; commit the ones worth keeping under moks-cms docs/seo/rag-eval/.
+# The SEO agent's real retrieval evaluation (docs/seo/RAG.md "Evaluation"): the eval set in seo-agent/app/data/rag_eval.yaml
+# against the blog's MDX files (seo-agent/tests/fixtures/rag_corpus), with the production embedding model
+# (bge-small-en-v1.5 ONNX at the image's pinned revision and checksums, read from the repository's Dockerfile) and
+# Postgres full-text search (pgvector service; the vector list is exact cosine in numpy). Run it after changing the
+# chunker, retrieval or the eval set. The reports are written to the job summary; commit the ones worth keeping under
+# docs/seo/rag-eval/.
 
 on:
   workflow_dispatch:
@@ -33,6 +34,9 @@ jobs:
         options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       UV_PYTHON_DOWNLOADS: never
+    defaults:
+      run:
+        working-directory: seo-agent
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,9 +51,9 @@ jobs:
       - name: Fetch the embedding model (same revision and checksums as the Dockerfile)
         run: |
           set -euo pipefail
-          rev="$(sed -n 's/^ARG MODEL_REV=//p' Dockerfile)"
-          msha="$(sed -n 's/^ARG MODEL_SHA256=//p' Dockerfile)"
-          tsha="$(sed -n 's/^ARG TOKENIZER_SHA256=//p' Dockerfile)"
+          rev="$(sed -n 's/^ARG MODEL_REV=//p' ../Dockerfile)"
+          msha="$(sed -n 's/^ARG MODEL_SHA256=//p' ../Dockerfile)"
+          tsha="$(sed -n 's/^ARG TOKENIZER_SHA256=//p' ../Dockerfile)"
           mkdir -p "$RUNNER_TEMP/bge"
           curl -fsSL -o "$RUNNER_TEMP/bge/model.onnx" "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/$rev/onnx/model.onnx"
           curl -fsSL -o "$RUNNER_TEMP/bge/tokenizer.json" "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/$rev/tokenizer.json"
@@ -58,11 +62,11 @@ jobs:
       - name: Fetch the reranker model (same revision and checksums as the Dockerfile; used by the *-rerank configs)
         run: |
           set -euo pipefail
-          repo="$(sed -n 's/^ARG RERANKER_REPO=//p' Dockerfile)"
-          rev="$(sed -n 's/^ARG RERANKER_REV=//p' Dockerfile)"
-          file="$(sed -n 's/^ARG RERANKER_FILE=//p' Dockerfile)"
-          msha="$(sed -n 's/^ARG RERANKER_SHA256=//p' Dockerfile)"
-          tsha="$(sed -n 's/^ARG TOKENIZER_SHA256=//p' Dockerfile)"
+          repo="$(sed -n 's/^ARG RERANKER_REPO=//p' ../Dockerfile)"
+          rev="$(sed -n 's/^ARG RERANKER_REV=//p' ../Dockerfile)"
+          file="$(sed -n 's/^ARG RERANKER_FILE=//p' ../Dockerfile)"
+          msha="$(sed -n 's/^ARG RERANKER_SHA256=//p' ../Dockerfile)"
+          tsha="$(sed -n 's/^ARG TOKENIZER_SHA256=//p' ../Dockerfile)"
           mkdir -p "$RUNNER_TEMP/reranker"
           curl -fsSL -o "$RUNNER_TEMP/reranker/model.onnx" "https://huggingface.co/$repo/resolve/$rev/$file"
           curl -fsSL -o "$RUNNER_TEMP/reranker/tokenizer.json" "https://huggingface.co/$repo/resolve/$rev/tokenizer.json"
@@ -78,5 +82,5 @@ jobs:
           uv run --frozen python scripts/rag_eval.py --embeddings onnx --model-dir "$RUNNER_TEMP/bge" \
             --dsn postgresql://postgres:ci-only-not-secret@localhost:5432/rag_eval --configs "$CONFIGS" --out "$RUNNER_TEMP/rag-eval" \
             --reranker-dir "$RUNNER_TEMP/reranker" $EXTRA
-          # Every report goes into the job summary (copy the ones worth keeping into moks-cms docs/seo/rag-eval/).
+          # Every report goes into the job summary (copy the ones worth keeping into docs/seo/rag-eval/).
           cat "$RUNNER_TEMP"/rag-eval/*summary*.md "$RUNNER_TEMP"/rag-eval/*[!y].md >> "$GITHUB_STEP_SUMMARY"
