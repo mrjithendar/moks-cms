@@ -1,0 +1,145 @@
+"""Shared Flow plumbing: dependencies, the base class every flow extends, and step instrumentation.
+
+Every flow is a CrewAI `Flow[State]` with `@start` / `@listen` / `@router` methods. `SeoFlow` adds:
+- `deps` (settings, LLM, web app client, retriever, run store, the runner for child runs, crew factories);
+- `step(name)`: duration histogram, OTel span and the run's `current_step` while the step runs (CrewAI's persistence
+  then records the finished step and the state, app/runs.py), and the step's row in the run history (app/run_history.py:
+  the admin run page's step list and the step its log lines belong to). It yields a `StepRecord`: facts put in
+  `record.detail` (attempts, condition results, versions, child runs, redacted input/output metadata) are merged into
+  the step's row when it ends, whatever the outcome;
+- `@persist(INSTANCE_ONLY)` (never CrewAI's default SQLite), no auto-created CrewAI memory, quiet console.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, TypeVar
+
+from crewai.flow import Flow
+from pydantic import BaseModel, PrivateAttr
+
+from .. import metrics
+from ..config import Settings
+from ..llm import BudgetExceeded, Llm
+from ..run_history import CURRENT_STEP
+from ..runs import CURRENT_RUN_ID
+from ..tracing import span
+from ..webapp import WebApp, WebAppError
+
+log = logging.getLogger("seo_agent.flows")
+
+S = TypeVar("S", bound=BaseModel)
+
+
+@dataclass
+class Deps:
+    settings: Settings
+    llm: Llm
+    web: WebApp
+    retriever: Any
+    store: Any = None  # RunStore
+    runner: Any = None  # FlowRunner (child runs)
+    optimization_crew: Callable[[], Any] | None = None
+    editorial_crew: Callable[[], Any] | None = None
+    report_crew: Callable[[], Any] | None = None
+    promotion_crew: Callable[[], Any] | None = None
+    reindex: Callable[..., Awaitable[dict[str, int]]] | None = None  # (article_ids, full, force=False)
+    history: Any = None  # RunHistory (app/run_history.py): steps, log lines and model calls for the admin run page
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+    verify_delays: tuple[float, ...] = (40.0, 30.0, 60.0)
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+def transient(e: BaseException) -> bool:
+    if isinstance(e, WebAppError):
+        return e.transient
+    return type(e).__name__ in {"APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError", "OverloadedError", "ServiceUnavailableError", "ConnectError", "ReadTimeout", "RemoteProtocolError"}
+
+
+async def with_retry(fn: Callable[[], Awaitable[Any]], sleep: Callable[[float], Awaitable[None]], attempts: int = 3, base: float = 2.0) -> Any:
+    """Transient errors only (connection, timeout, 429, 5xx): exponential backoff. Anything else raises at once."""
+    for i in range(attempts):
+        try:
+            return await fn()
+        except Exception as e:
+            if i == attempts - 1 or not transient(e):
+                raise
+            await sleep(min(30.0, base * (2**i)))
+    raise AssertionError("unreachable")
+
+
+@dataclass
+class StepRecord:
+    """What `SeoFlow.step()` yields: structured facts about the step, written to its run-history row when it ends."""
+
+    name: str
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
+class SeoFlow(Flow[S]):
+    """Base class. Subclasses set FLOW (the registry name) and define their steps."""
+
+    FLOW: ClassVar[str] = "flow"
+    _skip_auto_memory: ClassVar[bool] = True  # CrewAI would otherwise create a Memory per flow (LanceDB: not installed)
+    _deps: Any = PrivateAttr(default=None)
+
+    @classmethod
+    def create(cls, deps: Deps, persistence: Any) -> SeoFlow[Any]:
+        f = cls(persistence=persistence, suppress_flow_events=True, tracing=False)
+        f._deps = deps
+        return f
+
+    @property
+    def deps(self) -> Deps:
+        return self._deps
+
+    @asynccontextmanager
+    async def step(self, name: str) -> AsyncIterator[StepRecord]:
+        started = time.monotonic()
+        store = self.deps.store
+        run_id = getattr(self.state, "id", None)
+        if store is not None and run_id:
+            try:
+                await store.update(run_id, current_step=name)
+            except Exception:  # noqa: S110 - the run record must never break a flow
+                pass
+        token = CURRENT_RUN_ID.set(str(run_id)) if run_id else None  # model calls in this step carry CallSpec.run_id
+        step_token = CURRENT_STEP.set(name)  # this step's log lines (crew threads: RunHistory's per-run map)
+        history = getattr(self.deps, "history", None) if run_id else None
+        try:
+            step_id = await history.step_started(str(run_id), name) if history is not None else None
+            with span(f"flow.{self.FLOW}.{name}", {"flow": self.FLOW, "step": name, "run_id": run_id or ""}):
+                failed: str | None = None
+                detail: str | None = None
+                record = StepRecord(name)
+                try:
+                    yield record
+                except BaseException as e:
+                    failed = type(e).__name__
+                    detail = f"{failed}: {str(e)[:500]}" if str(e) else failed
+                    raise
+                finally:
+                    seconds = time.monotonic() - started
+                    metrics.STEP_DURATION.labels(flow=metrics.flow_label(self.FLOW), step=name).observe(seconds)
+                    log.info("flow step finished", extra={"event": "flow_step", "flow": self.FLOW, "step": name, "seconds": round(seconds, 3), "status": "error" if failed else "ok", "error": failed})
+                    if history is not None:
+                        if record.detail:
+                            await history.step_detail(step_id, record.detail)
+                        status = "succeeded" if failed is None else ("cancelled" if failed == "CancelledError" else "failed")
+                        await history.step_finished(str(run_id), step_id, name, status, detail, seconds)
+        finally:
+            CURRENT_STEP.reset(step_token)
+            if token is not None:
+                CURRENT_RUN_ID.reset(token)
+
+    def add_budget_cost(self, e: BudgetExceeded) -> None:
+        """A crew stopped by the budget still spent tokens (crews.common.CrewBudgetExceeded): count them on the run."""
+        self.state.add_cost(float(getattr(e, "cost_usd", 0.0) or 0.0), int(getattr(e, "tokens", 0) or 0))
+
+    async def retry(self, fn: Callable[[], Awaitable[Any]]) -> Any:
+        return await with_retry(fn, self.deps.sleep)

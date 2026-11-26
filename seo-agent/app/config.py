@@ -1,0 +1,341 @@
+"""seo-agent settings, from environment variables only (docs/seo/AGENTS.md lists them all).
+
+Secrets (ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN, DATABASE_URL, SEO_AGENT_DATABASE_URL) come from
+Kubernetes Secrets and are never logged, returned by an endpoint or put into a prompt.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
+# Third-party telemetry off before crewai is imported anywhere (crewai_core 1.15.30 reads these at import/first use).
+# OTEL_SDK_DISABLED is deliberately NOT set: it would also switch off this service's own OpenTelemetry tracing.
+# CREWAI_STORAGE_DIR points CrewAI's local storage at an emptyDir: nothing may write SQLite there (the flows use the
+# Postgres persistence, app/runs.py, and a test asserts no .db file appears), but if a code path ever tried, it must
+# not land in the read-only image.
+for _k, _v in {
+    "CREWAI_DISABLE_TELEMETRY": "true",
+    "CREWAI_DISABLE_TRACKING": "true",
+    "CREWAI_TRACING_ENABLED": "false",
+    "CREWAI_DISABLE_VERSION_CHECK": "true",
+    "CREWAI_STORAGE_DIR": "/tmp/crewai",  # noqa: S108 - emptyDir in the pod
+}.items():
+    os.environ.setdefault(_k, _v)
+
+# Official documentation only (the host or a subdomain). Keep equal to moks-cms/src/lib/seo-agent/config.ts.
+DEFAULT_DOCS_ALLOWLIST = (
+    "kubernetes.io",
+    "docs.aws.amazon.com",
+    "developer.hashicorp.com",
+    "docs.python.org",
+    "docs.crewai.com",
+    "modelcontextprotocol.io",
+    "minikube.sigs.k8s.io",
+    "helm.sh",
+    "docs.docker.com",
+    "istio.io",
+    "developer.konghq.com",
+    "docs.konghq.com",
+    "argo-cd.readthedocs.io",
+    "karpenter.sh",
+    "keda.sh",
+    "velero.io",
+    "docs.cilium.io",
+    "linkerd.io",
+    "prometheus.io",
+    "prometheus.github.io",
+    "grafana.com",
+    "opentelemetry.io",
+    "docs.github.com",
+    "docs.gitlab.com",
+    "docs.ansible.com",
+    "developers.cloudflare.com",
+    "cloud.google.com",
+    "learn.microsoft.com",
+    "www.postgresql.org",
+    "redis.io",
+    "nextjs.org",
+    "react.dev",
+    "nodejs.org",
+    "developer.mozilla.org",
+    "go.dev",
+    "fastapi.tiangolo.com",
+    "docs.pydantic.dev",
+    "docs.claude.com",
+    "platform.claude.com",
+    "docs.langchain.com",
+    "man7.org",
+    "www.freedesktop.org",
+    "systemd.io",
+    "docs.kernel.org",
+    "www.gnu.org",
+)
+
+
+def _bool(name: str, default: bool, env: Mapping[str, str] | None = None) -> bool:
+    v = (os.environ if env is None else env).get(name, "").strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
+def _float(name: str, default: float, env: Mapping[str, str] | None = None) -> float:
+    try:
+        v = float((os.environ if env is None else env).get(name, ""))
+        return v if v >= 0 else default
+    except ValueError:
+        return default
+
+
+def _int(name: str, default: int, env: Mapping[str, str] | None = None) -> int:
+    try:
+        v = int((os.environ if env is None else env).get(name, ""))
+        return v if v >= 0 else default
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True)
+class Settings:
+    database_url: str = ""
+    # Next.js admin API → seo-agent (bearer). Required: the service refuses to start without it in production.
+    agent_token: str = ""
+    # seo-agent → Next.js internal callback API (bearer), a different secret so one leaked direction is not both.
+    callback_token: str = ""
+    callback_url: str = "http://jithendar-com-internal.jithendar:9465"
+    anthropic_api_key: str = ""
+    draft_model: str = "claude-sonnet-5-5"
+    classify_model: str = "claude-haiku-5-5"
+    ask_daily_budget_usd: float = 1.0
+    ask_enabled: bool = False
+    crew_max_tokens_per_run: int = 150_000  # ≈ a normal 4-agent run is ~80k (docs/seo/COSTS.md)
+    crew_timeout_s: int = 600
+    crew_max_iter: int = 4
+    crew_max_rpm: int = 20
+    # Per-agent model overrides, "<crew>.<agent>" → model, e.g. {"optimization.analyst": "claude-haiku-5-5"}.
+    crew_models: dict[str, str] = field(default_factory=dict)
+    # Per-agent max_iter overrides, "<crew>.<agent>" → turns (1–20), e.g. {"editorial.researcher": 10}; others use
+    # crew_max_iter.
+    crew_max_iters: dict[str, int] = field(default_factory=dict)
+    # Per-request timeout of the Anthropic client. A 16k-token article body on a larger model can take minutes.
+    llm_timeout_s: float = 120.0
+    fanout_concurrency: int = 2
+    weekly_max_articles: int = 10
+    embeddings_provider: str = "onnx"
+    embeddings_model_dir: str = "/models/bge-small-en-v1.5"
+    ollama_url: str = ""
+    ollama_model: str = "nomic-embed-text"
+    ollama_embed_dim: int = 0  # 0 = the model's known size (embeddings.OLLAMA_MODELS)
+    embeddings_timeout_s: float = 300.0  # per request to Ollama; mk4's CPU bge-m3 takes ~12 s for a batch of 8
+    embeddings_api_url: str = ""
+    embeddings_api_key: str = ""
+    docs_allowlist: tuple[str, ...] = field(default=DEFAULT_DOCS_ALLOWLIST)
+    ask_cache_ttl_s: int = 900
+    ask_top_k: int = 6
+    # Cosine pre-filter for retrieved chunks, calibrated per embeddings model on the eval set = the highest floor that
+    # loses no expected answer (RAG.md "Score calibration"). load_settings takes the model's value from
+    # app/calibration.py unless ASK_BLOG_MIN_SCORE is set; 0.66 is bge-small's.
+    ask_min_score: float = 0.66
+    ask_retention_days: int = 30
+    # The cross-encoder reranker (app/reranker.py): off until switched on; RAG_RERANKER_DIR is set by the image.
+    # 0 = no limit for the three limits: every candidate, no deadline, no cap on reranks running at once.
+    rag_reranker_enabled: bool = False
+    rag_reranker_dir: str = ""
+    rag_reranker_threads: int = 2
+    rag_reranker_candidates: int = 0
+    rag_reranker_timeout_ms: int = 0
+    rag_reranker_max_concurrent: int = 0
+    production: bool = False
+    otel_endpoint: str = ""
+    service_name: str = "seo-agent"
+    # v4: MCP (docs/seo/MCP.md). Both servers are off until switched on; the admin one only after OAuth is verified.
+    site_url: str = "https://jithendar.com"
+    public_mcp_enabled: bool = False
+    admin_mcp_enabled: bool = False
+    edge_port: int = 8090  # MCP listener (Kong → here only); the internal API stays on PORT (8080)
+    mcp_allowed_hosts: tuple[str, ...] = ("jithendar.com", "www.jithendar.com")
+    public_mcp_rpm_per_ip: int = 30
+    public_mcp_daily_calls: int = 5000
+    admin_mcp_rpm_per_token: int = 120
+    admin_kickoffs_per_hour: int = 10
+    # Tools an admin switched off (app/admin_settings group "mcp"). A tool named here is refused at once and is left
+    # out of the tool list after a restart. Unknown names do nothing. Nothing here can add a tool.
+    mcp_admin_tools_off: tuple[str, ...] = ()
+    mcp_public_tools_off: tuple[str, ...] = ()
+    # Flows that may NOT be started over MCP although the code's allowlist has them. It only narrows the allowlist.
+    mcp_kickoffs_off: tuple[str, ...] = ()
+    flow_timeout_s: int = 1800  # wall clock per flow run (crews have their own, shorter limit)
+    # Schedules (app/schedules.py): how late a missed fire time still runs, e.g. after the agent was down.
+    schedule_catchup_min: int = 60
+    # The shared moks-rag service (app/moks_rag.py): off unless both the URL and the token are set. The agent writes
+    # only to its own collection and reads the web app's articles from the CMS collection.
+    rag_api_url: str = ""
+    rag_bearer_token: str = ""
+    rag_seo_collection: str = "seo_intel"
+    rag_cms_collection: str = "cms_content"
+    rag_timeout_s: float = 120.0  # ingest: rag-api embeds every chunk on CPU before it answers (its own limit is 120 s)
+    rag_query_timeout_s: float = 20.0  # one query: one embedding and a Qdrant search
+    # The cannibalization check's semantic part (app/site_context.py): an existing article at least this similar to
+    # the new article's keyword (cosine, in this service's embeddings model) is flagged. None = not used; the
+    # keyword checks still run.
+    rag_cannibalization_min_similarity: float | None = None
+
+    @property
+    def rag_enabled(self) -> bool:
+        return bool(self.rag_api_url and self.rag_bearer_token)
+
+    @property
+    def admin_mcp_resource(self) -> str:
+        """RFC 8707 resource indicator / token audience of the admin MCP server."""
+        return f"{self.site_url.rstrip('/')}/mcp/admin"
+
+
+def _names(raw: str) -> tuple[str, ...]:
+    """A comma-separated list of tool or flow names, lower-cased, without blanks or repeats."""
+    return tuple(dict.fromkeys(n.strip().lower() for n in raw.split(",") if n.strip()))
+
+
+# Admin MCP tools renamed when the admin's crew jobs became content flows (2026-11-23, app/mcp/news_tools.py). An old
+# name already saved in MCP_ADMIN_TOOLS_OFF keeps the renamed tool switched off.
+RENAMED_TOOLS = {"list_news_jobs": "list_content_flows", "get_news_job": "get_content_flow", "kickoff_news_job": "run_content_flow"}
+
+
+def _tool_names(raw: str) -> tuple[str, ...]:
+    """_names, with each renamed tool under its current name."""
+    return tuple(dict.fromkeys(RENAMED_TOOLS.get(n, n) for n in _names(raw)))
+
+
+def _models(raw: str) -> dict[str, str]:
+    """SEO_CREW_MODELS: JSON object of "<crew>.<agent>" → Claude model id; anything malformed is ignored."""
+    import json
+    import re
+
+    try:
+        v = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        return {}
+    if not isinstance(v, dict):
+        return {}
+    return {k: m for k, m in v.items() if isinstance(k, str) and isinstance(m, str) and re.fullmatch(r"[a-z_]+\.[a-z_]+", k) and re.fullmatch(r"claude-[a-z0-9-]{3,40}", m)}
+
+
+def _max_iters(raw: str) -> dict[str, int]:
+    """SEO_CREW_MAX_ITERS: JSON object of "<crew>.<agent>" → max_iter (1–20); anything malformed is ignored."""
+    import json
+    import re
+
+    try:
+        v = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        return {}
+    if not isinstance(v, dict):
+        return {}
+    return {k: n for k, n in v.items() if isinstance(k, str) and re.fullmatch(r"[a-z_]+\.[a-z_]+", k) and isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 20}
+
+
+def embeddings_model_name(provider: str, model_dir: str, ollama_model: str) -> str:
+    """What make_embeddings(...).name will be, without loading the model (app/calibration.py keys on it)."""
+    if provider == "onnx":
+        return f"onnx:{os.path.basename(model_dir.rstrip('/'))}"
+    if provider == "ollama":
+        return f"ollama:{ollama_model}"
+    return provider
+
+
+def load_settings(env: Mapping[str, str] | None = None) -> Settings:
+    """`env` defaults to the process environment. The admin settings store (app/admin_settings) passes the
+    environment with the admin's saved values laid over it, so a saved value wins over the deployment's and every
+    clamp below applies to both."""
+    from .calibration import calibration_for
+
+    env = os.environ if env is None else env
+    docs = tuple(h.strip().lower() for h in env.get("SEO_AGENT_DOCS_ALLOWLIST", "").split(",") if h.strip())
+    provider = env.get("EMBEDDINGS_PROVIDER", "onnx").strip().lower() or "onnx"
+    model_dir = env.get("EMBEDDINGS_MODEL_DIR", Settings.embeddings_model_dir)
+    ollama_model = env.get("OLLAMA_EMBED_MODEL", Settings.ollama_model)
+    floor = calibration_for(embeddings_model_name(provider, model_dir, ollama_model)).ask_min_score
+    return Settings(
+        # Its own, narrower database role when one is configured (scripts/db-role.sql); otherwise the web app's.
+        database_url=env.get("SEO_AGENT_DATABASE_URL", "").strip() or env.get("DATABASE_URL", ""),
+        agent_token=env.get("SEO_AGENT_TOKEN", ""),
+        callback_token=env.get("SEO_AGENT_CALLBACK_TOKEN", ""),
+        callback_url=env.get("SEO_AGENT_CALLBACK_URL", Settings.callback_url).rstrip("/"),
+        anthropic_api_key=env.get("ANTHROPIC_API_KEY", ""),
+        draft_model=env.get("SEO_DRAFT_MODEL", "").strip() or Settings.draft_model,
+        classify_model=env.get("SEO_CLASSIFY_MODEL", "").strip() or Settings.classify_model,
+        ask_daily_budget_usd=_float("ASK_BLOG_DAILY_BUDGET_USD", Settings.ask_daily_budget_usd, env),
+        ask_enabled=_bool("ASK_BLOG_ENABLED", False, env),
+        crew_max_tokens_per_run=_int("CREW_MAX_TOKENS_PER_RUN", Settings.crew_max_tokens_per_run, env),
+        crew_timeout_s=_int("CREW_TIMEOUT_SECONDS", Settings.crew_timeout_s, env),
+        crew_max_iter=_int("CREW_MAX_ITER", Settings.crew_max_iter, env),
+        crew_max_rpm=max(1, _int("CREW_MAX_RPM", Settings.crew_max_rpm, env)),
+        crew_models=_models(env.get("SEO_CREW_MODELS", "")),
+        crew_max_iters=_max_iters(env.get("SEO_CREW_MAX_ITERS", "")),
+        llm_timeout_s=max(30.0, min(900.0, _float("SEO_LLM_TIMEOUT_SECONDS", Settings.llm_timeout_s, env))),
+        fanout_concurrency=max(1, _int("SEO_AGENT_FANOUT_CONCURRENCY", Settings.fanout_concurrency, env)),
+        weekly_max_articles=_int("SEO_AGENT_WEEKLY_MAX_ARTICLES", Settings.weekly_max_articles, env),
+        embeddings_provider=provider,
+        embeddings_model_dir=model_dir,
+        ollama_url=env.get("OLLAMA_URL", "").rstrip("/"),
+        ollama_model=ollama_model,
+        ollama_embed_dim=max(0, _int("OLLAMA_EMBED_DIM", 0, env)),
+        embeddings_timeout_s=max(10.0, min(1800.0, _float("EMBEDDINGS_TIMEOUT_SECONDS", Settings.embeddings_timeout_s, env))),
+        embeddings_api_url=env.get("EMBEDDINGS_API_URL", ""),
+        embeddings_api_key=env.get("EMBEDDINGS_API_KEY", ""),
+        docs_allowlist=docs or DEFAULT_DOCS_ALLOWLIST,
+        ask_cache_ttl_s=_int("ASK_BLOG_CACHE_TTL_SECONDS", Settings.ask_cache_ttl_s, env),
+        ask_top_k=max(1, min(12, _int("ASK_BLOG_TOP_K", Settings.ask_top_k, env))),
+        ask_min_score=max(0.0, min(0.95, _float("ASK_BLOG_MIN_SCORE", floor, env))),
+        ask_retention_days=_int("ASK_BLOG_RETENTION_DAYS", Settings.ask_retention_days, env),
+        rag_reranker_enabled=_bool("RAG_RERANKER_ENABLED", False, env),
+        rag_reranker_dir=env.get("RAG_RERANKER_DIR", "").strip(),
+        rag_reranker_threads=max(1, min(16, _int("RAG_RERANKER_THREADS", Settings.rag_reranker_threads, env))),
+        rag_reranker_candidates=max(0, min(100, _int("RAG_RERANKER_CANDIDATES", 0, env))),
+        rag_reranker_timeout_ms=max(0, min(30_000, _int("RAG_RERANKER_TIMEOUT_MS", 0, env))),
+        rag_reranker_max_concurrent=max(0, min(64, _int("RAG_RERANKER_MAX_CONCURRENT", 0, env))),
+        production=env.get("APP_ENV", "") == "production",
+        otel_endpoint=env.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+        service_name=env.get("OTEL_SERVICE_NAME", "seo-agent"),
+        site_url=(env.get("SITE_URL", "").strip() or Settings.site_url).rstrip("/"),
+        public_mcp_enabled=_bool("PUBLIC_MCP_ENABLED", False, env),
+        admin_mcp_enabled=_bool("ADMIN_MCP_ENABLED", False, env),
+        edge_port=_int("SEO_AGENT_EDGE_PORT", Settings.edge_port, env),
+        mcp_allowed_hosts=tuple(h.strip().lower() for h in env.get("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()) or Settings.mcp_allowed_hosts,
+        public_mcp_rpm_per_ip=max(1, _int("PUBLIC_MCP_RPM_PER_IP", Settings.public_mcp_rpm_per_ip, env)),
+        public_mcp_daily_calls=_int("PUBLIC_MCP_DAILY_CALLS", Settings.public_mcp_daily_calls, env),
+        admin_mcp_rpm_per_token=max(1, _int("ADMIN_MCP_RPM_PER_TOKEN", Settings.admin_mcp_rpm_per_token, env)),
+        admin_kickoffs_per_hour=max(1, _int("ADMIN_MCP_KICKOFFS_PER_HOUR", Settings.admin_kickoffs_per_hour, env)),
+        mcp_admin_tools_off=_tool_names(env.get("MCP_ADMIN_TOOLS_OFF", "")),
+        mcp_public_tools_off=_names(env.get("MCP_PUBLIC_TOOLS_OFF", "")),
+        mcp_kickoffs_off=_names(env.get("MCP_KICKOFFS_OFF", "")),
+        flow_timeout_s=max(60, _int("SEO_FLOW_TIMEOUT_SECONDS", Settings.flow_timeout_s, env)),
+        schedule_catchup_min=max(2, min(1440, _int("SCHEDULE_CATCHUP_MINUTES", Settings.schedule_catchup_min, env))),
+        rag_api_url=env.get("RAG_API_URL", "").strip().rstrip("/"),
+        rag_bearer_token=env.get("RAG_BEARER_TOKEN", "").strip(),
+        rag_seo_collection=_collection(env.get("RAG_SEO_COLLECTION", ""), Settings.rag_seo_collection),
+        rag_cms_collection=_collection(env.get("RAG_CMS_COLLECTION", ""), Settings.rag_cms_collection),
+        rag_timeout_s=max(5.0, min(600.0, _float("RAG_TIMEOUT_SECONDS", Settings.rag_timeout_s, env))),
+        rag_query_timeout_s=max(2.0, min(120.0, _float("RAG_QUERY_TIMEOUT_SECONDS", Settings.rag_query_timeout_s, env))),
+        rag_cannibalization_min_similarity=_optional_score(env.get("RAG_CANNIBALIZATION_MIN_SIMILARITY", "")),
+    )
+
+
+def _collection(raw: str, default: str) -> str:
+    """A Qdrant collection name as rag-api accepts it (lower-case letters, digits, underscores); else the default."""
+    import re
+
+    v = raw.strip()
+    return v if re.fullmatch(r"[a-z][a-z0-9_]{1,62}", v) else default
+
+
+def _optional_score(raw: str) -> float | None:
+    """A similarity between 0 and 1, or None when empty or not a number in that range (= not used)."""
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return v if 0.0 < v <= 1.0 else None
