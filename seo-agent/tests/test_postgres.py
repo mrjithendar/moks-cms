@@ -119,8 +119,12 @@ async def test_flow_runs_one_active_per_target_persistence_and_sweep(pool) -> No
         sync.close()
     got = await store.get(rid)
     assert got["current_step"] == "run_job" and got["tokens"] == 900 and float(got["cost_usd"]) == 0.25
-    swept = await store.sweep_orphans()
-    assert [str(r["run_id"]) for r in swept] == [rid] and (await store.get(rid))["status"] == "failed"
+    assert await store.statuses([rid, str(uuid.uuid4())]) == {rid: "queued"}
+    assert [str(r["run_id"]) for r in await store.active_runs(0)] == [rid] and await store.active_runs(3600) == []
+    assert float((await store.active_runs(0))[0]["age_s"]) >= 0
+    swept = await store.fail_orphan(rid)
+    assert swept is not None and str(swept["run_id"]) == rid and (await store.get(rid))["status"] == "failed"
+    assert await store.fail_orphan(rid) is None  # already ended: another agent's sweep changes nothing
     await store.create({**row, "run_id": str(uuid.uuid4())})  # the slot is free again
 
 
@@ -138,6 +142,28 @@ async def test_advisory_locks_exclude_across_connections(pool) -> None:
     assert h2 is not None
     await locks.release(h2)
     await locks.release(a)
+
+
+async def test_an_agent_sweeps_only_the_runs_whose_lock_nobody_holds(pool) -> None:
+    """D-105, several agents: a run whose advisory lock another agent's session holds is alive; once that session is
+    gone, any agent's sweep fails it (app/runs.py FlowRunner.recover)."""
+    from app.flows import SPECS
+    from app.flows.base import Deps
+    from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+    from app.runs import FlowRunner, PgAdvisoryLocks, PgRunStore
+    from tests.conftest import FakeWebApp, settings
+
+    store = PgRunStore(pool)
+    deps = Deps(settings=settings(), llm=FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1)), web=FakeWebApp(), retriever=None, store=store)
+    locks = PgAdvisoryLocks(_url())
+    sweeper = FlowRunner(SPECS, store, locks, lambda: None, deps)  # type: ignore[arg-type, return-value]
+    rid, target = str(uuid.uuid4()), f"site-{uuid.uuid4()}"
+    await store.create({"run_id": rid, "flow_name": "gsc_sync_flow", "target_id": target, "status": "running", "inputs": {}, "triggered_by": "cron"})
+    held = await locks.acquire(FlowRunner.lock_key("gsc_sync_flow", target))  # the agent running it
+    assert held is not None
+    assert await sweeper.recover(grace_s=0) == [] and (await store.get(rid))["status"] == "running"
+    await locks.release(held)  # that agent is gone: its session closed
+    assert await sweeper.recover(grace_s=0) == [rid] and (await store.get(rid))["status"] == "failed"
 
 
 async def test_a_flow_runs_on_postgres_end_to_end(pool) -> None:

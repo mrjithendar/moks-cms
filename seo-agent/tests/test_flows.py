@@ -294,7 +294,8 @@ async def test_report_number_mismatch_fails_the_report(llm, web) -> None:
 async def test_orphaned_runs_are_failed_on_startup_and_their_draft_marked(llm, web) -> None:
     c = container(llm, web, FakeOptimizationCrew())
     await c.store.create({"run_id": "r-1", "flow_name": "optimize_article_flow", "target_id": DRAFT, "draft_id": DRAFT, "status": "running", "inputs": OPT, "triggered_by": "manual"})
-    assert await c.runner.recover() == ["r-1"]
+    assert await c.runner.recover() == []  # younger than ORPHAN_GRACE_S: may be another agent's kickoff (test_several_agents)
+    assert await c.runner.recover(grace_s=0) == ["r-1"]
     assert c.store.rows["r-1"]["status"] == "failed" and web.drafts[DRAFT]["status"] == "generation_failed"
 
 

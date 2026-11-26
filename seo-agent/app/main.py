@@ -433,6 +433,9 @@ async def startup(c: Container) -> None:
     c.ready = True
     c.bg.append(asyncio.create_task(_gauges(c)))
     c.bg.append(asyncio.create_task(_settings_refresh(c)))
+    # Several agents (one per site pod, D-105): stop this process's runs another agent ended, sweep the orphans of
+    # agents that are gone (app/runs.py).
+    c.bg.append(asyncio.create_task(c.runner.maintain_forever()))
     if c.history is not None:  # started here, outside any run, so the writer's own log lines never enter a run's log
         install_run_log(c.history)
         c.bg.append(asyncio.create_task(c.history.run_forever()))

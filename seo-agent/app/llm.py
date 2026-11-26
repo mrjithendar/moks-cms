@@ -311,8 +311,10 @@ class BudgetGuard:
 
     Concurrency: `reserve()` checks the caps and holds the call's upper-bound estimate as pending spend (under an
     asyncio.Lock) until the call has been booked, so N concurrent calls cannot each read the same spend and all pass.
-    The reservation is in-process only: replicas do not see each other's pending calls (the service runs one replica;
-    a cross-replica reservation would need a row lock or an advisory lock on the shared table).
+    The reservation is in-process only: agents do not see each other's pending calls. Since D-105 there is one agent per
+    site pod, so with N pods calls that start at the same moment in different pods can go over the budget by at most
+    the estimates of N-1 calls in flight (booked spend is shared: every agent reads the same table). A cross-agent
+    reservation would need a row lock or an advisory lock on the shared table.
 
     `monthly_usd` is a fixed monthly budget for when no budget store is given (tests, the in-memory mode). In the
     service the budget comes from `budget` (the admin's saved limits) and `monthly_usd` is None.
