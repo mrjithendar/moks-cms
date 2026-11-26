@@ -89,7 +89,7 @@ updates:
           - minor
           - patch
 
-  # Base images in Dockerfile and Dockerfile.ci
+  # Base images in the Dockerfile
   - package-ecosystem: docker
     directory: /
     schedule:
@@ -106,7 +106,7 @@ updates:
       node-images:
         patterns:
           - node
-      # The runtime stage is python:<3.13>-slim-trixie with Node copied in (Dockerfile.ci): Python minors change the
+      # The runtime stage is python:<3.13>-slim-trixie with Node copied in (Dockerfile): Python minors change the
       # wheel ABI and move with setup-python in ci-moks-cms.yml, so they are bumped by hand.
       python-images:
         patterns:

@@ -24,7 +24,6 @@ history (D-105). Its design docs are in [docs/seo/](docs/seo/) (start with [FLOW
 | `Dockerfile` | The one image, for CI and local builds: the web app's standalone build and the SEO agent (virtualenv and ONNX models) on Debian |
 | [`sites/`](sites/README.md) | The template for a new site's repository (`_template/`) |
 | `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `smoke-seo-agent-image.sh`, `image-size.sh`, `build-alerts.py` |
-| [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; when one is merged, tests and pushes the image to Harbor (`registry.jithendar.com/jithendar`) |
 
 Standing rules for agents: [AGENTS.md](AGENTS.md). Content guide: [docs/CONTENT_MODEL.md](docs/CONTENT_MODEL.md).
