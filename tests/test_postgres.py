@@ -504,3 +504,46 @@ async def test_run_history_writes_steps_logs_and_transcripts(pool) -> None:
     assert [(r["step"], r["event"]) for r in logs] == [("draft", "crew_task_started"), ("draft", "llm_call")]  # the news run's line is skipped
     assert logs[1]["context"]["call_id"] is not None
     assert [(r["step"], r["agent"], r["response"], r["input_tokens"]) for r in calls] == [("draft", "writer", "Body.", 10)]
+
+
+async def test_seo_intel_reads_and_its_record_of_sent_documents(pool) -> None:
+    """moks-rag's seo_intel (app/seo_intel.py): the page × query numbers and clusters it is built from, and
+    seo_agent_rag_documents, the agent's own record of what it sent (rag-api cannot list a collection)."""
+    from app.seo_intel import PgRagDocStore, uploaded_doc
+    from app.seo_ml.store import PgMlStore
+
+    async with pool.connection() as c:  # minimal copies of moks-cms/src/db/migrations/0011 and 0019
+        await c.execute("create table seo_gsc_daily_totals (date date not null, search_type text not null, clicks bigint not null, impressions bigint not null, ctr double precision not null, position double precision, primary key (date, search_type))")
+        await c.execute("create table seo_gsc_query_daily (date date not null, page text not null, query text not null, search_type text not null, device text not null, country text not null, clicks bigint not null, impressions bigint not null, ctr double precision not null, position double precision, primary key (date, page, query, search_type, device, country))")
+        await c.execute("create table seo_ml_query_clusters (query text primary key, cluster_id integer not null, cluster_label text not null, model_version text not null)")
+        await c.execute("insert into seo_gsc_daily_totals values ('2026-11-25', 'web', 1, 1, 1, 1)")
+        page = "https://jithendar.com/blog/renew"
+        rows = [
+            ("2026-11-25", page, "cert-manager renew", "web", "MOBILE", "ind", 2, 100, 0.02, 4.0),
+            ("2026-11-24", page, "cert-manager renew", "web", "DESKTOP", "usa", 1, 300, 0.003, 8.0),
+            ("2026-11-24", page, "cert-manager renew", "web", "TABLET", "usa", 0, 50, 0.0, None),
+            ("2026-10-01", page, "cert-manager renew", "web", "MOBILE", "ind", 9, 900, 0.01, 1.0),  # outside 28 days
+            ("2026-11-25", page, "cert-manager renew", "image", "MOBILE", "ind", 9, 900, 0.01, 1.0),  # not web
+        ]
+        for r in rows:
+            await c.execute("insert into seo_gsc_query_daily values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", r)
+        await c.execute("insert into seo_ml_query_clusters values ('cert-manager renew', 3, 'cert-manager renew', 'v1')")
+    ml = PgMlStore(pool)
+    (perf,) = await ml.query_performance(28, 100)
+    assert (perf["page"], perf["clicks"], perf["impressions"]) == (page, 3.0, 450.0)
+    assert perf["position"] == pytest.approx((4.0 * 100 + 8.0 * 300) / 400)  # weighted by impressions, rows without a position left out
+    assert await ml.query_clusters() == [{"query": "cert-manager renew", "cluster_id": 3, "cluster_label": "cert-manager renew"}]
+
+    store = PgRagDocStore(pool)
+    await store.ensure_schema()
+    await store.ensure_schema()  # idempotent at every start
+    doc = uploaded_doc("competitor_brief", "Acme guide", "Acme covers renewal.", target_keyword="cert-manager renew")
+    await store.save("seo_intel", doc, 2)
+    await store.save("seo_intel", doc, 3)  # sent again: one row, updated
+    assert await store.hashes("seo_intel", ["competitor_brief"]) == {doc.doc_id: doc.content_hash}
+    assert await store.hashes("seo_intel", ["keyword_cluster"]) == {} and await store.hashes("other", ["competitor_brief"]) == {}
+    (row,) = await store.list("seo_intel", "competitor_brief")
+    assert (row["doc_id"], row["chunks"], row["target_keyword"]) == ("competitor_brief:acme-guide", 3, "cert-manager renew")
+    assert await store.list("seo_intel", None) == [row]
+    await store.remove("seo_intel", doc.doc_id)
+    assert await store.list("seo_intel") == []

@@ -88,6 +88,10 @@ class ReindexInput(_In):
     force: bool = False  # skip the index safety guard (IndexSafetyError) after checking the article list
 
 
+class SeoIntelSyncInput(_In):
+    full: bool = False  # send every document again, changed or not (after RAG_SEO_COLLECTION was emptied or moved)
+
+
 class MlInput(_In):
     # empty = every model; else a subset of decay, query_clusters, intent, priority, related, rag_eval
     models: list[Literal["decay", "query_clusters", "intent", "priority", "related", "rag_eval"]] = Field(default_factory=list, max_length=6)
@@ -160,6 +164,8 @@ class NewArticleState(RunState):
     changes: list[dict[str, Any]] = Field(default_factory=list)
     validation_report: dict[str, Any] = Field(default_factory=dict)
     attempts: int = 0
+    # moks-rag context (app/site_context.py): cannibalization report, seo_intel and site passages, link candidates.
+    rag: dict[str, Any] = Field(default_factory=dict)
 
 
 class PublishState(RunState):
@@ -199,6 +205,11 @@ class ReportState(RunState):
     crew: dict[str, Any] = Field(default_factory=dict)
     pdf: dict[str, Any] = Field(default_factory=dict)
     notified: dict[str, Any] = Field(default_factory=dict)
+
+
+class SeoIntelSyncState(RunState):
+    full: bool = False
+    result: dict[str, Any] = Field(default_factory=dict)
 
 
 class MlState(RunState):

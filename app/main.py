@@ -51,7 +51,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from prometheus_client import generate_latest
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from . import metrics
+from . import metrics, seo_intel, site_context
 from .admin_settings import MemorySettingsStore, PgSettingsStore, SettingsInvalid, UnknownGroup
 from .admin_settings import overview as settings_overview
 from .admin_settings import save_group as save_settings_group
@@ -82,6 +82,7 @@ from .llm_providers import overview as providers_overview
 from .llm_providers.discover import CannotDiscover
 from .llm_providers.discover import discover as discover_models
 from .logs import configure_logging
+from .moks_rag import RagClient, RagError, RagWriteRefused
 from .news.store import MemoryNewsStore, PgNewsStore
 from .reranker import RerankGate
 from .run_history import MemoryHistorySink, PgHistorySink, RecordingLlm, RunHistory
@@ -91,6 +92,7 @@ from .runs import FlowRunner, MemoryFlowPersistence, MemoryLocks, MemoryRunStore
 from .schedules import MemoryScheduleStore, PgScheduleStore, SchedulesUnavailable
 from .schedules import dispatch as dispatch_schedules
 from .schemas import AskRequest
+from .seo_intel import MemoryRagDocStore, PgRagDocStore
 from .seo_ml.store import MemoryMlStore, PgMlStore
 from .services import review
 from .services.ask_pipeline import AskPipeline
@@ -117,6 +119,32 @@ class FlowInputs(BaseModel):
 class CrewConfigBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class IntelDocBody(BaseModel):
+    """POST /seo-intel/documents: a competitor brief or a brand/style guideline for seo_intel (app/seo_intel.py)."""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["competitor_brief", "style_guide"]
+    title: str = Field(min_length=1, max_length=300)
+    text: str = Field(min_length=1, max_length=400_000)
+    doc_id: str | None = Field(default=None, max_length=200, pattern=r"^[a-z_]*:?[A-Za-z0-9][A-Za-z0-9 _.-]*$")
+    target_keyword: str = Field(default="", max_length=200)
+    source: str = Field(default="", max_length=500)
+
+
+class LinksBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    headings: list[str] = Field(default_factory=list, max_length=60)
+    exclude: list[str] = Field(default_factory=list, max_length=20)  # paths or URLs not to suggest (the draft's own)
+
+
+class CannibalizationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    keyword: str = Field(min_length=1, max_length=200)
+    topic: str = Field(default="", max_length=300)
+    exclude: list[str] = Field(default_factory=list, max_length=20)
 
 
 class Decision(BaseModel):
@@ -194,6 +222,13 @@ def _news(deps: Deps, store: Any, embeddings: Any) -> None:
     deps.extra.setdefault("news_embed", embed)
 
 
+def _rag(deps: Deps, client: RagClient | None, docs: Any) -> None:
+    """The shared moks-rag service (app/moks_rag.py): the client (None = not configured) and the record of what the
+    agent sent to seo_intel. Tests may pre-set either in deps.extra."""
+    deps.extra.setdefault("rag", client)
+    deps.extra.setdefault("rag_docs", docs)
+
+
 async def build_container(settings: Settings) -> Container:
     from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool, ConnectionPool
@@ -239,6 +274,7 @@ async def build_container(settings: Settings) -> Container:
     _crews(deps)
     _news(deps, PgNewsStore(pool), index.emb)
     _ml(deps, PgMlStore(pool), index.emb)
+    _rag(deps, RagClient.from_settings(settings), PgRagDocStore(pool))
     runner = FlowRunner(SPECS, store, PgAdvisoryLocks(settings.database_url), lambda: PgFlowPersistence().bind(sync_pool), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
     runner.switches = FlowSwitches(web)
     deps.runner = runner
@@ -265,6 +301,7 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
     _crews(deps)
     _news(deps, MemoryNewsStore(), HashEmbeddings())
     _ml(deps, MemoryMlStore(), HashEmbeddings())
+    _rag(deps, None, MemoryRagDocStore())
     runner = FlowRunner(SPECS, store, MemoryLocks(), lambda: MemoryFlowPersistence().bind(store), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
     runner.switches = FlowSwitches(web)
     deps.runner = runner
@@ -381,6 +418,13 @@ async def startup(c: Container) -> None:
     except Exception as e:  # the role cannot create it, or the database is down: no LLM budgets until it can
         c.reasons.append(f"LLM budgets table not available: {type(e).__name__}")
         log.warning("llm budgets schema failed", extra={"event": "llm_budgets_schema_failed"})
+    rag_docs = c.deps.extra.get("rag_docs")
+    if c.deps.extra.get("rag") is not None and rag_docs is not None:
+        try:
+            await rag_docs.ensure_schema()
+        except Exception as e:  # the role cannot create it: seo_intel_sync_flow then cannot record what it sent
+            c.reasons.append(f"seo_intel documents table not available: {type(e).__name__}")
+            log.warning("seo_intel documents schema failed", extra={"event": "seo_intel_schema_failed"})
     try:
         await c.runner.recover()
     except Exception as e:  # e.g. the web app's migration 0016 not applied yet: start, report on /readyz
@@ -410,6 +454,9 @@ def create_app(container: Container | None = None) -> FastAPI:
             for t in c.bg:
                 t.cancel()
             await _close_history(c)
+            rag = c.deps.extra.get("rag")
+            if rag is not None:
+                await rag.close()
             if c.pool is not None:
                 await c.pool.close()
             if c.sync_pool is not None:
@@ -438,6 +485,11 @@ def create_app(container: Container | None = None) -> FastAPI:
     @app.exception_handler(ContentError)
     async def content_error(_r: Request, e: ContentError) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=400)
+
+    @app.exception_handler(RagError)
+    async def rag_error(_r: Request, e: RagError) -> JSONResponse:
+        # Refused = never sent (a collection the agent may not touch); otherwise moks-rag answered with an error or not at all.
+        return JSONResponse({"error": str(e), "request_id": e.request_id or None}, status_code=400 if isinstance(e, RagWriteRefused) else 502)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -617,6 +669,53 @@ def create_app(container: Container | None = None) -> FastAPI:
     @app.get("/chunks/rows/{chunk_id}", dependencies=[Depends(auth)])
     async def chunks_row(chunk_id: int, request: Request, table: str = "live") -> dict[str, Any]:
         return await chunks(request).row(chunk_id, table)
+
+    # --- The shared moks-rag service (app/moks_rag.py): seo_intel documents and drafting help from cms_content. ---
+
+    def rag_of(request: Request) -> RagClient:
+        rag = ctr(request).deps.extra.get("rag")
+        if rag is None:
+            raise HTTPException(503, "moks-rag is not configured (RAG_API_URL and RAG_BEARER_TOKEN)")
+        return rag
+
+    @app.get("/seo-intel/documents", dependencies=[Depends(auth)])
+    async def seo_intel_documents(request: Request, type: str | None = None, limit: int = 200) -> dict[str, Any]:
+        c = ctr(request)
+        rag = c.deps.extra.get("rag")
+        if type is not None and type not in seo_intel.DOC_TYPES:
+            raise HTTPException(422, f"type is one of {', '.join(seo_intel.DOC_TYPES)}")
+        rows = await c.deps.extra["rag_docs"].list(c.settings.rag_seo_collection, type, limit) if rag is not None else []
+        return {"configured": rag is not None, "collection": c.settings.rag_seo_collection, "documents": rows}
+
+    @app.post("/seo-intel/documents", dependencies=[Depends(auth)])
+    async def seo_intel_put(body: IntelDocBody, request: Request) -> dict[str, Any]:
+        rag, c = rag_of(request), ctr(request)
+        try:
+            doc = seo_intel.uploaded_doc(body.type, body.title, body.text, doc_id=body.doc_id, target_keyword=body.target_keyword, source=body.source)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        return await seo_intel.put(rag, c.deps.extra["rag_docs"], doc)
+
+    @app.delete("/seo-intel/documents/{doc_id}", dependencies=[Depends(auth)])
+    async def seo_intel_delete(doc_id: str, request: Request) -> dict[str, Any]:
+        rag, c = rag_of(request), ctr(request)
+        if not re.fullmatch(r"(keyword_cluster|gsc_performance|competitor_brief|style_guide):[A-Za-z0-9_.-]{1,250}", doc_id):
+            raise HTTPException(422, "doc_id is <type>:<name>, as GET /seo-intel/documents lists it")
+        await seo_intel.remove(rag, c.deps.extra["rag_docs"], doc_id)
+        return {"deleted": True, "doc_id": doc_id}
+
+    @app.post("/site-context/internal-links", dependencies=[Depends(auth)])
+    async def site_internal_links(body: LinksBody, request: Request) -> dict[str, Any]:
+        rag, c = rag_of(request), ctr(request)
+        links = await site_context.internal_links(rag, title=body.title, headings=body.headings, site_url=c.settings.site_url, exclude=body.exclude)
+        return {"links": [x.out() for x in links]}
+
+    @app.post("/site-context/cannibalization", dependencies=[Depends(auth)])
+    async def site_cannibalization(body: CannibalizationBody, request: Request) -> dict[str, Any]:
+        rag, c = rag_of(request), ctr(request)
+        st = c.settings
+        report = await site_context.cannibalization(rag, keyword=body.keyword, topic=body.topic, site_url=st.site_url, exclude=body.exclude, embed=c.deps.extra.get("ml_embed"), min_similarity=st.rag_cannibalization_min_similarity)
+        return report.out()
 
     @app.get("/budget", dependencies=[Depends(auth)])
     async def budget(request: Request) -> dict[str, Any]:

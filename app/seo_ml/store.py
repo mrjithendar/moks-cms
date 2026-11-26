@@ -16,6 +16,8 @@ class MlStore(Protocol):
     async def latest_gsc_date(self) -> date | None: ...
     async def page_daily(self, since: date) -> list[dict[str, Any]]: ...
     async def top_queries(self, days: int, limit: int) -> list[dict[str, Any]]: ...
+    async def query_performance(self, days: int, limit: int) -> list[dict[str, Any]]: ...
+    async def query_clusters(self) -> list[dict[str, Any]]: ...
     async def cached_embeddings(self, queries: list[str], model: str) -> dict[str, list[float]]: ...
     async def save_embeddings(self, rows: dict[str, list[float]], model: str) -> None: ...
     async def labels(self, task: str) -> list[dict[str, Any]]: ...
@@ -71,6 +73,22 @@ class PgMlStore:
                group by query order by sum(impressions) desc limit %s""",
             (days, limit),
         )
+
+    async def query_performance(self, days: int, limit: int) -> list[dict[str, Any]]:
+        """Page × query over the last `days` days of Search Console (web), most impressions first: clicks,
+        impressions and the impression-weighted average position (seo_intel's documents, app/seo_intel.py)."""
+        return await self._all(
+            """select page, query, sum(clicks)::float8 as clicks, sum(impressions)::float8 as impressions,
+                 (sum(position * impressions) filter (where position is not null) / nullif(sum(impressions) filter (where position is not null), 0))::float8 as position
+               from seo_gsc_query_daily
+               where search_type = 'web' and date > (select max(date) from seo_gsc_daily_totals where search_type = 'web') - %s
+               group by page, query having sum(impressions) > 0 order by sum(impressions) desc limit %s""",
+            (days, limit),
+        )
+
+    async def query_clusters(self) -> list[dict[str, Any]]:
+        """The query clusters seo_ml_flow last wrote (seo_ml_query_clusters)."""
+        return await self._all("select query, cluster_id, cluster_label from seo_ml_query_clusters order by cluster_id, query")
 
     async def cached_embeddings(self, queries: list[str], model: str) -> dict[str, list[float]]:
         rows = await self._all("select query, embedding from seo_ml_query_embeddings where model = %s and query = any(%s)", (model, queries))
@@ -233,6 +251,7 @@ class MemoryMlStore:
     gsc_end: date | None = None
     daily: list[dict[str, Any]] = field(default_factory=list)
     queries: list[dict[str, Any]] = field(default_factory=list)
+    query_pages: list[dict[str, Any]] = field(default_factory=list)  # page × query rows (query_performance)
     embeddings: dict[tuple[str, str], list[float]] = field(default_factory=dict)
     label_rows: list[dict[str, Any]] = field(default_factory=list)
     gaps: list[dict[str, Any]] = field(default_factory=list)
@@ -256,6 +275,12 @@ class MemoryMlStore:
 
     async def top_queries(self, days: int, limit: int) -> list[dict[str, Any]]:
         return sorted(self.queries, key=lambda r: -float(r["impressions"]))[:limit]
+
+    async def query_performance(self, days: int, limit: int) -> list[dict[str, Any]]:
+        return sorted(self.query_pages, key=lambda r: -float(r["impressions"]))[:limit]
+
+    async def query_clusters(self) -> list[dict[str, Any]]:
+        return [{k: r[k] for k in ("query", "cluster_id", "cluster_label")} for r in self.outputs.get("seo_ml_query_clusters", [])]
 
     async def cached_embeddings(self, queries: list[str], model: str) -> dict[str, list[float]]:
         return {q: self.embeddings[(q, model)] for q in queries if (q, model) in self.embeddings}

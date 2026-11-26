@@ -269,8 +269,9 @@ def test_the_default_schedules_name_flows_a_schedule_may_start() -> None:
     sql = www("src/db/migrations/0037_crewai_schedules_crews.sql").read_text()
     rows = re.findall(r"\('([a-z0-9-]+)', '([a-z0-9_]+_flow)', '(?:[^']|'')*', '([^']+)', '(\{[^']*\})'\)", sql)
     assert len(rows) == 15, rows
-    # custom_flow (crew-jobs plan PR 6) is scheduled by an admin's own schedule rows, never by a built-in one.
-    assert {flow for _, flow, _, _ in rows} == CRON_FLOWS - {"custom_flow"}
+    # custom_flow (crew-jobs plan PR 6) and seo_intel_sync_flow (moks-rag, 2026-11-26) are scheduled by an admin's own
+    # schedule rows, never by a built-in one.
+    assert {flow for _, flow, _, _ in rows} == CRON_FLOWS - {"custom_flow", "seo_intel_sync_flow"}
     for _name, flow, cron, inputs in rows:
         Cron(cron, "Etc/UTC")
         SPECS[flow].input_model.model_validate(json.loads(inputs))

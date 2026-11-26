@@ -171,6 +171,22 @@ class Settings:
     flow_timeout_s: int = 1800  # wall clock per flow run (crews have their own, shorter limit)
     # Schedules (app/schedules.py): how late a missed fire time still runs, e.g. after the agent was down.
     schedule_catchup_min: int = 60
+    # The shared moks-rag service (app/moks_rag.py): off unless both the URL and the token are set. The agent writes
+    # only to its own collection and reads the web app's articles from the CMS collection.
+    rag_api_url: str = ""
+    rag_bearer_token: str = ""
+    rag_seo_collection: str = "seo_intel"
+    rag_cms_collection: str = "cms_content"
+    rag_timeout_s: float = 120.0  # ingest: rag-api embeds every chunk on CPU before it answers (its own limit is 120 s)
+    rag_query_timeout_s: float = 20.0  # one query: one embedding and a Qdrant search
+    # The cannibalization check's semantic part (app/site_context.py): an existing article at least this similar to
+    # the new article's keyword (cosine, in this service's embeddings model) is flagged. None = not used; the
+    # keyword checks still run.
+    rag_cannibalization_min_similarity: float | None = None
+
+    @property
+    def rag_enabled(self) -> bool:
+        return bool(self.rag_api_url and self.rag_bearer_token)
 
     @property
     def admin_mcp_resource(self) -> str:
@@ -298,4 +314,28 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         mcp_kickoffs_off=_names(env.get("MCP_KICKOFFS_OFF", "")),
         flow_timeout_s=max(60, _int("SEO_FLOW_TIMEOUT_SECONDS", Settings.flow_timeout_s, env)),
         schedule_catchup_min=max(2, min(1440, _int("SCHEDULE_CATCHUP_MINUTES", Settings.schedule_catchup_min, env))),
+        rag_api_url=env.get("RAG_API_URL", "").strip().rstrip("/"),
+        rag_bearer_token=env.get("RAG_BEARER_TOKEN", "").strip(),
+        rag_seo_collection=_collection(env.get("RAG_SEO_COLLECTION", ""), Settings.rag_seo_collection),
+        rag_cms_collection=_collection(env.get("RAG_CMS_COLLECTION", ""), Settings.rag_cms_collection),
+        rag_timeout_s=max(5.0, min(600.0, _float("RAG_TIMEOUT_SECONDS", Settings.rag_timeout_s, env))),
+        rag_query_timeout_s=max(2.0, min(120.0, _float("RAG_QUERY_TIMEOUT_SECONDS", Settings.rag_query_timeout_s, env))),
+        rag_cannibalization_min_similarity=_optional_score(env.get("RAG_CANNIBALIZATION_MIN_SIMILARITY", "")),
     )
+
+
+def _collection(raw: str, default: str) -> str:
+    """A Qdrant collection name as rag-api accepts it (lower-case letters, digits, underscores); else the default."""
+    import re
+
+    v = raw.strip()
+    return v if re.fullmatch(r"[a-z][a-z0-9_]{1,62}", v) else default
+
+
+def _optional_score(raw: str) -> float | None:
+    """A similarity between 0 and 1, or None when empty or not a number in that range (= not used)."""
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return v if 0.0 < v <= 1.0 else None

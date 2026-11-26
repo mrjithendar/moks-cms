@@ -33,6 +33,13 @@ researcher is told to fetch `url#anchor` instead of trying other pages. When the
 writes the title and meta description (`fallback_metadata`): the outline is the reviewed body's H2s and the sources are
 the pages retrieved during the run. The draft stays incomplete (no internal links, no SEO editor review), but it is no
 longer saved with an empty meta description. A cited source matches a retrieved page without its #fragment.
+
+moks-rag context (2026-11-26): when new_article_flow's `ground` step retrieved context from the shared moks-rag
+service (app/site_context.py), `run(rag_context=…)` adds it as data blocks: the researcher gets seo_intel (keyword
+clusters, Search Console performance, competitor briefs, brand/style guidelines) and site_articles (what the site's
+published articles say on the topic), the writer site_articles, the SEO editor seo_intel and the existing articles to
+link to; when an article already covers the keyword, the researcher and the writer are told to differ from it and link
+to it. Without that context the prompts are exactly as before.
 """
 
 from __future__ import annotations
@@ -70,6 +77,12 @@ ROLES = {a.key: {"role": a.role, "tools": a.tools} for a in AGENTS}
 
 BRIEF_KEYS = ("title", "gap", "audience", "intent", "outline", "supportingQueries", "codeExamples", "diagrams", "readingTimeMinutes", "internalLinks", "category", "notes")
 AUTHOR_NOTES_CHARS = 6000
+RAG_NOTE = (
+    "Retrieved for this brief from the site's shared knowledge base: seo_intel holds keyword clusters, Search Console "
+    "performance, competitor briefs and brand and style guidelines; site_articles holds what this site's published "
+    "articles already say on the topic. Use them to target the right queries and to stay consistent with the site and "
+    "not repeat it. They are not research sources: never cite them as sources."
+)
 EXAMPLE_CHARS = 12_000  # per example article; the web app sends at most two
 
 RESEARCH_TASK = (
@@ -387,6 +400,34 @@ def _parse_meta(output: Any) -> SeoMetadata | None:
         return None
 
 
+def rag_sections(ctx: dict[str, Any] | None) -> dict[str, str]:
+    """The moks-rag context (new_article_flow's ground step) as text for each task; all empty without it."""
+    out = {"research": "", "write": "", "seo": ""}
+    if not ctx:
+        return out
+    intel = data_block("seo_intel", ctx["seo_intel"]) if ctx.get("seo_intel") else ""
+    site = data_block("site_articles", ctx["site_articles"]) if ctx.get("site_articles") else ""
+    covered = [m for m in ((ctx.get("cannibalization") or {}).get("matches") or []) if m.get("flagged")]
+    links = ctx.get("internal_links") or []
+    warn = ""
+    if covered:
+        warn = (
+            "\n\nThe site already has an article on this keyword (existing_coverage): make this one clearly different in angle, depth or audience, "
+            "do not repeat what that article says, and link to it.\n\n"
+            + data_block("existing_coverage", [{"title": m.get("title"), "url": m.get("url"), "why": "; ".join(m.get("reasons") or [])} for m in covered])
+        )
+    if intel or site or warn:
+        out["research"] = f"\n\n{RAG_NOTE}" + "".join(f"\n\n{x}" for x in (intel, site) if x) + warn
+    if site or warn:
+        out["write"] = f"\n\n{RAG_NOTE}" + (f"\n\n{site}" if site else "") + warn
+    cands = [{"path": c.get("path"), "title": c.get("title"), "anchors": c.get("anchors") or [], "fits_under": c.get("matched_heading") or ""} for c in links if c.get("path")]
+    if intel or cands:
+        out["seo"] = f"\n\n{RAG_NOTE}" + (f"\n\n{intel}" if intel else "")
+        if cands:
+            out["seo"] += "\n\nPublished articles of this site that match the brief (internal_link_candidates): internal_links may link to these paths, with one of their anchors where the body already uses those words.\n\n" + data_block("internal_link_candidates", cands)
+    return out
+
+
 @dataclass
 class CrewResult:
     draft: NewArticleDraft
@@ -402,7 +443,7 @@ class EditorialCrew:
     def __init__(self, settings: Settings, llm: Llm, web: Any, retriever: Any):
         self.settings, self.llm, self.web, self.retriever = settings, llm, web, retriever
 
-    async def run(self, brief: dict[str, Any], *, feedback: str | None = None, validator_feedback: str | None = None, feedback_untrusted: bool = False, draft_id: str | None = None) -> CrewResult:
+    async def run(self, brief: dict[str, Any], *, feedback: str | None = None, validator_feedback: str | None = None, feedback_untrusted: bool = False, draft_id: str | None = None, rag_context: dict[str, Any] | None = None) -> CrewResult:
         from crewai import Task
 
         fetched: list[str] = []
@@ -424,9 +465,10 @@ class EditorialCrew:
             fb = feedback_section(feedback, validator_feedback, untrusted=feedback_untrusted)
             current = current_draft_block(brief)
             check = "\n\nThe article already has a draft that will be revised: research the outline as usual, so the writer can check its commands, versions and facts." if current else ""
-            research = Task(description=f"{cfg.instructions('research')}{check}\n\n{b}{notes}", expected_output=cfg.expected_output("research"), agent=agents["researcher"])
+            rag = rag_sections(rag_context)
+            research = Task(description=f"{cfg.instructions('research')}{check}\n\n{b}{notes}{rag['research']}", expected_output=cfg.expected_output("research"), agent=agents["researcher"])
             key = "revise" if current else "write"
-            write = Task(description=f"{cfg.instructions(key)}\n{NOTES_RULE}\n\n{b}{notes}{current}\n\n{style}{examples}{fb}", expected_output=cfg.expected_output(key), agent=agents["writer"], context=[research])
+            write = Task(description=f"{cfg.instructions(key)}\n{NOTES_RULE}\n\n{b}{notes}{current}\n\n{style}{examples}{rag['write']}{fb}", expected_output=cfg.expected_output(key), agent=agents["writer"], context=[research])
             review = Task(
                 description=f"{cfg.instructions('review')}{notes}\n\n{REVIEW_CONTRACT}",
                 expected_output=cfg.expected_output("review"),
@@ -434,7 +476,7 @@ class EditorialCrew:
                 context=[research, write],
             )
             seo = Task(
-                description=f"{cfg.instructions('seo')}\n\n{b}{fb}",
+                description=f"{cfg.instructions('seo')}\n\n{b}{rag['seo']}{fb}",
                 expected_output=cfg.expected_output("seo"),
                 agent=agents["seo_editor"],
                 context=[research, review],

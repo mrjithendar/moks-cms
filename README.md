@@ -224,6 +224,52 @@ runs. Nothing writes: a hand-edited chunk would no longer match its vector, and 
 LanceDB is not used. The copy of the index on R2 and the `/admin/lancedb` browser were removed on 2026-11-26 (D-103),
 and `pyproject.toml` overrides CrewAI's requirement on LanceDB away again (D-47).
 
+## The shared knowledge base (moks-rag)
+
+[moks-rag](https://github.com/mrjithendar/moks-rag) runs a hybrid (dense + sparse, RRF) search service, rag-api, in
+namespace `rag`. The agent owns one collection there, `seo_intel`, and reads moks-cms's `cms_content`. The agent's own
+pgvector index (Ask the Blog, the crews' `vector_search`) is unchanged.
+
+| Variable | Default | |
+|---|---|---|
+| `RAG_API_URL` | empty (off) | `http://rag-api.rag.svc.cluster.local:8000` on mk4 |
+| `RAG_BEARER_TOKEN` | empty (off) | rag-api's shared token, from a Kubernetes Secret |
+| `RAG_SEO_COLLECTION` / `RAG_CMS_COLLECTION` | `seo_intel` / `cms_content` | |
+| `RAG_TIMEOUT_SECONDS` / `RAG_QUERY_TIMEOUT_SECONDS` | 120 / 20 | per attempt; 3 attempts on connection errors, timeouts, 429 and 5xx |
+| `RAG_CANNIBALIZATION_MIN_SIMILARITY` | empty (not used) | Admin → Settings → Shared knowledge base |
+
+Off unless both the URL and the token are set; every feature below then says so (503 from the API, outcome
+`not_configured` from the flow) and drafting works as before.
+
+- **Client** (`app/moks_rag.py`): `/ingest`, `DELETE /documents/{doc_id}`, `/query`, with `Authorization: Bearer`,
+  `X-Service-Name: moks-seo-agent` and an `X-Request-ID` that stays the same across retries. The token opens every
+  collection of every service, so the client refuses, before sending, any write except to `seo_intel`, any query
+  except of the two collections above, and it always names the collection on DELETE (rag-api's default is `all`).
+  Queries always send `include_answer: false`: rag-api's answer would be a Claude call through its own LiteLLM key,
+  outside this service's LLM budget. One JSON log line per request (`event: moks_rag_request`; never the token or the
+  text), metrics `seo_moks_rag_requests_total{op,outcome}` and `seo_moks_rag_request_seconds{op}`.
+- **seo_intel** (`app/seo_intel.py`): `keyword_cluster` (one per seo_ml query cluster, with 28 days of Search Console
+  numbers per query) and `gsc_performance` (one per page) are rebuilt by **`seo_intel_sync_flow`**. It sends only new
+  and changed documents and deletes the ones that are gone; schedule it after `seo_ml_flow` in the CrewAI console (no
+  built-in schedule). `competitor_brief` and `style_guide` (brand and style guidelines) are sent with
+  `POST /seo-intel/documents` `{type, title, text, target_keyword?, source?, doc_id?}`. The site's own style guide
+  (`style_guide:site`) is refreshed from each new article's brief. Every chunk's metadata has `type`,
+  `target_keyword` and `updated_at`. `GET /seo-intel/documents` lists what the agent sent (table
+  `seo_agent_rag_documents`, created at start-up; rag-api cannot list a collection), and `DELETE
+  /seo-intel/documents/{doc_id}` removes one. Search Console queries that look like an e-mail address, a phone number
+  or a secret are left out.
+- **Drafting help** (`app/site_context.py`), no model call: `POST /site-context/internal-links` `{title, headings,
+  exclude?}` returns up to 5 existing articles with their URL, anchor suggestions and the draft heading each fits
+  under. `POST /site-context/cannibalization` `{keyword, topic?, exclude?}` flags a published article whose title has
+  every word of a keyword of two or more words, or which targets the same keyword, or (only when the owner set the
+  floor) which is at least that similar. **`new_article_flow`'s `ground` step** runs all three for the brief (target
+  keyword: `targetKeyword`, else the first supporting query, else the title). The Editorial crew gets seo_intel, the
+  site's articles and the link candidates as data. Each article that may compete becomes a warning on the draft. When
+  moks-rag fails, the step records why and the crew drafts without it.
+- **What cms_content must carry** (moks-cms writes it): per chunk `url` or `canonical_url` on the site's host (or
+  `path`, or `slug` + `collection`) and `title`; optionally `heading`, `target_keyword` and `status` (when present,
+  only `published` counts). A chunk without a location, or on another host, is never suggested.
+
 ## CI and release
 
 - `.github/workflows/ci.yml` is one job on one mk4 runner. On every run it runs lint, types, tests (without the
