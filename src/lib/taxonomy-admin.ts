@@ -11,7 +11,11 @@ import { queueCdnPurge } from "./cdn-purge";
 import { invalidateContent } from "./content";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
+import { queueRagSync, type DocRef } from "./rag/sync";
 import { recordRedirect } from "./redirects";
+
+/** Published posts a bulk category or tag change touched: their category and tags in moks-rag (lib/rag/sync.ts). */
+const publishedRefs = (rows: { collection: string; slug: string; status: string }[]): DocRef[] => rows.filter((r) => r.status === "published");
 
 const slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "must be kebab-case").max(60);
 
@@ -49,14 +53,16 @@ export async function saveCategory(actor: Actor, originalSlug: string | null, ra
   const c = parsed.data;
   const db = await getDb();
   await seedCategories();
+  let moved: DocRef[] = [];
   if (originalSlug && originalSlug !== c.slug) {
     const [clash] = await db.select({ slug: schema.category.slug }).from(schema.category).where(eq(schema.category.slug, c.slug));
     if (clash) throw new PostError(`Category "${c.slug}" already exists.`, 409);
-    await db.transaction(async (tx) => {
+    moved = await db.transaction(async (tx) => {
       await tx.insert(schema.category).values(c);
-      await tx.update(schema.post).set({ category: c.slug }).where(eq(schema.post.category, originalSlug));
+      const rows = await tx.update(schema.post).set({ category: c.slug }).where(eq(schema.post.category, originalSlug)).returning({ collection: schema.post.collection, slug: schema.post.slug, status: schema.post.status });
       await tx.delete(schema.category).where(eq(schema.category.slug, originalSlug));
       await recordRedirect(`/category/${originalSlug}`, `/category/${c.slug}`, tx as never);
+      return publishedRefs(rows);
     });
   } else if (originalSlug) {
     await db.update(schema.category).set({ ...c, updatedAt: new Date() }).where(eq(schema.category.slug, originalSlug));
@@ -68,6 +74,7 @@ export async function saveCategory(actor: Actor, originalSlug: string | null, ra
   invalidateCategories();
   invalidateContent();
   queueCdnPurge({ everything: true }); // category names and links are on many pages
+  await queueRagSync(moved);
 }
 
 export async function deleteCategory(actor: Actor, slugToDelete: string) {
@@ -97,22 +104,27 @@ export async function renameTag(actor: Actor, from: string, to: string) {
   staff(actor);
   const target = tagName.parse(to);
   const db = await getDb();
-  await db.execute(sql`
-    update post set tags = (
-      select coalesce(array_agg(distinct t order by t), '{}')
-      from unnest(array_replace(tags, ${from}, ${target})) as t
-    )
-    where ${from} = any(tags)`);
+  const rows = rowsOf<{ collection: string; slug: string; status: string }>(
+    await db.execute(sql`
+      update post set tags = (
+        select coalesce(array_agg(distinct t order by t), '{}')
+        from unnest(array_replace(tags, ${from}, ${target})) as t
+      )
+      where ${from} = any(tags)
+      returning collection, slug, status`),
+  );
   await audit(actor, "tag.rename", from, { to: target });
   invalidateContent();
   queueCdnPurge({ everything: true });
+  await queueRagSync(publishedRefs(rows));
 }
 
 export async function deleteTag(actor: Actor, tag: string) {
   staff(actor);
   const db = await getDb();
-  await db.execute(sql`update post set tags = array_remove(tags, ${tag}) where ${tag} = any(tags)`);
+  const rows = rowsOf<{ collection: string; slug: string; status: string }>(await db.execute(sql`update post set tags = array_remove(tags, ${tag}) where ${tag} = any(tags) returning collection, slug, status`));
   await audit(actor, "tag.delete", tag);
   invalidateContent();
   queueCdnPurge({ everything: true });
+  await queueRagSync(publishedRefs(rows));
 }

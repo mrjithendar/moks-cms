@@ -14,6 +14,7 @@ import { toIsoOffset } from "./dates-iso";
 import { queueCdnPurge } from "./cdn-purge";
 import { queueIndexNow } from "./indexnow";
 import { log } from "./log";
+import { queueRagSync, syncable } from "./rag/sync";
 import { clearAutosave, recordRevision } from "./revisions";
 
 export type Actor = { id: string; role: Role; label: string };
@@ -216,8 +217,9 @@ export function visibleChange(before: PostRow, after: PostRow): boolean {
 }
 
 /**
- * After a committed change: refresh caches everywhere and tell IndexNow engines — only when something visible
- * changed, and not when the caller submits itself after verifying the live page (SEO drafts). Never throws.
+ * After a committed change: refresh caches everywhere, queue the Hybrid RAG sync and tell IndexNow engines — only
+ * when something visible changed, and not when the caller submits itself after verifying the live page (SEO drafts).
+ * Never throws.
  */
 async function afterChange(before: PostRow | null, after: PostRow | null, opts: { notifySearchEngines?: boolean } = {}) {
   invalidateContent();
@@ -226,6 +228,9 @@ async function afterChange(before: PostRow | null, after: PostRow | null, opts: 
   // or can now. In the background; a save never waits for Cloudflare.
   const live = [before, after].filter((r): r is PostRow => r !== null && visiblePath(r) !== null);
   if (visible && live.length) queueCdnPurge({ posts: live.map((r) => ({ collection: r.collection, slug: r.slug, category: r.category, tags: r.tags, authorId: r.authorId })) });
+  // moks-rag (lib/rag/sync.ts): both addresses when it was or is now in the collection; the job, in the background,
+  // indexes what readers see there or removes it. Draft saves queue nothing.
+  if (visible && [before, after].some((r) => r !== null && syncable(r))) await queueRagSync([before, after].filter((r): r is PostRow => r !== null));
   if (opts.notifySearchEngines === false) return;
   if (!visible) return;
   const paths = [before && visiblePath(before), after && visiblePath(after)].filter((p): p is string => Boolean(p));
@@ -446,6 +451,8 @@ export async function deletePostPermanently(actor: Actor, id: string): Promise<v
   await db.execute(sql`update post set related = array_remove(related, ${ref}) where ${ref} = any(related)`);
   await audit(actor, "post.delete", id, { slug: row.slug });
   invalidateContent();
+  // Removed from moks-rag when it was trashed; once more in case that sync never got through.
+  await queueRagSync([row]);
 }
 
 /** A new draft copy with a unique slug; never published, no dates. */

@@ -160,6 +160,19 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "rag",
+    page: "/admin/integrations",
+    title: "Hybrid RAG (moks-rag)",
+    description:
+      "Keeps published posts in the shared Hybrid RAG service (rag-api, Qdrant) so they can be searched by meaning: publishing or updating a post indexes it, unpublishing, trashing or deleting it removes it. Sent in the background with retries; saving never waits for it. Off until a bearer token is set (here or as RAG_BEARER_TOKEN in the deployment).",
+    fields: [
+      { env: "RAG_API_URL", label: "rag-api address", type: "text", pattern: /^$|^https?:\/\/[^\s]{3,300}$/, placeholder: "http://rag-api.rag.svc.cluster.local:8000", hint: "Empty: http://rag-api.rag.svc.cluster.local:8000 (rag-api inside the cluster)." },
+      { env: "RAG_BEARER_TOKEN", label: "Bearer token", type: "secret", pattern: /^$|^[\x21-\x7e]{16,300}$/, hint: "rag-api's RAG_BEARER_TOKEN (Secret rag-secrets in namespace rag). Never shown again after saving." },
+      { env: "RAG_COLLECTION", label: "Collection", type: "text", pattern: /^$|^[a-z0-9_]{1,64}$/, placeholder: "cms_content", hint: "Empty: cms_content." },
+      { env: "RAG_SERVICE_NAME", label: "Service name (X-Service-Name)", type: "text", pattern: /^$|^[a-z0-9][a-z0-9._-]{0,62}$/, placeholder: "moks-cms", hint: "How rag-api's logs name this site. Empty: moks-cms." },
+    ],
+  },
+  {
     id: "members",
     page: "/admin/users",
     title: "Members-only articles",

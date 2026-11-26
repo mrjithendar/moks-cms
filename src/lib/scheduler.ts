@@ -7,7 +7,7 @@ import { publishDuePosts } from "./posts";
  * Background worker in every replica (started from instrumentation.ts), as two loops that tick every 30 s:
  * - publishing: scheduled posts whose time has come go live. On its own loop, so a long job (a crawl, a report, a
  *   model call) can never hold a scheduled post back;
- * - jobs: the job queue (IndexNow, SEO jobs), the practice sweeps, scheduled SEO drafts and the daily clean-up.
+ * - jobs: the job queue (IndexNow, SEO jobs, Hybrid RAG sync), the practice sweeps, scheduled SEO drafts and the daily clean-up.
  * Restart-safe (state lives in Postgres) and safe with several replicas (conditional updates, SKIP LOCKED). Missed
  * ticks during downtime are caught up on the next tick, so a post scheduled while the site was down goes live as
  * soon as it is back.
@@ -22,7 +22,9 @@ export async function workerTick(now = new Date()) {
   // Reports (D-102): building a report and sending its emails run here, never in a request.
   const { reportJobHandler } = await import("./reports/service");
   const { reportEmailHandler } = await import("./reports/email");
-  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler, report: reportJobHandler, report_email: reportEmailHandler }, now);
+  // Hybrid RAG (moks-rag, D-104): published posts indexed in, and unpublished ones removed from, cms_content.
+  const { RAG_JOB_KIND, ragSyncHandler } = await import("./rag/sync");
+  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler, report: reportJobHandler, report_email: reportEmailHandler, [RAG_JOB_KIND]: ragSyncHandler() }, now);
   if (jobs.done || jobs.retried || jobs.failed) log.info("jobs processed", jobs);
   await practiceTick(now);
   await seoDraftTick(now);

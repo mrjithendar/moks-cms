@@ -313,6 +313,16 @@ const INTEGRATIONS: SettingsGroup[] = [
     ],
   },
   {
+    id: "integrations-rag",
+    area: "Integrations",
+    title: "Hybrid RAG sync",
+    href: "/admin/integrations?section=rag",
+    rows: [
+      r("Reindex all posts", "The backfill: queues every post; published ones are indexed in the collection and all others removed, in the background."),
+      r("Search published posts by meaning", "Test search: hybrid (meaning and keywords) search over published posts in the collection. No AI answer is generated."),
+    ],
+  },
+  {
     id: "integrations-gemini",
     area: "Integrations",
     title: "Image generation (Google Gemini)",

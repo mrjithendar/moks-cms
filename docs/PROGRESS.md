@@ -1,5 +1,25 @@
 # Progress log — jithendar.com
 
+## Hybrid RAG: published posts synced to moks-rag's cms_content (2026-11-26, owner brief, D-104)
+
+- **Client** `src/lib/rag/client.ts`: `POST /ingest`, `DELETE /documents/{doc_id}?collection=`, `POST /query`
+  (`include_answer: false`), Bearer token + `X-Service-Name`, 10 s timeout per attempt, 2 retries (0.5 s, 1 s) on
+  timeouts, network errors and 5xx; 4xx fails at once. **Sync** `src/lib/rag/sync.ts`: `rag_sync` jobs (Postgres
+  queue, 8 attempts) queued by `afterChange` in `lib/posts.ts`, permanent delete, category rename and tag
+  rename/delete; the job reads the post and ingests it (readers can see it) or deletes `collection:slug`. Members-only
+  posts send their free preview; noindex posts are removed. A pod pauses sync jobs for a minute after rag-api failed.
+- **Admin → Integrations → Hybrid RAG** (`?section=rag`): runtime settings `RAG_API_URL`, `RAG_BEARER_TOKEN` (secret),
+  `RAG_COLLECTION`, `RAG_SERVICE_NAME`; sync status (7 days, last failure); **Reindex all posts** (the backfill: every
+  post queued, non-published ones removed); **Test search** (`searchPublished`, status `published`). Off without a token.
+- Docs: `docs/RAG.md` (new), `docs/DEPLOYMENT.md`, `.env.example`, D-104; user guide (Integrations entry, settings
+  reference `integrations-rag`). Deployment side: jithendar.com (env, Secret `jithendar-com-rag`, NetworkPolicy egress
+  to `rag/rag-api:8000`).
+- Tests: `tests/rag.test.ts` (22: client headers/retry/timeout/no-retry, publish, update, unpublish, trash, delete,
+  rename, noindex, members-only, rag-api down then back, 401 permanent, dedupe while running, tag rename, reindex,
+  search). Ran: typecheck, lint (0 errors), full vitest (see the PR). `next build` not run (worktree with linked
+  node_modules; CI builds).
+- Manual: create Secret `jithendar-com-rag` from rag-api's token, restart the site, then Reindex all posts once.
+
 ## Reports: CrewAI console reports, SEO-AI report email (2026-11-24, owner brief, D-102)
 
 - **CrewAI console → Reports** (`/admin/crewai/reports`, new, `[id]`): reports on any dates (presets or custom, IST,
