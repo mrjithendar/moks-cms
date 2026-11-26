@@ -59,7 +59,7 @@ limit (SES 40 MB, Mailgun 25 MB, SMTP 10 MB; lower with Settings → Reports →
 `linkHours` (0 = 7 days, R2's maximum). `sendRichMail` (lib/mail.ts) sends HTML + attachments through SMTP, Mailgun or
 SES (raw MIME) and throws, unlike `sendMail`.
 
-## Settings (AI & SEO → Settings → Reports)
+## Settings (Settings → Search & SEO → Reports)
 
 `subjectTemplate` ({title}, {period}, {site}), `introText`, `attachPdf`, `attachMaxMb` (0 = provider limit),
 `linkHours` (0 = 7 days), `keepDays` (0 = kept; else the daily retention deletes the report and its files).

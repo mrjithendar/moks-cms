@@ -1,8 +1,10 @@
 import "server-only";
 import { SCOPES } from "./mcp-oauth/oauth";
+import { DEFAULT_SETTINGS as PRACTICE } from "./practice/settings";
 import { GROUPS } from "./runtime-settings";
 import { FIELD_HELP, leafPaths, SECTION_LABELS, SETTINGS_TABS, tabOf, type Json } from "./seo-intel/settings-meta";
 import { DEFAULT_SEO_SETTINGS } from "./seo-intel/settings";
+import { settingsCategory, settingsCategoryHref, settingsHref, settingsSection } from "./settings-areas";
 
 /**
  * The settings reference in the user guide: every setting and option, what it does and its default. Defaults only,
@@ -40,10 +42,10 @@ function seoGroups(): SettingsGroup[] {
     if (!mine.length) return [];
     return mine.map((section) => ({
       id: `seo-${section}`,
-      area: "AI & SEO settings",
+      area: areaOf(tab.id === "other" ? "data" : tab.id),
       title: `${tab.label}: ${SECTION_LABELS[section] ?? humanize(section)}`,
       description: tab.description,
-      href: tab.id === "other" ? "/admin/automation" : `/admin/automation?section=${tab.id}`,
+      href: tab.id === "other" ? settingsCategoryHref("seo") : settingsHref(tab.id),
       rows: leafPaths(getPath(doc, section) ?? {}, [section]).map((path) => ({
         name: path.split(".").slice(1).map(humanize).join(" › "),
         key: path,
@@ -54,24 +56,20 @@ function seoGroups(): SettingsGroup[] {
   });
 }
 
-/** The guide area of each admin page that shows runtime settings (lib/runtime-settings.ts `page`). */
-export const RUNTIME_SETTINGS_AREA: Record<string, string> = {
-  "/admin/integrations": "Integrations",
-  "/admin/storage": "Storage",
-  "/admin/bookings": "Bookings",
-  "/admin/payments": "Payments",
-  "/admin/users": "Users",
-  "/admin/cache": "Cache",
-};
+/** The guide area of a settings section: "Settings → <its category>" (lib/settings-areas.ts). */
+export function areaOf(sectionId: string): string {
+  const section = settingsSection(sectionId);
+  return `Settings → ${(section && settingsCategory(section.category)?.label) ?? "General"}`;
+}
 
-/** Runtime settings, each group under the page that shows it. */
+/** Runtime settings, each group under its section of the Settings area (the section id is the group id). */
 function runtimeGroups(): SettingsGroup[] {
   return GROUPS.map((g) => ({
     id: `runtime-${g.id}`,
-    area: RUNTIME_SETTINGS_AREA[g.page] ?? "Settings",
+    area: areaOf(g.id),
     title: g.title,
     description: `${g.description} An empty field uses the deployment's environment variable of the same name.`,
-    href: `${g.page}#${g.id}`,
+    href: settingsHref(g.id),
     rows: g.fields.map((f) => ({
       name: f.label,
       key: f.env,
@@ -83,7 +81,7 @@ function runtimeGroups(): SettingsGroup[] {
 
 const r = (name: string, help?: string, def?: string): SettingRow => ({ name, help, default: def });
 
-/** Appearance & settings (lib/site-config/schema.ts defaultConfig; labels from app/admin/appearance/panels.tsx). */
+/** Appearance (lib/site-config/schema.ts defaultConfig; labels from app/admin/appearance/panels.tsx). */
 const APPEARANCE: Omit<SettingsGroup, "area" | "href">[] = [
   {
     id: "appearance-general",
@@ -291,9 +289,9 @@ const APPEARANCE: Omit<SettingsGroup, "area" | "href">[] = [
 const INTEGRATIONS: SettingsGroup[] = [
   {
     id: "integrations-social",
-    area: "Integrations",
+    area: areaOf("social"),
     title: "Social sign-in (Google, GitHub)",
-    href: "/admin/integrations",
+    href: settingsHref("social"),
     rows: [
       r("Allow sign-in with Google / GitHub", "Show this provider on the sign-in page."),
       r("Authorized redirect / callback URL", "Read-only: register exactly this URL with the provider."),
@@ -303,9 +301,9 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "integrations-indexnow",
-    area: "Integrations",
+    area: areaOf("indexnow"),
     title: "IndexNow",
-    href: "/admin/integrations",
+    href: settingsHref("indexnow"),
     rows: [
       r("Turn on IndexNow / Turn off", "Submits new and changed URLs to IndexNow search engines (Bing and others) in production.", "off"),
       r("Key file / New key", "Served by the site so search engines can confirm the key belongs to it; New key replaces it."),
@@ -314,9 +312,9 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "integrations-rag",
-    area: "Integrations",
+    area: areaOf("rag"),
     title: "Hybrid RAG sync",
-    href: "/admin/integrations?section=rag",
+    href: settingsHref("rag"),
     rows: [
       r("Reindex all posts", "The backfill: queues every post; published ones are indexed in the collection and all others removed, in the background."),
       r("Search published posts by meaning", "Test search: hybrid (meaning and keywords) search over published posts in the collection. No AI answer is generated."),
@@ -324,9 +322,9 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "integrations-gemini",
-    area: "Integrations",
+    area: areaOf("gemini"),
     title: "Image generation (Google Gemini)",
-    href: "/admin/integrations",
+    href: settingsHref("gemini"),
     rows: [
       r("API key", "Starts with AIza…; stored encrypted."),
       r("Image model (Fast)", "Model code from ai.google.dev; the default in the editor."),
@@ -337,9 +335,9 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "storage-r2",
-    area: "Storage",
+    area: areaOf("media-storage"),
     title: "Media storage (Cloudflare R2 or Amazon S3)",
-    href: "/admin/storage",
+    href: settingsHref("media-storage"),
     rows: [
       r("Storage provider", "Cloudflare R2 (no egress fees) or Amazon S3 (any AWS region). Settings saved before 2026-11-18 are R2."),
       r("Account ID", "R2 only: Cloudflare dashboard → R2 → Account details (32 characters)."),
@@ -351,9 +349,9 @@ const INTEGRATIONS: SettingsGroup[] = [
   },
   {
     id: "storage-email",
-    area: "Email",
+    area: areaOf("email"),
     title: "Email",
-    href: "/admin/email",
+    href: settingsHref("email"),
     rows: [
       r("Email provider", "SMTP, Mailgun or Amazon SES. Only the selected provider sends; the others' settings are kept; no automatic failover."),
       r("Sender name / Sender email / Reply-to address"),
@@ -369,10 +367,10 @@ const INTEGRATIONS: SettingsGroup[] = [
 function mcpGroup(): SettingsGroup {
   return {
     id: "mcp-scopes",
-    area: "AI & SEO settings",
+    area: areaOf("mcp"),
     title: "MCP: servers and scopes",
     description: "No scope can approve, publish, roll back or submit to search engines.",
-    href: "/admin/automation?section=mcp",
+    href: settingsHref("mcp"),
     rows: [
       r("Admin server", "OAuth 2.1 with PKCE; switch ADMIN_MCP_ENABLED.", "off"),
       r("Public server", "Read-only, published articles only, no sign-in; switch PUBLIC_MCP_ENABLED.", "off"),
@@ -382,13 +380,13 @@ function mcpGroup(): SettingsGroup {
   };
 }
 
-/** Admin → Invoices → Settings (lib/invoices.ts DEFAULT_INVOICE_SETTINGS; labels from app/admin/invoices/settings/page.tsx). */
+/** Settings → Payments & bookings → Invoices (lib/invoices.ts DEFAULT_INVOICE_SETTINGS; labels from app/admin/settings/sections/invoices.tsx). */
 const INVOICES: SettingsGroup = {
   id: "invoices",
-  area: "Invoices",
+  area: areaOf("invoices"),
   title: "Invoice settings",
   description: "Who invoices are from and what a new invoice starts with. An invoice that was already sent keeps the details it was sent with.",
-  href: "/admin/invoices/settings",
+  href: settingsHref("invoices"),
   rows: [
     r("Business name", "Printed at the top of every invoice. Needed before an invoice can be sent.", "empty"),
     r("Business email", "Shown on the invoice and in the email as the address for questions.", "empty"),
@@ -403,12 +401,42 @@ const INVOICES: SettingsGroup = {
   ],
 };
 
+/** Settings → Practice → Python practice (lib/practice/settings.ts DEFAULT_SETTINGS; labels from app/admin/settings/sections/practice.tsx). */
+function practiceGroup(): SettingsGroup {
+  const on = (v: boolean) => (v ? "on" : "off");
+  const d = PRACTICE;
+  return {
+    id: "practice",
+    area: areaOf("practice"),
+    title: "Python practice",
+    description: "Execution, quotas, the AI tutor, the public leaderboard and retention for /python-practice. Saved together with Save settings.",
+    href: settingsHref("practice"),
+    rows: [
+      r("Allow running and submitting code", "The switch for the code runner; off, readers can read problems but not run them.", on(d.execution.enabled)),
+      r("Runtimes (id | label | on/off, one per line)", "Ids must match EXECUTOR_RUNTIMES in the executor deployment.", d.execution.runtimes.map((x) => `${x.id} | ${x.label} | ${x.enabled ? "on" : "off"}`).join("; ")),
+      r("Default runtime", undefined, d.execution.defaultRuntime),
+      r("Max seconds per test / Max seconds per run", "Time limits of one test and of a whole run.", `${d.execution.perTestSeconds} / ${d.execution.totalSeconds}`),
+      r("Max memory (MB)", undefined, String(d.execution.memoryMb)),
+      r("Runs per user per hour / Submissions per user per hour / Concurrent runs per user", undefined, `${d.quotas.runsPerHour} / ${d.quotas.submitsPerHour} / ${d.quotas.maxPending}`),
+      r("AI requests per user per day / AI budget per day (USD)", "The tutor's limits.", `${d.quotas.aiRequestsPerDay} / ${d.quotas.aiDailyBudgetUsd}`),
+      r("Enable the AI tutor", undefined, on(d.ai.enabled)),
+      r("Provider / Model id / Base URL (OpenAI-compatible) / Bedrock region", "OpenAI-compatible, Google Gemini or Amazon Bedrock; the model id exactly as the provider names it.", `${d.ai.provider} / empty / empty / ${d.ai.region}`),
+      r("API key", "Stored encrypted; empty falls back to OPENAI_API_KEY / GEMINI_API_KEY. Bedrock uses AWS credentials. Remove saved AI key deletes it."),
+      r("Timeout (ms) / Max output tokens", undefined, `${d.ai.timeoutMs} / ${d.ai.maxOutputTokens}`),
+      r("Input price / Output price (USD per million tokens)", "Used to estimate the tutor's spend against its daily budget.", `${d.ai.inputUsdPerMTok} / ${d.ai.outputUsdPerMTok}`),
+      r("Public leaderboard (opt-in per user)", undefined, on(d.leaderboard.enabled)),
+      r("Keep activity events (days) / Keep submitted code (days)", undefined, `${d.retention.activityDays} / ${d.retention.codeDays}`),
+    ],
+  };
+}
+
 export function settingsReference(): SettingsGroup[] {
   return [
-    ...APPEARANCE.map((g) => ({ ...g, area: "Appearance & settings", href: `/admin/appearance?section=${g.id === "appearance-hire-me" ? "hireMe" : g.id.replace("appearance-", "")}` })),
+    ...APPEARANCE.map((g) => ({ ...g, area: "Appearance", href: `/admin/appearance?section=${g.id === "appearance-hire-me" ? "hireMe" : g.id.replace("appearance-", "")}` })),
     ...INTEGRATIONS,
     ...runtimeGroups(),
     INVOICES,
+    practiceGroup(),
     ...seoGroups(),
     mcpGroup(),
   ];

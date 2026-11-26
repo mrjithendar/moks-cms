@@ -109,7 +109,7 @@ knows one API shape and nothing about the budget, prices or usage rows; the call
 
 ## Settings an admin can change
 
-Some settings can be changed from the web app (Admin → AI & SEO → Settings) instead of the deployment's environment.
+Some settings can be changed from the web app (Admin → Settings: AI & models, SEO agent, Assistants, Search & SEO) instead of the deployment's environment.
 They live in `app/admin_settings/`:
 
 - **Precedence**: the admin's saved value, then the environment variable, then the default in `app/config.py`. With
@@ -184,8 +184,8 @@ This service provides what that catalogue runs and shows:
 ## The reranker and PyTorch
 
 Search can reorder its passages with a cross-encoder (`app/reranker.py`): cross-encoder/ms-marco-MiniLM-L6-v2, int8
-ONNX, baked into the image. It is **off** until **Rerank passages** is switched on in Admin → AI & SEO → Settings →
-Retrieval, which applies at once. The same group holds its limits, all 0 (no limit) until you set them: passages it
+ONNX, baked into the image. It is **off** until **Rerank passages** is switched on in Admin → Settings → AI & models → ML &
+retrieval (Retrieval), which applies at once. The same group holds its limits, all 0 (no limit) until you set them: passages it
 reads, a time limit, and reranks at once; plus its CPU threads (on restart). Whatever goes wrong (no model, too slow,
 busy, a failure), the search returns the order it has without it. `seo_rag_rerank_total{outcome}` counts what
 happened, and `seo_rag_rerank_seconds` is the model's time per search. The news desk's duplicate check never reranks

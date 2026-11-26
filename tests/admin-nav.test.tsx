@@ -32,12 +32,13 @@ const ITEMS: NavItem[] = [
   { href: "/admin/comments", label: "Comments", badge: 4, section: "Community" },
   { href: "/admin/messages", label: "Messages", badge: 2, section: "Community" },
   { href: "/admin/bookings", label: "Bookings", section: "Community" },
-  { href: "/admin/appearance", label: "Appearance & settings", section: "Site settings" },
+  { href: "/admin/appearance", label: "Appearance", section: "Site settings" },
   { href: "/admin/appearance?section=theme", label: "Typography & colours", section: "Site settings" },
-  { href: "/admin/appearance?section=general", label: "General settings", section: "Site settings" },
-  { href: "/admin/automation", label: "Automation & AI", section: "Site settings" },
-  { href: "/admin/automation?section=mcp", label: "MCP", section: "Site settings" },
   { href: "/admin/automation/skills", label: "Skills", section: "Site settings" },
+  // The Settings group, as lib/settings-areas.ts settingsMenuItems gives it to the layout (a sample of the categories).
+  { href: "/admin/settings", label: "All settings", section: "Settings" },
+  { href: "/admin/settings/general", label: "General settings", section: "Settings" },
+  { href: "/admin/settings/assistants", label: "Assistants settings", section: "Settings" },
   { href: "/admin/somewhere-new", label: "Brand new page", section: "Operations" },
 ];
 
@@ -94,12 +95,13 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(by.posts!.items.map((i) => i.title)).toEqual(["All posts", "Add new post", "Categories", "Review queue"]);
     expect(by.posts!.items.map((i) => i.label)).toEqual(["Posts", "New post", "Categories", "Review queue"]);
     expect(by.posts!.items.map((i) => i.heading)).toEqual([undefined, undefined, undefined, "Editorial"]); // the editorial pages sit under Posts
-    // AI & SEO: flows and crews, content, what the site measures, then its settings; a sub-heading sits on the first page under it.
+    // AI & SEO: flows and crews, content, what the site measures; a sub-heading sits on the first page under it. Its
+    // settings are in Settings since 2026-11-26.
     expect(by.ai!.label).toBe("AI & SEO");
-    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Flows & crews"], ["Keywords", "Content"], ["Search performance", "Traffic"], ["Settings", "Settings"], ["MCP", undefined]]);
+    expect(by.ai!.items.map((i) => [i.title, i.heading])).toEqual([["Skills", "Flows & crews"], ["Keywords", "Content"], ["Search performance", "Traffic"]]);
     expect(by.comments!.items.map((i) => i.title)).toEqual(["All comments", "Messages", "Bookings"]);
     expect(by.appearance!.items.map((i) => i.title)).toEqual(["Customise", "Typography & colours"]);
-    expect(by.settings!.items.map((i) => i.title)).toEqual(["General"]);
+    expect(by.settings!.items.map((i) => i.title)).toEqual(["All settings", "General", "Assistants"]); // every setting, by category
     expect([by.posts!.badge, by.comments!.badge, by.media!.badge]).toEqual([3, 6, 0]);
     // The manual is help, drawn at the foot of the menu.
     expect(help?.href).toBe(HELP_HREF);
@@ -124,9 +126,10 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(arrangeMenu([...ITEMS, { href: "/admin/users", label: "Users", section: "Site settings" }]).groups.find((g) => g.id === "users")?.label).toBe("Users");
   });
 
-  it("knows a place for every page the admin layout lists, in a group that exists", () => {
+  it("knows a place for every page the admin layout lists, in a group that exists", async () => {
     const layout = readFileSync(path.resolve(__dirname, "../src/app/admin/layout.tsx"), "utf8");
-    const listed = [...layout.matchAll(/href: "(\/admin[^"]*)"/g)].map((m) => m[1]!);
+    const { settingsMenuItems } = await import("@/lib/settings-areas");
+    const listed = [...[...layout.matchAll(/href: "(\/admin[^"]*)"/g)].map((m) => m[1]!), ...settingsMenuItems({ seoAgent: true }).map((i) => i.href)];
     expect(listed.length).toBeGreaterThan(40);
     const placed = new Set(MENU_PLACES.map(([href]) => href));
     expect(listed.filter((href) => href !== HELP_HREF && !placed.has(href)), "pages without a place in lib/admin-menu.ts (they would show under their old category)").toEqual([]);
@@ -136,15 +139,15 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
   });
 
   it("the current page is the longest matching link, and a link with a query only matches that query", () => {
-    expect(currentOf(ITEMS, "/admin/automation", new URLSearchParams("section=mcp"))?.label).toBe("MCP");
+    expect(currentOf(ITEMS, "/admin/settings/assistants", new URLSearchParams("section=mcp"))?.label).toBe("Assistants settings");
+    expect(currentOf(ITEMS, "/admin/settings")?.label).toBe("All settings");
     expect(currentOf(ITEMS, "/admin/automation/skills")?.label).toBe("Skills");
-    expect(currentOf(ITEMS, "/admin/automation")?.label).toBe("Automation & AI");
     expect(currentOf(ITEMS, "/admin")?.label).toBe("Dashboard");
     expect(currentOf(ITEMS, "/admin/posts/new")?.label).toBe("New post");
     expect(currentOf(ITEMS, "/admin/posts/8c1f")?.label).toBe("Posts");
     expect(currentOf(ITEMS, "/admin/appearance", new URLSearchParams("section=theme"))?.label).toBe("Typography & colours");
-    expect(currentOf(ITEMS, "/admin/appearance", new URLSearchParams("section=footer"))?.label).toBe("Appearance & settings");
-    expect(currentOf(ITEMS, "/admin/appearance")?.label).toBe("Appearance & settings");
+    expect(currentOf(ITEMS, "/admin/appearance", new URLSearchParams("section=footer"))?.label).toBe("Appearance");
+    expect(currentOf(ITEMS, "/admin/appearance")?.label).toBe("Appearance");
     expect(currentOf(ITEMS, "/admin/nowhere")).toBeUndefined();
   });
 
@@ -159,7 +162,7 @@ describe("how the menu is arranged (lib/admin-menu.ts)", () => {
     expect(found("  ")).toEqual([]);
     expect(found("zzz")).toEqual([]);
     expect(filterMenu(menu, "key")[0]!.group).toBe("AI & SEO");
-    expect(found("settings mcp")).toEqual(["MCP"]); // found by the sub-heading it sits under
+    expect(found("settings assistants")).toEqual(["Assistants settings"]); // found by its group and name
   });
 
   it("reads the preferences cookie defensively", () => {
@@ -271,11 +274,11 @@ describe("admin sidebar", () => {
     render();
     expect(list("comments").hidden).toBe(false);
     expect(currentLink()!.textContent).toBe("Bookings");
-    pathname = "/admin/automation";
+    pathname = "/admin/settings/assistants";
     search = "section=mcp";
     render();
-    expect(list("ai").hidden).toBe(false);
-    expect(currentLink()!.textContent).toBe("MCP");
+    expect(list("settings").hidden).toBe(false);
+    expect(currentLink()!.textContent).toBe("Assistants");
   });
 
   it("follows the section of a page that holds several menu pages (?section=…)", () => {
@@ -285,10 +288,12 @@ describe("admin sidebar", () => {
     render();
     expect(currentLink()!.textContent).toBe("Typography & colours");
     expect(list("appearance").hidden).toBe(false);
-    search = "section=general";
+    pathname = "/admin/settings/general";
+    search = "section=site";
     render();
-    expect(currentLink()!.getAttribute("href")).toBe("/admin/appearance?section=general");
+    expect(currentLink()!.getAttribute("href")).toBe("/admin/settings/general");
     expect(group("settings")!.contains(currentLink())).toBe(true);
+    pathname = "/admin/appearance";
     search = "section=footer";
     render();
     expect(currentLink()!.textContent).toBe("Customise");

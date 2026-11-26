@@ -1,5 +1,5 @@
 import { Flash, type FlashParams } from "@/components/admin/Flash";
-import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
+import { SettingsElsewhere } from "@/components/admin/SettingsParts";
 import { AdminHeader, Card, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Button, Field, Input, Select } from "@/components/ui/form";
 import { adminActor } from "@/lib/admin";
@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/dates";
 import { flash } from "@/lib/flash";
 import { requireRole } from "@/lib/session";
 import { PASSWORD_HINT, PASSWORD_MAX, PASSWORD_MIN } from "@/lib/password-policy";
+import { settingsHref } from "@/lib/settings-areas";
 import { createUser, deleteUser, inviteDemoUser, listUsers, setBanned, setRole } from "@/lib/users";
 
 export const metadata = { title: "Users" };
@@ -154,9 +155,9 @@ export default async function UsersPage({ searchParams }: { searchParams: FlashP
           </tr>
         ))}
       </Table>
-      <div className="mt-10 space-y-6">
-        <RuntimeSettings ids={["members", "avatars"]} />
-      </div>
+      <SettingsElsewhere href={settingsHref("members")}>
+        sign-in providers, human verification, members-only articles and profile pictures are in Settings → Users &amp; access.
+      </SettingsElsewhere>
     </>
   );
 }

@@ -5,6 +5,15 @@ every setting of moks-cms (the web app and, since D-105, the SEO agent in `seo-a
 deployment, sorts them into categories, lists what is wrong with today's arrangement and proposes one place per knob.
 The reorganization itself comes after the decisions at the end, in small pull requests, one category at a time.
 
+**Status 2026-11-26 (D-106):** decision D2 is done for the admin: every setting is in one Settings area,
+`/admin/settings`, in 13 categories (the 14 below, with "SEO agent", "Assistants" and "Content flows" folded into
+Settings → SEO agent, Assistants and AI & models, and System holding Backups and the Cloudflare cache). The forms moved
+unchanged (same actions, stores and values); old addresses redirect. Where each section lives is
+`src/lib/settings-areas.ts`. Fixed on the way: P1.10 (a runtime group's save returns to its section) and the duplicate
+SEO agent endpoint card (P2). Still open, as before: D1, D3–D13, so every behaviour problem in section 3 except those
+two, and the Appearance General split (D9): Settings → General shows those values and links to Appearance. The menu
+paths in the detail files below are those before D-106.
+
 The full tables (every field, its storage, default, unit, precedence, reader `file:line`) are in:
 
 | File | What | Rows |

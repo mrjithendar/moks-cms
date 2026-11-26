@@ -471,7 +471,7 @@ async function deleteFiles(row: ReportRow): Promise<number> {
   return n;
 }
 
-/** Retention (daily): console reports past their expiry are deleted with their files (AI & SEO → Settings → Reports). */
+/** Retention (daily): console reports past their expiry are deleted with their files (Settings → Search & SEO → Reports). */
 export async function purgeExpiredReports(now = new Date()): Promise<number> {
   const db = await getDb();
   const rows = await q(db, sql`select ${COLUMNS} from seo_reports where request is not null and deleted_at is null and expires_at is not null and expires_at < ${now.toISOString()} and status not in ('queued', 'running') limit 200`);

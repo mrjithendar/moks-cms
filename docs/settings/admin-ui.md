@@ -12,7 +12,10 @@ Read-only inventory of every setting an admin sees and changes in the moks-cms a
 - **(no hint)** after a label: the form shows no help text for the field. A placeholder alone does not count as a hint.
 - Paths are relative to the repository root. `file:line` was read in the code. Anything marked *unverified* was inferred and not confirmed.
 
-## 1. Current admin menu tree
+## 1. Admin menu tree (before D-106)
+
+Since 2026-11-26 (D-106) every setting below is a section of Admin → Settings (`/admin/settings/<category>?section=<id>`,
+`src/lib/settings-areas.ts`); the old addresses redirect there. The tree is kept as the inventory was taken.
 
 Source: `src/lib/admin-menu.ts:48-148` (groups, order, in-group titles), `src/app/admin/layout.tsx:38-125` (who sees what, long labels) and `src/lib/modules.ts:44-78` (AI & SEO appears only while the SEO agent module is installed). Items marked (admin) are for admins only; authors see Posts, Media, Pages, Comments → All comments, Practice and "Your account" (Profile, API keys).
 

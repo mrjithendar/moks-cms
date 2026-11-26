@@ -29,7 +29,7 @@ export function MlSettingsCard({ data }: { data: Awaited<ReturnType<typeof loadM
       {!data.migrated && <p className="mt-2 text-sm text-fg-muted">Migration 0019 is not applied yet: every feature uses its rule.</p>}
       <ul className="mt-3 divide-y divide-line">
         {data.models.map((m) => (
-          <li key={m.kind} className="grid gap-1 py-2 text-sm sm:grid-cols-[16rem_1fr_auto] sm:items-center sm:gap-3">
+          <li key={m.kind} className="grid gap-1 py-2 text-sm lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto] lg:items-center lg:gap-3">
             <span className="font-medium text-fg">{m.title}</span>
             <span className="text-fg-muted">
               Uses <strong>{m.decision.label}</strong> · {m.decision.reason}

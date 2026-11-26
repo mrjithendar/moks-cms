@@ -12,10 +12,12 @@ vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(s
 vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => <a href={href} {...rest}>{children}</a> }));
 
 const { LEAVE_QUESTION, SettingsSections, useSettingsSection, useUnsavedChanges } = await import("@/components/admin/SettingsSections");
+const { SettingsHub } = await import("@/components/admin/SettingsHub");
 
 /**
- * The sectioned settings layout shared by Appearance & site settings (sections kept in the browser) and AI & SEO
- * settings (each section its own server render at ?section=<id>).
+ * The two settings layouts and the unsaved-changes guard they share: the Settings area (components/admin/SettingsHub:
+ * categories and their sections, each section its own server render at /admin/settings/<category>?section=<id>) and
+ * Appearance (components/admin/SettingsSections: every section kept in the browser).
  */
 const SECTIONS = [
   { id: "general", label: "General" },
@@ -59,7 +61,7 @@ beforeEach(() => {
   search = "";
   push.mockClear();
   replace.mockClear();
-  window.history.replaceState(null, "", "/admin/automation");
+  window.history.replaceState(null, "", "/admin/settings/access");
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -67,59 +69,91 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("sections rendered by the server (?section=<id>)", () => {
-  const render = (dirty = false, current = "general") =>
+describe("the Settings area: categories and their sections, each rendered by the server", () => {
+  const CATEGORIES = [
+    { id: "general", label: "General", href: "/admin/settings/general", sections: [{ id: "site", label: "Site identity", href: "/admin/settings/general?section=site" }] },
+    {
+      id: "access",
+      label: "Users & access",
+      href: "/admin/settings/access",
+      sections: [
+        { id: "social", label: "Social sign-in", href: "/admin/settings/access?section=social" },
+        { id: "turnstile", label: "Human verification", href: "/admin/settings/access?section=turnstile" },
+        { id: "members", label: "Members-only articles", href: "/admin/settings/access?section=members" },
+      ],
+    },
+    { id: "email", label: "Email", href: "/admin/settings/email", sections: [{ id: "email", label: "Provider", href: "/admin/settings/email?section=email" }] },
+  ];
+  const listLinks = () => [...container.querySelectorAll<HTMLAnchorElement>("nav > div:last-child a")];
+  const pills = () => [...container.querySelectorAll<HTMLAnchorElement>('nav ul[aria-label="Users & access sections"] a')].slice(0, 3);
+  const render = (dirty = false, section = "social") =>
     act(() =>
       root.render(
-        <SettingsSections sections={SECTIONS} current={current} basePath="/admin/automation">
+        <SettingsHub categories={CATEGORIES} category="access" section={section}>
           <Form dirty={dirty} />
-        </SettingsSections>,
+        </SettingsHub>,
       ),
     );
 
-  it("lists every section as a link, marks the open one, and offers a select on a narrow screen", () => {
+  it("lists every category, the open one with its sections, marks the open section, and offers a select and buttons on a narrow screen", () => {
     render();
-    expect(links().map((a) => a.getAttribute("href"))).toEqual(["/admin/automation?section=general", "/admin/automation?section=theme", "/admin/automation?section=history"]);
-    expect(links().map((a) => a.getAttribute("aria-current"))).toEqual(["page", null, null]);
-    expect(links()[1]!.textContent).toContain("2");
-    expect(select().value).toBe("general");
-    expect([...select().options].map((o) => o.textContent)).toEqual(["General", "Typography & colours (2 to fix)", "Revision history"]);
+    expect(listLinks().map((a) => a.getAttribute("href"))).toEqual([
+      "/admin/settings",
+      "/admin/settings/general",
+      "/admin/settings/access",
+      "/admin/settings/access?section=social",
+      "/admin/settings/access?section=turnstile",
+      "/admin/settings/access?section=members",
+      "/admin/settings/email",
+    ]);
+    expect(listLinks().map((a) => a.getAttribute("aria-current"))).toEqual([null, null, "true", "page", null, null, null]);
+    expect(select().value).toBe("access");
+    expect([...select().options].map((o) => o.textContent)).toEqual(["General", "Users & access", "Email"]);
+    expect(pills().map((a) => [a.textContent, a.getAttribute("aria-current")])).toEqual([
+      ["Social sign-in", "page"],
+      ["Human verification", null],
+      ["Members-only articles", null],
+    ]);
     expect(container.querySelector("#field-one")).not.toBeNull();
   });
 
-  it("the select opens the chosen section's address", () => {
+  it("the category select opens the chosen category", () => {
     render();
-    choose("history");
-    expect(push).toHaveBeenCalledWith("/admin/automation?section=history");
-    choose("general"); // the open one: nothing to do
+    choose("email");
+    expect(push).toHaveBeenCalledWith("/admin/settings/email");
+    choose("access"); // the open one: nothing to do
     expect(push).toHaveBeenCalledTimes(1);
   });
 
   it("asks before leaving a section with unsaved changes, by link and by select; staying keeps the section", () => {
     confirm.mockReturnValue(false);
     render(true);
+    const turnstile = listLinks()[4]!;
     act(() => {
-      links()[2]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      turnstile.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(confirm).toHaveBeenCalledWith(LEAVE_QUESTION);
     expect(stopped).toBe(true);
-    choose("theme");
+    choose("email");
     expect(push).not.toHaveBeenCalled();
-    // The open section's own link never asks.
+    // The open section's own link (and its button) never asks.
     confirm.mockClear();
     act(() => {
-      links()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      listLinks()[3]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    act(() => {
+      pills()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(confirm).not.toHaveBeenCalled();
     expect(stopped).toBe(false);
     // Agreeing to leave goes on.
     confirm.mockReturnValue(true);
     act(() => {
-      links()[2]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      pills()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(stopped).toBe(false);
-    choose("theme");
-    expect(push).toHaveBeenCalledWith("/admin/automation?section=theme");
+    choose("email");
+    expect(push).toHaveBeenCalledWith("/admin/settings/email");
   });
 
   it("does not ask once the changes are saved, and warns the browser only while there are some", () => {
@@ -133,25 +167,25 @@ describe("sections rendered by the server (?section=<id>)", () => {
     expect(leave()).toBe(true);
     render(false);
     expect(leave()).toBe(false);
-    choose("history");
+    choose("email");
     expect(confirm).not.toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith("/admin/automation?section=history");
+    expect(push).toHaveBeenCalledWith("/admin/settings/email");
   });
 
-  it("sends an old #tab-<id> link on to its section, and ignores one that names no section", () => {
-    window.history.replaceState(null, "", "/admin/automation#tab-history");
-    render();
-    expect(replace).toHaveBeenCalledWith("/admin/automation?section=history");
+  it("sends an old #tab-<id> link (AI & SEO settings were tabs once) on to its section, and ignores one that names no section", () => {
+    window.history.replaceState(null, "", "/admin/settings/agent#tab-runs");
+    render(false, "seo-agent");
+    expect(replace).toHaveBeenCalledWith("/admin/settings/agent?section=runs");
     replace.mockClear();
     act(() => root.unmount());
     root = createRoot(container);
-    window.history.replaceState(null, "", "/admin/automation#tab-nope");
+    window.history.replaceState(null, "", "/admin/settings/access#tab-nope");
     render();
     expect(replace).not.toHaveBeenCalled();
   });
 
   it("a link to one field scrolls to it and puts the cursor in it", () => {
-    window.history.replaceState(null, "", "/admin/automation?section=general#field-one");
+    window.history.replaceState(null, "", "/admin/settings/access?section=social#field-one");
     const scrolled = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrolled;
     render();

@@ -50,7 +50,7 @@ R2 bucket setup (CORS, lifecycle) and the S3 → R2 migration: see `docs/MEDIA.m
 2. `scripts/create-secrets.sh mk4` and keep the printed setup token.
 3. First time only, with the `mk4` kubeconfig: `kubectl apply -k kubernetes` (creates the namespace and the site; database migrations run on start), then `scripts/setup-ci-deployer.sh` and `scripts/setup-ci-applier.sh` so CI can deploy from then on.
 4. Open `https://jithendar.com/setup`, enter the token, and create the admin account. This also imports the existing articles and pages. `/setup` disappears once an admin exists.
-5. Create the R2 bucket, CORS and lifecycle rules (`docs/MEDIA.md` → Setup), then `scripts/set-media-config.sh mk4` and restart the deployment. (Alternatively configure R2 under Admin → Storage.)
+5. Create the R2 bucket, CORS and lifecycle rules (`docs/MEDIA.md` → Setup), then `scripts/set-media-config.sh mk4` and restart the deployment. (Alternatively configure R2 under Admin → Settings → Media & storage.)
 
 ## Routing
 

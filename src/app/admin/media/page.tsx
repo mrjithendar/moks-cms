@@ -141,7 +141,7 @@ export default async function MediaPage({ searchParams }: { searchParams: FlashP
       ) : (
         <div className="mb-6">
           <Alert tone="info">
-            Uploads are disabled until media storage is configured. <Link href="/admin/storage" className="font-semibold underline">Configure Cloudflare R2 or Amazon S3</Link>.
+            Uploads are disabled until media storage is configured. <Link href="/admin/settings/storage?section=media-storage" className="font-semibold underline">Configure Cloudflare R2 or Amazon S3</Link>.
           </Alert>
         </div>
       )}

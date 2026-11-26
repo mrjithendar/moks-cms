@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
-import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
+import { SettingsElsewhere } from "@/components/admin/SettingsParts";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Button } from "@/components/ui/form";
 import { adminActor } from "@/lib/admin";
-import { absoluteUrl } from "@/config/site";
 import { deleteBooking, listBookings, type BookingFilter } from "@/lib/calcom";
 import { flash } from "@/lib/flash";
 import { effectiveEnv } from "@/lib/runtime-settings";
+import { settingsHref } from "@/lib/settings-areas";
 import { requireRole } from "@/lib/session";
 
 export const metadata = { title: "Bookings" };
@@ -37,8 +37,8 @@ export default async function BookingsPage({ searchParams }: { searchParams: Fla
       {!env.CAL_WEBHOOK_SECRET && (
         <Card>
           <p className="text-sm text-fg-muted">
-            Not connected yet. In Cal.com: Settings → Developer → Webhooks → New, subscriber URL <code>{absoluteUrl("/api/cal/webhook")}</code>, booking events, and a
-            secret; then paste the secret in <a href="#calcom" className="underline">Cal.com bookings</a> below.
+            Not connected yet. Add the webhook secret in <Link href={settingsHref("calcom")} className="link">Settings → Payments &amp; bookings → Cal.com bookings</Link>, which also
+            shows the subscriber URL to give Cal.com.
           </p>
         </Card>
       )}
@@ -80,9 +80,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Fla
           </Card>
         ))}
       </div>
-      <div className="mt-10">
-        <RuntimeSettings ids={["calcom"]} />
-      </div>
+      <SettingsElsewhere href={settingsHref("calcom")}>the Cal.com webhook secret is in Settings → Payments &amp; bookings → Cal.com bookings.</SettingsElsewhere>
     </>
   );
 }

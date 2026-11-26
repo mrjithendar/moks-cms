@@ -23,7 +23,7 @@ A separate image service was not needed — `next/image` already resizes in the 
 | Legacy S3 (read-only, migration source) | `src/lib/storage-legacy.ts` |
 | Validation, uploads, media records | `src/lib/media.ts` |
 | Delivery (`/media/{id}/{name}`) | `src/app/media/[id]/[name]/route.ts` |
-| S3 → R2 migration | `src/lib/media-migration.ts`, Admin → Storage, `GET /api/admin/media-migration` (manifest) |
+| S3 → R2 migration | `src/lib/media-migration.ts`, Admin → Settings → Media & storage → Move media to R2, `GET /api/admin/media-migration` (manifest) |
 | Gemini client | `src/lib/gemini.ts` |
 | Generation workflow, limits, cleanup | `src/lib/image-generation.ts`, `POST /api/admin/images/generate`, `GET /api/admin/images/generations/{id}` |
 | Editor UI | `src/components/admin/{CoverImagePicker,GenerateImageDialog,MediaPicker,Dialog}.tsx`, `src/app/admin/media/MediaUploader.tsx` |
@@ -90,7 +90,7 @@ are wrapped in a focusable horizontal scroll region; code blocks scroll inside t
   `{ model, input, response_format: { type: "image", mime_type: "image/jpeg", aspect_ratio, image_size }, store: false }`;
   image read from `steps[].content[]` blocks of `type: "image"` (base64 `data`). Checked against Google's
   published OpenAPI description on 2026-10-29. Plain `fetch` (no SDK dependency) so cancellation aborts the request.
-- Key and model: **Admin → Integrations** (key sealed in the database; saving verifies it with a free
+- Key and model: **Admin → Settings → AI & models → Image generation** (key sealed in the database; saving verifies it with a free
   `GET v1beta/models/{model}` request, nothing is generated). `GEMINI_API_KEY`/`GEMINI_IMAGE_MODEL`/`GEMINI_IMAGE_SIZE`
   remain a fallback until the admin entry is saved. Nothing is hard-coded. On 2026-10-29 Google's models page listed
   `gemini-3.1-flash-image` (Nano Banana 2) and `gemini-nano-banana-2.1` as stable image models.
@@ -108,7 +108,7 @@ are wrapped in a focusable horizontal scroll region; code blocks scroll inside t
 
 ## Generate video (Veo through the Gemini API)
 
-**Requires manual configuration**: off until a video model is set in **Admin → Integrations → Video generation**
+**Requires manual configuration**: off until a video model is set in **Admin → Settings → AI & models → Video generation**
 (`GEMINI_VIDEO_MODEL`, a Veo model code from ai.google.dev). It uses the Gemini key from Integrations and needs R2.
 Not yet exercised against the real API (no key in development): request and response shapes follow Google's Veo guide
 as read on 2026-11-12, and the tests use canned responses. Generate one clip after configuring it.
@@ -129,7 +129,7 @@ as read on 2026-11-12, and the tests use canned responses. Generate one clip aft
 - Lifecycle as for images: private preview (`GET /api/admin/videos/generations/{id}`, Range supported) → **Insert
   video** copies it to `media/videos/…`, creates the media row (description required) and inserts `::video`;
   **Discard**/close deletes it; unaccepted clips expire after 1 hour.
-- **Destinations** (`src/lib/video-destinations.ts`; Admin → Storage → Video destinations). An admin switches
+- **Destinations** (`src/lib/video-destinations.ts`; Admin → Settings → Media & storage → Video destinations). An admin switches
   each one on or off; the dialog's "Save the video to" list shows only those that are on and fully filled in (with one,
   there is nothing to choose; with none, Generate video is disabled). **Requires manual configuration**, and none of
   the three services has been exercised with real credentials: the tests use canned responses.
@@ -206,7 +206,7 @@ Two rules protect what a backup does not hold (since 2026-11-15):
 Logged as `backup.restore` (critical). Backups made before 2026-10-29 lack Appearance settings and comment
 likes/reports; restoring one leaves those empty/default.
 
-## IndexNow (Admin → Integrations)
+## IndexNow (Admin → Settings → Content & publishing → IndexNow)
 
 **Turn on IndexNow** generates a 32-character key (stored in `setting.integrations`, not secret) that the proxy
 serves at `/{key}.txt`; publishing, updating or trashing a post then queues its URL for `api.indexnow.org` (job
@@ -237,15 +237,15 @@ deployment still overrides the admin setting.
 
 Public URLs are `/media/{id}/{name}` and never contain a storage key, so **no stored reference changes**.
 Rows created before R2 are marked `s3-legacy` by migration 0004 and keep being served from the old bucket
-(Admin → Storage keeps its sealed S3 settings as the read-only source) until copied.
+(Admin → Settings → Media & storage keeps its sealed S3 settings as the read-only source) until copied.
 
-1. Admin → Storage → **Dry run**: lists the next 25 files with old key → new key. Nothing changes.
+1. Admin → Settings → Media & storage → Move media to R2 → **Dry run**: lists the next 25 files with old key → new key. Nothing changes.
 2. **Copy next 25** (repeat until 0 remain): copies with `Content-MD5`, checks the size, switches the row,
    records `legacy_key`. Interrupted runs resume; objects already in R2 are reused. S3 objects are never deleted.
 3. **Download manifest**: JSON of `{ id, oldKey, newKey, url, publicUrl, bytes, status }` for every migrated file.
 4. Spot-check pages with images. Keep the S3 bucket untouched until you are satisfied.
 
-**Rollback**: Admin → Storage → **Roll back to S3** points every migrated row at its S3 object again (R2 copies
+**Rollback**: Admin → Settings → Media & storage → Move media to R2 → **Roll back to S3** points every migrated row at its S3 object again (R2 copies
 stay and are reused if you migrate again). Code rollback: revert the commit and push (CI redeploys `:latest`); migration 0004 only
 adds columns and a table, so the previous image starts and serves S3 rows (uploads it makes are labelled
 `s3-legacy` by the column default). Files uploaded to R2 after the upgrade are not readable by the old image

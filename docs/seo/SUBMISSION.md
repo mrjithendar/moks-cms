@@ -18,7 +18,7 @@ and on the draft's review page.
 
 ## IndexNow (Bing, Yandex, Seznam, Naver, …)
 
-- Key: `INDEXNOW_KEY`, else the key from Admin → Integrations. If neither exists, the first SEO submission generates one
+- Key: `INDEXNOW_KEY`, else the key from Admin → Settings → Content & publishing → IndexNow. If neither exists, the first SEO submission generates one
   automatically (audit `seo.submission.indexnow_key_generated`). If an admin turned IndexNow **off**, it stays off.
 - The key file `/{key}.txt` is served from the site root by `src/proxy.ts` (an additive route; no public URL changes).
 - URLs are queued and sent in one POST per minute to `https://api.indexnow.org/indexnow` (`host`, `key`,

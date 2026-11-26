@@ -24,7 +24,7 @@ export default async function CrewaiLayout({ children }: { children: ReactNode }
       {!agent.enabled && (
         <p role="status" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
           The SEO agent is off ({agent.reason}). Run history stays readable; re-running and cancelling need the agent. Set it up under{" "}
-          <Link className="font-medium underline" href="/admin/integrations?section=seo-agent">Settings → Integrations → SEO agent</Link>.
+          <Link className="font-medium underline" href="/admin/settings/agent?section=seo-agent">Settings → SEO agent</Link>.
         </p>
       )}
       {!history && (

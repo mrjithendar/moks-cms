@@ -176,7 +176,7 @@ describe("API routes", () => {
   it("GET /api/admin/capabilities says which modules this deployment has", async () => {
     const r = await capRoute.GET(req("/api/admin/capabilities"), p({}));
     const body = (await r.json()) as { modules: { id: string; installed: boolean; menuGroups: string[]; setupHref: string }[] };
-    expect(body.modules).toEqual([expect.objectContaining({ id: "seo-agent", installed: true, menuGroups: ["ai"], setupHref: "/admin/integrations?section=seo-agent" })]);
+    expect(body.modules).toEqual([expect.objectContaining({ id: "seo-agent", installed: true, menuGroups: ["ai"], setupHref: "/admin/settings/agent?section=seo-agent" })]);
   });
 });
 
@@ -196,11 +196,12 @@ describe("the SEO agent module", () => {
       { href: "/admin/posts", label: "Posts", section: "Content" },
       { href: "/admin/crewai/flows", label: "Flows", section: "Site settings" },
       { href: "/admin/search", label: "Search performance", section: "Insights" },
-      { href: "/admin/automation", label: "AI & SEO settings", section: "Site settings" },
-      { href: "/admin/integrations", label: "Integrations", section: "Site settings" },
+      { href: "/admin/crewai/config", label: "CrewAI import / export", section: "Site settings" },
+      // Settings stays: the agent's own categories are left out of it by lib/settings-areas.ts settingsMenuItems.
+      { href: "/admin/settings/agent", label: "SEO agent settings", section: "Settings" },
     ];
     const missing = [{ id: "seo-agent" as const, label: "SEO agent", installed: false, available: false, version: null, reason: "", menuGroups: ["ai"], setupHref: "" }];
-    expect(modules.menuForModules(items, missing).map((i) => i.href)).toEqual(["/admin/posts", "/admin/integrations"]);
+    expect(modules.menuForModules(items, missing).map((i) => i.href)).toEqual(["/admin/posts", "/admin/settings/agent"]);
     expect(modules.menuForModules(items, [{ ...missing[0]!, installed: true }])).toHaveLength(5);
     expect(modules.moduleOfPath("/admin/crewai/runs/abc")).toBe("seo-agent");
     expect(modules.moduleOfPath("/admin/posts/new")).toBeNull();
@@ -211,7 +212,7 @@ describe("the SEO agent module", () => {
     clearAgentCache();
     const html = renderToStaticMarkup(await ModuleGate({ module: "seo-agent", children: <p>secret page</p> }));
     expect(html).toContain("SEO agent is not set up");
-    expect(html).toContain("/admin/integrations?section=seo-agent");
+    expect(html).toContain("/admin/settings/agent?section=seo-agent");
     expect(html).not.toContain("secret page");
     process.env.SEO_ORCHESTRATOR = "crewai";
     clearAgentCache();

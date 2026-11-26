@@ -78,7 +78,7 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
         stateless_http=True,
         transport_security=security,
         token_verifier=verifier,
-        auth=AuthSettings(issuer_url=site, resource_server_url=s.admin_mcp_resource, required_scopes=["seo:read"], validate_token_resource=True, service_documentation_url=f"{site}/admin/automation/mcp"),
+        auth=AuthSettings(issuer_url=site, resource_server_url=s.admin_mcp_resource, required_scopes=["seo:read"], validate_token_resource=True, service_documentation_url=f"{site}/admin/settings/assistants?section=mcp"),
     )
     web = c.deps.web
 

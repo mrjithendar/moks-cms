@@ -37,7 +37,7 @@ dry run, inspect the candidates, enable.
 ## 5. Image providers (optional)
 
 - **Template**: nothing to do (default).
-- **Gemini**: configure Admin → Integrations → Gemini image generation (the same integration the editor uses). Set the
+- **Gemini**: configure Admin → Settings → AI & models → Image generation (the same integration the editor uses). Set the
   content flow's or profile's provider to `gemini` and Settings → image price. Covers are stored in the media library (R2 needed).
 - **OpenAI**: add `OPENAI_API_KEY` to Secret `seo-agent-env`
   (`kubectl -n jithendar patch secret seo-agent-env -p '{"stringData":{"OPENAI_API_KEY":"…"}}'`), optionally
@@ -61,7 +61,7 @@ claimed by this work (AGENTS.md rule 9). Confirm the publication name used in th
 ## 8. Notifications (optional)
 
 The run summary, content flow failure and budget emails use the SEO alert recipients (SEO → Settings → Drafts digest recipients /
-report recipients) and Admin → Storage & email. Without them nothing is sent.
+report recipients) and Admin → Settings → Email. Without them nothing is sent.
 
 ## 9. MCP
 

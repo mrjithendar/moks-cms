@@ -70,7 +70,7 @@ async def test_the_monthly_limit_counts_every_model_and_every_purpose_together()
             await g.ensure(model, 3500, 1000, purpose)
         assert e.value.scope == "llm_monthly", purpose
     assert "$10.00 of $10.00 used this month" in e.value.detail and "could cost up to" in e.value.detail and "It resets 2026-12-01 00:00 UTC" in e.value.detail
-    assert "Admin → AI & SEO → Settings → LLM budget" in e.value.detail
+    assert "Admin → Settings → AI & models → LLM providers & budget" in e.value.detail
     await guard(Budget(None, 10.0), [row(SONNET, 4), row(SONNET, 50, at=LAST_MONTH)]).ensure(
         SONNET, 3500, 1000, "draft"
     )  # last month's spend is not this month's

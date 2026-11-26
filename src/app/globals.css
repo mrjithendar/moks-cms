@@ -164,12 +164,23 @@ body:has([data-admin-shell]) .site-header-inner {
   }
 }
 
-/* Phones: one long word, URL, slug or tag must never make a page wider than the screen. In the admin, text breaks
-   inside the word when nothing else fits (inherited; `pre` and tables keep their own sideways scroll). A definition
-   value may also shrink below its longest word, because `dd` usually sits in a grid column that would otherwise grow
-   to fit it and push the page sideways (Skills, 2026-11-18). */
+/* One long word, URL, key, env-var name, slug or file name must never make an admin page wider than the screen.
+   `anywhere` breaks inside such a word only when nothing else fits, as `break-word` does, but unlike it lets the box
+   holding it shrink below the word: a grid or flex item sized by its content (a checklist row, a card in a grid, a
+   form column) then wraps instead of pushing the page sideways (2026-11-26: the dashboard checklist, Practice, Media
+   storage at 320 px). Ordinary words still wrap between words. Tables keep `break-word`, so a wide table keeps its
+   columns readable and scrolls sideways inside its own frame (components/admin/ui.tsx Table); `pre` has its own
+   scroll. A definition value may shrink below its longest word everywhere (Skills, 2026-11-18). */
 [data-admin-shell] {
+  overflow-wrap: anywhere;
+}
+[data-admin-shell] table {
   overflow-wrap: break-word;
+}
+/* A fieldset is as wide as its widest content by default (min-inline-size: min-content), so a form grouped in one
+   could not shrink to a phone's width. */
+[data-admin-shell] fieldset {
+  min-width: 0;
 }
 dd {
   min-width: 0;

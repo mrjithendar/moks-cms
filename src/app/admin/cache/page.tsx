@@ -1,6 +1,6 @@
 import { desc, like } from "drizzle-orm";
+import Link from "next/link";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
-import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { AdminHeader, Card, Stat, StatusPill, Table, td, th } from "@/components/admin/ui";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { getDb, schema } from "@/db";
@@ -11,6 +11,7 @@ import { flash } from "@/lib/flash";
 import { PAGE_REVALIDATE_SECONDS } from "@/lib/page-cache";
 import { PostError } from "@/lib/posts";
 import { requireRole } from "@/lib/session";
+import { settingsHref } from "@/lib/settings-areas";
 
 export const metadata = { title: "Cache" };
 export const dynamic = "force-dynamic";
@@ -78,7 +79,7 @@ export default async function CachePage({ searchParams }: { searchParams: FlashP
           <div className="grid gap-4 lg:grid-cols-2">
             <form action={act} className="flex flex-wrap items-end gap-3 rounded-lg border border-line p-4 lg:col-span-2">
               <input type="hidden" name="action" value="purge-page" />
-              <div className="min-w-64 flex-1">
+              <div className="min-w-0 flex-1 basis-64">
                 <Field label="Page address" htmlFor="path" hint="A page of this site, e.g. /blog/my-post or / for the home page.">
                   <Input id="path" name="path" required placeholder="/blog/my-post" pattern="/.*" maxLength={512} />
                 </Field>
@@ -101,7 +102,7 @@ export default async function CachePage({ searchParams }: { searchParams: FlashP
               <p className="mb-4 text-sm text-fg-muted">
                 Zone <code>{cf.zoneId}</code>. Purge this page and Purge all caches (above and in the admin bar) also purge Cloudflare.{" "}
                 Purge on publish: <strong className="text-fg">{POLICY_LABELS[cf.policy]}</strong>.{" "}
-                <a href="#cloudflare" className="link">Change in Cloudflare settings</a>.
+                <Link href={settingsHref("cloudflare")} className="link">Change in Settings → System → Cloudflare cache</Link>.
               </p>
               {cf.last && (
                 <p className="mb-4 text-sm text-fg-muted">
@@ -138,11 +139,10 @@ export default async function CachePage({ searchParams }: { searchParams: FlashP
           ) : (
             <p className="text-sm text-fg-muted">
               If Cloudflare is in front of the site, it keeps its own copies of pages. Save its zone ID and an API token (permission Zone → Cache Purge → Purge) in{" "}
-              <a href="#cloudflare" className="link">Cloudflare settings</a> below, and the purges above, purge on publish and a custom purge reach Cloudflare too.
+              <Link href={settingsHref("cloudflare")} className="link">Settings → System → Cloudflare cache</Link>, and the purges above, purge on publish and a custom purge reach Cloudflare too.
             </p>
           )}
         </Card>
-        <RuntimeSettings ids={["cloudflare"]} />
 
         <section aria-labelledby="this-server">
           <h2 id="this-server" className="mb-1 font-semibold text-fg">This server</h2>

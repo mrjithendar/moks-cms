@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 /**
  * The console is about crews and flows: their configuration, runs and logs. Skills, content sources and the AI & SEO
  * settings have their own places in the AI & SEO menu (the "Skills ↗ / Content ↗ / Settings ↗" links were removed here,
- * 2026-11-24, D-100); run-history settings are under AI & SEO → Settings → Run history.
+ * 2026-11-24, D-100); run-history settings are under Settings → SEO agent → Run history.
  */
 const TABS = [
   { href: "/admin/crewai", label: "Overview" },

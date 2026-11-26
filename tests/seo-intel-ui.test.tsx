@@ -22,7 +22,8 @@ const PAGES: [string, () => Promise<{ default: unknown }>][] = [
   ["keywords", () => import("@/app/admin/(growth)/keywords/page")],
   ["integrations", () => import("@/components/seo/merged/SeoIntegrations").then((m) => ({ default: () => m.SeoIntegrations() }))],
   ["sync", () => import("@/app/admin/(growth)/sync/page")],
-  ["settings", () => import("@/app/admin/(growth)/automation/page")],
+  // Settings → Search & SEO → Data sources (AI & SEO → Settings until 2026-11-26; the old page redirects).
+  ["settings", () => import("@/app/admin/(growth)/automation/sections").then((m) => ({ default: async () => m.AI_SEO_RENDERS.data!({}) }))],
   ["recommendations", () => import("@/app/admin/(growth)/recommendations/page")],
   ["content", () => import("@/app/admin/(growth)/content-audit/page")],
   ["links", () => import("@/app/admin/(growth)/links/page")],

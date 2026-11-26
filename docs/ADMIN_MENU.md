@@ -5,7 +5,8 @@ have a submenu; no expand on desktop or tablet; expand and collapse on mobile").
 1440, 820 and 390 px against a local build. **WordPress order since 2026-11-21** (owner: "reorganize all the menus in
 wordpress style"; moks-cms #179): Dashboard; the content menus; the plugin-like menus; then Appearance, Users, Tools
 and Settings, with a line between the three parts. There is no Newsroom since the same day: news is one kind of
-content a content flow writes, under AI & SEO (no jobs since 2026-11-23: flows and crews only).
+content a content flow writes, under AI & SEO (no jobs since 2026-11-23: flows and crews only). **One Settings area
+since 2026-11-26** (D-106): every setting is under Settings, by category; no other group lists a settings page.
 
 ## What a person sees
 
@@ -27,18 +28,22 @@ One entry per area of work, each with an icon, and **every entry opens a submenu
 | Pages | All pages, Add new page, Hire me page |
 | Comments | All comments, Messages, Bookings |
 | — | |
-| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Configuration (crewconfig/ in Git, import / export, history; D-101). **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, Article index (replaced LanceDB 2026-11-26, D-103; `/admin/lancedb` redirects). **Settings:** Settings, MCP |
+| AI & SEO (only while the SEO agent module is set up, D-100) | **Flows & crews:** CrewAI console, Flows (every flow in one list; Schedules from there), Runs, Crews (every crew in one list), Categories, Skills, Configuration (crewconfig/ in Git, import / export, history; D-101). **Content:** Content sources, Topics, Profiles & playground, Content analytics, Keywords, Recommendations, Content audit, Internal linking. **Traffic:** Search performance, Visitor analytics, Page insights, Reports. **Authority & health:** Backlinks, AI visibility, Technical health. **Models & data:** ML models, Article index (replaced LanceDB 2026-11-26, D-103; `/admin/lancedb` redirects). Its settings are in Settings since 2026-11-26 (D-106) |
 | Billing | Invoices, Payments |
 | Practice | Python practice |
 | — | |
 | Appearance | Customise, Menus, Homepage, Typography & colours |
 | Users | All users, Profile, API keys ("Your account" for someone without the Users page) |
 | Tools | Site health (was System status), Cache, Backups (export / import), Data sync, Database, Audit log |
-| Settings | General, Integrations, Media & storage, Email |
+| Settings | All settings, then one entry per category: General, Users & access, Content & publishing, Email, Media & storage, Payments & bookings, AI & models, SEO agent, Assistants (only while the SEO agent is set up), Search & SEO, Integrations, Practice, System |
 
-Every settings page (Settings → Integrations, Media & storage, Email, and AI & SEO → Settings) has the sectioned layout
-of Settings → General: the sections on the left (a select on a phone), one at a time, the open one in the address
-(`?section=`; moks-cms #181).
+Settings (`/admin/settings`, D-106) is the one home of every setting: the overview lists the categories and their
+sections and searches them; a category's page (`/admin/settings/<category>?section=<id>`) shows one section at a time,
+with the categories on the left from `xl` (the open one with its sections) and a Category select and section buttons
+above the form on tablets and phones. The categories and sections are `src/lib/settings-areas.ts`; the menu's Settings
+group is generated from it (`settingsMenuItems`). Pages that hold records or tools (Users, Cache, Payments, Bookings,
+Backups, Practice, Promotion, Content sources, Configuration) link to their settings. Appearance keeps the sectioned
+layout of its own editor (`components/admin/SettingsSections.tsx`).
 
 **Crew jobs (2026-11-21).** The Newsroom's pages moved under AI & SEO and old `/admin/news/*` addresses redirect
 (`src/lib/news/old-addresses.ts`): Jobs → `/admin/crewai/jobs`, Run history → Job runs, Sources / Topics / Profiles &
@@ -59,8 +64,8 @@ address, so bookmarks and links still work. What moved where:
 |---|---|
 | AI room → CrewAI console, Flow runs, Flows, Schedules, Crews, CrewAI import / export, Skills | AI & SEO → Agent (Configuration, formerly Import / export, is the last one) |
 | AI room → ML models, LanceDB | AI & SEO → Models & data |
-| AI room → Automation & AI | AI & SEO → Settings → Settings |
-| AI room → MCP access | AI & SEO → Settings → MCP (one section with the servers since 2026-11-23) |
+| AI room → Automation & AI | Settings (AI & models, SEO agent, Assistants, Search & SEO) since 2026-11-26 |
+| AI room → MCP access | Settings → Assistants → MCP (one section with the servers since 2026-11-23) |
 | SEO & insights → Traffic, Content, Authority & health | AI & SEO → the same three headings |
 
 A sub-heading is drawn above the first page a person can see under it (`arrangeMenu`), so a heading is not lost when
@@ -126,4 +131,4 @@ that page and query, and then wins over the plain link to the same page.
 **One catalogue, and AI & SEO as a module (2026-11-24, D-100).** Flows and Crews are one list each (search, categories,
 tags, on/off, last run, sort, pages), with the same filter bar and the same actions for every row. AI & SEO is drawn
 only while the SEO agent module is set up (`lib/modules.ts`, `menuForModules` in `app/admin/layout.tsx`); its pages
-show a set-up notice otherwise, and the agent is set up under Settings → Integrations → SEO agent.
+show a set-up notice otherwise, and the agent is set up under Settings → SEO agent → Connection.

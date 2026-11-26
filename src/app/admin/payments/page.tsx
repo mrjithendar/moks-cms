@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { LocalTime } from "@/components/LocalTime";
 import { Flash, type FlashParams } from "@/components/admin/Flash";
-import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
+import { SettingsElsewhere } from "@/components/admin/SettingsParts";
 import { AdminHeader, Card, StatusPill } from "@/components/admin/ui";
 import { Button } from "@/components/ui/form";
-import { absoluteUrl } from "@/config/site";
 import { adminActor } from "@/lib/admin";
 import { flash } from "@/lib/flash";
 import { moneyLabel, type PayCurrency } from "@/lib/hire-me";
 import { deletePayment, listPayments, RAZORPAY_DASHBOARD_PAYMENT, razorpayKeys, type PaymentFilter } from "@/lib/razorpay";
 import { effectiveEnv } from "@/lib/runtime-settings";
 import { requireRole } from "@/lib/session";
+import { settingsHref } from "@/lib/settings-areas";
 
 export const metadata = { title: "Payments" };
 
@@ -51,8 +51,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Fla
         <Card>
           <p className="text-sm text-fg-muted">
             {!keys.keyId || !keys.keySecret ? "Not connected yet: add the Key ID and Key secret" : "Add the webhook secret"} in{" "}
-            <a href="#razorpay" className="underline">Razorpay payments</a> below. Webhook URL: <code>{absoluteUrl("/api/razorpay/webhook")}</code> (events
-            payment.captured, payment.failed, order.paid). Then switch on paid calls in <Link href="/admin/appearance?section=hireMe" className="underline">Appearance → Hire me</Link>.
+            <Link href={settingsHref("razorpay")} className="link">Settings → Payments &amp; bookings → Razorpay</Link>, which also shows the webhook URL and its events. Then switch on
+            paid calls in <Link href="/admin/appearance?section=hireMe" className="link">Appearance → Hire me</Link>.
           </p>
         </Card>
       )}
@@ -99,9 +99,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Fla
           </Card>
         ))}
       </div>
-      <div className="mt-10">
-        <RuntimeSettings ids={["razorpay"]} />
-      </div>
+      <SettingsElsewhere href={settingsHref("razorpay")}>the Razorpay keys and webhook are in Settings → Payments &amp; bookings → Razorpay.</SettingsElsewhere>
     </>
   );
 }

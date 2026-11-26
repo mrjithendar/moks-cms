@@ -52,7 +52,7 @@ export function TopicsEditor({ topics, categories, accuracy, model }: { topics: 
         {rows.map((t, i) => {
           const a = accuracy[t.slug];
           return (
-            <li key={t.slug} className="grid gap-3 rounded-xl border border-line p-4 text-sm md:grid-cols-[10rem_1fr_1fr_10rem_auto] md:items-end">
+            <li key={t.slug} className="grid gap-3 rounded-xl border border-line p-4 text-sm xl:grid-cols-[10rem_minmax(0,1fr)_minmax(0,1fr)_10rem_auto] xl:items-end">
               <label className="block space-y-1"><span className="text-xs text-fg-subtle">Label ({t.slug})</span><Input value={t.label} onChange={(e) => upd(i, { label: e.target.value })} /></label>
               <label className="block space-y-1"><span className="text-xs text-fg-subtle">Keywords (comma separated)</span><Input value={t.keywords.join(", ")} onChange={(e) => upd(i, { keywords: csv(e.target.value) })} /></label>
               <label className="block space-y-1"><span className="text-xs text-fg-subtle">Suggested tags</span><Input value={t.tags.join(", ")} onChange={(e) => upd(i, { tags: csv(e.target.value) })} /></label>
@@ -61,7 +61,7 @@ export function TopicsEditor({ topics, categories, accuracy, model }: { topics: 
                 <label className="flex min-h-11 items-center gap-1 text-xs"><input type="checkbox" checked={t.enabled} onChange={(e) => upd(i, { enabled: e.target.checked })} /> on</label>
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => save(t)}>Save</Button>
               </div>
-              <p className="text-xs text-fg-subtle md:col-span-5">{a ? (a.f1 !== undefined ? `Classifier: precision ${a.precision}, recall ${a.recall}, F1 ${a.f1} (${a.support} labels)` : a.note ?? "") : "No accuracy data yet."}</p>
+              <p className="text-xs text-fg-subtle xl:col-span-5">{a ? (a.f1 !== undefined ? `Classifier: precision ${a.precision}, recall ${a.recall}, F1 ${a.f1} (${a.support} labels)` : a.note ?? "") : "No accuracy data yet."}</p>
             </li>
           );
         })}

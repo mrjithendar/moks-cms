@@ -352,7 +352,7 @@ class BudgetGuard:
                 raise BudgetExceeded(
                     f"llm_{word}",
                     f"The {word} LLM budget is reached: ${used:.2f} of ${max_usd:.2f} used {'today' if unit == 'day' else 'this month'}{more}."
-                    f" It resets {reset}; change it in Admin → AI & SEO → Settings → LLM budget.",
+                    f" It resets {reset}; change it in Admin → Settings → AI & models → LLM providers & budget.",
                 )
 
     async def _admit_usd(self, est: float, purpose: str, hold: bool) -> Reservation:

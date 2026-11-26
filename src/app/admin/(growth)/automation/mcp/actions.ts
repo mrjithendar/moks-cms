@@ -11,5 +11,5 @@ export async function revokeGrant(formData: FormData) {
   const id = String(formData.get("grantId") ?? "");
   await revokeGrantById(id);
   await auditSafe(actor, "seo.mcp.grant_revoked", id, {}, { severity: "warning" });
-  revalidatePath("/admin/automation");
+  revalidatePath("/admin/settings/assistants");
 }

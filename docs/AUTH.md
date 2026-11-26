@@ -49,7 +49,7 @@ users** takes an email (and optional name); there is no limit on how many.
   one-time set-password link valid for 72 hours (Better Auth's reset token, so `/reset-password` creates the
   password login on first use; the page is worded as an invitation and sign-in leads to `/admin`). After expiry the
   person uses *Forgot password*, or the admin presses **Resend invite**. Inviting a reader turns it into a demo
-  account; an admin or author is never downgraded by an invite. Requires email (Admin → Storage & email): without it
+  account; an admin or author is never downgraded by an invite. Requires email (Admin → Settings → Email): without it
   the invite is refused. Audited as `user.demo_invite` / `user.demo_reinvite`.
 - **Read-only enforcement** (`lib/demo.ts`). The proxy stamps every forwarded request with `x-moks-request-method`
   (overwriting any client value). `getSessionUser()` returns a demo account as `role: "admin", demo: true` on
@@ -114,7 +114,7 @@ the apex URL is registered.
 
 ## Configuration
 
-**Admin → Integrations** (preferred, since 2026-10-29): enter each provider's client ID and secret, tick
+**Admin → Settings → Users & access → Social sign-in** (preferred, since 2026-10-29): enter each provider's client ID and secret, tick
 “Allow sign-in”, Save. The page shows the exact callback URL to register. Secrets are sealed with
 `SETTINGS_ENCRYPTION_KEY` (table `setting`, key `integrations`) and never shown again; saving rebuilds the
 Better Auth instance on every replica (Redis invalidation), so no restart is needed. Once a provider is saved
@@ -122,8 +122,8 @@ there, that entry wins over the environment variables, including “off”; **Us
 
 | Variable | Where | Notes |
 |---|---|---|
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Secret `jithendar-com-env` (fallback) | Used until Google is saved in Admin → Integrations |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Secret `jithendar-com-env` (fallback) | Used until GitHub is saved in Admin → Integrations |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Secret `jithendar-com-env` (fallback) | Used until Google is saved in Admin → Settings → Users & access |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Secret `jithendar-com-env` (fallback) | Used until GitHub is saved in Admin → Settings → Users & access |
 | `BETTER_AUTH_SECRET` | Secret (exists) | Also encrypts stored provider tokens (`encryptOAuthTokens`) |
 | `SITE_URL` | Deployment env (`https://jithendar.com`) | Better Auth base URL; callback URLs derive from it |
 | `AVATAR_MAX_BYTES`, `AVATAR_MAX_DIMENSION`, `AVATAR_MIN_DIMENSION` | Optional env | Defaults 2 MB, 4096 px, 64 px |

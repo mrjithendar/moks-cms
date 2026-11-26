@@ -57,7 +57,7 @@ function Palette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const local = useMemo<PaletteItem[]>(
     () => [
       ...SEO_GROUPS.flatMap((g) => g.items.map((i) => ({ label: i.label, hint: i.hint, href: i.href, group: "Sections" }))),
-      ...["Drafts & Claude budget", "Internal linking limits", "Submission", "Keywords", "Schedules", "Thresholds"].map((l) => ({ label: `Settings: ${l}`, hint: "Settings", href: "/admin/automation", group: "Settings" })),
+      ...([["Drafts & Claude budget", "/admin/settings/ai?section=ai"], ["Internal linking limits", "/admin/settings/seo?section=content"], ["Submission", "/admin/settings/seo?section=content"], ["Keywords", "/admin/settings/seo?section=content"], ["Schedules", "/admin/settings/seo?section=schedules"], ["Thresholds", "/admin/settings/seo?section=scoring"]] as const).map(([l, href]) => ({ label: `Settings: ${l}`, hint: "Settings", href, group: "Settings" })),
     ],
     [],
   );
@@ -187,7 +187,7 @@ export function SeoViewControls({ property, sync }: { property: string | null; s
           Compare to previous
         </label>
         <span className="hidden items-center gap-1 text-xs text-fg-subtle md:flex" title="Search Console property (Settings)">
-          <span aria-hidden="true">◎</span> {property ? <Link href="/admin/automation" className="max-w-[14rem] truncate hover:underline">{property}</Link> : <Link href="/admin/integrations" className="underline">No property set</Link>}
+          <span aria-hidden="true">◎</span> {property ? <Link href="/admin/settings/seo?section=data" className="max-w-[14rem] truncate hover:underline">{property}</Link> : <Link href="/admin/settings/seo?section=data" className="underline">No property set</Link>}
         </span>
         <Link href="/admin/sync" title={sync.detail} className={`inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium ring-1 ring-inset ${PILL[sync.state]}`}>
           <span aria-hidden="true">{sync.state === "ok" ? "●" : sync.state === "error" ? "✕" : sync.state === "stale" ? "◐" : "○"}</span>{sync.label}

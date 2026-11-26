@@ -200,7 +200,7 @@ This repository never edits the miniKube repo or applies alert rules (D-12).
 | scheduled drafts | every 30-s tick | "Publish later" approvals whose time has come |
 
 Budget paused? The search, review and automation admin pages show a red banner; Settings shows month-to-date spend per model. Change
-the limit in Admin → AI & SEO → Settings → LLM providers & budget, or wait for it to reset (UTC day or month). Stop submissions: `SEO_SUBMISSION_ENABLED=false`.
+the limit in Admin → Settings → AI & models → LLM providers & budget, or wait for it to reset (UTC day or month). Stop submissions: `SEO_SUBMISSION_ENABLED=false`.
 
 ## Rollback of an approved change
 On the draft's page: **Roll back this change** (new revision; history kept), or the editor's revision history if the

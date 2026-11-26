@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
+import { SETTINGS_PATH } from "@/lib/settings-areas";
 
-// Advanced settings no longer has a page: each group is on the page it configures (lib/runtime-settings.ts `page`):
-// Integrations (Turnstile, verification, analytics and ads, image limits, video generation), Bookings (Cal.com),
-// Payments (Razorpay), Storage (video destinations) and Users (members-only articles, profile pictures).
+// Advanced settings no longer has a page: every group is a section of the Settings area (lib/settings-areas.ts).
 // Kept so old bookmarks land somewhere useful.
 export default function AdvancedSettingsPage() {
-  redirect("/admin/integrations");
+  redirect(SETTINGS_PATH);
 }

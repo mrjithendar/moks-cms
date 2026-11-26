@@ -7,6 +7,7 @@ import { SearchIcon } from "@/components/icons";
 import { inputClass } from "@/components/ui/form";
 import { GUIDE_SECTIONS, guideArticlePath, searchGuide, type GuideEntry } from "@/lib/user-guide";
 import type { SettingsGroup } from "@/lib/user-guide-settings";
+import { SETTINGS_CATEGORIES, type SettingsCategoryId } from "@/lib/settings-areas";
 import { GuideBody, GuidePageLink, SettingsTable } from "./parts";
 
 export type GuideKind = "all" | "guide" | "faq" | "settings";
@@ -17,17 +18,27 @@ const KINDS: { id: GuideKind; label: string }[] = [
   { id: "settings", label: "Settings" },
 ];
 
-/** Settings areas belong to a guide section, so the area filter narrows them too. */
+/** The guide section each category of the Settings area (lib/settings-areas.ts) belongs to. */
+const CATEGORY_SECTION: Record<SettingsCategoryId, string> = {
+  general: "Site settings",
+  access: "Site settings",
+  publishing: "Site settings",
+  email: "Site settings",
+  storage: "Site settings",
+  payments: "Community",
+  ai: "SEO agent, AI & ML",
+  agent: "SEO agent, AI & ML",
+  assistants: "SEO agent, AI & ML",
+  seo: "SEO agent, AI & ML",
+  integrations: "Site settings",
+  practice: "Content",
+  system: "Operations",
+};
+
+/** Settings areas belong to a guide section, so the area filter narrows them too (lib/user-guide-settings.ts areaOf). */
 const SETTINGS_SECTION: Record<string, string> = {
-  "Appearance & settings": "Site settings",
-  Integrations: "Site settings",
-  "Storage": "Site settings",
-  Email: "Site settings",
-  Users: "Site settings",
-  Bookings: "Community",
-  Payments: "Community",
-  "AI & SEO settings": "SEO agent, AI & ML",
-  Invoices: "Community",
+  Appearance: "Site settings",
+  ...Object.fromEntries(SETTINGS_CATEGORIES.map((c) => [`Settings → ${c.label}`, CATEGORY_SECTION[c.id]])),
 };
 
 const noSubscribe = () => () => {};

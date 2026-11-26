@@ -9,10 +9,10 @@ export function ModelOverride({ kind, value }: { kind: string; value: "auto" | "
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   return (
-    <label className="inline-flex items-center gap-2 text-sm text-fg-muted">
+    <label className="inline-flex max-w-full flex-wrap items-center gap-2 text-sm text-fg-muted">
       Use
       <select
-        className="min-h-8 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg"
+        className="min-h-8 min-w-0 max-w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-fg"
         value={value}
         disabled={busy}
         aria-label={`Override for ${kind}`}

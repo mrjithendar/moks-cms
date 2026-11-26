@@ -146,7 +146,7 @@ route, zod validation (400 + `issues`), audit log on mutations, `no-store` + `no
 | `SITE_URL` | Deployment (existing) | yes | Canonical origin; crawler allowlist |
 
 All schedules, thresholds, weights, crawler limits, LLM provider/model and report recipients are in Settings
-(`/admin/automation`).
+(`/admin/settings/seo`, `/admin/settings/ai`; `/admin/automation` redirects there since D-106).
 
 ## Local development
 

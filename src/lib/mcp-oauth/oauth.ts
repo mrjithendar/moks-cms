@@ -58,7 +58,7 @@ export function metadata(origin = siteOrigin()) {
     token_endpoint_auth_methods_supported: ["none"],
     revocation_endpoint_auth_methods_supported: ["none"],
     scopes_supported: Object.keys(SCOPES),
-    service_documentation: `${o}/admin/automation/mcp`,
+    service_documentation: `${o}/admin/settings/assistants?section=mcp`,
   };
 }
 
@@ -241,7 +241,7 @@ export async function revoke(p: Record<string, string | undefined>) {
   else await db.execute(sql`update seo_mcp_tokens set revoked_at = coalesce(revoked_at, now()) where token_hash = ${sha256(p.token ?? "")}`);
 }
 
-/** AI & SEO → Settings → MCP (connected clients). */
+/** Settings → Assistants → MCP (connected clients). */
 export async function listGrants() {
   const db = await getDb();
   return rowsOf<{ id: string; client_name: string; client_id: string; scopes: string[] | string; created_at: string; last_used_at: string | null; revoked_at: string | null; email: string }>(

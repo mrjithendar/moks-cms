@@ -1,8 +1,8 @@
 # Email (SMTP, Mailgun, Amazon SES)
 
 Transactional email: sign-up verification, password-reset links and contact-form notifications to admins.
-Configured in **Admin → Storage & email → Email** (admins only). Code: `src/lib/mail.ts`,
-`src/app/admin/storage/EmailSettings.tsx`, `src/app/admin/storage/email-actions.ts`.
+Configured in **Admin → Settings → Email** (admins only). Code: `src/lib/mail.ts`,
+`src/app/admin/settings/sections/EmailSettings.tsx`, `src/app/admin/settings/sections/email-actions.ts`.
 
 ## How it works
 

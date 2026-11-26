@@ -302,7 +302,7 @@ export async function newsNotify(body: unknown, send = sendSeoAlert) {
     text = `${b.error ?? "Unknown error"}\n\nRun: ${link}`;
   } else {
     subject = "Content flow budget threshold reached";
-    text = `${b.detail ?? ""}\n\nLimits: ${siteOrigin().origin}/admin/automation?section=agent-limits#job-settings-limits`;
+    text = `${b.detail ?? ""}\n\nLimits: ${siteOrigin().origin}/admin/settings/agent?section=agent-limits#job-settings-limits`;
   }
   return { sent: await send(subject, text) };
 }

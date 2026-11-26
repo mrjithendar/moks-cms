@@ -70,9 +70,13 @@ const sizes = {
 
 export type ButtonVariant = keyof typeof variants;
 
-/** On a phone a long label wraps inside the button (never wider than its container); from `sm` up it stays on one line. */
+/**
+ * A button is never wider than its container: a label that does not fit wraps inside it, on any screen. (It stayed on
+ * one line from `sm` up until 2026-11-26, which pushed long labels out of narrow columns: a tablet with the admin menu
+ * open, Database's maintenance buttons.) A label that fits stays on one line.
+ */
 export function buttonClass(variant: ButtonVariant = "primary", size: keyof typeof sizes = "md") {
-  return `inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-semibold max-w-full py-1.5 text-center whitespace-normal sm:whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-55 aria-disabled:pointer-events-none aria-disabled:opacity-55 ${variants[variant]} ${sizes[size]}`;
+  return `inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-semibold max-w-full py-1.5 text-center whitespace-normal [overflow-wrap:normal] transition-colors disabled:cursor-not-allowed disabled:opacity-55 aria-disabled:pointer-events-none aria-disabled:opacity-55 ${variants[variant]} ${sizes[size]}`;
 }
 
 export function Button({

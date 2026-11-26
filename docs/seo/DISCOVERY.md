@@ -127,7 +127,7 @@ the existing pods (bounded by job concurrency and batch sizes).
 - Charts: **no chart library**; small dependency-free SVG charts in `src/components/practice/Charts.tsx`
   (accessible: `role="img"`, labels, text equivalents). The SEO dashboard follows that pattern.
 - PDF: no PDF generation path exists in the repo.
-- Email: `sendMail(to, subject, text)` in `src/lib/mail.ts` (SMTP / Mailgun / SES, configured in Admin → Storage & email).
+- Email: `sendMail(to, subject, text)` in `src/lib/mail.ts` (SMTP / Mailgun / SES, configured in Admin → Settings → Email).
 
 ## Baseline checks
 

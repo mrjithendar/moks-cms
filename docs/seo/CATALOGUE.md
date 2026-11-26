@@ -54,13 +54,13 @@ Log lines, step detail and transcripts are redacted before they are stored (pass
 credentials, JWTs, private keys, passwords in URLs; by field name and by shape). The service log on stderr is redacted
 the same way.
 
-AI & SEO → Settings → Run history: **logs** (keep log lines; on), **stepIo** (keep input/output metadata; on),
+Settings → SEO agent → Run history: **logs** (keep log lines; on), **stepIo** (keep input/output metadata; on),
 transcripts and the retention days as before. Runs can be filtered by flow, category, crew, status, trigger and dates.
 
 ## The SEO agent module and the menu
 
 `lib/modules.ts` is the module registry. The SEO agent is **installed** when SEO_AGENT_URL or an endpoint saved under
-Settings → Integrations → SEO agent is set, or discovery finds one that answers, and SEO_ORCHESTRATOR is not `legacy`; it
+Settings → SEO agent → Connection is set, or discovery finds one that answers, and SEO_ORCHESTRATOR is not `legacy`; it
 is **available** when it answers now. AI & SEO is drawn only while it is installed, and its pages show how to set it up
 otherwise. `GET /api/admin/capabilities` returns `{modules: [{id, label, installed, available, version, reason,
 menuGroups, setupHref}]}`.

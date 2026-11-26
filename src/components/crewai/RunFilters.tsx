@@ -29,7 +29,7 @@ export function RunFilters({ flows, statuses, triggers, categories = [], crews =
     return () => window.clearTimeout(t);
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const select = "min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-fg";
+  const select = "min-h-9 max-w-full rounded-md border border-line bg-surface px-2 text-sm text-fg";
   const any = ["flow", "item", "status", "trigger", "q", "category", "crew", "from", "to"].some((k) => params.get(k));
   return (
     <form method="get" role="search" aria-label="Filter runs" className="mb-4 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); apply("q", q.trim()); }}>
