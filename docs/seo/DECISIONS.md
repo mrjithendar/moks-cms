@@ -1136,3 +1136,23 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
   `/admin/settings`, which opened Appearance → General, is the overview now.
 - **Fixed on the way.** Saving a runtime-settings group returned to `#group` on a sectioned page, which ignores
   anchors, so the page opened another section (docs/SETTINGS.md P1.10): it returns to `?section=<id>` now.
+
+## D-107 Reindex all posts is a flow with a run log (owner request 2026-11-26)
+
+- **What.** Settings → Integrations → Hybrid RAG → Reindex all posts starts the SEO agent's `rag_reindex_flow`
+  ("Hybrid RAG reindex": plan → index → remove → finish) and opens its run page, instead of queueing one background
+  job per post (D-104). The owner asked that a flow execute and that its log be detailed: the run log says where the
+  posts go, what the posts table holds, the plan, and what happened to each post (indexed with its chunks and time,
+  unchanged, removed and why, refused and why), then the totals and the slowest post.
+- **Who writes cms_content.** Still moks-cms, with its own token: the flow calls the callback API (`GET /rag/posts`,
+  `POST /rag/posts/sync`, `POST /rag/posts/queue`, `src/lib/rag/callbacks.ts`), and each sync is the job's code run in
+  the request (`ragSyncNow`). The agent's moks-rag client keeps refusing writes outside `seo_intel`; the document rules
+  (members-only previews, noindex) stay in one place.
+- **One post at a time**, so a reindex never queues bge-m3 (the 504s of 2026-11-26) and each line is in order.
+- **Failures.** rag-api down, slow or overloaded, or the web app not answering: the run stops and hands the rest to the
+  background jobs (their backoff retries them). Token refused or the sync off: the run stops. A post refused on its own:
+  logged, the run goes on and fails at the end naming it. No new settings or limits.
+- **Privacy.** Titles and addresses of posts readers cannot see go only to the run's own log (`run_only`), not to
+  stderr → Loki.
+- **Without the SEO agent** the button queues the jobs as before. The flow is schedulable (no built-in schedule) and
+  not startable from MCP.

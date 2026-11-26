@@ -40,7 +40,10 @@ const BACKOFF_MS = 500;
 export type RagFilterValue = string | number | boolean;
 
 export type RagDocument = { docId: string; title: string; text: string; source?: string; metadata: Record<string, unknown> };
-export type IngestResult = { doc_id: string; collection: string; chunks_ingested: number };
+/** `unchanged`: rag-api already held this exact version (same text, metadata, chunking and model), so it embedded nothing. */
+export type IngestResult = { doc_id: string; collection: string; chunks_ingested: number; unchanged?: boolean };
+/** `deleted`: false when the collection held nothing under that doc_id. */
+export type DeleteResult = { doc_id: string; deleted?: boolean };
 export type RagChunk = { id: string; doc_id: string; score: number; text: string; metadata: Record<string, unknown> };
 export type QueryResult = { query: string; collection: string; sources: RagChunk[] };
 
@@ -105,9 +108,9 @@ export function ingestDocument(cfg: RagConfig, doc: RagDocument, opts: RagClient
   return call<IngestResult>(cfg, "POST", "/ingest", { collection: cfg.collection, doc_id: doc.docId, title: doc.title, source: doc.source, text: doc.text, metadata: doc.metadata }, { timeoutMs: null, retries: 0, ...opts });
 }
 
-/** Remove every chunk of one document from the collection. Succeeds when there was nothing to remove. */
-export async function deleteDocument(cfg: RagConfig, docId: string, opts: RagClientOpts = {}): Promise<void> {
-  await call(cfg, "DELETE", `/documents/${encodeURIComponent(docId)}?collection=${encodeURIComponent(cfg.collection)}`, undefined, opts);
+/** Remove every chunk of one document from the collection. Succeeds when there was nothing to remove (`deleted` false). */
+export function deleteDocument(cfg: RagConfig, docId: string, opts: RagClientOpts = {}): Promise<DeleteResult> {
+  return call<DeleteResult>(cfg, "DELETE", `/documents/${encodeURIComponent(docId)}?collection=${encodeURIComponent(cfg.collection)}`, undefined, opts);
 }
 
 /** Hybrid (dense + sparse, RRF) retrieval only: include_answer is false, so no LLM is called and nothing is spent. */

@@ -54,6 +54,11 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/skills$/, () => skills.agentSkills()],
   // Crew configuration (CrewAI console → Crews, D-98): the active version of each crew. Read only.
   ["GET", /^\/crew-configs$/, () => crewConfigsCallback()],
+  // Hybrid RAG reindex flow (D-107, lib/rag/callbacks.ts): the posts and what happens to each, one post synced now, the
+  // rest handed to the background sync jobs. This server writes cms_content with its own token; the agent never does.
+  ["GET", /^\/rag\/posts$/, async () => (await import("../rag/callbacks")).ragPostsCallback()],
+  ["POST", /^\/rag\/posts\/sync$/, async (_m, b) => (await import("../rag/callbacks")).ragSyncPostCallback(b)],
+  ["POST", /^\/rag\/posts\/queue$/, async (_m, b) => (await import("../rag/callbacks")).ragQueuePostsCallback(b)],
   // Run history (CrewAI console): whether the agent keeps model-call transcripts (seo-agent/app/run_history.py).
   ["GET", /^\/run-history\/settings$/, () => runHistoryCallbackSettings()],
   // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns

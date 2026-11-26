@@ -1,5 +1,20 @@
 # Progress log — jithendar.com
 
+## Reindex all posts runs as a flow with a detailed log (2026-11-26, owner request, D-107)
+
+- **Agent** `seo-agent/app/flows/rag_reindex.py`: `rag_reindex_flow` "Hybrid RAG reindex", plan → index → remove →
+  finish, one post at a time; stops and hands the rest to the background sync when rag-api is down; schedulable, not
+  MCP. Registered in `SPECS`, `CRON_FLOWS`, `FLOW_INFO`, metrics; web app calls `rag_posts`, `rag_sync_post` (330 s),
+  `rag_queue_posts` (`app/webapp.py`; the per-post call has no generic "web app" line of its own).
+- **Web app** `src/lib/rag/callbacks.ts` + routes in `internal-server.ts`; `src/lib/rag/sync.ts`: `notIndexedBecause`,
+  `syncPost` (shared by the job and the flow: chunks, unchanged, deleted, passes, ms), `ragSyncNow`, `ragReindexPlan`;
+  `client.ts` returns rag-api's `unchanged` and `deleted`. Settings → Integrations → Hybrid RAG: the button starts the
+  flow and opens its run page (jobs as before without the agent), the Sync card links the flow and its last run.
+- Docs: RAG.md "Backfill", FLOWS.md trigger table, seo-agent README, D-107, user guide.
+- Tests: agent `test_rag_reindex.py` (9: registry, off, counts, unchanged, the run log line by line and what stays out
+  of stderr, rag-api down → hand-over, token refused, a refused post, state changes), contract, schedule rows;
+  web `rag.test.ts` (+4: reasons, plan, sync now, the three callbacks and their codes).
+
 ## One Settings area and admin layout fixes (2026-11-26, owner brief, D-106)
 
 - **Settings** (`/admin/settings`): every setting in one place, 13 categories, 42 sections, a search over section names

@@ -73,6 +73,10 @@ async def test_every_client_call_hits_a_server_route() -> None:
     await web.agent_skills()
     await web.crew_configs()
     await web.run_history_settings()
+    # Hybrid RAG reindex (D-107)
+    await web.rag_posts()
+    await web.rag_sync_post("blog", "x")
+    await web.rag_queue_posts([{"collection": "blog", "slug": "x"}])
     # promotion
     await web.promo_collect(UUID, 3)
     await web.promo_save_drafts(UUID, [], "run-1")

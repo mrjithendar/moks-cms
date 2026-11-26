@@ -66,10 +66,38 @@ synced; after importing them, use Reindex.
 
 ## Backfill
 
-Admin → Settings → Integrations → Hybrid RAG → **Reindex all posts** queues one job for every post in the database: published
-posts are indexed, every other post is removed (this also clears drafts and unpublished posts left in the collection
-while the sync was off). rag-api has no way to list documents, so a post deleted while the sync was off, or the old
-address of a post renamed then, stays in the collection; remove it with `DELETE /documents/{doc_id}`.
+Admin → Settings → Integrations → Hybrid RAG → **Reindex all posts** makes the collection hold exactly what readers see:
+published posts are indexed, every other post is removed (this also clears drafts and unpublished posts left in the
+collection while the sync was off). rag-api has no way to list documents, so a post deleted while the sync was off, or
+the old address of a post renamed then, stays in the collection; remove it with `DELETE /documents/{doc_id}`.
+
+With the SEO agent (D-107), the button starts the **Hybrid RAG reindex** flow (`rag_reindex_flow`,
+`seo-agent/app/flows/rag_reindex.py`) and opens its run page (AI & SEO → Runs). A run that is already going is opened
+instead of starting a second one. The flow only orchestrates; this site still builds and sends every document with
+its own token, through the callback API (`src/lib/rag/callbacks.ts`):
+
+| Step | What it does | What the run log says |
+|---|---|---|
+| plan | `GET /internal/seo-agent/rag/posts`: every post, what will happen to it and why (`ragReindexPlan`) | rag-api's URL, collection and service name (never the token); how many posts, how many to index by collection, members-only previews, how many to remove by reason (draft, in review, scheduled, archived, in the bin, noindex); the plan |
+| index | `POST …/rag/posts/sync` for each post readers can see, one at a time, newest first (`ragSyncNow`: the sync job's own code, run in the request) | a line before each post (address, title, characters) and one after it: `indexed, 9 chunks embedded, 34.2 s`, or `unchanged, rag-api already holds this version`, or `sent twice` when it changed meanwhile |
+| remove | the same call for every other post | one line per post (`a draft: removed from cms_content`, or `was not in cms_content`); its address and title only in the line's details |
+| finish | the totals | indexed, unchanged, removed, refused, the chunks the collection holds, the slowest post, the run's duration |
+
+- One post at a time, because an ingest is bge-m3 embedding the post on mk4's CPU. rag-api skips a post it already
+  holds in the same version (same text, metadata, chunking and model), so a second run embeds only what changed.
+- rag-api down, slow or overloaded (or the site not answering): the run stops and hands the posts it had not done,
+  that one included, to the background sync jobs (`POST …/rag/posts/queue`), which retry with their backoff. The run
+  fails and says how many it handed over; the Sync card above shows how they go.
+- The token refused (401/403) or the sync switched off meanwhile: the run stops; nothing more is sent.
+- A post rag-api refuses on its own (too large, say): logged, the run carries on, and the run fails at the end
+  naming it.
+- Titles and addresses of posts readers cannot see are only in the run's own log (the line's details), never in the
+  agent's stderr → Loki.
+- The flow can also be started from AI & SEO → Flows → Hybrid RAG reindex (Run) or given a schedule there (no built-in
+  one).
+
+Without the SEO agent, the button queues one sync job per post instead (`queueRagReindex`); they run in the background
+over the next minutes and the Sync card shows how many went through.
 
 ## Search
 
