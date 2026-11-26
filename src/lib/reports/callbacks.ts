@@ -5,7 +5,7 @@ import { agentAnalysis, agentData, agentPdf, notify, ReportError } from "./servi
 import type { Analysis, AnalysisCheck } from "./types";
 
 /**
- * The SEO agent's side of a console report (internal-server.ts /site-reports/{id}/…, moks-seo-agent app/flows/report.py).
+ * The SEO agent's side of a console report (internal-server.ts /site-reports/{id}/…, seo-agent/app/flows/report.py).
  * Bodies are checked here; the analysis is the agent's already-checked answer and is stored as data (rendered escaped).
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

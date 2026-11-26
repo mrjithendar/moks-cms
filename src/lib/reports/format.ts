@@ -2,7 +2,7 @@ import type { Format } from "./types";
 
 /**
  * Values as the report shows them, and as the AI analysis must copy them (the agent's number check compares at the
- * precision written: "92.5%", "$4.25", "1,234"). The PDF (moks-seo-agent app/reports_site_pdf.py fmt) formats the same way.
+ * precision written: "92.5%", "$4.25", "1,234"). The PDF (seo-agent/app/reports_site_pdf.py fmt) formats the same way.
  */
 export function fmt(v: number | string | null | undefined, f: Format | undefined): string {
   if (v === null || v === undefined || v === "") return "–";

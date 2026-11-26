@@ -6,7 +6,7 @@ import { log } from "../log";
 
 /**
  * The one LLM budget, for the LLM calls this web app makes itself (drafts on the legacy path, keyword intents, the
- * weekly batch, AI visibility). The budget lives in the seo-agent (moks-seo-agent/app/llm_budgets.py); this web app
+ * weekly batch, AI visibility). The budget lives in the seo-agent (seo-agent/app/llm_budgets.py); this web app
  * keeps no limit of its own. Before a call: `reserve` the call's upper bound (POST /llm-budget/reserve). After the
  * usage row is written: `settle` (POST /llm-budget/settle), and from then on the row is the spend.
  *

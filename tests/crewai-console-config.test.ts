@@ -54,7 +54,7 @@ const req = (url: string, method = "GET", body?: unknown) =>
   new Request(`https://jithendar.com${url}`, { method, headers: { origin: "https://jithendar.com", host: "jithendar.com", "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 const p = <T extends Record<string, string>>(v: T) => ({ params: Promise.resolve(v) });
 
-/** What the agent's GET /crews says about the report crew (moks-seo-agent app/crews/config.py catalogue). */
+/** What the agent's GET /crews says about the report crew (seo-agent/app/crews/config.py catalogue). */
 const REPORT_CREW = {
   crew: "report",
   label: "Report crew",

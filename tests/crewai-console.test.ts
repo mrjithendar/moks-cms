@@ -84,7 +84,7 @@ describe("run numbers (migration 0036)", () => {
     const b = await seedRun({ flow: "report_flow", target: "weekly" });
     const other = await seedRun({ flow: "gsc_sync_flow" });
     expect([await numberOf(a), await numberOf(b), await numberOf(other)]).toEqual([1, 2, 1]);
-    // The agent's insert (moks-seo-agent/app/runs.py): a second active run for the same flow + target conflicts.
+    // The agent's insert (seo-agent/app/runs.py): a second active run for the same flow + target conflicts.
     const live = await seedRun({ flow: "report_flow", target: "monthly", status: "running" });
     const dup = randomUUID();
     const inserted = rowsOf(await db.execute(sql`insert into seo_flow_runs (run_id, flow_name, target_id, status, triggered_by) values (${dup}::uuid, 'report_flow', 'monthly', 'queued', 'cron') on conflict do nothing returning run_id`));

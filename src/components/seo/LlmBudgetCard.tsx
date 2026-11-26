@@ -78,7 +78,7 @@ function Breakdown({ title, rows, total }: { title: string; rows: { key: string;
  * Admin → AI & SEO → Settings → LLM providers & budget (top card): ONE budget for every provider, model and purpose together, with an
  * optional daily limit and an optional monthly limit. A Daily | Monthly switch chooses the period shown: its spend
  * against its limit, the one field that sets that limit, and where the period's spend went (for reading; the
- * breakdowns limit nothing). The seo-agent owns the budget (moks-seo-agent/app/llm_budgets.py): this card only reads
+ * breakdowns limit nothing). The seo-agent owns the budget (seo-agent/app/llm_budgets.py): this card only reads
  * and writes its API.
  */
 export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePath: string }) {

@@ -2,7 +2,7 @@ import { AgentError, getLlmBudget, type AgentLlmBudgetView, type AgentLlmScope }
 
 /**
  * Admin → AI & SEO → Settings → LLM providers & budget (the budget card). The budget belongs to the seo-agent, which makes the LLM calls: it stores
- * it, validates a save and checks it before every call (moks-seo-agent/app/llm_budgets.py). This page only shows it,
+ * it, validates a save and checks it before every call (seo-agent/app/llm_budgets.py). This page only shows it,
  * through the agent's GET /llm-budget, and saves it through its PUT /llm-budget. Nothing is kept here.
  */
 export type LlmBudgetLoad = {

@@ -10,7 +10,7 @@ export type DeskView = { on: boolean; by: "deployment_off" | "admin" | "deployme
 /**
  * The content flows' switch on AI & SEO → Flows (setting row `news`.enabled; "News desk on" in the Newsroom until
  * 2026-11-21, "Jobs on" until 2026-11-23). Off: no content flow runs (Run now and dry runs are skipped too:
- * moks-seo-agent app/flows/news.py); the flows, sources and profiles stay as they are. NEWS_DESK_ENABLED=false in the
+ * seo-agent/app/flows/news.py); the flows, sources and profiles stay as they are. NEWS_DESK_ENABLED=false in the
  * deployment forces it off. Other flows (built-in, built from crews) are not affected.
  */
 export function JobsSwitch({ desk }: { desk: DeskView }) {

@@ -53,8 +53,10 @@ callback; a static test and a runtime test check that (`tests/test_news_flows.py
 - One active run per job: the flow runner's partial unique index + a Postgres advisory lock on target `job:<id>`
   (v4 D-57). One active draft run per job + story (`<job>:<cluster>:<mode>`).
 - Scheduled slots run once: `news_runs (job_id, slot)` is unique.
-- Ingestion is shared: a source fetched within its interval is skipped by every job; one ingest at a time (in-process
-  lock; the agent is a single replica with `Recreate`).
+- Ingestion is shared: a source fetched within its interval is skipped by every job; one ingest at a time per agent
+  (in-process lock). Since D-105 there is one agent per site pod: the dispatcher starts every due job in the agent its
+  call reaches, so scheduled ingests share one lock; a manual ingest in another pod at the same moment can fetch a
+  source twice, and items stay unique (`news_items (source_id, url_hash)`).
 - One active draft per story per job: `news_articles` partial unique index; another job's open draft or any published
   article for the story is a duplicate.
 - Caps (per run, per day in the job's time zone, global per day) are counted from `news_articles` and the run's own

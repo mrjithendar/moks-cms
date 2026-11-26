@@ -29,7 +29,7 @@ export default async function CrewaiLayout({ children }: { children: ReactNode }
       )}
       {!history && (
         <p role="status" className="mb-6 rounded-lg border border-line bg-surface-muted p-3 text-sm text-fg-muted">
-          Step lists, logs and transcripts appear once database migration 0036 is applied (the web app applies it when it starts) and the agent has its grants (<code>scripts/db-role.sql</code> in moks-seo-agent, when it uses its own role). Runs are listed meanwhile.
+          Step lists, logs and transcripts appear once database migration 0036 is applied (the web app applies it when it starts) and the agent has its grants (<code>seo-agent/scripts/db-role.sql</code>, when it uses its own role). Runs are listed meanwhile.
         </p>
       )}
       {children}

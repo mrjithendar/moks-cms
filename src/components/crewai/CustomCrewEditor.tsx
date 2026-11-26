@@ -9,7 +9,7 @@ import { Alert, Button, Input, Textarea } from "@/components/ui/form";
 import type { Category } from "@/lib/crewai/catalog-shared";
 import { CategoryPicker, TagInput } from "./CatalogDetails";
 
-/** The tools a spec crew's agent may hold: the agent's CUSTOM_TOOLS (moks-seo-agent app/crews/custom.py). */
+/** The tools a spec crew's agent may hold: the agent's CUSTOM_TOOLS (seo-agent/app/crews/custom.py). */
 export const CUSTOM_TOOLS: { name: string; hint: string }[] = [
   { name: "vector_search", hint: "search this site's articles by meaning" },
   { name: "read_article", hint: "read one of this site's articles" },

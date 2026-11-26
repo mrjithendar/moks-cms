@@ -1,6 +1,6 @@
 /**
  * Where an old admin address lives now. Bookmarks, notification e-mails and links the agent made earlier
- * (moks-seo-agent app/mcp/news_tools.py) keep working through two catch-all pages:
+ * (seo-agent/app/mcp/news_tools.py) keep working through two catch-all pages:
  *
  * - the old Newsroom, /admin/news/* (until 2026-11-21): app/admin/news/[[...path]]/page.tsx;
  * - the crew jobs, /admin/crewai/jobs/* (2026-11-21 to 2026-11-23): app/admin/crewai/jobs/[[...path]]/page.tsx.

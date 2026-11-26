@@ -1,6 +1,6 @@
 # Cover images
 
-`moks-seo-agent/app/news/images.py`, `desk.make_cover`. Every news article gets a cover unless its content flow turns images off.
+`seo-agent/app/news/images.py`, `desk.make_cover`. Every news article gets a cover unless its content flow turns images off.
 
 ## Providers
 

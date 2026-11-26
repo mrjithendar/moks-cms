@@ -168,7 +168,7 @@ type IdeaDeps = { draft?: (calendarId: string, actor: Actor) => Promise<IdeaDraf
 
 /**
  * POST /internal/seo-agent/jobs/ideas {jobId, runId, limit, dryRun}: a crew job whose intake includes the content ideas
- * (JobConfig.intake, moks-seo-agent app/flows/news.py `_ideas`). The job's own settings decide, read here, not sent:
+ * (JobConfig.intake, seo-agent/app/flows/news.py `_ideas`). The job's own settings decide, read here, not sent:
  * - which ideas: open ones (new or saved), best score first, that match the job's include keywords or its topics'
  *   keywords (none set: any idea) and none of its exclude keywords;
  * - how many: `limit` (what is left of the run's cap) and the job's daily cap (its news drafts and ideas started today).
@@ -336,7 +336,7 @@ export async function newsCollectPerformance(now = new Date()) {
 
 /**
  * POST /internal/seo-agent/custom/drafts {title, description, body, collection, category, flow, runId}: a custom flow's
- * draft step (moks-seo-agent app/flows/custom.py). A CMS draft post (never published) and its review draft, checked like
+ * draft step (seo-agent/app/flows/custom.py). A CMS draft post (never published) and its review draft, checked like
  * every new article (validateNewArticle: a title another article uses is refused). A person reviews and approves it.
  */
 export async function customSaveDraft(body: unknown) {

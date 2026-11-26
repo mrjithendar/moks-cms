@@ -26,7 +26,7 @@ const { fetchDocs } = await import("@/lib/seo-agent/callbacks");
  * SEO v3 on the web-app side, with the seo-agent mocked: the orchestrator switch, the callback API (auth, ownership,
  * the one write, validators reuse), the approval gate, and the end-to-end flow
  * approve in the admin API → review decision starts publish_flow (mock) → publish callback → verify → submit → submission records.
- * The agent's own graphs are tested in moks-seo-agent/tests (fake LLM, fake web app).
+ * The agent's own graphs are tested in seo-agent/tests (fake LLM, fake web app).
  */
 const admin: Actor = { id: "admin", role: "admin", label: "admin@example.com" };
 const BODY = ARTICLE_BODY.replace("![](/media/diagram.png)\n\n", "");

@@ -44,7 +44,7 @@ export type RunView = {
 export type Decision = { decision: "approve" | "reject" | "regenerate"; approval_id?: string | null; accepted_change_ids?: string[]; edits?: Record<string, string>; feedback?: string | null; actor?: string | null };
 
 /** Flows a person or a schedule may start with POST /flows/{name}/kickoff. publish_flow is not one of them.
- * crew_test_flow is the CrewAI console's crew Test run (moks-seo-agent/app/flows/crew_test.py), started by an admin only. */
+ * crew_test_flow is the CrewAI console's crew Test run (seo-agent/app/flows/crew_test.py), started by an admin only. */
 export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | "custom_flow" | NewsFlowName;
 /** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
 export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
@@ -122,7 +122,7 @@ export type JsonSchema = {
   $ref?: string;
   $defs?: Record<string, JsonSchema>;
 };
-/** One crew's editable configuration as the code defines it (moks-seo-agent/app/crews/config.py catalogue). */
+/** One crew's editable configuration as the code defines it (seo-agent/app/crews/config.py catalogue). */
 export type AgentCrew = {
   crew: string;
   label: string;
@@ -137,7 +137,7 @@ export type AgentCrew = {
   tasks: { key: string; agent: string; label: string; instructions: string; expected_output: string; variables: string[]; contract: string; output_editable: boolean }[];
 };
 export const flowCatalogue = (deps?: AgentDeps) => call<{ items: AgentFlow[] }>("GET", "/flows", undefined, deps, 8_000);
-/** One tool an agent can be given (moks-seo-agent app/config_catalogue.py). */
+/** One tool an agent can be given (seo-agent/app/config_catalogue.py). */
 export type AgentTool = { name: string; description: string; groups: string[]; read_only: boolean; custom: boolean; crews: string[]; agents: string[] };
 /** Everything the agent defines in code that the configuration bundle describes (GET /config-catalogue, agent ≥ 2026-11-24). */
 export type AgentConfigCatalogue = {
@@ -154,7 +154,7 @@ export type AgentConfigCatalogue = {
 export const configCatalogue = (deps?: AgentDeps) => call<AgentConfigCatalogue>("GET", "/config-catalogue", undefined, deps, 10_000);
 export const validateFlowInputs = (flow: string, inputs: Record<string, unknown>, deps?: AgentDeps) => call<{ inputs: Record<string, unknown> }>("POST", `/flows/${encodeURIComponent(flow)}/validate`, { inputs }, deps, 8_000);
 export const crewCatalogue = (deps?: AgentDeps) => call<{ items: AgentCrew[] }>("GET", "/crews", undefined, deps, 8_000);
-/** POST /custom/validate: the agent's one check of a custom crew or flow spec (moks-seo-agent app/crews/custom.py,
+/** POST /custom/validate: the agent's one check of a custom crew or flow spec (seo-agent/app/crews/custom.py,
  * app/flows/custom.py); 422 with the issues. `crews`: the custom crews a flow may name. */
 export const validateCustomSpec = (kind: "crew" | "flow", spec: Record<string, unknown>, crews?: string[], deps?: AgentDeps) =>
   call<{ spec: Record<string, unknown> }>("POST", "/custom/validate", { kind, spec, ...(crews ? { crews } : {}) }, deps, 8_000);
@@ -257,7 +257,7 @@ export const chunkRow = (id: number, table: ChunkTable = "live", deps?: AgentDep
   call<{ table: ChunkTable; chunk: ChunkDetail; similar: ChunkNeighbour[] }>("GET", `/chunks/rows/${encodeURIComponent(String(id))}${chunkQs({ table })}`, undefined, deps, 15_000);
 
 /**
- * The one LLM budget (moks-seo-agent app/llm_budgets.py): an optional daily and an optional monthly limit for every
+ * The one LLM budget (seo-agent/app/llm_budgets.py): an optional daily and an optional monthly limit for every
  * provider, model and purpose together, stored and enforced by the agent. Admin → AI & SEO → Settings → LLM providers & budget
  * only shows and edits it. The breakdowns are for reading; they limit nothing.
  */
@@ -293,7 +293,7 @@ export const reserveLlmBudget = (maxUsd: number, purpose: string, deps?: AgentDe
 /** Lets go of a hold once the caller has written its usage row. */
 export const settleLlmBudget = (id: string, deps?: AgentDeps) => call<{ released: boolean }>("POST", "/llm-budget/settle", { id }, deps, 8_000);
 
-// --- Admin-editable agent settings (moks-seo-agent app/admin_settings; GET /admin-settings, PUT /admin-settings/{group}) ---
+// --- Admin-editable agent settings (seo-agent/app/admin_settings; GET /admin-settings, PUT /admin-settings/{group}) ---
 
 export type AgentSettingType = "text" | "integer" | "number" | "boolean" | "select" | "list" | "secret";
 export type AgentSettingValue = string | number | boolean | string[] | null;
@@ -330,7 +330,7 @@ export const getAgentSettings = (deps?: AgentDeps) => call<AgentSettingsView>("G
 export const putAgentSettings = (group: string, values: Record<string, AgentSettingValue>, actor: string, deps?: AgentDeps) =>
   call<AgentSettingsView>("PUT", `/admin-settings/${encodeURIComponent(group)}`, { values, actor }, deps, 8_000);
 
-// --- LLM providers and models (moks-seo-agent app/llm_providers; GET/PUT /llm-providers, GET /llm-models) ---------
+// --- LLM providers and models (seo-agent/app/llm_providers; GET/PUT /llm-providers, GET /llm-models) ---------
 /** One kind of provider the agent knows how to reach (its catalog). No model list and no price lives there. */
 export type AgentLlmKind = {
   id: string;

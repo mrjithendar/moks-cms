@@ -82,7 +82,7 @@ function Chip({ children, tone = "plain" }: { children: string; tone?: "plain" |
 
 /**
  * One group of the seo-agent's own settings, drawn from the schema the agent sends (its registry decides the
- * fields, labels, units and ranges; moks-seo-agent/app/admin_settings). This card only reads and writes the agent's
+ * fields, labels, units and ranges; seo-agent/app/admin_settings). This card only reads and writes the agent's
  * API: it keeps no value, and when the agent cannot be reached or is too old it says so and shows nothing editable.
  */
 export function AgentSettingsGroup({ load, groupId, title }: { load: AgentSettingsLoad; groupId: string; title: string }) {

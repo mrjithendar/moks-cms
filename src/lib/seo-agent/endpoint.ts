@@ -5,8 +5,9 @@ import { adminMcpEnabled, agentToken, orchestratorSetting, publicMcpEnabled, typ
 /**
  * Where the seo-agent is, and whether it is on (docs/seo/FLOWS.md "Finding the SEO agent").
  *
- * The agent is optional (moks-tech/moks-seo-agent, its own image). Without it the web worker runs the SEO jobs itself
- * (the legacy path) and the agent-only features are off: Ask the Blog, the MCP servers, Improve, promotion runs.
+ * The agent is optional (seo-agent/ in this repository; since D-105 the same image, run as a second container of the
+ * site's pod: SEO_AGENT_URL=http://127.0.0.1:8080). Without it the web worker runs the SEO jobs itself (the legacy path)
+ * and the agent-only features are off: Ask the Blog, the MCP servers, Improve, promotion runs.
  *
  * The endpoint, first match wins:
  * 1. SEO_AGENT_URL, when the deployment sets it;

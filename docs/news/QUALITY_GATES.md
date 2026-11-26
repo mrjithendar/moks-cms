@@ -1,6 +1,6 @@
 # Quality gates
 
-Code, not the model's judgement (`moks-seo-agent/app/news/quality.py`). A draft reaches the review queue only if every
+Code, not the model's judgement (`seo-agent/app/news/quality.py`). A draft reaches the review queue only if every
 gate passes; otherwise it is saved as `failed_quality` with the reasons and the closest-matching passages, visible in the
 run detail. Failed drafts are not retried automatically (N-13); "Retry failed drafts" re-drafts on demand. After the
 agent's gates, the web app runs v4's new-article validators (MDX compiles, internal links exist, title unique site-wide);

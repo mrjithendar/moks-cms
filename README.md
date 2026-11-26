@@ -1,26 +1,29 @@
 # moks-cms
 
-A CMS for MDX publications, built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes. This repository holds
-the software only. It tests the code, builds the CMS image and pushes it to the registry. It deploys nothing.
+A CMS for MDX publications, built with Next.js, MDX, PostgreSQL, Cloudflare R2 and Kubernetes, with its SEO agent. This
+repository holds the software only. It tests the code, builds the one image (the web app and the SEO agent) and pushes
+it to the registry. It deploys nothing.
 
 The image serves any site. It reads the site's `site.json`, `config/`, articles and images at run time. Each website
 lives in its own repository and deploys the CMS image with its own manifests. [jithendar.com](https://jithendar.com),
 the first site, is [`moks-tech/jithendar.com`](https://github.com/moks-tech/jithendar.com). It lived here as
 `sites/jithendar.com/` until 2026-11-16, and this repository was itself called `jithendar.com` until 2026-11-14.
 
-The SEO agent service (Python: CrewAI Flows and Crews, MCP servers, pgvector, Ask the Blog, report PDFs) is
-[`moks-tech/moks-seo-agent`](https://github.com/moks-tech/moks-seo-agent). It lived here as `services/seo-agent/` until
-2026-11-18, when the web app also moved from `services/www/` to the repository root. Its design docs stay here, in
-[docs/seo/](docs/seo/) (start with [FLOWS.md](docs/seo/FLOWS.md) and [MCP.md](docs/seo/MCP.md)). A path written as
-`moks-seo-agent/<path>` means that file in the agent's repository.
+The SEO agent (Python: CrewAI Flows and Crews, MCP servers, pgvector, Ask the Blog, report PDFs) is
+[`seo-agent/`](seo-agent/README.md), with its own `pyproject.toml`, tests and scripts. It was `services/seo-agent/` here
+until 2026-11-18, then its own repository (mrjithendar/moks-seo-agent) until 2026-11-26, when it came back with its
+history (D-105). Its design docs are in [docs/seo/](docs/seo/) (start with [FLOWS.md](docs/seo/FLOWS.md) and
+[MCP.md](docs/seo/MCP.md)). The image is the same for both: a site's pod runs it as two containers, the site
+(`node server.js`) and the agent (`python -m app.main` in `/srv`).
 
 | Path | Contents |
 |---|---|
 | `src/`, `tests/`, `e2e/`, `public/` | The Next.js app: source, unit and end-to-end tests, the test fixture site (`tests/fixtures/site`) |
+| [`seo-agent/`](seo-agent/README.md) | The SEO agent (Python, uv): `app/`, `tests/` (pytest, including contract tests against this app), `scripts/` |
 | [`docs/`](docs/) | Design and operations docs (content model, media, SEO, news desk, cache bus) |
-| `Dockerfile`, `Dockerfile.ci` | The image: a full local build, and CI's package of a prebuilt `.next/standalone` |
+| `Dockerfile` | The one image, for CI and local builds: the web app's standalone build and the SEO agent (virtualenv and ONNX models) on Debian |
 | [`sites/`](sites/README.md) | The template for a new site's repository (`_template/`) |
-| `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `image-size.sh`, `build-alerts.py` |
+| `scripts/` | The app's scripts (`use-site.mjs`, seeds, `push-post.ts`) and CI's: `smoke-site-image.sh`, `smoke-seo-agent-image.sh`, `image-size.sh`, `build-alerts.py` |
 | [`runner/`](runner/README.md) | Self-hosted GitHub Actions runners (retired for CI: builds run on GitHub-hosted runners) |
 | `.github/workflows/` | CI: checks pull requests; when one is merged, tests and pushes the image to Harbor (`registry.jithendar.com/jithendar`) |
 
@@ -69,10 +72,12 @@ ISR writes to `.next/cache` at runtime. Phase 6 must mount that path as writable
 ## Images
 
 Merge a pull request into `master`. CI (`.github/workflows/ci-moks-cms.yml`) pushes
-`registry.jithendar.com/jithendar/moks-cms` as `:pr-<number>` and `:latest` (`Dockerfile.ci`), after a smoke test. The
-image holds no site of its own beyond the test fixture's files as defaults. A site's Deployment mounts its own `site/`
-(site.json, config/), `content/` and `public/images/` over `/app/site`, `/app/content` and `/app/public/images`. The app
-reads them at run time, so a site never builds the CMS. The `seo-agent` image is built by `moks-tech/moks-seo-agent`.
+`registry.jithendar.com/jithendar/moks-cms` as `:pr-<number>` and `:latest` (`Dockerfile`), after smoke tests of the
+image as the site and as the SEO agent. The image holds no site of its own beyond the test fixture's files as
+defaults. A site's Deployment mounts its own `site/` (site.json, config/), `content/` and `public/images/` over
+`/app/site`, `/app/content` and `/app/public/images`. The app reads them at run time, so a site never builds the CMS.
+The same image runs the SEO agent (a second container: workingDir `/srv`, command `python -m app.main`); there is no
+separate `seo-agent` image any more.
 
 Lint and the tests run on the pull request. A release skips them only if the pull request's last commit passed them
 there. Otherwise they run again on the merge commit while the image builds, and nothing is pushed until they pass. A

@@ -20,7 +20,7 @@ const { DEFAULT_ASK_SETTINGS, saveAskSettings, getAskSettings, mergeAskSettings,
 /**
  * Ask the Blog admin settings (Admin → Automation & AI): the stored document, the two switches, the audience gate on
  * /api/ask (signed-in readers only vs everyone) and the admin API. The agent's side is tested in
- * moks-seo-agent/tests/test_ask_and_chunks.py.
+ * seo-agent/tests/test_ask_and_chunks.py.
  */
 let db: Db;
 let agentCalls = 0;

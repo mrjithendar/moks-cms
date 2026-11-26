@@ -29,7 +29,7 @@ Secret `postgres-db-credentials`), which owns every table: sessions, password ha
 runs LLM-driven flows and serves MCP, so a prompt injection that reached SQL, or a leaked agent credential, would
 have all of that.
 
-`moks-seo-agent/scripts/db-role.sql` creates a role `seo_agent` with only what the agent's SQL needs:
+`seo-agent/scripts/db-role.sql` creates a role `seo_agent` with only what the agent's SQL needs:
 
 | It can | It cannot |
 |---|---|
@@ -45,17 +45,17 @@ Secret and falls back to `DATABASE_URL` while that Secret does not exist.
 
 ```bash
 # 1. Role and privileges, as a superuser in the site's database (safe to run again at any time).
-psql "$SUPERUSER_URL" -v ON_ERROR_STOP=1 -f moks-seo-agent/scripts/db-role.sql
+psql "$SUPERUSER_URL" -v ON_ERROR_STOP=1 -f seo-agent/scripts/db-role.sql
 # 2. Let it log in. Use a generated password; it goes into the Secret only.
 psql "$SUPERUSER_URL" -c "ALTER ROLE seo_agent LOGIN PASSWORD '<password>'"
 # 3. The same host, port and database as the site's URI, with the new user and password.
 kubectl -n jithendar get secret postgres-db-credentials -o jsonpath='{.data.uri}' | base64 -d   # to copy host/db from
 kubectl -n jithendar create secret generic seo-agent-db-credentials \
   --from-literal=uri='postgresql://seo_agent:<password>@<host>:<port>/<database>'
-kubectl -n jithendar rollout restart deploy/seo-agent
+kubectl -n jithendar rollout restart deploy/jithendar-com
 ```
 
-Check: `kubectl -n jithendar logs deploy/seo-agent | grep -i "permission denied"` stays empty, Admin → Automation
+Check: `kubectl -n jithendar logs deploy/jithendar-com -c seo-agent | grep -i "permission denied"` stays empty, Admin → Automation
 shows the next scheduled flows succeeding, and an MCP call still works. PgBouncer authenticates the new role like
 any other; if the login is refused there, the pooler's user list in the miniKube repository needs the role.
 

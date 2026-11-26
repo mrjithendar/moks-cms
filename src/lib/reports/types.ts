@@ -1,6 +1,6 @@
 /**
  * CrewAI console reports (D-102): the shapes the web app builds, stores in seo_reports.payload, sends to the SEO agent
- * (moks-seo-agent app/flows/report.py, schema "site-report/1") and renders as HTML, JSON and CSV. Client-safe: no
+ * (seo-agent/app/flows/report.py, schema "site-report/1") and renders as HTML, JSON and CSV. Client-safe: no
  * database or server imports, so the report viewer and the forms share it.
  */
 
@@ -37,7 +37,7 @@ export type CategoryBlock = { key: string; label: string; status: "ok" | "partia
 export type ReportRange = { preset: string; label: string; start: string; end: string; previousStart: string; previousEnd: string; days: number; timezone: string };
 export type ReportScope = { categories: string[]; crews: string[] | "all"; flows: string[] | "all"; sources: string[] | "all" };
 
-/** What the Report crew wrote, after the agent's check (moks-seo-agent app/crews/report.py check_analysis). */
+/** What the Report crew wrote, after the agent's check (seo-agent/app/crews/report.py check_analysis). */
 export type Analysis = {
   executive_summary?: string;
   achievements?: { text: string; evidence: string[] }[];

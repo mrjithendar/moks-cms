@@ -1,6 +1,5 @@
-# Dependabot version updates. Pull requests run the `check` and `image` jobs in ci-moks-cms.yml (lint,
-# typecheck, test, build, image). Merging to master pushes a new moks-cms image; sites name its tag in
-# their own manifests (jithendar.com's moved to moks-tech/jithendar.com).
+# Dependabot version updates. Pull requests run ci-moks-cms.yml (lint, typecheck, test, the SEO agent's checks, build,
+# image). Merging to master pushes a new moks-cms image (the web app and the SEO agent in one image); sites run :latest.
 #
 # Minor and patch updates are grouped to keep the PR count down; majors arrive one PR each.
 # Security updates are not grouped and are not held back by the cooldown.
@@ -68,6 +67,28 @@ updates:
     # under @tailwindcss/typography (6.0.10), minimatch 10 under eslint and typescript-eslint (^10). Drop each
     # override once its parent ships the fix (`npm ls <name>` without the override shows when).
 
+  # The SEO agent (seo-agent/): pyproject.toml + uv.lock (exact pins). The two-week rule: cooldown 14 days here, and
+  # tool.uv.exclude-newer = "2 weeks" for transitive dependencies on every re-lock.
+  - package-ecosystem: uv
+    directory: /seo-agent
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 14
+    commit-message:
+      prefix: "deps(seo-agent)"
+    labels:
+      - dependencies
+      - python
+    groups:
+      seo-agent-minor-patch:
+        update-types:
+          - minor
+          - patch
+
   # Base images in Dockerfile and Dockerfile.ci
   - package-ecosystem: docker
     directory: /
@@ -85,6 +106,14 @@ updates:
       node-images:
         patterns:
           - node
+      # The runtime stage is python:<3.13>-slim-trixie with Node copied in (Dockerfile.ci): Python minors change the
+      # wheel ABI and move with setup-python in ci-moks-cms.yml, so they are bumped by hand.
+      python-images:
+        patterns:
+          - python
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # Actions in .github/workflows (pinned by commit SHA; Dependabot updates the SHA and the comment)
   - package-ecosystem: github-actions

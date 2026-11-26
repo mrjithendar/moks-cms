@@ -1,6 +1,6 @@
 /**
  * 5-field cron for the job editor (validation and "next run" display). Same rules as the dispatcher's evaluator
- * (moks-seo-agent/app/news/cron.py): lists, ranges, steps, month/day names, 0 and 7 = Sunday, Vixie day rule.
+ * (seo-agent/app/news/cron.py): lists, ranges, steps, month/day names, 0 and 7 = Sunday, Vixie day rule.
  */
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const DAYS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };

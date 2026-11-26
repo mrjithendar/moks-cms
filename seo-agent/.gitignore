@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+
+# Embedding model downloaded for local runs (the image fetches its own)
+/models/
+
+.env
+.env.*
+.DS_Store

@@ -141,8 +141,8 @@ Rotate by running the script again and restarting both Deployments.
 3. Apply the agent group (a person, once; CI only renders it):
    ```bash
    scripts/manifests.sh seo-agent | kubectl apply -f -
-   kubectl -n jithendar rollout status deploy/seo-agent
-   kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
+   kubectl -n jithendar rollout status deploy/jithendar-com
+   kubectl -n jithendar exec deploy/jithendar-com -c seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode())"
    ```
 4. RBAC: `kubernetes/80-ci-deployer.yaml` now lets CI restart `seo-agent` too. The `deploy to kubernetes` workflow applies it on merge (before 2026-11-14 a person did, with `./deploy.sh`). To let
    CI restart the agent after each release, set the repository variable `SEO_AGENT_DEPLOY=true`.
@@ -173,7 +173,7 @@ different groups and are applied separately:
 
 - web Deployment (site group): the `deploy to kubernetes` workflow applies it when the pull request is merged;
 - `seo-agent-config` (seo-agent group): `scripts/manifests.sh seo-agent | kubectl apply -f -`, then
-  `kubectl -n jithendar rollout restart deploy/seo-agent`. No workflow applies this group until the pull request
+  `kubectl -n jithendar rollout restart deploy/jithendar-com`. No workflow applies this group until the pull request
   "remove deploy.sh" (#59) is merged; after that the workflow applies it and restarts the agent.
 
 The assistant is still **off** until an admin switches it on:
@@ -189,7 +189,7 @@ The assistant is still **off** until an admin switches it on:
 **Turn it off:** untick the same switch (no restart). **Hard kill switch:** `ASK_BLOG_ENABLED=false`:
 ```bash
 kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ASK_BLOG_ENABLED":"false"}}'
-kubectl -n jithendar rollout restart deploy/seo-agent
+kubectl -n jithendar rollout restart deploy/jithendar-com
 ```
 The agent then answers `disabled` to every question (the widget says it is switched off). For the web app the value is
 in the Deployment manifest: set it to `"false"` there in a pull request and merge it. An `ASK_BLOG_ENABLED` key left in
@@ -225,8 +225,8 @@ needed. Status of each item: PROGRESS.md "v4".
    kubectl -n jithendar delete cronjob seo-agent-reindex --ignore-not-found
    kubectl -n jithendar delete networkpolicy seo-agent-reindex --ignore-not-found
    scripts/manifests.sh seo-agent | kubectl apply -f -
-   kubectl -n jithendar rollout status deploy/seo-agent
-   kubectl -n jithendar exec deploy/seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode()); print(u.urlopen('http://127.0.0.1:8090/healthz').read().decode())"
+   kubectl -n jithendar rollout status deploy/jithendar-com
+   kubectl -n jithendar exec deploy/jithendar-com -c seo-agent -- python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/readyz').read().decode()); print(u.urlopen('http://127.0.0.1:8090/healthz').read().decode())"
    ```
    The CronJobs (`seo-flow-*`) are created by this apply. They only call the agent. The web app switches to the flows
    by itself as soon as it finds the agent (§22), unless `SEO_ORCHESTRATOR=legacy` holds it off. To keep the CronJobs
@@ -276,7 +276,7 @@ delivery domain, the random UUID makes keys unguessable, but consider an R2 rule
 ```bash
 kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
 kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"PUBLIC_MCP_ENABLED":"true"}}'
-kubectl -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+kubectl -n jithendar rollout restart deploy/jithendar-com
 ```
 The site then shows `/ai-assistants` and a footer link. Needs the gateway route (§27) and a reindex (§18).
 
@@ -284,7 +284,7 @@ The site then shows `/ai-assistants` and a footer link. Needs the gateway route 
 ```bash
 kubectl -n jithendar patch configmap seo-agent-config --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
 kubectl -n jithendar patch configmap jithendar-com-public --type merge -p '{"data":{"ADMIN_MCP_ENABLED":"true"}}'
-kubectl -n jithendar rollout restart deploy/seo-agent deploy/jithendar-com
+kubectl -n jithendar rollout restart deploy/jithendar-com
 ```
 No client registration is needed: Claude and MCP Inspector register themselves (RFC 7591). Verify, in order:
 1. `curl -s https://jithendar.com/.well-known/oauth-protected-resource/mcp/admin` and `…/.well-known/oauth-authorization-server`.
@@ -337,7 +337,7 @@ tables (`seo_ml_*`, `seo_ga4_page_pairs`, `seo_rag_eval_runs`) and the `prompt_v
 ```bash
 scripts/manifests.sh seo-agent | kubectl diff -f -
 scripts/manifests.sh seo-agent | kubectl apply -f -
-kubectl -n jithendar rollout restart deploy/seo-agent
+kubectl -n jithendar rollout restart deploy/jithendar-com
 ```
 
 New in `seo-agent-config`: `RAG_MODE=vector`, `RAG_MAX_PER_ARTICLE=3`, `ASK_BLOG_MIN_SCORE=0.66`,
@@ -396,9 +396,9 @@ shows `pagePairs: unsupported` if the property can't provide it.
 - All ML: `kubectl -n jithendar patch cronjob seo-flow-ml -p '{"spec":{"suspend":true}}'`. Outputs go stale after 14
   days and every feature falls back to its rule.
 - Retrieval: `RAG_MODE=vector` (already the default), `RAG_MAX_PER_ARTICLE=0` for v4's undiversified list,
-  `ASK_BLOG_MIN_SCORE=0.15` for v4's floor, then `rollout restart deploy/seo-agent`.
-- Code: `kubectl -n jithendar set image deploy/seo-agent seo-agent=registry.jithendar.com/jithendar/seo-agent:pr-<earlier number>`
-  (every release keeps its tag), or revert the merge.
+  `ASK_BLOG_MIN_SCORE=0.15` for v4's floor, then `rollout restart deploy/jithendar-com`.
+- Code: `kubectl -n jithendar set image deploy/jithendar-com web=registry.jithendar.com/jithendar/moks-cms:pr-<earlier number> seo-agent=registry.jithendar.com/jithendar/moks-cms:pr-<earlier number>`
+  (every release keeps its tag; since D-105 the site and the agent are one image, two containers), or revert the merge.
 
 ## 37. Promotion: Reddit API app and the promotion CronJobs
 

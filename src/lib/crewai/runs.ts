@@ -8,7 +8,7 @@ import { ACTIVE_STATUSES, BACKGROUND_FLOWS, RUN_STATUSES, TRIGGERS } from "./flo
 /**
  * The CrewAI console's reads (/admin/crewai): runs of the SEO agent's flows (seo_flow_runs, migration 0016) with the
  * run numbers, steps, log lines and model-call transcripts the agent records (migration 0036,
- * moks-seo-agent/app/run_history.py), and the cost per agent and model (seo_llm_usage, migration 0022). The web app
+ * seo-agent/app/run_history.py), and the cost per agent and model (seo_llm_usage, migration 0022). The web app
  * only reads these tables, apart from the retention job (purgeRunHistory); starting and cancelling runs goes through
  * the agent (lib/seo-agent/client.ts).
  */
@@ -107,7 +107,7 @@ export async function listRuns(f: RunFilter = {}, db?: Db): Promise<RunRow[]> {
   const d = db ?? (await getDb());
   const where: SQL[] = [sql`true`];
   if (f.flow && /^[a-z][a-z0-9_]{2,60}$/.test(f.flow)) where.push(sql`r.flow_name = ${f.flow}`);
-  // A content flow's run has its flow run's id (moks-seo-agent app/flows/news.py open_run).
+  // A content flow's run has its flow run's id (seo-agent/app/flows/news.py open_run).
   if (f.content && UUID.test(f.content.toLowerCase())) where.push(sql`r.run_id in (select n.id from news_runs n where n.job_id = ${f.content.toLowerCase()}::uuid)`);
   if (f.status && (RUN_STATUSES as readonly string[]).includes(f.status)) where.push(sql`r.status = ${f.status}`);
   if (f.status === "active") where.push(sql`r.status = any(${pgText(ACTIVE_STATUSES)}::text[])`);
@@ -316,7 +316,7 @@ export async function overview(now: Date = new Date(), db?: Db): Promise<Overvie
 
 // --- Settings and retention ----------------------------------------------------------------------------------------------
 
-/** GET /internal/seo-agent/run-history/settings: what the agent needs (moks-seo-agent/app/run_history.py). */
+/** GET /internal/seo-agent/run-history/settings: what the agent needs (seo-agent/app/run_history.py). */
 export async function runHistoryCallbackSettings(): Promise<{ transcripts: boolean; logs: boolean; step_io: boolean }> {
   const s = await getSeoSettings();
   return { transcripts: s.runHistory.transcripts, logs: s.runHistory.logs ?? true, step_io: s.runHistory.stepIo ?? true };

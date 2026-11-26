@@ -6,7 +6,7 @@ import { rowsOf } from "@/db/rows";
 /**
  * Crew configuration versions (CrewAI console → Crews, D-98): seo_crew_configs (migration 0037).
  *
- * A version is an overlay on the crew's code defaults (moks-seo-agent app/crews/config.py): only what differs, already
+ * A version is an overlay on the crew's code defaults (seo-agent/app/crews/config.py): only what differs, already
  * normalised by the agent (POST /crews/{crew}/validate) before it is saved here. Versions are never edited: saving
  * makes version N+1. At most one version per crew is active; the agent reads the active ones before every crew run
  * (callback GET /internal/seo-agent/crew-configs, crewConfigsCallback). "Use the code's defaults" deactivates them all.

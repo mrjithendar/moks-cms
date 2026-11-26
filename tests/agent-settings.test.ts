@@ -13,8 +13,8 @@ vi.mock("@/lib/session", () => ({ getSessionUser: async () => currentUser, requi
 const as = (role: "admin" | "author", id: string = role): SessionUser => ({ id, name: role, email: `${id}@example.com`, role, emailVerified: true, image: null, sessionCreatedAt: new Date() });
 
 /**
- * Admin → Automation & AI → Agent limits. The seo-agent owns these settings (moks-seo-agent/app/admin_settings, tested
- * in moks-seo-agent/tests/test_admin_settings.py); this app draws the fields the agent reports and hands a save to
+ * Admin → Automation & AI → Agent limits. The seo-agent owns these settings (seo-agent/app/admin_settings, tested
+ * in seo-agent/tests/test_admin_settings.py); this app draws the fields the agent reports and hands a save to
  * the agent's PUT /admin-settings/{group}. It keeps nothing itself.
  */
 let db: Db;

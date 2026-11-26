@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MAX_DEFAULT_CATEGORIES } from "./limits";
 
 /**
- * News desk config shapes. They mirror moks-seo-agent/app/news/config.py (JobConfig, Quality, NewsSettings): both
+ * News desk config shapes. They mirror seo-agent/app/news/config.py (JobConfig, Quality, NewsSettings): both
  * test suites parse docs/news/fixtures/job-config.json, so a field added on one side and not the other fails a test.
  */
 export const FEATURES = ["credibility", "source_count", "burst", "recency", "topic_match", "audience", "novelty", "severity", "keyword_overlap"] as const;
@@ -10,7 +10,7 @@ export const AGENT_KEYS = ["researcher", "analyst", "writer", "fact_checker", "s
 export const SOURCE_TYPES = ["rss", "atom", "json_api", "github_releases", "sitemap", "html_allowlisted"] as const;
 export const REJECT_CATEGORIES = ["off_topic", "low_value", "duplicate", "inaccurate", "style", "other"] as const;
 export const IMAGE_PROVIDERS = ["template", "gemini", "openai"] as const;
-/** What a content flow writes (crew-jobs plan PR 3; a crew job until 2026-11-23): news is one kind of content. moks-seo-agent app/news/config.py. */
+/** What a content flow writes (crew-jobs plan PR 3; a crew job until 2026-11-23): news is one kind of content. seo-agent/app/news/config.py. */
 export const OUTPUTS = ["news", "article"] as const;
 /** Where a content flow's candidates come from: the content sources (News Desk crew) and/or the content ideas (Editorial crew). */
 export const INTAKES = ["sources", "ideas"] as const;
@@ -196,7 +196,7 @@ const ENV_ON = ["1", "true", "yes", "on"];
 const ENV_OFF = ["0", "false", "no", "off"];
 
 /**
- * Whether the news desk runs, and who decided. The same rule as the seo-agent (moks-seo-agent app/news/config.py):
+ * Whether the news desk runs, and who decided. The same rule as the seo-agent (seo-agent/app/news/config.py):
  * - NEWS_DESK_ENABLED set to false in the deployment: forced off, whatever the admin switch says (emergency override).
  * - Otherwise the admin switch decides once it has been saved (`enabled` in the row), together with the old `paused`.
  * - Never saved: NEWS_DESK_ENABLED=true keeps the desk on as before this switch existed; anything else is off.

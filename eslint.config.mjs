@@ -4,7 +4,7 @@ import nextTypescript from "eslint-config-next/typescript";
 const config = [
   ...nextCoreWebVitals,
   ...nextTypescript,
-  { ignores: [".next/**", "next-env.d.ts", "coverage/**", "site/**", "content/**", "public/images/**"] },
+  { ignores: [".next/**", "next-env.d.ts", "coverage/**", "site/**", "content/**", "public/images/**", "seo-agent/**"] },
 ];
 
 export default config;
