@@ -3,9 +3,17 @@
  * POST /ingest, DELETE /documents/{doc_id}?collection=…, POST /query. Every request carries
  * `Authorization: Bearer <RAG_BEARER_TOKEN>` and `X-Service-Name` (rag-api logs each call under that name).
  *
- * Each attempt has its own 10-second timeout. A timeout, a network error, HTTP 408/429 or any 5xx is tried again
- * twice, after 0.5 s and 1 s; any other answer (401 wrong token, 422 bad payload…) fails at once and is marked
- * not retryable. Nothing here logs or returns the token. Free of server-only imports, so tests can call it directly.
+ * Queries and deletes: each attempt has its own 10-second timeout. A timeout, a network error, HTTP 408/429 or any
+ * 5xx is tried again twice, after 0.5 s and 1 s; any other answer (401 wrong token, 422 bad payload…) fails at once
+ * and is marked not retryable.
+ *
+ * Ingests are different: one takes as long as bge-m3 needs to embed the post (30 s to a few minutes on mk4's CPU), so
+ * an ingest waits for rag-api's answer (no timeout of its own; Node's fetch still gives up after 5 minutes without a
+ * response) and is not tried again at once: a failure goes back to the job queue, which retries with its backoff.
+ * Giving up after 10 s and sending again left rag-api embedding the same post two and three times at once, which
+ * queued bge-m3 until every batch timed out (504). rag-api now also makes a resend wait for the first one.
+ *
+ * Nothing here logs or returns the token. Free of server-only imports, so tests can call it directly.
  */
 export type RagConfig = { url: string; token: string; collection: string; serviceName: string };
 
@@ -21,7 +29,8 @@ export class RagError extends Error {
   }
 }
 
-export type RagClientOpts = { fetchImpl?: typeof fetch; timeoutMs?: number; retries?: number; backoffMs?: number; sleep?: (ms: number) => Promise<void> };
+/** `timeoutMs: null` = no timeout of this client's own (an ingest). */
+export type RagClientOpts = { fetchImpl?: typeof fetch; timeoutMs?: number | null; retries?: number; backoffMs?: number; sleep?: (ms: number) => Promise<void> };
 
 export const RAG_TIMEOUT_MS = 10_000;
 const RETRIES = 2;
@@ -55,7 +64,7 @@ async function detailOf(res: Response): Promise<string> {
 
 async function call<T>(cfg: RagConfig, method: "POST" | "DELETE", path: string, body: unknown, opts: RagClientOpts): Promise<T> {
   const doFetch = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? RAG_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs === undefined ? RAG_TIMEOUT_MS : opts.timeoutMs;
   const retries = opts.retries ?? RETRIES;
   const sleep = opts.sleep ?? wait;
   let last: RagError | undefined;
@@ -72,11 +81,11 @@ async function call<T>(cfg: RagConfig, method: "POST" | "DELETE", path: string, 
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: timeoutMs === null ? undefined : AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
       const name = (error as { name?: string })?.name;
-      const why = name === "TimeoutError" || name === "AbortError" ? `no answer within ${timeoutMs / 1000} s` : (error as Error)?.message || "network error";
+      const why = (name === "TimeoutError" || name === "AbortError") && timeoutMs !== null ? `no answer within ${timeoutMs / 1000} s` : (error as Error)?.message || "network error";
       last = new RagError(`rag-api did not answer: ${why}`, null, true);
       continue;
     }
@@ -88,9 +97,12 @@ async function call<T>(cfg: RagConfig, method: "POST" | "DELETE", path: string, 
   throw last!;
 }
 
-/** Index (or re-index) one document: rag-api replaces every chunk stored under its doc_id. */
+/**
+ * Index (or re-index) one document: rag-api replaces every chunk stored under its doc_id. Waits for rag-api's answer
+ * and tries once (see the top of this file); the job queue retries a failure.
+ */
 export function ingestDocument(cfg: RagConfig, doc: RagDocument, opts: RagClientOpts = {}): Promise<IngestResult> {
-  return call<IngestResult>(cfg, "POST", "/ingest", { collection: cfg.collection, doc_id: doc.docId, title: doc.title, source: doc.source, text: doc.text, metadata: doc.metadata }, opts);
+  return call<IngestResult>(cfg, "POST", "/ingest", { collection: cfg.collection, doc_id: doc.docId, title: doc.title, source: doc.source, text: doc.text, metadata: doc.metadata }, { timeoutMs: null, retries: 0, ...opts });
 }
 
 /** Remove every chunk of one document from the collection. Succeeds when there was nothing to remove. */

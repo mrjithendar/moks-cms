@@ -69,14 +69,14 @@ describe("rag-api client", () => {
   it("retries a 5xx with backoff, then succeeds", async () => {
     const rag = fakeRag((_c, n) => (n < 3 ? 503 : 200));
     const sleep = vi.fn<(ms: number) => Promise<void>>(async () => {});
-    await ingestDocument(cfg, { docId: "d", title: "t", text: "x", metadata: {} }, { fetchImpl: rag.fetchImpl, sleep });
+    await deleteDocument(cfg, "d", { fetchImpl: rag.fetchImpl, sleep });
     expect(rag.calls).toHaveLength(3);
     expect(sleep.mock.calls.map((c) => c[0])).toEqual([500, 1000]);
   });
 
   it("gives up after the retries with a retryable error", async () => {
     const rag = fakeRag(() => 502);
-    const err = await ingestDocument(cfg, { docId: "d", title: "t", text: "x", metadata: {} }, { fetchImpl: rag.fetchImpl, sleep: noSleep }).catch((e: unknown) => e);
+    const err = await deleteDocument(cfg, "d", { fetchImpl: rag.fetchImpl, sleep: noSleep }).catch((e: unknown) => e);
     expect(rag.calls).toHaveLength(3);
     expect(err).toBeInstanceOf(RagError);
     expect(err).toMatchObject({ status: 502, retryable: true });
@@ -93,10 +93,20 @@ describe("rag-api client", () => {
 
   it("times out each attempt after the timeout and retries network errors", async () => {
     const hang = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason))));
-    const err = (await ingestDocument(cfg, { docId: "d", title: "t", text: "x", metadata: {} }, { fetchImpl: hang as unknown as typeof fetch, timeoutMs: 20, sleep: noSleep }).catch((e: unknown) => e)) as RagError;
+    const err = (await deleteDocument(cfg, "d", { fetchImpl: hang as unknown as typeof fetch, timeoutMs: 20, sleep: noSleep }).catch((e: unknown) => e)) as RagError;
     expect(hang).toHaveBeenCalledTimes(3);
     expect(err).toMatchObject({ status: null, retryable: true });
     expect(err.message).toMatch(/no answer within/);
+  });
+
+  it("lets an ingest take as long as rag-api needs, and leaves its retries to the job queue", async () => {
+    // Giving up after 10 s and sending again left rag-api embedding the same post three times at once (504s).
+    const rag = fakeRag(() => 504);
+    const err = (await ingestDocument(cfg, { docId: "d", title: "t", text: "x", metadata: {} }, { fetchImpl: rag.fetchImpl, sleep: noSleep }).catch((e: unknown) => e)) as RagError;
+    expect(rag.calls).toHaveLength(1);
+    expect(err).toMatchObject({ status: 504, retryable: true });
+    const init = (rag.fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBeUndefined();
   });
 });
 
@@ -241,8 +251,9 @@ describe("content sync", () => {
 
     const first = await runJobs(down);
     expect(first).toMatchObject({ done: 0, failed: 0, retried: 2 });
-    // The first job tried three times; the second did not wait for rag-api again (paused for a minute).
-    expect(down.calls).toHaveLength(3);
+    // The first job tried once (an ingest is not sent again at once; the queue retries it); the second did not wait
+    // for rag-api again (paused for a minute).
+    expect(down.calls).toHaveLength(1);
     const waiting = await ragJobs();
     expect(waiting.every((j) => j.status === "queued" && j.attempts === 1 && j.last_error)).toBe(true);
 
