@@ -132,7 +132,7 @@ They live in `app/admin_settings/`:
 
 Groups so far: **Agent limits**; **Embeddings** (the backend's address, key and time limit; the provider and model
 stay in the deployment until a guarded re-embed exists); **Retrieval** (passages per answer, lowest similarity, the
-reranker's switch and limits, how long questions are kept, the LanceDB copy); **MCP servers** (the two switches, live; their rate limits and
+reranker's switch and limits, how long questions are kept); **MCP servers** (the two switches, live; their rate limits and
 allowed hosts, on restart). It also holds three lists that only take things away: public tools switched off, admin tools switched off (refused at once, out of the tool list after a restart) and flows that may not be started over MCP (narrows the code's allowlist, never widens it). Ask the Blog's own switch, audience, daily limit and cache time stay in Ask the Blog.
 
 ## Flows, crews and the flow engine
@@ -211,6 +211,18 @@ and reports the logit differences and how often the rankings agree. Run it befor
 same order for every question; the baked int8 file differs by 0.16 on average (max 0.85), Kendall τ 0.94, the same
 best passage for 93 of 95 questions (ONNX Runtime's own int8 quantization of the export: 89 of 95, so the image keeps
 the repository's file). Its timings on macOS say nothing about mk4 (PyTorch uses Apple's Accelerate there).
+
+## Browsing the article index
+
+The web app's **AI & SEO → Article index** page (`/admin/article-index`) reads the pgvector index through this service's
+internal API, read-only (`app/chunk_browser.py`, D-103): `GET /chunks` (tables, rows, articles, models, vector type,
+size, index method), `GET /chunks/articles` (each article's chunk count, filter by title or slug), `GET /chunks/rows`
+(one article's chunks, filter by text) and `GET /chunks/rows/{id}` (one chunk in full, its first vector values and its
+five nearest chunks). `table=rebuild` shows `seo_article_chunks_next` while a rebuild after an embeddings model change
+runs. Nothing writes: a hand-edited chunk would no longer match its vector, and the next reindex rewrites it anyway.
+
+LanceDB is not used. The copy of the index on R2 and the `/admin/lancedb` browser were removed on 2026-11-26 (D-103),
+and `pyproject.toml` overrides CrewAI's requirement on LanceDB away again (D-47).
 
 ## CI and release
 

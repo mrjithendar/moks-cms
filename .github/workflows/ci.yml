@@ -100,7 +100,9 @@ jobs:
         # /home/runner, writable by another user").
         run: |
           set -euo pipefail
-          uv export --frozen --no-dev --format requirements-txt > "$RUNNER_TEMP/requirements.txt"
+          # --prune lancedb: overridden away (D-47, D-103), so it and what only it needs are never installed; uv still
+          # lists them under `sys_platform == 'never'`, lancedb without a hash, which --disable-pip refuses.
+          uv export --frozen --no-dev --prune lancedb --format requirements-txt > "$RUNNER_TEMP/requirements.txt"
           # chromadb 1.5.9 (pinned by crewai, no fixed release): the advisories concern a running Chroma server/client,
           # which this service never starts or connects to (memory=False); it is only imported. Accepted, moks-cms
           # docs/seo/DECISIONS.md D-53.

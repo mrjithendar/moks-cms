@@ -362,7 +362,7 @@ def test_the_p3_groups_exist_and_say_what_applies_live() -> None:
     live = {f.env for g in GROUPS for f in g.fields if f.apply == "live"}
     # Read on every request or by the hourly prune: live. Everything built once at start-up waits for a restart.
     assert {"ASK_BLOG_TOP_K", "ASK_BLOG_MIN_SCORE", "ASK_BLOG_RETENTION_DAYS", "PUBLIC_MCP_ENABLED", "ADMIN_MCP_ENABLED"} <= live
-    for env in ("LANCEDB_ARTICLE_INDEX", "PUBLIC_MCP_RPM_PER_IP", "ADMIN_MCP_KICKOFFS_PER_HOUR", "MCP_ALLOWED_HOSTS", "OLLAMA_URL", "EMBEDDINGS_API_KEY", "EMBEDDINGS_TIMEOUT_SECONDS"):
+    for env in ("PUBLIC_MCP_RPM_PER_IP", "ADMIN_MCP_KICKOFFS_PER_HOUR", "MCP_ALLOWED_HOSTS", "OLLAMA_URL", "EMBEDDINGS_API_KEY", "EMBEDDINGS_TIMEOUT_SECONDS"):
         assert env not in live, env
     assert _group("embeddings").field("EMBEDDINGS_API_KEY").secret  # type: ignore[union-attr]
 
@@ -384,7 +384,6 @@ def test_p3_precedence_and_ranges() -> None:
     assert effective(rows(PUBLIC_MCP_ENABLED=True), {"PUBLIC_MCP_ENABLED": "false"}).public_mcp_enabled is True
     assert effective(rows(ADMIN_MCP_ENABLED=False), {"ADMIN_MCP_ENABLED": "true"}).admin_mcp_enabled is False
     assert effective(rows(MCP_ALLOWED_HOSTS=["jithendar.com", "localhost:8081"]), {}).mcp_allowed_hosts == ("jithendar.com", "localhost:8081")
-    assert effective(rows(LANCEDB_ARTICLE_INDEX=False), {}).lancedb_article_index is False
     retrieval, mcp, emb = _group("retrieval"), _group("mcp"), _group("embeddings")
     for field_, bad in (
         (retrieval.field("ASK_BLOG_TOP_K"), 13),
