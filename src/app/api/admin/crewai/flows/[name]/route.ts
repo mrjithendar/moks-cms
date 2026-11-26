@@ -20,12 +20,20 @@ export const POST = seoRoute<{ name: string }>("crewai-flow-run", { mutating: tr
   const b = parse(body, ctx.body ?? {});
   if (!/^[a-z][a-z0-9_]{2,39}_flow$/.test(p.name)) throw new SeoApiError("Unknown flow.", 404, "not_found");
   // The catalogue's row (migration 0041) decides first: switched off or deleted there, nobody starts it; its start rule
-  // comes from the agent. A flow the catalogue does not list (the runners) falls back to the console's own rules.
+  // comes from the agent ("manual" starts here even when the console's own list is older than the flow). A flow the
+  // catalogue does not list (the runners) falls back to the console's own rules.
   const row = await getItem("flow", p.name).catch(() => null);
   if (row?.deletedAt) throw new SeoApiError(`${row.label} is deleted: restore it under AI & SEO → Flows first.`, 409, "not_startable");
   if (row && !row.enabled) throw new SeoApiError(`${row.label} is switched off${row.disabledReason ? `: ${row.disabledReason}` : ""}.`, 409, "not_startable");
   if (!row && flowInfo(p.name).group === "Other") throw new SeoApiError("Unknown flow.", 404, "not_found");
-  const blocked = p.name === "crew_test_flow" ? "Start a crew test run from Crews → Test run." : row && row.start && row.start !== "manual" ? `This flow starts ${START_LABELS[row.start] ?? row.start}.` : rerunBlocked(p.name);
+  const blocked =
+    p.name === "crew_test_flow"
+      ? "Start a crew test run from Crews → Test run."
+      : row?.start === "manual"
+        ? null
+        : row?.start
+          ? `This flow starts ${START_LABELS[row.start] ?? row.start}.`
+          : rerunBlocked(p.name);
   if (blocked) throw new SeoApiError(blocked, 409, "not_startable");
   try {
     const r = await kickoff(p.name as FlowName, b.inputs, { triggeredBy: "manual", actor: ctx.actor.label });

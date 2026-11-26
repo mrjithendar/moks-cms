@@ -129,6 +129,23 @@ def test_only_schedulable_flows_start_as_cron_and_the_test_flow_only_by_hand() -
     assert "crew_test_flow" not in CRON_FLOWS
 
 
+def test_the_console_knows_every_flow_and_what_a_schedule_may_start() -> None:
+    """src/lib/crewai/flows.ts: a flow missing from FLOWS shows "not known to this version of the console" on its run
+    pages, and one missing from SCHEDULABLE_FLOWS cannot be given a schedule (seo_intel_sync_flow was both)."""
+    import re
+
+    from tests.moks_cms import www
+
+    ts = www("src/lib/crewai/flows.ts").read_text()
+    known = set(re.findall(r'^\s+F\("(\w+)"', ts, re.M))
+    block = re.search(r"SCHEDULABLE_FLOWS: readonly string\[\] = \[(.*?)\];", ts, re.S)
+    assert block, "SCHEDULABLE_FLOWS not found in src/lib/crewai/flows.ts"
+    schedulable = set(re.findall(r'"(\w+)"', block.group(1)))
+    assert sorted(set(SPECS) - known) == [], "add these flows to FLOWS in src/lib/crewai/flows.ts"
+    assert sorted(known - set(SPECS)) == [], "FLOWS lists flows the agent does not have"
+    assert schedulable == set(CRON_FLOWS)
+
+
 def test_the_dispatch_endpoint_and_the_trigger(web: FakeWebApp, llm: FakeLlm, monkeypatch) -> None:
     c = memory_container(settings(), llm=llm, web=web)
     c.schedules.add(id="a", name="ask-gaps", flow_name="ask_gaps_flow", cron="10 6 * * *")

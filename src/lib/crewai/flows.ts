@@ -32,6 +32,7 @@ export const FLOWS: FlowInfo[] = [
   F("ask_gaps_flow", "Ask the Blog gaps", "Insights", "yes", "Groups questions Ask the Blog could not answer into article ideas."),
   F("gsc_sync_flow", "Search Console sync", "Data sync", "yes", "Imports Google Search Console data."),
   F("ga4_sync_flow", "GA4 sync", "Data sync", "yes", "Imports Google Analytics 4 data."),
+  F("seo_intel_sync_flow", "SEO knowledge sync", "Data sync", "yes", "Sends the keyword clusters and Search Console performance to the shared knowledge base (moks-rag, collection seo_intel) the agents ground new articles in."),
   F("promotion_flow", "Promotion", "Promotion", "yes", "The Promotion crew scores where to share new articles and drafts the posts."),
   F("content_ideas_flow", "Content ideas", "Promotion", "yes", "Turns community and search signals into article ideas for the calendar."),
   F("custom_flow", "Custom flow", "Custom", "yes", "Runs a flow you made from crews (Flows → Custom flows): its custom crews, conditions and drafts for review. It never publishes."),
@@ -67,7 +68,7 @@ export const CREW_OF_FLOW: Record<string, string> = {
   news_playground_flow: "news",
 };
 
-/** Flows a schedule may start: seo-agent/app/flows/__init__.py CRON_FLOWS (the agent refuses any other). */
+/** Flows a schedule may start: seo-agent/app/flows/__init__.py CRON_FLOWS (the agent refuses any other; seo-agent/tests/test_console.py keeps the two equal). */
 export const SCHEDULABLE_FLOWS: readonly string[] = [
   "custom_flow",
   "gsc_sync_flow",
@@ -79,6 +80,7 @@ export const SCHEDULABLE_FLOWS: readonly string[] = [
   "ask_gaps_flow",
   "report_flow",
   "seo_ml_flow",
+  "seo_intel_sync_flow",
   "promotion_flow",
   "content_ideas_flow",
   "news_dispatch_flow",
