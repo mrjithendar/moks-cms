@@ -17,6 +17,7 @@ None of these can publish: there is no call to publish_flow or the web app's pub
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -24,7 +25,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from crewai.flow import persist, start
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import metrics
+from .. import metrics, narrate
 from ..llm import BudgetExceeded, used_up
 from ..news import desk as nd
 from ..news.budget import NewsBudget, NewsLlm
@@ -33,6 +34,8 @@ from ..news.runlog import RunRecorder
 from ..runs import INSTANCE_ONLY
 from ..state import UUID, RunState, _In
 from .base import SeoFlow
+
+log = logging.getLogger("seo_agent.flows.news")
 
 # --- inputs ---------------------------------------------------------------------------------------------------------
 
@@ -204,84 +207,85 @@ class NewsJobFlow(NewsHelpers, SeoFlow[NewsJobState]):
 
     @start()
     async def run_job(self) -> None:
-        s: NewsJobState = self.state
-        started = time.monotonic()
-        d = await self.desk()
-        row = await d.store.get_job(s.job_id)
-        if not row:
-            s.outcome, s.errors = "failed", [*s.errors, "job not found"]
-            return
-        job = nd.as_job(row)
-        trigger = "dry_run" if s.dry_run and s.trigger == "manual" else s.trigger
-        rec, created = await self.open_run(d, kind="job", job=job, trigger=trigger, slot=s.slot, dry_run=s.dry_run, llm=s.llm, parent=s.retry_of, actor=s.actor)
-        if not created:
-            s.outcome = "skipped"
-            s.result = {"reason": f"slot {s.slot} already ran (run {s.news_run_id})"}
-            return
-        if not d.news.enabled:
-            rec.log("warning", "content flows are switched off (AI & SEO → Flows: \"Content flows on\", or NEWS_DESK_ENABLED=false in the deployment); nothing ran", outcome="disabled")
-            await self.close_run(d, rec, "skipped", "news desk disabled", job, started)
-            s.outcome = "skipped"
-            return
-        if s.trigger == "cron" and not job.enabled:
-            await self.close_run(d, rec, "skipped", "job is paused", job, started)
-            s.outcome = "skipped"
-            return
-        try:
-            budget = NewsBudget(d.store, d.news, job, rec.run_id, d.clock, s.dry_run)
-            ratios = await budget.ratios()
-            for k, v in ratios.items():
-                metrics.NEWS_BUDGET_RATIO.labels(scope=k).set(v)
-            # The one LLM budget (no news cap of its own): a job does not start drafting when it is already used up.
-            guard = getattr(self.deps.llm, "guard", None)
-            if not s.dry_run and guard is not None and used_up(await guard.status()):
-                raise BudgetExceeded("llm", "the LLM budget is used up (Admin → Settings → AI & models → LLM providers & budget)")
-            # Where the candidates come from (JobConfig.intake): the content sources and/or the content ideas.
-            ing: dict[str, Any] = {"new": 0}
-            selected: list[Any] = []
-            if "sources" in job.config.intake:
-                ingest_lock: asyncio.Lock = d.extra.setdefault("news_ingest_lock", asyncio.Lock())
-                async with ingest_lock:  # ingestion is shared: one at a time; a source fetched within its interval is skipped
-                    # Ingest's Claude topic fallback is shared work: capped by the global news budget, booked to this run.
-                    ing_d = nd.with_news_llm(d, [rec.run_id], job=None, dry_run=s.dry_run, enabled=s.llm and not s.dry_run)
-                    ing = await nd.ingest(ing_d, rec, source_ids=job.config.source_ids, llm_ok=s.llm and not s.dry_run)
-                if s.retry_of:
-                    selected = await self._retry_selection(d, rec, job)
-                else:
-                    selected = await nd.select_for_job(d, rec, job, dry_run=s.dry_run)
-            s.selected = [{"cluster_id": c.cluster_id, "score": c.score, "rank": c.rank, "title": c.title} for c in selected]
-            singles = [c for c in selected if (c.rank or 0) < 100] if job.mode != "daily_digest" else []
-            digest = [c for c in selected if (c.rank or 0) >= 100] if job.mode == "both" else (selected if job.mode == "daily_digest" else [])
-            work = [{"cluster_ids": [c.cluster_id], "mode": "single", "score": c.score} for c in singles]
-            if digest:
-                work.append({"cluster_ids": [c.cluster_id for c in digest][: job.config.digest_size], "mode": "digest", "score": max(c.score for c in digest)})
-            s.children = await self._fan_out(d, job, work) if work else []
-            if "ideas" in job.config.intake and not s.retry_of:
-                s.children.extend(await self._ideas(d, rec, job, limit=max(0, job.config.max_articles_per_run - len(work))))
-            for ch in s.children:
-                rec.count(ch.get("outcome") or "failed")
-            rec.count("drafted", sum(1 for ch in s.children if ch.get("outcome") == "ready_for_review"))
-            rec.count("failed", sum(1 for ch in s.children if ch.get("outcome") in ("failed", None)))
-            await self._notify(d, rec, job)
-            status = "paused_budget" if any(ch.get("outcome") == "paused_budget" for ch in s.children) else ("failed" if s.children and all(ch.get("outcome") in ("failed", None) for ch in s.children) else "succeeded")
-            await self.close_run(d, rec, status, "; ".join(s.errors[-3:]) or None, job, started)
-            await d.store.set_job_schedule(job.id, last_run_at=d.clock())
-            s.result = {"new_items": ing["new"], "selected": len(selected), "children": len(s.children)}
-            s.outcome = "paused_budget" if status == "paused_budget" else ("failed" if status == "failed" else "done")
-        except BudgetExceeded as e:
-            rec.log("warning", f"paused: {e.detail}", outcome="paused_budget")
-            rec.count("skipped_budget")
-            await self.close_run(d, rec, "paused_budget", e.detail, job, started)
-            s.outcome = "paused_budget"
-            s.errors.append(e.detail)
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            await self.close_run(d, rec, "failed", s.errors[-1], job, started)
-            s.outcome = "failed"
+        async with self.step("run_job"):
+            s: NewsJobState = self.state
+            started = time.monotonic()
+            d = await self.desk()
+            row = await d.store.get_job(s.job_id)
+            if not row:
+                s.outcome, s.errors = "failed", [*s.errors, "job not found"]
+                return
+            job = nd.as_job(row)
+            trigger = "dry_run" if s.dry_run and s.trigger == "manual" else s.trigger
+            rec, created = await self.open_run(d, kind="job", job=job, trigger=trigger, slot=s.slot, dry_run=s.dry_run, llm=s.llm, parent=s.retry_of, actor=s.actor)
+            if not created:
+                s.outcome = "skipped"
+                s.result = {"reason": f"slot {s.slot} already ran (run {s.news_run_id})"}
+                return
+            if not d.news.enabled:
+                rec.log("warning", "content flows are switched off (AI & SEO → Flows: \"Content flows on\", or NEWS_DESK_ENABLED=false in the deployment); nothing ran", outcome="disabled")
+                await self.close_run(d, rec, "skipped", "news desk disabled", job, started)
+                s.outcome = "skipped"
+                return
+            if s.trigger == "cron" and not job.enabled:
+                await self.close_run(d, rec, "skipped", "job is paused", job, started)
+                s.outcome = "skipped"
+                return
             try:
-                await d.web.news_notify({"kind": "job_failed", "jobId": job.id, "jobName": job.name, "runId": rec.run_id, "error": s.errors[-1]})
-            except Exception:  # noqa: S110 - notification is best effort
-                pass
+                budget = NewsBudget(d.store, d.news, job, rec.run_id, d.clock, s.dry_run)
+                ratios = await budget.ratios()
+                for k, v in ratios.items():
+                    metrics.NEWS_BUDGET_RATIO.labels(scope=k).set(v)
+                # The one LLM budget (no news cap of its own): a job does not start drafting when it is already used up.
+                guard = getattr(self.deps.llm, "guard", None)
+                if not s.dry_run and guard is not None and used_up(await guard.status()):
+                    raise BudgetExceeded("llm", "the LLM budget is used up (Admin → Settings → AI & models → LLM providers & budget)")
+                # Where the candidates come from (JobConfig.intake): the content sources and/or the content ideas.
+                ing: dict[str, Any] = {"new": 0}
+                selected: list[Any] = []
+                if "sources" in job.config.intake:
+                    ingest_lock: asyncio.Lock = d.extra.setdefault("news_ingest_lock", asyncio.Lock())
+                    async with ingest_lock:  # ingestion is shared: one at a time; a source fetched within its interval is skipped
+                        # Ingest's Claude topic fallback is shared work: capped by the global news budget, booked to this run.
+                        ing_d = nd.with_news_llm(d, [rec.run_id], job=None, dry_run=s.dry_run, enabled=s.llm and not s.dry_run)
+                        ing = await nd.ingest(ing_d, rec, source_ids=job.config.source_ids, llm_ok=s.llm and not s.dry_run)
+                    if s.retry_of:
+                        selected = await self._retry_selection(d, rec, job)
+                    else:
+                        selected = await nd.select_for_job(d, rec, job, dry_run=s.dry_run)
+                s.selected = [{"cluster_id": c.cluster_id, "score": c.score, "rank": c.rank, "title": c.title} for c in selected]
+                singles = [c for c in selected if (c.rank or 0) < 100] if job.mode != "daily_digest" else []
+                digest = [c for c in selected if (c.rank or 0) >= 100] if job.mode == "both" else (selected if job.mode == "daily_digest" else [])
+                work = [{"cluster_ids": [c.cluster_id], "mode": "single", "score": c.score} for c in singles]
+                if digest:
+                    work.append({"cluster_ids": [c.cluster_id for c in digest][: job.config.digest_size], "mode": "digest", "score": max(c.score for c in digest)})
+                s.children = await self._fan_out(d, job, work) if work else []
+                if "ideas" in job.config.intake and not s.retry_of:
+                    s.children.extend(await self._ideas(d, rec, job, limit=max(0, job.config.max_articles_per_run - len(work))))
+                for ch in s.children:
+                    rec.count(ch.get("outcome") or "failed")
+                rec.count("drafted", sum(1 for ch in s.children if ch.get("outcome") == "ready_for_review"))
+                rec.count("failed", sum(1 for ch in s.children if ch.get("outcome") in ("failed", None)))
+                await self._notify(d, rec, job)
+                status = "paused_budget" if any(ch.get("outcome") == "paused_budget" for ch in s.children) else ("failed" if s.children and all(ch.get("outcome") in ("failed", None) for ch in s.children) else "succeeded")
+                await self.close_run(d, rec, status, "; ".join(s.errors[-3:]) or None, job, started)
+                await d.store.set_job_schedule(job.id, last_run_at=d.clock())
+                s.result = {"new_items": ing["new"], "selected": len(selected), "children": len(s.children)}
+                s.outcome = "paused_budget" if status == "paused_budget" else ("failed" if status == "failed" else "done")
+            except BudgetExceeded as e:
+                rec.log("warning", f"paused: {e.detail}", outcome="paused_budget")
+                rec.count("skipped_budget")
+                await self.close_run(d, rec, "paused_budget", e.detail, job, started)
+                s.outcome = "paused_budget"
+                s.errors.append(e.detail)
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                await self.close_run(d, rec, "failed", s.errors[-1], job, started)
+                s.outcome = "failed"
+                try:
+                    await d.web.news_notify({"kind": "job_failed", "jobId": job.id, "jobName": job.name, "runId": rec.run_id, "error": s.errors[-1]})
+                except Exception:  # noqa: S110 - notification is best effort
+                    pass
 
     async def _retry_selection(self, d: nd.DeskDeps, rec: RunRecorder, job: Job) -> list[Any]:
         """Retry failed step: only the parent run's selected stories that did not reach review."""
@@ -366,28 +370,29 @@ class NewsDraftFlow(NewsHelpers, SeoFlow[NewsDraftState]):
 
     @start()
     async def draft(self) -> None:
-        s: NewsDraftState = self.state
-        d = await self.desk()
-        row = await d.store.get_job(s.job_id)
-        if not row:
-            s.outcome = "failed"
-            s.errors.append("job not found")
-            return
-        job = nd.as_job(row)
-        if s.writing_profile_version:
-            job.config.writing_profile_version = s.writing_profile_version
-        rec = RunRecorder(d.store, s.news_run_id)  # steps and logs join the parent job run's timeline
-        rec._seq = 100 + abs(hash(tuple(s.cluster_ids))) % 800
-        try:
-            r = await nd.draft_story(d, rec, job, s.cluster_ids, mode=s.mode, dry_run=s.dry_run, llm_enabled=s.llm, parent_run_id=s.news_run_id, score=s.score, feedback=s.feedback)
-            s.result = {"article_id": r.article_id, "status": r.status, "reason": r.reason[:500], "draft_id": r.draft_id, "cost_usd": round(r.cost_usd, 6)}
-            s.outcome = r.status
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            rec.log("error", f"draft failed: {s.errors[-1]}", cluster_ids=s.cluster_ids, outcome="failed")
-            await rec.flush()
-            metrics.NEWS_DRAFTS.labels(status="failed").inc()
-            s.outcome = "failed"
+        async with self.step("draft"):
+            s: NewsDraftState = self.state
+            d = await self.desk()
+            row = await d.store.get_job(s.job_id)
+            if not row:
+                s.outcome = "failed"
+                s.errors.append("job not found")
+                return
+            job = nd.as_job(row)
+            if s.writing_profile_version:
+                job.config.writing_profile_version = s.writing_profile_version
+            rec = RunRecorder(d.store, s.news_run_id)  # steps and logs join the parent job run's timeline
+            rec._seq = 100 + abs(hash(tuple(s.cluster_ids))) % 800
+            try:
+                r = await nd.draft_story(d, rec, job, s.cluster_ids, mode=s.mode, dry_run=s.dry_run, llm_enabled=s.llm, parent_run_id=s.news_run_id, score=s.score, feedback=s.feedback)
+                s.result = {"article_id": r.article_id, "status": r.status, "reason": r.reason[:500], "draft_id": r.draft_id, "cost_usd": round(r.cost_usd, 6)}
+                s.outcome = r.status
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                rec.log("error", f"draft failed: {s.errors[-1]}", cluster_ids=s.cluster_ids, outcome="failed")
+                await rec.flush()
+                metrics.NEWS_DRAFTS.labels(status="failed").inc()
+                s.outcome = "failed"
 
 
 # --- news_dispatch_flow ---------------------------------------------------------------------------------------------
@@ -401,18 +406,25 @@ class NewsDispatchFlow(NewsHelpers, SeoFlow[NewsDispatchState]):
     async def dispatch(self) -> None:
         """The crew jobs' daily housekeeping and gauges. The jobs themselves are started by the one dispatcher since
         2026-11-21 (POST /schedules/dispatch → app/news/dispatch.py), within a minute of their time."""
-        s = self.state
-        d = await self.desk()
-        now = d.clock()
-        s.result = {"skipped": [], "housekeeping": None}
-        if not d.news.enabled:
-            s.result["skipped"].append("content flows are switched off")
-            s.outcome = "skipped"
-            return
-        if now.hour == 3 and now.minute < 15:  # once a day (UTC)
-            s.result["housekeeping"] = await housekeeping(d)
-        await gauges(d)
-        s.outcome = "done"
+        async with self.step("dispatch"):
+            s = self.state
+            d = await self.desk()
+            now = d.clock()
+            s.result = {"skipped": [], "housekeeping": None}
+            if not d.news.enabled:
+                s.result["skipped"].append("content flows are switched off")
+                s.outcome = "skipped"
+                log.info("Nothing to do: content flows are switched off", extra={"event": "news_dispatch_skipped"})
+                return
+            if now.hour == 3 and now.minute < 15:  # once a day (UTC)
+                log.info("Daily clean-up: pruning old run logs and items, collecting the drafts' performance", extra={"event": "news_housekeeping"})
+                s.result["housekeeping"] = hk = await housekeeping(d)
+                log.info(f"Clean-up done: pruned {narrate.facts(hk.get('pruned')) or 'nothing'}; performance {narrate.facts(hk.get('performance')) or 'collected'}", extra={"event": "news_housekeeping_done"})
+            else:
+                log.info("No clean-up this time (it runs once a day, 03:00–03:15 UTC)", extra={"event": "news_housekeeping_not_due"})
+            await gauges(d)
+            log.info("Gauges updated: budget use per scope and the oldest failing source (the content flows themselves start on their own times)", extra={"event": "news_gauges"})
+            s.outcome = "done"
 
 
 async def housekeeping(d: nd.DeskDeps) -> dict[str, Any]:
@@ -455,21 +467,22 @@ class NewsIngestFlow(NewsHelpers, SeoFlow[NewsIngestState]):
 
     @start()
     async def ingest(self) -> None:
-        s = self.state
-        d = await self.desk()
-        rec, _ = await self.open_run(d, kind="ingest", job=None, trigger="manual", actor=s.actor)
-        try:
-            lock: asyncio.Lock = d.extra.setdefault("news_ingest_lock", asyncio.Lock())
-            async with lock:
-                ing_d = nd.with_news_llm(d, [rec.run_id], job=None, enabled=d.news.enabled)  # global news caps
-                r = await nd.ingest(ing_d, rec, source_ids=list(s.source_ids) or None, force=s.force, llm_ok=d.news.enabled)
-            s.result = {"new": r["new"], "clusters": len(r["clusters"])}
-            await self.close_run(d, rec, "succeeded")
-            s.outcome = "done"
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            await self.close_run(d, rec, "failed", s.errors[-1])
-            s.outcome = "failed"
+        async with self.step("ingest"):
+            s = self.state
+            d = await self.desk()
+            rec, _ = await self.open_run(d, kind="ingest", job=None, trigger="manual", actor=s.actor)
+            try:
+                lock: asyncio.Lock = d.extra.setdefault("news_ingest_lock", asyncio.Lock())
+                async with lock:
+                    ing_d = nd.with_news_llm(d, [rec.run_id], job=None, enabled=d.news.enabled)  # global news caps
+                    r = await nd.ingest(ing_d, rec, source_ids=list(s.source_ids) or None, force=s.force, llm_ok=d.news.enabled)
+                s.result = {"new": r["new"], "clusters": len(r["clusters"])}
+                await self.close_run(d, rec, "succeeded")
+                s.outcome = "done"
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                await self.close_run(d, rec, "failed", s.errors[-1])
+                s.outcome = "failed"
 
 
 @persist(INSTANCE_ONLY)
@@ -478,38 +491,39 @@ class NewsImageFlow(NewsHelpers, SeoFlow[NewsImageState]):
 
     @start()
     async def regenerate(self) -> None:
-        s = self.state
-        d = await self.desk()
-        a = await d.store.get_article(s.article_id)
-        if not a or not a.get("draft_id") or a.get("status") != "ready_for_review":
-            s.outcome, s.errors = "failed", [*s.errors, "only a draft waiting for review can get a new cover"]
-            return
-        job = nd.as_job(await d.store.get_job(str(a["job_id"])) or {"id": str(a["job_id"]), "name": "deleted job"})
-        rec, _ = await self.open_run(d, kind="image", job=job, trigger="manual", actor=s.actor)
-        try:
-            from ..news.schemas import NewsDraft
+        async with self.step("regenerate"):
+            s = self.state
+            d = await self.desk()
+            a = await d.store.get_article(s.article_id)
+            if not a or not a.get("draft_id") or a.get("status") != "ready_for_review":
+                s.outcome, s.errors = "failed", [*s.errors, "only a draft waiting for review can get a new cover"]
+                return
+            job = nd.as_job(await d.store.get_job(str(a["job_id"])) or {"id": str(a["job_id"]), "name": "deleted job"})
+            rec, _ = await self.open_run(d, kind="image", job=job, trigger="manual", actor=s.actor)
+            try:
+                from ..news.schemas import NewsDraft
 
-            doc = a.get("generated_doc") or {}
-            draft = NewsDraft.model_validate({**doc, **(doc.get("news") or {}), "headings": doc.get("outline") or []})
-            ip = await d.store.image_profile(job.image_profile_key, a.get("image_profile_version")) or {"provider": "template", "template_fallback": True}
-            clusters = [c for c in [await d.store.get_cluster(cid) for cid in (a.get("cluster_ids") or [])] if c]
-            topics = {t.slug: t for t in await nd.load_topics(d)}
-            budget = NewsBudget(d.store, d.news, job, rec.run_id, d.clock)
-            async with rec.step("image") as o:
-                img = await nd.make_cover(d, rec, budget, s.article_id, draft, clusters, topics, ip, job, dry_run=False, prompt_tweak=s.prompt_tweak, provider_override=s.provider)
-                o["output"] = 1 if img else 0
-            if img:
-                await d.web.news_update_draft_image(str(a["draft_id"]), img)
-            s.result = {"image": img}
-            await self.close_run(d, rec, "succeeded", job=job)
-            s.outcome = "done"
-        except BudgetExceeded as e:
-            await self.close_run(d, rec, "paused_budget", e.detail, job)
-            s.outcome = "paused_budget"
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            await self.close_run(d, rec, "failed", s.errors[-1], job)
-            s.outcome = "failed"
+                doc = a.get("generated_doc") or {}
+                draft = NewsDraft.model_validate({**doc, **(doc.get("news") or {}), "headings": doc.get("outline") or []})
+                ip = await d.store.image_profile(job.image_profile_key, a.get("image_profile_version")) or {"provider": "template", "template_fallback": True}
+                clusters = [c for c in [await d.store.get_cluster(cid) for cid in (a.get("cluster_ids") or [])] if c]
+                topics = {t.slug: t for t in await nd.load_topics(d)}
+                budget = NewsBudget(d.store, d.news, job, rec.run_id, d.clock)
+                async with rec.step("image") as o:
+                    img = await nd.make_cover(d, rec, budget, s.article_id, draft, clusters, topics, ip, job, dry_run=False, prompt_tweak=s.prompt_tweak, provider_override=s.provider)
+                    o["output"] = 1 if img else 0
+                if img:
+                    await d.web.news_update_draft_image(str(a["draft_id"]), img)
+                s.result = {"image": img}
+                await self.close_run(d, rec, "succeeded", job=job)
+                s.outcome = "done"
+            except BudgetExceeded as e:
+                await self.close_run(d, rec, "paused_budget", e.detail, job)
+                s.outcome = "paused_budget"
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                await self.close_run(d, rec, "failed", s.errors[-1], job)
+                s.outcome = "failed"
 
 
 @persist(INSTANCE_ONLY)
@@ -518,22 +532,23 @@ class NewsTrainFlow(NewsHelpers, SeoFlow[NewsTrainState]):
 
     @start()
     async def train(self) -> None:
-        s = self.state
-        d = await self.desk()
-        rec, _ = await self.open_run(d, kind="train", job=None, trigger="cron" if s.triggered_by == "cron" else "manual")
-        budget = NewsBudget(d.store, d.news, None, rec.run_id, d.clock)
-        d.llm = NewsLlm(self.deps.llm, budget, [rec.run_id], enabled=d.news.enabled)
-        try:
-            s.result = await nd.train_models(d, rec, bootstrap=s.bootstrap)
-            await self.close_run(d, rec, "succeeded")
-            s.outcome = "done"
-        except BudgetExceeded as e:
-            await self.close_run(d, rec, "paused_budget", e.detail)
-            s.outcome = "paused_budget"
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            await self.close_run(d, rec, "failed", s.errors[-1])
-            s.outcome = "failed"
+        async with self.step("train"):
+            s = self.state
+            d = await self.desk()
+            rec, _ = await self.open_run(d, kind="train", job=None, trigger="cron" if s.triggered_by == "cron" else "manual")
+            budget = NewsBudget(d.store, d.news, None, rec.run_id, d.clock)
+            d.llm = NewsLlm(self.deps.llm, budget, [rec.run_id], enabled=d.news.enabled)
+            try:
+                s.result = await nd.train_models(d, rec, bootstrap=s.bootstrap)
+                await self.close_run(d, rec, "succeeded")
+                s.outcome = "done"
+            except BudgetExceeded as e:
+                await self.close_run(d, rec, "paused_budget", e.detail)
+                s.outcome = "paused_budget"
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                await self.close_run(d, rec, "failed", s.errors[-1])
+                s.outcome = "failed"
 
 
 @persist(INSTANCE_ONLY)
@@ -542,28 +557,29 @@ class NewsStyleReviewFlow(NewsHelpers, SeoFlow[NewsStyleState]):
 
     @start()
     async def review(self) -> None:
-        s = self.state
-        d = await self.desk()
-        rec, _ = await self.open_run(d, kind="style_review", job=None, trigger="cron" if s.triggered_by == "cron" else "manual")
-        budget = NewsBudget(d.store, d.news, None, rec.run_id, d.clock)
-        d.llm = NewsLlm(self.deps.llm, budget, [rec.run_id], enabled=d.news.enabled)
-        try:
-            keys = [s.profile_key] if s.profile_key else sorted({nd.as_job(j).writing_profile_key for j in await d.store.list_jobs(enabled_only=False)})
-            out = {}
-            async with rec.step("style_review") as o:
-                for k in keys:
-                    out[k] = await nd.style_review(d, rec, k, s.days)
-                o["output"] = sum(1 for v in out.values() if v.get("proposed"))
-            s.result = out
-            await self.close_run(d, rec, "succeeded")
-            s.outcome = "done"
-        except BudgetExceeded as e:
-            await self.close_run(d, rec, "paused_budget", e.detail)
-            s.outcome = "paused_budget"
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            await self.close_run(d, rec, "failed", s.errors[-1])
-            s.outcome = "failed"
+        async with self.step("review"):
+            s = self.state
+            d = await self.desk()
+            rec, _ = await self.open_run(d, kind="style_review", job=None, trigger="cron" if s.triggered_by == "cron" else "manual")
+            budget = NewsBudget(d.store, d.news, None, rec.run_id, d.clock)
+            d.llm = NewsLlm(self.deps.llm, budget, [rec.run_id], enabled=d.news.enabled)
+            try:
+                keys = [s.profile_key] if s.profile_key else sorted({nd.as_job(j).writing_profile_key for j in await d.store.list_jobs(enabled_only=False)})
+                out = {}
+                async with rec.step("style_review") as o:
+                    for k in keys:
+                        out[k] = await nd.style_review(d, rec, k, s.days)
+                    o["output"] = sum(1 for v in out.values() if v.get("proposed"))
+                s.result = out
+                await self.close_run(d, rec, "succeeded")
+                s.outcome = "done"
+            except BudgetExceeded as e:
+                await self.close_run(d, rec, "paused_budget", e.detail)
+                s.outcome = "paused_budget"
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                await self.close_run(d, rec, "failed", s.errors[-1])
+                s.outcome = "failed"
 
 
 @persist(INSTANCE_ONLY)
@@ -575,38 +591,39 @@ class NewsPlaygroundFlow(NewsHelpers, SeoFlow[NewsPlaygroundState]):
 
     @start()
     async def play(self) -> None:
-        s = self.state
-        d = await self.desk()
-        job = nd.as_job(await d.store.get_job(s.job_id) or {"id": s.job_id, "name": "playground"})
-        rec, _ = await self.open_run(d, kind="playground", job=job, trigger="manual")
-        out: dict[str, Any] = {}
-        try:
-            for label, version in (("a", s.version_a), ("b", s.version_b)):
-                if not version:
-                    continue
-                wp = await d.store.writing_profile(s.profile_key, version)
-                if not wp:
-                    out[label] = {"error": f"profile {s.profile_key} v{version} not found"}
-                    continue
-                items = (await d.store.items_by_cluster([s.cluster_id])).get(s.cluster_id, [])[:12]
-                budget = NewsBudget(d.store, d.news, job, rec.run_id, d.clock)
-                llm = NewsLlm(d.llm, budget, [rec.run_id])
-                crew = (d.crew_factory or (lambda lm: nd.NewsDeskCrew(d.settings, lm, d.web, d.retriever)))(llm)
-                cluster = await d.store.get_cluster(s.cluster_id) or {"title": "story"}
-                # The trial follows the job (crew-jobs plan PR 5): what it writes (a news story or a blog article) and its models.
-                r = await crew.run({"mode": "single", "output": job.config.output, "title": cluster["title"], "cluster_id": s.cluster_id, "length_words": [job.config.length_min_words, job.config.length_max_words]}, items=items, writing_profile=wp, image_profile={}, allow_hosts=nd._allowed_hosts(items, d), max_tokens=job.config.budget.max_tokens_per_draft, models=job.config.models)
-                out[label] = {"version": version, "title": r.draft.title, "body_mdx": r.draft.body_mdx, "dek": r.draft.dek, "tokens": llm.tokens, "cost_usd": round(llm.cost_usd, 4), "status": r.status}
-            s.result = out
-            await self.close_run(d, rec, "succeeded", job=job)
-            s.outcome = "done"
-        except BudgetExceeded as e:
-            s.result = {**out, "error": e.detail}
-            await self.close_run(d, rec, "paused_budget", e.detail, job)
-            s.outcome = "paused_budget"
-        except Exception as e:
-            s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
-            await self.close_run(d, rec, "failed", s.errors[-1], job)
-            s.outcome = "failed"
+        async with self.step("play"):
+            s = self.state
+            d = await self.desk()
+            job = nd.as_job(await d.store.get_job(s.job_id) or {"id": s.job_id, "name": "playground"})
+            rec, _ = await self.open_run(d, kind="playground", job=job, trigger="manual")
+            out: dict[str, Any] = {}
+            try:
+                for label, version in (("a", s.version_a), ("b", s.version_b)):
+                    if not version:
+                        continue
+                    wp = await d.store.writing_profile(s.profile_key, version)
+                    if not wp:
+                        out[label] = {"error": f"profile {s.profile_key} v{version} not found"}
+                        continue
+                    items = (await d.store.items_by_cluster([s.cluster_id])).get(s.cluster_id, [])[:12]
+                    budget = NewsBudget(d.store, d.news, job, rec.run_id, d.clock)
+                    llm = NewsLlm(d.llm, budget, [rec.run_id])
+                    crew = (d.crew_factory or (lambda lm: nd.NewsDeskCrew(d.settings, lm, d.web, d.retriever)))(llm)
+                    cluster = await d.store.get_cluster(s.cluster_id) or {"title": "story"}
+                    # The trial follows the job (crew-jobs plan PR 5): what it writes (a news story or a blog article) and its models.
+                    r = await crew.run({"mode": "single", "output": job.config.output, "title": cluster["title"], "cluster_id": s.cluster_id, "length_words": [job.config.length_min_words, job.config.length_max_words]}, items=items, writing_profile=wp, image_profile={}, allow_hosts=nd._allowed_hosts(items, d), max_tokens=job.config.budget.max_tokens_per_draft, models=job.config.models)
+                    out[label] = {"version": version, "title": r.draft.title, "body_mdx": r.draft.body_mdx, "dek": r.draft.dek, "tokens": llm.tokens, "cost_usd": round(llm.cost_usd, 4), "status": r.status}
+                s.result = out
+                await self.close_run(d, rec, "succeeded", job=job)
+                s.outcome = "done"
+            except BudgetExceeded as e:
+                s.result = {**out, "error": e.detail}
+                await self.close_run(d, rec, "paused_budget", e.detail, job)
+                s.outcome = "paused_budget"
+            except Exception as e:
+                s.errors.append(f"{type(e).__name__}: {str(e)[:300]}")
+                await self.close_run(d, rec, "failed", s.errors[-1], job)
+                s.outcome = "failed"
 
 
 NEWS_INPUTS: dict[str, type[BaseModel]] = {

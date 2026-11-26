@@ -23,8 +23,8 @@ from crewai.flow import listen, persist, start
 from pydantic import PrivateAttr
 
 from .. import seo_intel
+from ..narrate import count
 from ..runs import INSTANCE_ONLY
-from ..seo_intel import count
 from ..state import SeoIntelSyncState
 from .base import SeoFlow
 

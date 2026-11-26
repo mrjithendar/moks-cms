@@ -16,11 +16,32 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from ..narrate import count as _count
+from ..narrate import facts as _facts
 from .store import NewsStore
 
 log = logging.getLogger("seo_agent.news")
 STEPS = ("fetch", "normalize", "dedupe", "cluster", "classify", "score", "select", "draft", "quality", "image", "save", "notify")
 LEVELS = ("debug", "info", "warning", "error")
+# What each step does, in its first log line (app/news/desk.py and app/flows/news.py).
+STEP_WORDS = {
+    "fetch": "fetching new items from the content flow's enabled sources",
+    "normalize": "cleaning titles, links and dates",
+    "dedupe": "dropping items already seen and grouping items about the same story",
+    "cluster": "grouping items about the same story",
+    "classify": "labelling each story's topics and checking how new it is",
+    "score": "ranking the stories (relevance to the site, freshness, sources, the ranking model)",
+    "select": "picking the stories to draft within the flow's daily and per-run limits",
+    "ideas": "picking article ideas",
+    "draft": "the News desk crew writes the draft from the selected sources",
+    "quality": "checking the draft (sources, similarity to the sources, banned phrases, required sections)",
+    "image": "making the cover image",
+    "save": "saving the draft to the review queue",
+    "notify": "telling the editors",
+    "train_classifier": "retraining the topic classifier from editor decisions",
+    "train_ranker": "retraining the story ranker from editor decisions",
+    "style_review": "reviewing recent editor edits to update the writing profile",
+}
 
 
 class StepFailed(Exception):
@@ -66,7 +87,7 @@ class RunRecorder:
         self._step = name
         started = time.monotonic()
         step_id = await self.store.start_step(self.run_id, name, self._seq, input_count)
-        self.log("info", f"{name}: started", input=input_count)
+        self.log("info", f"{name}: {STEP_WORDS.get(name, 'started')}" + (f" ({_count(input_count, 'item')} in)" if input_count is not None else ""), input=input_count)
         await self.flush()
         out: dict[str, Any] = {}
         try:
@@ -78,7 +99,13 @@ class RunRecorder:
             await self.save_counters()
             raise
         status = "skipped" if out.get("skipped") else "succeeded"
-        self.log("info", f"{name}: {status} in {time.monotonic() - started:.1f}s", output=out.get("output"), outcome=status)
+        said = _facts(out.get("detail") or {}, skip=("why_nothing",))
+        self.log(
+            "info",
+            f"{name}: {status} in {time.monotonic() - started:.1f}s" + (f", {_count(int(out['output']), 'item')} out" if isinstance(out.get("output"), int) else "") + (f" ({said})" if said else ""),
+            output=out.get("output"),
+            outcome=status,
+        )
         await self.store.finish_step(step_id, status, output_count=out.get("output"), detail={**(out.get("detail") or {}), "seconds": round(time.monotonic() - started, 2)})
         await self.flush()
         await self.save_counters()

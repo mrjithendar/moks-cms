@@ -21,15 +21,20 @@ Both end `paused_budget` when the monthly budget refuses a call; what was drafte
 
 from __future__ import annotations
 
+import logging
 from functools import partial
 from typing import Any, ClassVar
 
 from crewai.flow import listen, persist, start
 
 from ..llm import BudgetExceeded
+from ..logs import RUN_ONLY
+from ..narrate import count
 from ..runs import INSTANCE_ONLY
 from ..state import ContentIdeasState, PromotionState
 from .base import SeoFlow
+
+log = logging.getLogger("seo_agent.flows.promotion")
 
 
 def _crew(flow: SeoFlow[Any]) -> Any:
@@ -51,8 +56,17 @@ class PromotionFlow(SeoFlow[PromotionState]):
             s.reddit = r.get("reddit") or {}
             if not r.get("enabled"):
                 s.outcome = "disabled"
+                log.info("Nothing to do: promotion is switched off in the web app's settings", extra={"event": "promotion_disabled"})
                 return
             s.articles = [a for a in (r.get("articles") or []) if isinstance(a, dict)]
+            log.info(
+                f"{count(len(s.articles), 'article')} to promote" + (f" (asked for article {s.article_id})" if s.article_id else " (the newest without drafted posts)")
+                + (f"; Reddit sync {s.reddit.get('status')}" if s.reddit.get("status") else ""),
+                extra={"event": "promotion_articles", "articles": len(s.articles)},
+            )
+            for a in s.articles:
+                ch = [str(c.get("channel") or c.get("name") or c) if isinstance(c, dict) else str(c) for c in (a.get("channels") or [])]
+                log.info(f"“{a.get('title', '')}”: " + (f"posts for {', '.join(ch)}" if ch else "every channel already has a post"), extra={"event": "promotion_article", "article_id": a.get("articleId")})
 
     @listen(collect)
     async def draft(self) -> None:
@@ -63,20 +77,28 @@ class PromotionFlow(SeoFlow[PromotionState]):
             todo = [a for a in s.articles if a.get("channels")]
             if not todo:
                 s.outcome = "no_drafts_needed"
+                log.info("Nothing to draft: every article already has a post for each channel", extra={"event": "promotion_nothing"})
                 return
             crew = _crew(self)
-            for a in todo:
+            for i, a in enumerate(todo, 1):
                 aid = str(a.get("articleId"))
+                log.info(f"[{i}/{len(todo)}] The copywriter drafts {count(len(a['channels']), 'post')} for “{a.get('title', '')}”", extra={"event": "promotion_drafting", "article_id": aid})
                 try:
                     r = await crew.draft_posts(a)
                 except BudgetExceeded as e:
                     self.add_budget_cost(e)
                     s.outcome = "paused_budget"
                     s.errors.append(f"budget: {e.detail}")
+                    log.warning(f"Paused: the LLM budget is reached ({e.detail}); the posts drafted so far are still saved", extra={"event": "promotion_budget"})
                     break
                 s.add_cost(r.cost_usd, r.tokens)
                 s.drafts[aid] = r.posts
                 s.results.append({"article_id": aid, "title": str(a.get("title") or "")[:200], "channels": len(a["channels"]), "posts": len(r.posts), "status": r.status, "reason": r.reason})
+                log.log(
+                    logging.INFO if r.status == "completed" else logging.WARNING,
+                    f"[{i}/{len(todo)}] {count(len(r.posts), 'post')} drafted" + (f" ({r.status}: {r.reason})" if r.status != "completed" else ""),
+                    extra={"event": "promotion_drafted", "article_id": aid, "posts": len(r.posts), RUN_ONLY: {"posts": [p if isinstance(p, dict) else str(p) for p in r.posts][:10]}},
+                )
                 if r.status != "completed":
                     s.errors.append(f"{aid}: {r.reason or 'incomplete'}")
 
@@ -92,6 +114,8 @@ class PromotionFlow(SeoFlow[PromotionState]):
                 saved += int(r.get("saved") or 0)
             s.result = {"articles": len(s.articles), "drafted": saved, "reddit": s.reddit.get("status")}
             s.outcome = s.outcome or ("drafts_ready" if saved else "no_drafts")
+            if s.drafts:
+                log.info(f"Saved {count(saved, 'post draft')} for the owner to review and post (nothing is posted automatically)", extra={"event": "promotion_saved", "saved": saved})
 
 
 @persist(INSTANCE_ONLY)
@@ -106,10 +130,17 @@ class ContentIdeasFlow(SeoFlow[ContentIdeasState]):
             s.reddit = r.get("redditSync") or {}
             if not r.get("enabled"):
                 s.outcome = "disabled"
+                log.info("Nothing to do: content ideas are switched off in the web app's settings", extra={"event": "ideas_disabled"})
                 return
             gsc = r.get("gsc") or {}
+            log.info(
+                f"Signals: {count(len(gsc.get('topics') or []), 'Search Console topic')}, {count(len(gsc.get('queries') or []), 'Search Console query', 'Search Console queries')}, {count(len(r.get('reddit') or []), 'Reddit thread')}"
+                + (f"; Reddit sync {s.reddit.get('status')}" if s.reddit.get("status") else ""),
+                extra={"event": "ideas_signals"},
+            )
             if not (gsc.get("topics") or gsc.get("queries") or r.get("reddit")):
                 s.outcome = "no_signals"  # nothing synced yet: no evidence to build an idea on
+                log.info("Nothing to do: no signal has been synced yet, so there is no evidence to build an idea on", extra={"event": "ideas_no_signals"})
                 return
             s.signals = r
 
@@ -119,15 +150,19 @@ class ContentIdeasFlow(SeoFlow[ContentIdeasState]):
             s = self.state
             if s.outcome:
                 return
+            log.info("The strategist proposes article ideas, each citing evidence from these signals", extra={"event": "ideas_started"})
             try:
                 r = await _crew(self).ideas(s.signals)
             except BudgetExceeded as e:
                 self.add_budget_cost(e)
                 s.outcome = "paused_budget"
                 s.errors.append(f"budget: {e.detail}")
+                log.warning(f"Paused: the LLM budget is reached ({e.detail})", extra={"event": "ideas_budget"})
                 return
             s.add_cost(r.cost_usd, r.tokens)
             s.ideas = r.ideas
+            titles = [str(i.get("title") if isinstance(i, dict) else getattr(i, "title", "")) for i in r.ideas]
+            log.info(f"{count(len(r.ideas), 'idea')} proposed" + (f": {'; '.join(t for t in titles[:8] if t)}" if titles else "") + (f" ({r.status}: {r.reason})" if r.status != "completed" else ""), extra={"event": "ideas_proposed", "ideas": len(r.ideas)})
             s.crew = {"status": r.status, "reason": r.reason, "tokens": r.tokens}
             if r.status != "completed":
                 s.errors.append(f"ideas: {r.reason or 'incomplete'}")
@@ -148,3 +183,9 @@ class ContentIdeasFlow(SeoFlow[ContentIdeasState]):
                 "reddit": s.reddit.get("status"),
             }
             s.outcome = s.outcome or ("ideas_ready" if s.result["saved"] else "no_ideas")
+            if s.ideas:
+                sk = s.result["skipped"]
+                log.info(
+                    f"The web app checked every piece of evidence against its own data: {count(s.result['saved'], 'idea')} saved for the owner, {len(sk)} left out (evidence it could not verify, or a repeat of existing content)",
+                    extra={"event": "ideas_saved", "saved": s.result["saved"], "skipped": len(sk), RUN_ONLY: {"left_out": sk}},
+                )

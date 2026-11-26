@@ -10,11 +10,18 @@ SEO_AGENT_CALLBACK_TOKEN. Publishing additionally requires a human approval reco
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any, Protocol
 
 import httpx
 
-from . import tracing
+from . import narrate, tracing
+from .runs import CURRENT_RUN_ID
+
+log = logging.getLogger("seo_agent.webapp")
+# Housekeeping reads (cached settings): no line of their own in a run's log.
+QUIET_PATHS = ("/run-history/settings", "/flow-switches")
 
 
 class WebAppError(Exception):
@@ -101,18 +108,24 @@ class HttpWebApp:
         await self.client.aclose()
 
     async def _req(self, method: str, path: str, **kw: Any) -> Any:
+        started = time.monotonic()
         try:
             # traceparent: the web app's handling of this call joins the flow run's trace.
             r = await self.client.request(method, path, headers=tracing.inject(dict(kw.pop("headers", None) or {})), **kw)
         except httpx.HTTPError as e:
+            _said(method, path, 0, started, error=f"unreachable ({type(e).__name__})")
             raise WebAppError(0, f"{type(e).__name__}", "unreachable") from e
         if r.status_code >= 400:
             try:
                 j = r.json()
             except ValueError:
                 j = {}
-            raise WebAppError(r.status_code, str(j.get("error", r.reason_phrase))[:300], str(j.get("code", "error")))
-        return r.json() if r.content else {}
+            err = WebAppError(r.status_code, str(j.get("error", r.reason_phrase))[:300], str(j.get("code", "error")))
+            _said(method, path, r.status_code, started, error=f"{err.status} {err.code}: {err.message}")
+            raise err
+        data = r.json() if r.content else {}
+        _said(method, path, r.status_code, started, answer=data)
+        return data
 
     async def article_context(self, article_id: str, body: dict[str, Any]) -> dict[str, Any]:
         return await self._req("POST", f"/articles/{article_id}/context", json=body)
@@ -301,3 +314,17 @@ class HttpWebApp:
 
     async def news_collect_performance(self) -> dict[str, Any]:
         return await self._req("POST", "/news/performance", json={}, timeout=120)
+
+
+def _said(method: str, path: str, status: int, started: float, *, answer: Any = None, error: str | None = None) -> None:
+    """One line per call to the web app: in a flow run's log (info) it says what was asked and what came back
+    ("web app POST /jobs/run: status succeeded, rows 1,234"); outside a run (MCP tools, the API) it is debug only.
+    Never the request body; the answer only as its shape (app/narrate.shape: states and counts, no content)."""
+    if path.startswith(QUIET_PATHS):
+        return
+    in_run = CURRENT_RUN_ID.get() is not None
+    level = logging.WARNING if error and in_run else (logging.INFO if in_run else logging.DEBUG)
+    if not log.isEnabledFor(level):
+        return
+    said = error or narrate.shape(answer) or "done"
+    log.log(level, f"web app {method} {path.split('?', 1)[0]}: {said}", extra={"event": "webapp_call", "method": method, "path": path.split("?", 1)[0], "status": status, "seconds": round(time.monotonic() - started, 3)})

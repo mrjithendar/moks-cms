@@ -2,7 +2,8 @@
 
 Every flow is a CrewAI `Flow[State]` with `@start` / `@listen` / `@router` methods. `SeoFlow` adds:
 - `deps` (settings, LLM, web app client, retriever, run store, the runner for child runs, crew factories);
-- `step(name)`: duration histogram, OTel span and the run's `current_step` while the step runs (CrewAI's persistence
+- `step(name)`: duration histogram, OTel span, a finish line in the run's log ("collect succeeded: documents 96", or
+  why it failed) and the run's `current_step` while the step runs (CrewAI's persistence
   then records the finished step and the state, app/runs.py), and the step's row in the run history (app/run_history.py:
   the admin run page's step list and the step its log lines belong to). It yields a `StepRecord`: facts put in
   `record.detail` (attempts, condition results, versions, child runs, redacted input/output metadata) are merged into
@@ -23,9 +24,10 @@ from typing import Any, ClassVar, TypeVar
 from crewai.flow import Flow
 from pydantic import BaseModel, PrivateAttr
 
-from .. import metrics
+from .. import metrics, narrate
 from ..config import Settings
 from ..llm import BudgetExceeded, Llm
+from ..logs import RUN_ONLY
 from ..run_history import CURRENT_STEP
 from ..runs import CURRENT_RUN_ID
 from ..tracing import span
@@ -126,7 +128,18 @@ class SeoFlow(Flow[S]):
                 finally:
                     seconds = time.monotonic() - started
                     metrics.STEP_DURATION.labels(flow=metrics.flow_label(self.FLOW), step=name).observe(seconds)
-                    log.info("flow step finished", extra={"event": "flow_step", "flow": self.FLOW, "step": name, "seconds": round(seconds, 3), "status": "error" if failed else "ok", "error": failed})
+                    said = narrate.facts(record.detail, skip=("input", "output", "attempts", "when", "condition", "label", "kind", "id"))
+                    if failed is None:
+                        msg = f"{name} succeeded" + (f": {said}" if said else "")
+                    elif failed == "CancelledError":
+                        msg = f"{name} cancelled"
+                    else:
+                        msg = f"{name} failed: {detail}"
+                    log.log(
+                        logging.WARNING if failed and failed != "CancelledError" else logging.INFO,
+                        msg,
+                        extra={"event": "flow_step", "flow": self.FLOW, "step": name, "seconds": round(seconds, 3), "status": "error" if failed else "ok", "error": failed},
+                    )
                     if history is not None:
                         if record.detail:
                             await history.step_detail(step_id, record.detail)
@@ -143,3 +156,16 @@ class SeoFlow(Flow[S]):
 
     async def retry(self, fn: Callable[[], Awaitable[Any]]) -> Any:
         return await with_retry(fn, self.deps.sleep)
+
+
+def log_validation(logger: logging.Logger, report: dict[str, Any], *, retry: bool) -> None:
+    """The web app's checks on a draft, in words: errors block (and may get one more attempt), flags go to the reviewer."""
+    errors = [str(e) for e in (report.get("errors") or [])]
+    flags = list(report.get("flags") or [])
+    if errors:
+        logger.warning(
+            f"Validation: {narrate.count(len(errors), 'error')} ({'; '.join(errors[:3])}{'; …' if len(errors) > 3 else ''})" + (". Trying once more with these errors" if retry else ""),
+            extra={"event": "draft_validation", "errors": len(errors), "flags": len(flags), RUN_ONLY: {"all_errors": errors[:20]}},
+        )
+    else:
+        logger.info(f"Validation passed: no errors, {narrate.count(len(flags), 'flag')} for the reviewer", extra={"event": "draft_validation", "errors": 0, "flags": len(flags), RUN_ONLY: {"flags": flags[:20]}})

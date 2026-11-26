@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDuration, formatTokens, formatUsd } from "@/lib/crewai/format";
+import { Facts } from "./Facts";
 import { RunStatusIcon } from "./RunStatusIcon";
 
 export type LogLine = { id: number; step: string | null; level: string; logger: string | null; event: string | null; message: string; context: Record<string, unknown>; at: string };
@@ -73,7 +74,7 @@ function lineText(l: LogLine): string {
 function badges(l: LogLine): string[] {
   const c = l.context;
   if (l.event === "llm_call") return [`${formatTokens(Number(c.input_tokens ?? 0))} in`, `${formatTokens(Number(c.output_tokens ?? 0))} out`, formatUsd(Number(c.cost_usd ?? 0)), formatDuration(Number(c.seconds ?? 0) * 1000)];
-  if (l.event === "crew_tool_call") return [String(c.tool ?? ""), String(c.status ?? ""), formatDuration(Number(c.seconds ?? 0) * 1000)].filter(Boolean);
+  if (l.event === "crew_tool_call" || l.event === "webapp_call") return [formatDuration(Number(c.seconds ?? 0) * 1000)];
   if (l.event === "crew_task" || l.event === "flow_step") return [formatDuration(Number(c.seconds ?? 0) * 1000), ...(c.tokens ? [`${formatTokens(Number(c.tokens))} tokens`] : [])];
   if (l.event === "crew_finished") return [String(c.status ?? ""), `${formatTokens(Number(c.tokens ?? 0))} tokens`, formatUsd(Number(c.cost_usd ?? 0))];
   return [];
@@ -312,10 +313,10 @@ export function LogViewer({ runId, initial, live, steps, runStatus, hasMore }: {
                           </span>
                         </div>
                         {details.has(l.id) && (
-                          <pre className="mx-3 my-1 ml-[3.75rem] max-h-72 overflow-auto rounded-md border border-line bg-surface p-2 text-[0.6875rem] text-fg-muted">
-                            {typeof l.context.exc === "string" ? `${l.context.exc}\n\n` : ""}
-                            {JSON.stringify({ ...l.context, exc: undefined, logger: l.logger, event: l.event, at: l.at }, null, 2)}
-                          </pre>
+                          <div className="mx-3 my-1 ml-[3.75rem] max-h-96 space-y-2 overflow-auto font-sans text-xs">
+                            {typeof l.context.exc === "string" && <pre className="overflow-auto rounded-md border border-line bg-surface p-2 font-mono text-[0.6875rem] text-fg-muted">{l.context.exc}</pre>}
+                            <Facts value={{ ...Object.fromEntries(Object.entries(l.context).filter(([k]) => k !== "exc")), logger: l.logger, event: l.event, time: l.at }} />
+                          </div>
                         )}
                         {callId != null && calls.has(callId) && (
                           <div className="mx-3 ml-[3.75rem]">

@@ -44,6 +44,7 @@ from urllib.parse import urlsplit
 
 from .logs import RUN_ONLY
 from .moks_rag import RagClient, RagError
+from .narrate import count
 from .tools import redact, safe_queries
 
 log = logging.getLogger("seo_agent.seo_intel")
@@ -59,11 +60,6 @@ GONE_BECAUSE = {
     "keyword_cluster": "the cluster is gone (seo_ml_flow clustered the queries again)",
     "gsc_performance": f"the page had no Search Console impressions in the last {GSC_DAYS} days",
 }
-
-
-def count(n: int, one: str, many: str | None = None) -> str:
-    """A number and its noun, for log lines: 1 document, 1,234 documents."""
-    return f"{n:,} {one if n == 1 else (many or one + 's')}"
 
 
 def slug(text: str, limit: int = 120) -> str:

@@ -57,8 +57,9 @@ calls_log = logging.getLogger("seo_agent.llm")
 CURRENT_STEP: ContextVar[str | None] = ContextVar("seo_flow_step", default=None)
 
 LEVELS = {logging.DEBUG: "debug", logging.INFO: "info", logging.WARNING: "warning", logging.ERROR: "error", logging.CRITICAL: "error"}
-# Libraries whose INFO lines are detail, not news (one line per HTTP request): kept, at debug.
-DEBUG_LOGGERS = ("httpx", "httpcore", "urllib3", "psycopg", "anthropic")
+# Libraries whose INFO lines are detail, not news (one line per HTTP request; CrewAI's own runtime, e.g. "No flow state
+# found for UUID" at the start of every fresh run): kept, at debug. The agent's own lines say what happened.
+DEBUG_LOGGERS = ("httpx", "httpcore", "urllib3", "psycopg", "anthropic", "crewai")
 MAX_MESSAGE = 4000
 MAX_CONTEXT = 16_000  # bytes of JSON per line; larger values are cut
 MAX_EXC = 8000
