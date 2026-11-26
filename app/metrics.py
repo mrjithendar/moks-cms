@@ -31,6 +31,7 @@ FLOWS = {
     "seo_ml_flow",
     "promotion_flow",
     "content_ideas_flow",
+    "seo_intel_sync_flow",
 }
 CREWS = {"optimization", "editorial", "report", "news", "promotion"}
 PURPOSES = {"draft", "regenerate", "crew", "report", "ask_grade", "ask_answer", "classify", "ml_label", "news.crew", "news.classify", "news.vision", "news.style", "news.playground", "other"}
@@ -60,6 +61,12 @@ RAG_CHUNKS_TRUNCATED = Counter("seo_rag_chunks_truncated_total", "Embedded input
 RAG_RETRIEVAL_MODE = Gauge("seo_rag_retrieval_mode", "1 for the retrieval mode in use (RAG_MODE).", ["mode"], registry=REGISTRY)
 RAG_EVAL_RECALL3 = Gauge("seo_rag_eval_recall_at_3", "Recall@3 of the latest retrieval evaluation run against the live index.", registry=REGISTRY)
 RAG_MODES = {"vector", "hybrid"}
+# The shared moks-rag service (app/moks_rag.py). `op` ∈ MOKS_RAG_OPS, `outcome` ∈ MOKS_RAG_OUTCOMES: one count per
+# request (after its retries), not per attempt.
+MOKS_RAG_OPS = {"ingest", "delete", "query"}
+MOKS_RAG_OUTCOMES = {"ok", "error", "refused"}
+MOKS_RAG_REQUESTS = Counter("seo_moks_rag_requests_total", "Requests to the shared moks-rag service, by operation and outcome (refused = a write outside the agent's own collection, never sent).", ["op", "outcome"], registry=REGISTRY)
+MOKS_RAG_SECONDS = Histogram("seo_moks_rag_request_seconds", "Time of one moks-rag request, retries included.", ["op"], buckets=_BUCKETS, registry=REGISTRY)
 # The cross-encoder reranker (app/reranker.py). `outcome` ∈ RERANK_OUTCOMES. The histogram is the model's own time for
 # one search, observed when the computation ends, so work that outlived its search's deadline is counted too.
 RERANK_OUTCOMES = {"applied", "unavailable", "busy", "timeout", "error"}

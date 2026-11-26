@@ -408,3 +408,26 @@ def test_switching_an_mcp_server_is_live_and_its_limits_wait_for_a_restart() -> 
     assert sorted(changed) == ["ASK_BLOG_TOP_K", "PUBLIC_MCP_ENABLED"]
     assert running.public_mcp_enabled is False and running.ask_top_k == 3
     assert running.public_mcp_rpm_per_ip == Settings.public_mcp_rpm_per_ip  # built into the server at start-up
+
+
+# --- the shared knowledge base (moks-rag) ----------------------------------------------------------------------------
+
+
+def test_the_knowledge_base_group_never_holds_the_url_or_the_token() -> None:
+    kb = _group("knowledge-base")
+    assert {f.env for f in kb.fields} == {"RAG_CANNIBALIZATION_MIN_SIMILARITY", "RAG_QUERY_TIMEOUT_SECONDS", "RAG_TIMEOUT_SECONDS"}
+    registered = {f.env for g in GROUPS for f in g.fields}
+    assert not registered & {"RAG_API_URL", "RAG_BEARER_TOKEN", "RAG_SEO_COLLECTION", "RAG_CMS_COLLECTION"}
+    assert kb.field("RAG_CANNIBALIZATION_MIN_SIMILARITY").apply == "live"  # type: ignore[union-attr]
+    assert {f.env for f in kb.fields if f.apply == "restart"} == {"RAG_QUERY_TIMEOUT_SECONDS", "RAG_TIMEOUT_SECONDS"}
+
+
+def test_the_cannibalization_floor_is_empty_until_saved_and_applies_live() -> None:
+    assert effective({}, {}).rag_cannibalization_min_similarity is None
+    assert effective(rows(RAG_CANNIBALIZATION_MIN_SIMILARITY=0.8), {}).rag_cannibalization_min_similarity == 0.8
+    running = load_settings({})
+    changed = apply_live(running, rows(RAG_CANNIBALIZATION_MIN_SIMILARITY=0.75, RAG_QUERY_TIMEOUT_SECONDS=5), {})
+    assert sorted(changed) == ["RAG_CANNIBALIZATION_MIN_SIMILARITY"] and running.rag_cannibalization_min_similarity == 0.75
+    assert running.rag_query_timeout_s == Settings.rag_query_timeout_s  # copied into the client at start-up
+    with pytest.raises(Invalid):
+        clean(_group("knowledge-base").field("RAG_CANNIBALIZATION_MIN_SIMILARITY"), 1.5)  # type: ignore[arg-type]
