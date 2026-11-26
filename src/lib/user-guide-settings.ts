@@ -316,7 +316,7 @@ const INTEGRATIONS: SettingsGroup[] = [
     title: "Hybrid RAG sync",
     href: settingsHref("rag"),
     rows: [
-      r("Reindex all posts", "The backfill: queues every post; published ones are indexed in the collection and all others removed, in the background."),
+      r("Reindex all posts", "The backfill: published posts are indexed in the collection and all others removed. With the SEO agent it starts the Hybrid RAG reindex flow and opens its run page, which shows each post as it is sent (chunks, unchanged or not, how long it took) and each removal; without it, every post is queued for the background sync."),
       r("Search published posts by meaning", "Test search: hybrid (meaning and keywords) search over published posts in the collection. No AI answer is generated."),
     ],
   },

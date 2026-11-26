@@ -16,8 +16,11 @@ import { deleteDocument, ingestDocument, queryCollection, RagError, type RagClie
  *   (draft, review, scheduled, archived, trashed, deleted, renamed away, noindex) → DELETE /documents/{doc_id};
  * - the jobs run in the background worker (lib/scheduler.ts), never in the request: saving and publishing never wait
  *   for, or fail because of, rag-api. A failed job retries with the queue's backoff (1, 2, 4 … 60 min, 8 attempts);
- * - Admin → Integrations → Hybrid RAG → "Reindex all posts" queues a job for every post (the backfill), which also
- *   removes drafts and unpublished posts that are still in the collection.
+ * - Admin → Integrations → Hybrid RAG → "Reindex all posts" (the backfill, which also removes drafts and unpublished
+ *   posts that are still in the collection) starts the SEO agent's Hybrid RAG reindex flow (seo-agent
+ *   app/flows/rag_reindex.py): it reads `ragReindexPlan()`, then has this server sync one post at a time
+ *   (`ragSyncNow`, the job's own code) through the callback API (lib/rag/callbacks.ts), and its run page says what
+ *   happened to each post. Without the SEO agent the button queues one job per post instead (`queueRagReindex`).
  * Off (nothing queued, nothing sent) until RAG_BEARER_TOKEN is set, in the deployment or in that section.
  *
  * What is sent is what every reader can see, like the SEO agent's article index (seo-agent/callbacks.ts
@@ -54,9 +57,19 @@ async function currentEnv(): Promise<Record<string, string | undefined>> {
 
 type PostRow = typeof schema.post.$inferSelect;
 
+/** Why readers cannot see this post, so the collection must not hold it: null when they can (it is indexed). */
+export function notIndexedBecause(row: PostRow | undefined, now = new Date()): string | null {
+  if (!row) return "no longer in the database";
+  if (row.deletedAt) return "in the bin";
+  if (row.status !== "published") return row.status === "review" ? "in review" : row.status; // draft, scheduled, archived
+  if (!row.publishedAt || row.publishedAt.getTime() > now.getTime()) return "scheduled";
+  if (row.noindex) return "noindex";
+  return null;
+}
+
 /** True when readers can see the post now and it may be indexed. */
 export function syncable(row: PostRow, now = new Date()): boolean {
-  return row.status === "published" && row.publishedAt !== null && row.publishedAt.getTime() <= now.getTime() && !row.deletedAt && !row.noindex;
+  return notIndexedBecause(row, now) === null;
 }
 
 /** Markdown for embedding: HTML comments dropped, images reduced to their alt text, no runs of blank lines. */
@@ -127,11 +140,75 @@ export async function queueRagSync(refs: DocRef[]): Promise<number> {
 
 const pause = globalThis as unknown as { __ragPausedUntil?: number };
 
-async function documentFor(ref: DocRef, env: Record<string, string | undefined>): Promise<RagDocument | null> {
+async function postRow(ref: DocRef): Promise<PostRow | undefined> {
   const db = await getDb();
   const [row] = await db.select().from(schema.post).where(and(eq(schema.post.collection, ref.collection), eq(schema.post.slug, ref.slug)));
-  return row && syncable(row) ? ragDocument(row, env) : null;
+  return row;
 }
+
+/** What one sync did (the reindex flow's run log line for the post, and the job's log line). */
+export type RagSyncOutcome = {
+  docId: string;
+  /** ingest: readers can see the post, so the collection now holds its current version; delete: it holds nothing. */
+  operation: "ingest" | "delete";
+  /** Why the post was removed (draft, in review, scheduled, archived, in the bin, noindex, no longer in the database); null when indexed. */
+  reason: string | null;
+  title: string | null;
+  /** The chunks rag-api holds for the post (0 for a delete). */
+  chunks: number;
+  /** rag-api already held this exact version, so it embedded nothing. */
+  unchanged: boolean;
+  /** A delete that found chunks to remove (false: the collection did not hold the post). */
+  deleted: boolean;
+  membersOnly: boolean;
+  /** Length of the text sent (0 for a delete). */
+  characters: number;
+  /** 2 when the post changed while it was being sent (a save on another server) and was sent again. */
+  passes: number;
+  ms: number;
+};
+
+/** Make rag-api hold what readers see at this address now: one ingest or delete, and one more when the post changed meanwhile. */
+async function syncPost(ref: DocRef, cfg: RagConfig, env: Record<string, string | undefined>, opts: RagClientOpts): Promise<RagSyncOutcome> {
+  const started = Date.now();
+  const read = async () => {
+    const row = await postRow(ref);
+    const reason = notIndexedBecause(row);
+    return { row, reason, doc: reason === null && row ? ragDocument(row, env) : null };
+  };
+  let cur = await read();
+  let result = { chunks: 0, unchanged: false, deleted: false };
+  let passes = 0;
+  // Two passes at most: when the post changed while it was being sent (a save on another server), send it again.
+  for (;;) {
+    passes++;
+    if (cur.doc) {
+      const r = await ingestDocument(cfg, cur.doc, opts);
+      result = { chunks: Number(r.chunks_ingested ?? 0), unchanged: r.unchanged === true, deleted: false };
+    } else {
+      const r = await deleteDocument(cfg, ragDocId(ref), opts);
+      result = { chunks: 0, unchanged: false, deleted: r?.deleted !== false };
+    }
+    if (passes === 2) break;
+    const now = await read();
+    if (JSON.stringify(now.doc) === JSON.stringify(cur.doc)) break;
+    cur = now;
+  }
+  return {
+    docId: ragDocId(ref),
+    operation: cur.doc ? "ingest" : "delete",
+    reason: cur.reason,
+    title: cur.row?.title ?? null,
+    ...result,
+    membersOnly: Boolean(cur.doc && cur.row?.membersOnly),
+    characters: cur.doc?.text.length ?? 0,
+    passes,
+    ms: Date.now() - started,
+  };
+}
+
+const synced = (r: RagSyncOutcome, source: "job" | "reindex flow") =>
+  log.info("RAG document synced", { event: "rag_sync", dependency: "rag-api", operation: r.operation, outcome: "ok", docId: r.docId, chunks: r.chunks, unchanged: r.unchanged, passes: r.passes, durationMs: r.ms, source });
 
 /** Job handler (lib/scheduler.ts): make rag-api hold what readers see at this address now. */
 export function ragSyncHandler(opts: RagClientOpts = {}) {
@@ -142,18 +219,8 @@ export function ragSyncHandler(opts: RagClientOpts = {}) {
     const cfg = ragConfig(env);
     if (!cfg) return; // switched off since the job was queued
     if ((pause.__ragPausedUntil ?? 0) > Date.now()) throw new Error("rag-api did not answer a moment ago; this sync waits for the next retry");
-    const ref = { collection, slug };
     try {
-      let doc = await documentFor(ref, env);
-      // Two passes at most: when the post changed while it was being sent (a save on another server), send it again.
-      for (let pass = 0; pass < 2; pass++) {
-        if (doc) await ingestDocument(cfg, doc, opts);
-        else await deleteDocument(cfg, ragDocId(ref), opts);
-        const now = await documentFor(ref, env);
-        if (JSON.stringify(now) === JSON.stringify(doc)) break;
-        doc = now;
-      }
-      log.info("RAG document synced", { event: "rag_sync", dependency: "rag-api", operation: doc ? "ingest" : "delete", outcome: "ok", docId: ragDocId(ref) });
+      synced(await syncPost({ collection, slug }, cfg, env, opts), "job");
     } catch (error) {
       if (error instanceof RagError && !error.retryable) throw new PermanentJobError(error.message);
       if (error instanceof RagError) pause.__ragPausedUntil = Date.now() + PAUSE_MS;
@@ -162,20 +229,87 @@ export function ragSyncHandler(opts: RagClientOpts = {}) {
   };
 }
 
+/**
+ * The Hybrid RAG reindex flow's sync of one post (seo-agent rag_reindex_flow → POST /internal/seo-agent/rag/posts/sync):
+ * the job's code, run now, in this request, saying what it did. Null when RAG sync is off. Throws RagError; a failure
+ * rag-api may recover from pauses the background jobs too, as a failed job does.
+ */
+export async function ragSyncNow(ref: DocRef, opts: RagClientOpts = {}): Promise<RagSyncOutcome | null> {
+  const env = await currentEnv();
+  const cfg = ragConfig(env);
+  if (!cfg) return null;
+  try {
+    const r = await syncPost(ref, cfg, env, opts);
+    synced(r, "reindex flow");
+    return r;
+  } catch (error) {
+    if (error instanceof RagError && error.retryable) pause.__ragPausedUntil = Date.now() + PAUSE_MS;
+    throw error;
+  }
+}
+
 /** For tests: forget that rag-api was unavailable. */
 export function resetRagPause() {
   pause.__ragPausedUntil = undefined;
 }
 
 /**
- * Backfill (Admin → Integrations → Hybrid RAG → Reindex all posts): one sync job per post in the database. Posts
- * readers can see are indexed; every other post is removed from the collection. Null when RAG sync is off.
+ * Backfill without the SEO agent (Admin → Integrations → Hybrid RAG → Reindex all posts): one sync job per post in the
+ * database. Posts readers can see are indexed; every other post is removed from the collection. Null when RAG sync is off.
  */
 export async function queueRagReindex(): Promise<{ queued: number; total: number } | null> {
   if (!ragConfig(await currentEnv())) return null;
   const db = await getDb();
   const rows = await db.select({ collection: schema.post.collection, slug: schema.post.slug }).from(schema.post);
   return { queued: await queueRagSync(rows), total: rows.length };
+}
+
+/** One post as the reindex flow plans it: what it will do with it and why. Titles of posts readers cannot see stay in the run's own log. */
+export type RagPlanPost = {
+  collection: string;
+  slug: string;
+  docId: string;
+  title: string;
+  action: "index" | "remove";
+  reason: string | null;
+  membersOnly: boolean;
+  /** Length of the text that will be sent (0 for a removal). */
+  characters: number;
+  publishedAt: string | null;
+  updatedAt: string | null;
+};
+export type RagReindexPlan = { destination: Omit<RagConfig, "token">; posts: RagPlanPost[] };
+
+/**
+ * The reindex flow's plan (GET /internal/seo-agent/rag/posts): where posts go (never the token) and every post in the
+ * database, the ones to index first (newest first), then the ones to remove (by address). Null when RAG sync is off.
+ */
+export async function ragReindexPlan(now = new Date()): Promise<RagReindexPlan | null> {
+  const env = await currentEnv();
+  const cfg = ragConfig(env);
+  if (!cfg) return null;
+  const db = await getDb();
+  const rows = await db.select().from(schema.post);
+  const iso = (d: Date | null) => (d ? d.toISOString() : null);
+  const posts: RagPlanPost[] = rows.map((row) => {
+    const reason = notIndexedBecause(row, now);
+    const doc = reason === null ? ragDocument(row, env) : null;
+    return {
+      collection: row.collection,
+      slug: row.slug,
+      docId: ragDocId(row),
+      title: row.title,
+      action: doc ? "index" : "remove",
+      reason,
+      membersOnly: Boolean(doc && row.membersOnly),
+      characters: doc?.text.length ?? 0,
+      publishedAt: iso(row.publishedAt),
+      updatedAt: iso(row.updatedAt),
+    };
+  });
+  const index = posts.filter((p) => p.action === "index").sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? "") || a.docId.localeCompare(b.docId));
+  const remove = posts.filter((p) => p.action === "remove").sort((a, b) => a.docId.localeCompare(b.docId));
+  return { destination: { url: cfg.url, collection: cfg.collection, serviceName: cfg.serviceName }, posts: [...index, ...remove] };
 }
 
 export type RagHit = { docId: string; title: string; url: string; score: number; snippet: string; metadata: Record<string, unknown> };

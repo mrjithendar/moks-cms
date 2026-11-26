@@ -45,7 +45,7 @@ export type Decision = { decision: "approve" | "reject" | "regenerate"; approval
 
 /** Flows a person or a schedule may start with POST /flows/{name}/kickoff. publish_flow is not one of them.
  * crew_test_flow is the CrewAI console's crew Test run (seo-agent/app/flows/crew_test.py), started by an admin only. */
-export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "seo_intel_sync_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | "custom_flow" | NewsFlowName;
+export type FlowName = "gsc_sync_flow" | "ga4_sync_flow" | "tech_audit_flow" | "weekly_recommendations_flow" | "optimize_article_flow" | "internal_linking_flow" | "new_article_flow" | "reindex_flow" | "ask_gaps_flow" | "report_flow" | "seo_ml_flow" | "seo_intel_sync_flow" | "rag_reindex_flow" | "promotion_flow" | "content_ideas_flow" | "crew_test_flow" | "custom_flow" | NewsFlowName;
 /** News desk flows a person may start (docs/news/ARCHITECTURE.md). The dispatcher is started by its CronJob only. */
 export type NewsFlowName = "news_job_flow" | "news_draft_flow" | "news_ingest_flow" | "news_image_flow" | "news_train_flow" | "news_style_review_flow" | "news_playground_flow";
 

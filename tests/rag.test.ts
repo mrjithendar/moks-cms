@@ -6,7 +6,7 @@ import { invalidateContent } from "@/lib/content";
 import { runDueJobs } from "@/lib/jobs";
 import { createPost, deletePostPermanently, trashPost, updatePost, type Actor } from "@/lib/posts";
 import { deleteDocument, ingestDocument, queryCollection, RagError, type RagConfig } from "@/lib/rag/client";
-import { cleanMarkdown, queueRagReindex, RAG_JOB_KIND, ragConfig, ragSyncHandler, resetRagPause, searchPublished } from "@/lib/rag/sync";
+import { cleanMarkdown, notIndexedBecause, queueRagReindex, RAG_JOB_KIND, ragConfig, ragReindexPlan, ragSyncHandler, ragSyncNow, resetRagPause, searchPublished } from "@/lib/rag/sync";
 import { renameTag } from "@/lib/taxonomy-admin";
 import { freshDb } from "./db-helpers";
 
@@ -19,7 +19,7 @@ const noSleep = async () => {};
 type Call = { url: string; method: string; headers: Record<string, string>; body: Record<string, unknown> | null };
 
 /** A stand-in for rag-api: records every request and answers from `reply` (a status, or a thrown error). */
-function fakeRag(reply: (call: Call, n: number) => number | Error = () => 200) {
+function fakeRag(reply: (call: Call, n: number) => number | Error = () => 200, answer: Record<string, unknown> = {}) {
   const calls: Call[] = [];
   const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const call: Call = {
@@ -36,7 +36,7 @@ function fakeRag(reply: (call: Call, n: number) => number | Error = () => 200) {
       : call.method === "DELETE"
         ? { doc_id: "x", collections: ["cms_content"], deleted: true, service: "moks-cms" }
         : { doc_id: call.body?.doc_id, collection: "cms_content", chunks_ingested: 1, parsed_via_docling: false, service: "moks-cms" };
-    return new Response(JSON.stringify(r >= 400 ? { detail: `refused ${r}` } : body), { status: r, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(r >= 400 ? { detail: `refused ${r}` } : { ...body, ...answer }), { status: r, headers: { "Content-Type": "application/json" } });
   });
   return { calls, fetchImpl: fetchImpl as unknown as typeof fetch };
 }
@@ -305,6 +305,104 @@ describe("content sync", () => {
     ]);
     vi.stubEnv("RAG_BEARER_TOKEN", "");
     expect(await queueRagReindex()).toBeNull();
+  });
+});
+
+describe("Hybrid RAG reindex flow (D-107)", () => {
+  const CB_TOKEN = "c".repeat(40);
+  const cb = async (method: string, path: string, body?: unknown) => {
+    const { handleCallback } = await import("@/lib/seo-agent/internal-server");
+    return handleCallback(method, `/internal/seo-agent${path}`, `Bearer ${CB_TOKEN}`, body, { ...process.env, SEO_AGENT_CALLBACK_TOKEN: CB_TOKEN });
+  };
+  const posts = async () => {
+    await publish({ slug: "older-post", publishedAt: "2026-10-01T10:00:00+05:30" });
+    await publish({ slug: "members-guide", membersOnly: true, previewPercent: 20, body: ["## Free", "Open part.", "## Members", "SECRET one.", "SECRET two.", "SECRET three."].join("\n\n") });
+    await publish({ slug: "kept-out", noindex: true });
+    await createPost(admin, { ...draft, slug: "still-a-draft" });
+    await createPost(admin, { ...draft, slug: "next-month", status: "scheduled", publishedAt: "2099-01-01T10:00:00+05:30" });
+    const binned = await publish({ slug: "binned" });
+    await trashPost(admin, binned.id);
+    await db.execute(sql`delete from job`);
+  };
+
+  it("says why a post is not indexed, the way syncable decides", () => {
+    const row = { status: "published", publishedAt: new Date("2026-01-01"), deletedAt: null, noindex: false } as Parameters<typeof notIndexedBecause>[0];
+    expect(notIndexedBecause(row)).toBeNull();
+    expect(notIndexedBecause(undefined)).toBe("no longer in the database");
+    expect(notIndexedBecause({ ...row!, deletedAt: new Date() })).toBe("in the bin");
+    expect(notIndexedBecause({ ...row!, status: "review" })).toBe("in review");
+    expect(notIndexedBecause({ ...row!, status: "draft" })).toBe("draft");
+    expect(notIndexedBecause({ ...row!, publishedAt: new Date(Date.now() + 86_400_000) })).toBe("scheduled");
+    expect(notIndexedBecause({ ...row!, noindex: true })).toBe("noindex");
+  });
+
+  it("plans every post: published ones first, newest first, then the others with the reason; never the token", async () => {
+    await posts();
+    const plan = (await ragReindexPlan())!;
+    expect(plan.destination).toEqual({ url: "http://rag-api.test:8000", collection: "cms_content", serviceName: "moks-cms" });
+    expect(JSON.stringify(plan)).not.toContain(TOKEN);
+    expect(plan.posts.map((p) => [p.docId, p.action, p.reason])).toEqual([
+      ["blog:members-guide", "index", null],
+      ["blog:older-post", "index", null],
+      ["blog:binned", "remove", "in the bin"],
+      ["blog:kept-out", "remove", "noindex"],
+      ["blog:next-month", "remove", "scheduled"],
+      ["blog:still-a-draft", "remove", "draft"],
+    ]);
+    const members = plan.posts[0]!;
+    expect(members).toMatchObject({ membersOnly: true, title: draft.title });
+    expect(members.characters).toBeGreaterThan(0);
+    expect(plan.posts.at(-1)!.characters).toBe(0);
+    vi.stubEnv("RAG_BEARER_TOKEN", "");
+    expect(await ragReindexPlan()).toBeNull();
+  });
+
+  it("syncs one post now and says what it did: indexed, unchanged, removed or not there", async () => {
+    await posts();
+    const fresh = fakeRag(() => 200, { chunks_ingested: 3 });
+    expect(await ragSyncNow({ collection: "blog", slug: "older-post" }, { fetchImpl: fresh.fetchImpl })).toMatchObject({
+      docId: "blog:older-post", operation: "ingest", reason: null, chunks: 3, unchanged: false, passes: 1, membersOnly: false, title: draft.title,
+    });
+    const same = fakeRag(() => 200, { chunks_ingested: 3, unchanged: true });
+    expect(await ragSyncNow({ collection: "blog", slug: "older-post" }, { fetchImpl: same.fetchImpl })).toMatchObject({ operation: "ingest", unchanged: true });
+    expect(await ragSyncNow({ collection: "blog", slug: "still-a-draft" }, { fetchImpl: fresh.fetchImpl })).toMatchObject({ operation: "delete", reason: "draft", deleted: true, chunks: 0, characters: 0 });
+    const absent = fakeRag(() => 200, { deleted: false });
+    expect(await ragSyncNow({ collection: "blog", slug: "gone-long-ago" }, { fetchImpl: absent.fetchImpl })).toMatchObject({ operation: "delete", reason: "no longer in the database", deleted: false });
+    // The flow's syncs queue nothing: they are the work itself.
+    expect(await ragJobs()).toEqual([]);
+    vi.stubEnv("RAG_BEARER_TOKEN", "");
+    expect(await ragSyncNow({ collection: "blog", slug: "older-post" }, { fetchImpl: fresh.fetchImpl })).toBeNull();
+  });
+
+  it("serves the agent the plan, one sync and the hand-over, with codes the flow acts on", async () => {
+    await posts();
+    const plan = await cb("GET", "/rag/posts");
+    expect(plan.status).toBe(200);
+    expect(plan.body).toMatchObject({ configured: true, destination: { collection: "cms_content" } });
+    expect((plan.body as { posts: unknown[] }).posts).toHaveLength(6);
+
+    const reply = { status: 200 };
+    const rag = fakeRag(() => reply.status);
+    vi.stubGlobal("fetch", rag.fetchImpl);
+    try {
+      expect(await cb("POST", "/rag/posts/sync", { collection: "blog", slug: "older-post" })).toMatchObject({ status: 200, body: { docId: "blog:older-post", operation: "ingest", chunks: 1 } });
+      reply.status = 504;
+      expect(await cb("POST", "/rag/posts/sync", { collection: "blog", slug: "older-post" })).toMatchObject({ status: 503, body: { code: "rag_unavailable", error: expect.stringContaining("HTTP 504") } });
+      reply.status = 401;
+      expect(await cb("POST", "/rag/posts/sync", { collection: "blog", slug: "older-post" })).toMatchObject({ status: 422, body: { code: "rag_token_refused" } });
+      reply.status = 413;
+      expect(await cb("POST", "/rag/posts/sync", { collection: "blog", slug: "older-post" })).toMatchObject({ status: 422, body: { code: "rag_refused", error: expect.stringContaining("HTTP 413") } });
+      expect(await cb("POST", "/rag/posts/sync", { collection: "blog" })).toMatchObject({ status: 400, body: { code: "invalid" } });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(await cb("POST", "/rag/posts/queue", { posts: [{ collection: "blog", slug: "older-post" }, { collection: "blog", slug: "still-a-draft" }] })).toMatchObject({ status: 200, body: { queued: 2 } });
+    expect((await ragJobs()).map((j) => j.payload.slug).sort()).toEqual(["older-post", "still-a-draft"]);
+
+    vi.stubEnv("RAG_BEARER_TOKEN", "");
+    expect((await cb("GET", "/rag/posts")).body).toEqual({ configured: false, destination: null, posts: [] });
+    expect(await cb("POST", "/rag/posts/sync", { collection: "blog", slug: "older-post" })).toMatchObject({ status: 409, body: { code: "rag_off" } });
   });
 });
 

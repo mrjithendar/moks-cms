@@ -20,8 +20,11 @@ from . import narrate, tracing
 from .runs import CURRENT_RUN_ID
 
 log = logging.getLogger("seo_agent.webapp")
-# Housekeeping reads (cached settings): no line of their own in a run's log.
-QUIET_PATHS = ("/run-history/settings", "/flow-switches")
+# Housekeeping reads (cached settings), and rag_reindex_flow's per-post sync (the flow writes its own line for each
+# post, with what came back): no line of their own in a run's log.
+QUIET_PATHS = ("/run-history/settings", "/flow-switches", "/rag/posts/sync")
+# One post's sync waits for rag-api to embed it (30 s to minutes); the web app's own fetch gives up after 5 minutes.
+RAG_SYNC_TIMEOUT_S = 330.0
 
 
 class WebAppError(Exception):
@@ -92,6 +95,10 @@ class WebApp(Protocol):
     async def crew_configs(self) -> list[dict[str, Any]]: ...
     async def run_history_settings(self) -> dict[str, Any]: ...
     async def flow_switches(self) -> dict[str, Any]: ...
+    # Hybrid RAG reindex (moks-cms src/lib/rag/callbacks.ts, D-107): the web app writes cms_content, never this agent.
+    async def rag_posts(self) -> dict[str, Any]: ...
+    async def rag_sync_post(self, collection: str, slug: str) -> dict[str, Any]: ...
+    async def rag_queue_posts(self, posts: list[dict[str, str]]) -> dict[str, Any]: ...
 
 
 class HttpWebApp:
@@ -308,6 +315,21 @@ class HttpWebApp:
     async def flow_switches(self) -> dict[str, Any]:
         """Flows switched off in the admin (app/flows/switches.py): {"disabled": [{flow, reason}]}."""
         return dict(await self._req("GET", "/flow-switches"))
+
+    async def rag_posts(self) -> dict[str, Any]:
+        """rag_reindex_flow's plan: {configured, destination: {url, collection, serviceName}, posts: [{collection, slug,
+        docId, title, action: index|remove, reason, membersOnly, characters, publishedAt, updatedAt}]}. Never the token."""
+        return dict(await self._req("GET", "/rag/posts"))
+
+    async def rag_sync_post(self, collection: str, slug: str) -> dict[str, Any]:
+        """The web app syncs one post now (its own token and document): {docId, operation: ingest|delete, reason, title,
+        chunks, unchanged, deleted, membersOnly, characters, passes, ms}. WebAppError codes: rag_unavailable (503),
+        rag_token_refused / rag_refused (422), rag_off (409)."""
+        return dict(await self._req("POST", "/rag/posts/sync", json={"collection": collection, "slug": slug}, timeout=RAG_SYNC_TIMEOUT_S))
+
+    async def rag_queue_posts(self, posts: list[dict[str, str]]) -> dict[str, Any]:
+        """Hand posts to the web app's background sync jobs: {queued}."""
+        return dict(await self._req("POST", "/rag/posts/queue", json={"posts": posts}))
 
     async def news_notify(self, body: dict[str, Any]) -> dict[str, Any]:
         return await self._req("POST", "/news/notify", json=body)

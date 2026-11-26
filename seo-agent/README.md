@@ -294,6 +294,12 @@ Off unless both the URL and the token are set; every feature below then says so 
   changed, unchanged, gone), each document before it is sent (with a preview of its text) or deleted (and why), each
   request's result and a summary naming the slowest document. The previews are in the run's log only, never in
   stderr → Loki (`extra={"run_only": {...}}`, `app/logs.py`).
+- **cms_content reindex** (**`rag_reindex_flow`**, `app/flows/rag_reindex.py`, D-107): the web app's Settings →
+  Integrations → Hybrid RAG → Reindex all posts starts it. The agent never writes `cms_content`: the flow reads the
+  web app's plan (`GET /rag/posts`) and has the web app sync one post at a time (`POST /rag/posts/sync`, its own token
+  and documents), logging each post before and after (chunks, unchanged or embedded, seconds), each removal (address
+  and title in the run's log only) and a summary. rag-api down or slow: it stops and hands the rest to the web app's
+  background sync (`POST /rag/posts/queue`). See moks-cms docs/RAG.md "Backfill".
 - **Drafting help** (`app/site_context.py`), no model call: `POST /site-context/internal-links` `{title, headings,
   exclude?}` returns up to 5 existing articles with their URL, anchor suggestions and the draft heading each fits
   under. `POST /site-context/cannibalization` `{keyword, topic?, exclude?}` flags a published article whose title has

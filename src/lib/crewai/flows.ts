@@ -45,6 +45,7 @@ export const FLOWS: FlowInfo[] = [
   F("news_style_review_flow", "News style review", "Content flows", "yes", "Reviews recent edits to keep the news writing profile current."),
   F("news_playground_flow", "News playground", "Content flows", "news", "A trial draft from the profile playground."),
   F("reindex_flow", "Reindex", "Maintenance", "yes", "Rebuilds the article search index the agents and Ask the Blog use."),
+  F("rag_reindex_flow", "Hybrid RAG reindex", "Maintenance", "yes", "Sends every published post to the shared Hybrid RAG service (moks-rag, collection cms_content) one at a time and removes every other post from it, saying what happened to each. Settings → Integrations → Hybrid RAG → Reindex all posts starts it."),
   F("seo_ml_flow", "ML models", "Maintenance", "yes", "Retrains the SEO models (decay, query clusters, intent, priority, related articles)."),
   F("crew_test_flow", "Crew test run", "Maintenance", "yes", "Runs one crew with edited prompts on the inputs of an earlier run (Crews → Test run, like Jenkins Replay). Saves nothing."),
 ];
@@ -81,6 +82,7 @@ export const SCHEDULABLE_FLOWS: readonly string[] = [
   "report_flow",
   "seo_ml_flow",
   "seo_intel_sync_flow",
+  "rag_reindex_flow",
   "promotion_flow",
   "content_ideas_flow",
   "news_dispatch_flow",

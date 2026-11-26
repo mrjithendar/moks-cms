@@ -32,6 +32,7 @@ FLOWS = {
     "promotion_flow",
     "content_ideas_flow",
     "seo_intel_sync_flow",
+    "rag_reindex_flow",
 }
 CREWS = {"optimization", "editorial", "report", "news", "promotion"}
 PURPOSES = {"draft", "regenerate", "crew", "report", "ask_grade", "ask_answer", "classify", "ml_label", "news.crew", "news.classify", "news.vision", "news.style", "news.playground", "other"}

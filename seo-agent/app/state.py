@@ -92,6 +92,10 @@ class SeoIntelSyncInput(_In):
     full: bool = False  # send every document again, changed or not (after RAG_SEO_COLLECTION was emptied or moved)
 
 
+class RagReindexInput(_In):
+    pass  # every post, every run: rag-api skips the ones it already holds in the same version
+
+
 class MlInput(_In):
     # empty = every model; else a subset of decay, query_clusters, intent, priority, related, rag_eval
     models: list[Literal["decay", "query_clusters", "intent", "priority", "related", "rag_eval"]] = Field(default_factory=list, max_length=6)
@@ -209,6 +213,12 @@ class ReportState(RunState):
 
 class SeoIntelSyncState(RunState):
     full: bool = False
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+class RagReindexState(RunState):
+    """rag_reindex_flow (D-107): the plan's counts, then what was done so far (kept when the run stops part-way)."""
+
     result: dict[str, Any] = Field(default_factory=dict)
 
 

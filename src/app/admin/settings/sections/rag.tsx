@@ -1,25 +1,60 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { LocalTime } from "@/components/LocalTime";
 import { RuntimeSettings } from "@/components/admin/RuntimeSettings";
 import { Card, StatusPill } from "@/components/admin/ui";
 import { Alert, Button, Field, Input } from "@/components/ui/form";
 import { adminActor } from "@/lib/admin";
 import { audit } from "@/lib/audit";
+import { listRuns, type RunRow } from "@/lib/crewai/runs";
 import { flash } from "@/lib/flash";
 import { reportError } from "@/lib/http-errors";
+import { moduleState } from "@/lib/modules";
 import { PostError } from "@/lib/posts";
 import { RagError } from "@/lib/rag/client";
 import { queueRagReindex, ragStatus, searchPublished, type RagHit } from "@/lib/rag/sync";
+import { AgentError, kickoff } from "@/lib/seo-agent/client";
 import { settingsCategoryHref, settingsHref } from "@/lib/settings-areas";
 
+const REINDEX_FLOW = "rag_reindex_flow";
+
+/**
+ * Reindex all posts: with the SEO agent, its Hybrid RAG reindex flow (seo-agent app/flows/rag_reindex.py, D-107) syncs
+ * the posts one at a time and its run page, where this goes next, says what happened to each. A run that is already
+ * going is opened instead of a second one. Without the SEO agent, one background sync job per post (D-104).
+ */
 async function ragReindexAction() {
   "use server";
   const actor = await adminActor();
+  if ((await moduleState("seo-agent")).installed) {
+    let runId: string;
+    try {
+      const r = await kickoff(REINDEX_FLOW, {}, { actor: actor.label });
+      await audit(actor, "integrations.rag.reindex", undefined, { runId: r.run_id, existing: r.existing });
+      runId = r.run_id;
+    } catch (error) {
+      if (!(error instanceof AgentError)) throw error;
+      return flash(settingsHref("rag"), async () => {
+        throw new PostError(`The Hybrid RAG reindex flow did not start: ${error.message}`);
+      });
+    }
+    redirect(`/admin/crewai/runs/${runId}`);
+  }
   await flash(settingsHref("rag"), async () => {
     const r = await queueRagReindex();
     if (!r) throw new PostError("Hybrid RAG is off: save a bearer token first.");
     await audit(actor, "integrations.rag.reindex", undefined, r);
     return `${r.queued} of ${r.total} posts queued for Hybrid RAG${r.queued < r.total ? " (the others were already waiting)" : ""}. Published posts are indexed and all others removed, in the background over the next minutes.`;
   });
+}
+
+/** The last run of the reindex flow, for the Sync card; null without one (or without the run tables: no SEO agent yet). */
+async function lastReindex(): Promise<RunRow | null> {
+  try {
+    return (await listRuns({ flow: REINDEX_FLOW, limit: 1 }))[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -37,7 +72,8 @@ export default async function RagSection(query: Record<string, string | undefine
 }
 
 async function RagSync({ query }: { query: string }) {
-  const status = await ragStatus();
+  const [status, agent] = await Promise.all([ragStatus(), moduleState("seo-agent")]);
+  const last = agent.installed ? await lastReindex() : null;
   const jobs = status.jobs;
   let hits: RagHit[] | null = null;
   let searchError: string | null = null;
@@ -73,7 +109,22 @@ async function RagSync({ query }: { query: string }) {
         <form action={ragReindexAction}>
           <Button type="submit" variant="secondary" disabled={!status.config}>Reindex all posts</Button>
         </form>
-        <p className="mt-2 text-xs text-fg-subtle">The backfill: indexes every published post and removes every other post from the collection. Posts deleted before Hybrid RAG was on cannot be found and stay until rag-api removes them.</p>
+        <p className="mt-2 text-xs text-fg-subtle">
+          The backfill: indexes every published post and removes every other post from the collection. Posts deleted before Hybrid RAG was on cannot be found and stay until rag-api removes them.{" "}
+          {agent.installed ? (
+            <>
+              It runs as the <Link className="link" href={`/admin/crewai/flows/${REINDEX_FLOW}`}>Hybrid RAG reindex</Link> flow, one post at a time; its run page shows what happened to each post.
+              {last && (
+                <>
+                  {" "}Last run: <Link className="link" href={`/admin/crewai/runs/${last.runId}`}>#{last.number ?? "?"}</Link>, {last.status}
+                  {last.outcome ? ` (${last.outcome.replace(/_/g, " ")})` : ""}, <LocalTime iso={last.finishedAt ?? last.startedAt} />.
+                </>
+              )}
+            </>
+          ) : (
+            <>Without the SEO agent, it queues one background sync job per post.</>
+          )}
+        </p>
       </Card>
       <Card>
         <h3 className="mb-2 font-semibold text-fg">Test search</h3>

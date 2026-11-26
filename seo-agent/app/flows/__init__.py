@@ -23,6 +23,7 @@ from ..state import (
     OptimizeInput,
     PromotionInput,
     PublishInput,
+    RagReindexInput,
     ReindexInput,
     ReportInput,
     SeoIntelSyncInput,
@@ -48,6 +49,7 @@ from .news import (
 from .optimize_article import OptimizeArticleFlow
 from .promotion import ContentIdeasFlow, PromotionFlow
 from .publish import PublishFlow
+from .rag_reindex import RagReindexFlow
 from .report import ReportFlow
 from .seo_intel import SeoIntelSyncFlow
 from .weekly import WeeklyRecommendationsFlow
@@ -82,6 +84,8 @@ SPECS: dict[str, FlowSpec] = {
     "seo_ml_flow": FlowSpec("seo_ml_flow", SeoMlFlow.create, MlInput, _site),
     # The shared moks-rag service's seo_intel collection (app/seo_intel.py): one run at a time.
     "seo_intel_sync_flow": FlowSpec("seo_intel_sync_flow", SeoIntelSyncFlow.create, SeoIntelSyncInput, _site),
+    # The web app's posts in moks-rag's cms_content (D-107, app/flows/rag_reindex.py): one run at a time.
+    "rag_reindex_flow": FlowSpec("rag_reindex_flow", RagReindexFlow.create, RagReindexInput, _site),
     # Promotion (docs/seo/PROMOTION.md): one run per article (or one site-wide run); ideas are site-wide.
     "promotion_flow": FlowSpec("promotion_flow", PromotionFlow.create, PromotionInput, lambda i: str(i.get("article_id") or "site")),
     "content_ideas_flow": FlowSpec("content_ideas_flow", ContentIdeasFlow.create, NoInput, _site),
@@ -104,7 +108,7 @@ NEWS_FLOWS = frozenset(n for n in SPECS if n.startswith("news_"))
 APPROVAL_ONLY = frozenset({"publish_flow"})
 DRAFTING_FLOWS = ("optimize_article_flow", "new_article_flow")
 MCP_KICKOFF_ALLOWLIST = frozenset({"news_job_flow", "optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"})
-CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "seo_intel_sync_flow", "promotion_flow", "content_ideas_flow", "custom_flow"})
+CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "seo_intel_sync_flow", "rag_reindex_flow", "promotion_flow", "content_ideas_flow", "custom_flow"})
 
 
 MANUAL_ONLY = frozenset({"crew_test_flow"})  # started by a person in the console: never by a schedule, a flow or MCP
@@ -192,6 +196,7 @@ FLOW_INFO: dict[str, dict[str, Any]] = {
     "news_playground_flow": {"label": "News playground", "categories": ["content"], "start": "internal", "description": "A trial draft from the profile playground."},
     "reindex_flow": {"label": "Reindex", "categories": ["ai", "automation"], "start": "manual", "description": "Rebuilds the article search index the agents and Ask the Blog use."},
     "seo_intel_sync_flow": {"label": "SEO knowledge sync", "categories": ["ai", "seo"], "start": "manual", "description": "Sends the keyword clusters and Search Console performance to the shared knowledge base (moks-rag, collection seo_intel) the agents ground new articles in."},
+    "rag_reindex_flow": {"label": "Hybrid RAG reindex", "categories": ["ai", "automation"], "start": "manual", "description": "Sends every published post to the shared Hybrid RAG service (moks-rag, collection cms_content) one at a time and removes every other post from it, saying what happened to each. Settings → Integrations → Hybrid RAG → Reindex all posts starts it."},
     "seo_ml_flow": {"label": "ML models", "categories": ["ai", "seo"], "start": "manual", "description": "Retrains the SEO models (decay, query clusters, intent, priority, related articles)."},
     "crew_test_flow": {"label": "Crew test run", "categories": ["automation"], "start": "internal", "description": "Runs one crew with edited prompts on the inputs of an earlier run (Crews → Test run). Saves nothing."},
 }
