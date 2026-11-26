@@ -89,12 +89,20 @@ class CrewTestFlow(NewsHelpers, SeoFlow[CrewTestState]):
             if not src:
                 s.errors.append("the source run was not found")
                 s.outcome = "failed"
+                log.warning(f"The source run {s.source_run_id} was not found (deleted by the run history retention?)", extra={"event": "crew_test_no_source"})
                 return
             s.source = {"run_id": str(src.get("run_id")), "flow": src.get("flow_name"), "number": src.get("run_number"), "status": src.get("status")}
             if src.get("flow_name") not in crew.replay:
                 s.errors.append(f"a {src.get('flow_name')} run cannot be replayed by the {s.crew} crew (it replays {', '.join(crew.replay)})")
                 s.outcome = "failed"
+                log.warning(s.errors[-1], extra={"event": "crew_test_cannot_replay"})
                 return
+            log.info(
+                f"Replaying the inputs of {src.get('flow_name')} run #{src.get('run_number') or '?'} ({src.get('status')}) with the {s.crew} crew's "
+                + (f"saved version v{s.version}" if s.version is not None else "unsaved edits")
+                + ". A test run saves nothing: no draft, report, post or article",
+                extra={"event": "crew_test_source", "source_flow": src.get("flow_name"), "crew": s.crew},
+            )
         token = crew_config.CREW_OVERRIDE.set({s.crew: {"config": s.config, "version": s.version}})
         try:
             async with self.step(f"crew_{s.crew}"):
@@ -103,9 +111,11 @@ class CrewTestFlow(NewsHelpers, SeoFlow[CrewTestState]):
                 try:
                     s.result = _cut(await self._run(s.crew, src))
                     s.outcome = "done" if s.result.get("status") == "completed" else "incomplete"
+                    log.info(f"Test result: crew {s.result.get('status')}" + (f" ({s.result.get('reason')})" if s.result.get("reason") else "") + "; see Outputs, or compare with the source run", extra={"event": "crew_test_result"})
                 except ReplayError as e:
                     s.errors.append(str(e))
                     s.outcome = "failed"
+                    log.warning(f"Cannot replay: {e}", extra={"event": "crew_test_failed"})
                 except BudgetExceeded as e:
                     self.add_budget_cost(e)
                     s.errors.append(f"budget: {e.detail}")

@@ -18,7 +18,7 @@ function Value({ v }: { v: unknown }): ReactNode {
   if (v == null || v === "") return <span className="text-fg-subtle">—</span>;
   if (typeof v === "boolean") return v ? "Yes" : "No";
   if (typeof v === "number") return <span className="tabular-nums">{v.toLocaleString("en")}</span>;
-  if (typeof v === "string") return v;
+  if (typeof v === "string") return v.includes("\n") ? <span className="block whitespace-pre-wrap">{v}</span> : v;
   if (Array.isArray(v)) {
     if (v.length === 0) return <span className="text-fg-subtle">none</span>;
     if (v.every(scalar)) {

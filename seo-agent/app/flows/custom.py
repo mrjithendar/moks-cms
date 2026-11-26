@@ -53,6 +53,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from ..crews.custom import KEY, CustomCrewSpec, SpecError, check_output, issues_of, materialize, missing_inputs, run_custom_crew, validate_crew, with_defaults
 from ..llm import BudgetExceeded
+from ..logs import RUN_ONLY
+from ..narrate import count
 from ..redaction import metadata
 from ..runs import INSTANCE_ONLY, TERMINAL, RunError
 from ..state import RunState, _In
@@ -341,6 +343,17 @@ async def resolve_crew(key: str, rows: dict[str, dict[str, Any]], web: Any) -> t
     raise SpecError([f"no crew {key} (deleted or switched off)"])
 
 
+def _what(step: Any) -> str:
+    """A step in a few words, for the flow's plan line."""
+    if isinstance(step, CrewStep):
+        return f"crew {step.crew}"
+    if isinstance(step, FlowStep):
+        return f"flow {step.flow}"
+    if isinstance(step, ConditionStep):
+        return f"condition {step.op} {step.operand}"
+    return "draft"
+
+
 @persist(INSTANCE_ONLY)
 class CustomFlow(SeoFlow[CustomFlowState]):
     FLOW: ClassVar[str] = "custom_flow"
@@ -360,7 +373,12 @@ class CustomFlow(SeoFlow[CustomFlowState]):
             raise SpecError(s.errors[-1:])
         spec = validate_flow(row.get("spec"), set(crews))
         s.flow_version = int(row["version"]) if isinstance(row.get("version"), int) else None
-        log.info("step flow started", extra={"event": "flow_spec", "flow": spec.key, "version": s.flow_version, "steps": len(spec.steps), "dry_run": s.dry_run})
+        plan = "; ".join(f"{step_id(st, i)} {_what(st)}" for i, st in enumerate(spec.steps, 1))
+        log.info(
+            f"Flow {spec.key}" + (f" v{s.flow_version}" if s.flow_version else " (unsaved draft)") + f": {count(len(spec.steps), 'step')}: {plan}"
+            + (". Dry run: no draft is saved and no other flow is started" if s.dry_run else ""),
+            extra={"event": "flow_spec", "flow": spec.key, "version": s.flow_version, "steps": len(spec.steps), "dry_run": s.dry_run},
+        )
         values: dict[str, dict[str, str]] = {"input": {k: str(s.inputs.get(k, "")) for k in spec.inputs}, "steps": {}}
         results: dict[str, str] = {}
         backups = {st.fallback for st in spec.steps if st.fallback}
@@ -462,6 +480,10 @@ class CustomFlow(SeoFlow[CustomFlowState]):
             missing = missing_inputs(cspec, inputs)
             if missing:
                 raise StepFailed(f"required input(s) empty: {', '.join(missing)}")
+            log.info(
+                f"Step {sid}: the {step.crew} crew ({'v' + str(version) if version else source}) runs with {', '.join(f'{k} ({len(v):,} characters)' for k, v in inputs.items()) or 'no inputs'}",
+                extra={"event": "custom_crew_started", "step_id": sid, "crew": step.crew, RUN_ONLY: {"inputs": {k: v[:1000] for k, v in inputs.items()}}},
+            )
             o = await run_custom_crew(cspec, inputs, settings=self.deps.settings, llm=self.deps.llm, web=self.deps.web, retriever=self.deps.retriever, version=version)
             text = str(getattr(o, "output", "") or "")[:MAX_VALUE]
             rec.detail.update({"tokens": getattr(o, "tokens", 0), "cost_usd": round(float(getattr(o, "cost_usd", 0) or 0), 6), "crew_status": getattr(o, "status", None), "output": metadata(text)})
@@ -472,6 +494,7 @@ class CustomFlow(SeoFlow[CustomFlowState]):
                 raise StepFailed(problem)
             values["steps"][step.save_as] = text
             s.saved[step.save_as] = text[:2000]
+            log.info(f"Step {sid}: the {step.crew} crew's answer ({len(text):,} characters) is saved as {step.save_as}", extra={"event": "custom_crew_done", "step_id": sid, RUN_ONLY: {"answer": text[:3000]}})
             s.steps.append({"step": name, "id": sid, "outcome": o.status, "crew": step.crew, "crew_version": version, "tokens": o.tokens, "cost_usd": round(o.cost_usd, 6)})
             return None
         if isinstance(step, FlowStep):
@@ -486,17 +509,21 @@ class CustomFlow(SeoFlow[CustomFlowState]):
             return None if ok else step.otherwise
         doc = {"title": fill(step.title, values)[:110], "description": fill(step.description, values)[:300], "body": fill(step.body, values), "collection": step.collection, "category": step.category}
         rec.detail["output"] = metadata(doc["title"], 200)
+        words = len(doc["body"].split())
         if s.dry_run:
             s.steps.append({"step": name, "id": sid, "outcome": "dry_run", "title": doc["title"]})
+            log.info(f"Step {sid}: dry run, the draft “{doc['title']}” ({count(words, 'word')}) is not saved", extra={"event": "custom_draft_dry_run", "step_id": sid})
             return None
         r = await self.retry(partial(self.deps.web.custom_save_draft, {**doc, "flow": s.flow, "runId": s.id}))
         if r.get("errors"):
+            log.warning(f"Step {sid}: the web app refused the draft “{doc['title']}”: {'; '.join(map(str, r['errors']))[:400]}", extra={"event": "custom_draft_refused", "step_id": sid})
             s.errors.append("; ".join(map(str, r["errors"]))[:500])
             s.steps.append({"step": name, "id": sid, "outcome": "refused", "errors": r["errors"]})
             s.outcome = "failed_validation"
             return "stop"
         s.draft_id = str(r.get("draftId") or "") or None
         s.steps.append({"step": name, "id": sid, "outcome": "ready_for_review", "draft_id": s.draft_id})
+        log.info(f"Step {sid}: saved draft {s.draft_id} “{doc['title']}” ({count(words, 'word')}, {doc['collection']}) for review in the review queue (a person decides what happens next)", extra={"event": "custom_draft_saved", "step_id": sid, "draft_id": s.draft_id})
         return None
 
     async def _child(self, step: FlowStep, sid: str, name: str, values: dict[str, dict[str, str]], rec: StepRecord) -> None:
@@ -538,6 +565,7 @@ class CustomFlow(SeoFlow[CustomFlowState]):
             raise TimeoutError(f"{step.flow} run {child} was still running")
         out = json.dumps(done.get("outputs") or {}, default=str)[:MAX_VALUE]
         rec.detail.update({"child_status": status, "output": metadata(out)})
+        log.log(logging.INFO if status == "succeeded" else logging.WARNING, f"Step {sid}: {step.flow} run {child} ended {status}", extra={"event": "flow_step_child_done", "step_id": sid, "child_run_id": child, "status": status})
         if status != "succeeded":
             raise StepFailed(f"{step.flow} run {child} ended {status}: {str(done.get('error') or '')[:300]}")
         if step.save_as:

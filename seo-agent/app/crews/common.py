@@ -41,6 +41,8 @@ from pydantic import BaseModel, PrivateAttr
 from .. import metrics
 from ..config import Settings
 from ..llm import BudgetExceeded, CallSpec, InvalidOutput, Llm, TokenCapExceeded, Usage
+from ..logs import RUN_ONLY
+from ..narrate import count
 from ..runs import CURRENT_RUN_ID
 from ..tools import ToolContext, ToolSpec, build_tools, data_block
 from ..tracing import annotate as tracing_annotate
@@ -270,7 +272,7 @@ def tool_class() -> type:
             crew, tool, run_id = (run.crew if run else "crew"), self._spec.name, (run.run_id if run else None)
             # CrewAI calls tools on its worker thread: re-attach the crew span so tool.<name> nests under it.
             token = otel_context.attach(run.otel_ctx) if run is not None and run.otel_ctx is not None else None
-            started, status, error = time.monotonic(), "ok", None
+            started, status, error, out = time.monotonic(), "ok", None, ""
             try:
                 with span(f"tool.{tool}", {"crew": crew, "tool": tool, "run_id": run_id or "", "tool.input_chars": len(input or "")}) as s:
                     try:
@@ -290,7 +292,20 @@ def tool_class() -> type:
                 seconds = time.monotonic() - started
                 metrics.TOOL_CALLS.labels(crew=metrics.crew_label(crew), tool=metrics.tool_label(tool), status=status).inc()
                 metrics.TOOL_DURATION.labels(crew=metrics.crew_label(crew), tool=metrics.tool_label(tool)).observe(seconds)
-                log.info("crew tool call", extra={"event": "crew_tool_call", "crew": crew, "tool": tool, "status": status, "seconds": round(seconds, 3), "error": error, "run_id": run_id})
+                said = f"{crew} crew used {tool}: " + (f"{len(out or ''):,} characters back" if status == "ok" else f"{status} ({error})")
+                log.info(
+                    said,
+                    extra={
+                        "event": "crew_tool_call",
+                        "crew": crew,
+                        "tool": tool,
+                        "status": status,
+                        "seconds": round(seconds, 3),
+                        "error": error,
+                        "run_id": run_id,
+                        RUN_ONLY: {"tool_input": (input or "")[:500], "tool_answer": (out or "")[:1500]},
+                    },
+                )
                 if token is not None:
                     otel_context.detach(token)
 
@@ -394,8 +409,21 @@ class _TaskWatch:
     def started(self, i: int) -> None:
         """A log line when task i starts (the run page shows which agent is working before its first model call)."""
         if i < len(self.tasks):
-            agent = self.agent_of(self.tasks[i])
-            log.info(f"crew task started: {self.crew}.{agent}", extra={"event": "crew_task_started", "crew": self.crew, "agent": agent, "task_index": i, "tasks": len(self.tasks), "run_id": self.run.run_id})
+            task = self.tasks[i]
+            agent = self.agent_of(task)
+            log.info(
+                f"{self.crew} crew, task {i + 1} of {len(self.tasks)}: {agent} started",
+                extra={
+                    "event": "crew_task_started",
+                    "crew": self.crew,
+                    "agent": agent,
+                    "task_index": i,
+                    "tasks": len(self.tasks),
+                    "run_id": self.run.run_id,
+                    # What the agent was asked: in the run's log only (the task text holds the article, the brief, data).
+                    RUN_ONLY: {"expected_output": str(getattr(task, "expected_output", "") or "")[:600], "task": str(getattr(task, "description", "") or "")[:2000]},
+                },
+            )
 
     @staticmethod
     def agent_of(task: Any) -> str:
@@ -418,9 +446,23 @@ class _TaskWatch:
             if token is not None:
                 otel_context.detach(token)
         metrics.TASK_DURATION.labels(crew=metrics.crew_label(self.crew), agent=metrics.agent_label(agent)).observe(seconds)
-        log.info(
-            "crew task finished",
-            extra={"event": "crew_task", "crew": self.crew, "agent": agent, "task_index": i, "status": "error" if error else "ok", "seconds": round(seconds, 3), "tokens": tokens, "output_chars": chars, "error": error, "run_id": self.run.run_id},
+        step = f"{self.crew} crew, task {i + 1} of {len(self.tasks)}: {agent}"
+        log.log(
+            logging.WARNING if error else logging.INFO,
+            f"{step} stopped: {error}" if error else f"{step} finished, answer {chars:,} characters",
+            extra={
+                "event": "crew_task",
+                "crew": self.crew,
+                "agent": agent,
+                "task_index": i,
+                "status": "error" if error else "ok",
+                "seconds": round(seconds, 3),
+                "tokens": tokens,
+                "output_chars": chars,
+                "error": error,
+                "run_id": self.run.run_id,
+                RUN_ONLY: {"answer": str(getattr(output, "raw", "") or "")[:3000]} if output is not None else {},
+            },
         )
         self.done = i + 1
         self.completed += 0 if error else 1
@@ -466,8 +508,14 @@ async def run_crew(name: str, build: Callable[[asyncio.AbstractEventLoop, CrewRu
         metrics.CREW_DURATION.labels(crew=lbl, status=final).observe(seconds)
         metrics.CREW_TOKENS.labels(crew=lbl).inc(run.tokens)
         metrics.CREW_COST.labels(crew=lbl).inc(cost)
-        log.info(
-            "crew run finished",
+        said = f"{name} crew {final}: {watch.completed} of {count(len(watch.tasks), 'task')} done, {count(tool_calls, 'tool call')}"
+        if used:
+            said += f", skills used: {', '.join(used[:8])}"
+        if reason:
+            said += f". Reason: {reason[:300]}"
+        log.log(
+            logging.INFO if final == "completed" else logging.WARNING,
+            said,
             extra={"event": "crew_finished", "crew": name, "status": final, "reason": (reason or "")[:300] or None, "seconds": round(seconds, 3), "tokens": run.tokens, "cost_usd": cost, "tasks_done": watch.completed, "tasks": len(watch.tasks), "tool_calls": tool_calls, "run_id": run.run_id, "skills": dict(run.skills_used), "skill_tags": sorted(run.tags)},
         )
 

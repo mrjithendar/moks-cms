@@ -180,6 +180,21 @@ This service provides what that catalogue runs and shows:
 - **Run logs**: each step records attempts, conditions, versions, child runs, tokens, cost and input/output metadata in
   its run-history row; every log line, step detail and transcript is redacted first (`app/redaction.py`, also used by
   the stderr JSON formatter). The web app's Run history settings `logs` and `step_io` (on by default) decide what is kept.
+  A run's log is written for a person (the admin run page), in sentences:
+  - the run's first and last lines say how it started (with its plain inputs) and how it ended (status, outcome,
+    tokens, cost, error); each step ends with "<step> succeeded: <facts it recorded>", or why it failed (a warning);
+  - every flow says what it reads, from where, what it decided and what it wrote, and where: e.g. "Asking the web app
+    to run the Search Console sync…", "gsc_sync succeeded: 1,234 rows written for …", "Plan: the optimization crew
+    drafts changes for 2 recommendations (low_ctr, title)", "Validation: 1 error (…). Trying once more", "Saved for
+    review: draft …";
+  - crews: "<crew> crew, task 2 of 3: editor started / finished, answer 2,345 characters", "<crew> crew used <tool>:
+    1,234 characters back", "<crew> crew completed: 3 of 3 tasks done, 4 tool calls";
+  - every call to the web app in a run: "web app POST /jobs/run: status succeeded, rows 1,234" (debug outside a run);
+    content flows (news) group their lines in one step and say what each stage does and its counts;
+  - wording helpers are in `app/narrate.py` (`count`, `facts`, `shape`): numbers, yes/no, states and short names only.
+    Content (task text, answers, previews, inputs, Search Console queries) goes in `extra={"run_only": {...}}`
+    (`app/logs.RUN_ONLY`): shown under a line's details on the run page, never written to stderr → Loki. CrewAI's own
+    runtime lines are kept at debug.
 
 ## The reranker and PyTorch
 

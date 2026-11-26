@@ -589,6 +589,11 @@ async def select_for_job(d: DeskDeps, rec: RunRecorder, job: Job, *, dry_run: bo
             why = rejection_summary(cands)
             o["detail"]["why_nothing"] = why
             rec.log("warning", f"no story selected from {len(cands)} candidate(s): " + "; ".join(f"{n} × {r}" for r, n in why))
+        elif sel:
+            rec.log("info", f"selected {len(sel)} of {len(cands)}: " + "; ".join(f"“{c.title[:90]}” (score {c.score:.2f})" for c in sorted(sel, key=lambda c: c.rank if c.rank is not None else 10**6)[:8]) + (f"; {len(sel) - 8} more" if len(sel) > 8 else ""))
+            why = rejection_summary(cands)
+            if why:
+                rec.log("info", "not selected: " + "; ".join(f"{n} × {r}" for r, n in why))
     return sel
 
 

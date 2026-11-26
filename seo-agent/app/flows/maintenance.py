@@ -14,15 +14,19 @@ labelled "Asked on site" (the web app's clusterAskGaps, the same token-set clust
 
 from __future__ import annotations
 
+import logging
 from functools import partial
 from typing import Any, ClassVar
 
 from crewai.flow import listen, persist, start
 
+from ..narrate import count, facts
 from ..runs import INSTANCE_ONLY
 from ..state import AskGapsState, LinkingState, ReindexState
 from ..tools import safe_queries
 from .base import SeoFlow
+
+log = logging.getLogger("seo_agent.flows.maintenance")
 
 W_VECTOR, W_QUERIES = 0.65, 0.35
 
@@ -61,6 +65,11 @@ class InternalLinkingFlow(SeoFlow[LinkingState]):
             if not s.article_ids:
                 # Weekly run: the articles that have an open draft (links merge into it; none is created here).
                 s.article_ids = await self.retry(lambda: web.open_draft_articles(50))
+                log.info(f"Articles with an open draft (links are added to that draft): {len(s.article_ids)}", extra={"event": "linking_articles", "articles": len(s.article_ids)})
+            else:
+                log.info(f"Articles asked for: {len(s.article_ids)}", extra={"event": "linking_articles", "articles": len(s.article_ids)})
+            if not s.article_ids:
+                log.info("Nothing to do: no article has an open draft", extra={"event": "linking_nothing"})
             out: dict[str, list[dict[str, Any]]] = {}
             for aid in s.article_ids:
                 similar = await ret.similar_articles(aid, k=12)
@@ -71,7 +80,14 @@ class InternalLinkingFlow(SeoFlow[LinkingState]):
                     tq[path] = set(safe_queries([r["query"] for r in rows]))
                 ml = self.deps.extra.get("ml_store")
                 related = await ml.related_scores(aid) if ml is not None else {}
-                out[aid] = combine(similar, src_q, tq, related)
+                out[aid] = cands = combine(similar, src_q, tq, related)
+                best = ", ".join(f"{c['path']} ({c['score']:.2f})" for c in cands[:3])
+                log.info(
+                    f"Article {aid}: {count(len(similar), 'similar article')} from the article index, {count(len(src_q), 'Search Console query', 'Search Console queries')} of its own"
+                    + (", related-articles model in use" if related else "")
+                    + (f"; best link targets: {best}" if best else "; no link target found"),
+                    extra={"event": "linking_candidates", "article_id": aid, "candidates": len(cands)},
+                )
             s.candidates = out
 
     @listen(candidates)
@@ -80,6 +96,11 @@ class InternalLinkingFlow(SeoFlow[LinkingState]):
             results = []
             for aid, cands in self.state.candidates.items():
                 r = await self.retry(partial(self.deps.web.plan_links, aid, cands))  # limits enforced by the planner
+                added = int(r.get("added") or 0)
+                log.info(
+                    f"Article {aid}: the web app's link planner added {count(added, 'link')} to draft {r.get('draftId')}" if added else f"Article {aid}: no link added: {r.get('reason') or 'none passed the limits'}",
+                    extra={"event": "linking_planned", "article_id": aid, "added": added},
+                )
                 results.append({"article_id": aid, **r})
             self.state.results = results
             self.state.outcome = "links_added" if sum(int(r.get("added", 0)) for r in results) else "done"
@@ -94,8 +115,13 @@ class ReindexFlow(SeoFlow[ReindexState]):
         async with self.step("chunk_and_embed"):
             if self.deps.reindex is None:
                 raise RuntimeError("reindex is not configured")
-            self.state.result = await self.deps.reindex(self.state.article_ids, self.state.full, self.state.force)
-            self.state.outcome = "done"
+            st = self.state
+            scope = f"{count(len(st.article_ids), 'article')}" if st.article_ids else "every published article"
+            how = "full rebuild (every chunk embedded again)" if st.full else "incremental (only articles whose content changed)"
+            log.info(f"Indexing {scope}: {how}" + (", forced" if st.force else ""), extra={"event": "reindex_started", "full": st.full, "force": st.force})
+            st.result = await self.deps.reindex(st.article_ids, st.full, st.force)
+            log.info(f"Article index updated: {facts(st.result) or 'done'}", extra={"event": "reindex_result", **{k: v for k, v in st.result.items() if isinstance(v, int)}})
+            st.outcome = "done"
 
 
 @persist(INSTANCE_ONLY)
@@ -105,5 +131,11 @@ class AskGapsFlow(SeoFlow[AskGapsState]):
     @start()
     async def cluster(self) -> None:
         async with self.step("cluster"):
-            self.state.result = await self.retry(lambda: self.deps.web.cluster_ask_gaps())
+            log.info("Grouping the open questions Ask the Blog could not answer (seo_ask_gaps) into content gaps", extra={"event": "ask_gaps_started"})
+            self.state.result = r = await self.retry(lambda: self.deps.web.cluster_ask_gaps())
+            n = int(r.get("clustered") or 0) if isinstance(r, dict) else 0
+            log.info(
+                f"{count(n, 'content gap')} now listed under Keyword opportunities › Content gaps, labelled \"Asked on site\"" if n else "No open unanswered questions to group",
+                extra={"event": "ask_gaps_result", "clustered": n},
+            )
             self.state.outcome = "done"
