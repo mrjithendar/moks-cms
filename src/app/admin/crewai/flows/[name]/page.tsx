@@ -120,9 +120,11 @@ async function CodeFlowBody({ name, agent, item }: { name: string; agent: Map<st
       ? "Switch this flow on to start it."
       : name === "crew_test_flow"
         ? "Start a crew test run from Crews → Test run."
-        : item?.start && item.start !== "manual"
-          ? `This flow starts ${START_LABELS[item.start] ?? item.start}.`
-          : rerunBlocked(name);
+        : item?.start === "manual"
+          ? null // the agent's own rule (GET /flows), so a flow the console's list predates still starts
+          : item?.start
+            ? `This flow starts ${START_LABELS[item.start] ?? item.start}.`
+            : rerunBlocked(name);
   const live = runs.some((r) => r.status === "queued" || r.status === "running");
   return (
     <>
