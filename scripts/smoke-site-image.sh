@@ -14,7 +14,8 @@ name="site-smoke-${GITHUB_RUN_ID:-local}-$$"
 
 # The image defaults to APP_ENV=production, which expects the cluster's secrets. This check starts it bare, so it has
 # to say that it is not the production site.
-docker run -d --rm --name "$name" -e APP_ENV=development -p 127.0.0.1::3000 "$IMAGE" >/dev/null
+# No --rm: if the site exits at once, the trap below still prints its logs before removing it.
+docker run -d --name "$name" -e APP_ENV=development -p 127.0.0.1::3000 "$IMAGE" >/dev/null
 trap 'docker logs "$name" 2>&1 | tail -50; docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 port="$(docker port "$name" 3000/tcp | head -1 | sed 's/.*://')"
 for _ in $(seq 1 30); do curl -fsS "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break; sleep 1; done
