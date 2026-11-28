@@ -258,11 +258,11 @@ def _client() -> tuple[Any, Any]:
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
-    from app.llm import BudgetGuard, MemorySpendStore
+    from app.llm import MemorySpendStore, UsageLedger
     from app.main import create_app, memory_container
     from tests.conftest import FakeLlm, FakeWebApp, settings
 
-    c = memory_container(settings(), llm=FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1)), web=FakeWebApp())
+    c = memory_container(settings(), llm=FakeLlm(UsageLedger(MemorySpendStore())), web=FakeWebApp())
     return TestClient(create_app(c)), c
 
 

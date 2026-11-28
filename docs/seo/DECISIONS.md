@@ -1218,3 +1218,58 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
   without a cost header, and cache_control and images passed through.
 - Off by default: a moks-cms site without these settings is unchanged. Guide: docs/LLM_GATEWAY.md.
 
+
+## D-110 LiteLLM is the only LLM gateway: no provider, model, key or budget in moks-cms (owner brief 2026-11-28)
+
+Supersedes D-109's "off by default" and its exceptions for AI visibility and Message Batches.
+
+- **What.** Every chat-model call of moks-cms goes to LiteLLM, and moks-cms never calls a model provider itself.
+  - Web app: one client, `src/lib/llm/client.ts`. It covers drafts and keyword intents (`seo-intel/model-calls.ts`),
+    SEO enrichment, AI visibility and the Python practice tutor.
+  - SEO agent: one client, `seo-agent/app/llm_gateway.py`. It covers flows, crews, content flows, reports and Ask the
+    Blog.
+  - Without `LITELLM_BASE_URL` and `LITELLM_API_KEY` no model is called, and there is no fallback to a provider.
+- **Removed from moks-cms:**
+  - the provider and model registry: the agent's `llm_providers/` and `llm_adapters/`, its tables, its admin card and
+    its routes;
+  - the price tables and cost estimates (web and agent);
+  - every budget: the one LLM budget, its holds and its routes and card, Ask the Blog's daily cap, the tutor's daily
+    USD budget, and the content flows' LLM caps;
+  - the provider settings: SEO `llm.provider/model/baseUrl/region`, the sealed LLM key, `drafts.draftModel`,
+    `classifyModel` and `effort`, the tutor's provider, model, key and prices, and AI visibility's per-answer price;
+  - the Anthropic SDK (web and agent), the Bedrock SDK, and Anthropic Message Batches (weekly drafts are now ordinary
+    draft jobs);
+  - the environment variables `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `SEO_DRAFT_MODEL`, `SEO_CLASSIFY_MODEL`,
+    `SEO_LLM_MONTHLY_BUDGET_USD`, `SEO_LLM_PRICES_JSON`, `ASK_BLOG_DAILY_BUDGET_USD` and `LITELLM_MODEL_DEFAULT`.
+- **Models are aliases.**
+  - `LITELLM_MODEL` (default `moks-cms-default`) drafts and runs crews.
+  - `LITELLM_MODEL_FAST` (default `moks-cms-fast`) classifies, enriches and answers Ask the Blog.
+  - `LITELLM_MODEL_PRACTICE` serves the tutor; it falls back to the fast alias.
+  - Crews, content flows and profiles may name any alias. The admin picks from the aliases LiteLLM lists for the
+    agent's key.
+  - Migration 0045 turned stored Claude ids into aliases: Haiku → `moks-cms-fast`, Opus → `moks-cms-quality`, others →
+    `moks-cms-default`. All three are added by hand in LiteLLM's Admin UI: nothing creates a model there automatically
+    (owner's rule, moks-rag 37fbaaa).
+- **AI visibility** asks each assistant through its own alias, with `web_search_options`
+  (`moks-cms-visibility-claude`, `-chatgpt`, `-perplexity`, `-gemini`; empty = not asked). Google AI Overview stays on
+  DataForSEO, which is a SERP API, not a model.
+- **Budgets and usage are LiteLLM's.**
+  - The team and the per-caller keys of D-109 stay. A refusal (HTTP 422 `budget_exceeded`) pauses a flow, stops an AI
+    visibility run, pauses a draft and closes the tutor.
+  - moks-cms only records what LiteLLM charged per call (`x-litellm-response-cost`) in `seo_llm_usage`, for run and
+    draft attribution. It never computes a cost.
+  - Settings → AI & models → LiteLLM shows the connection, the aliases, and the keys' and team's spend read through
+    LiteLLM's API with the keys themselves (never the master key).
+  - A banner on the AI & SEO pages says when a LiteLLM budget is used up.
+- **Kept outside LiteLLM** (not chat-model calls, owner's brief: image generation and embeddings are separate
+  capabilities):
+  - Gemini image generation (`src/lib/gemini.ts`, key check in `integrations.ts`);
+  - Veo video (`src/lib/video-generation.ts`);
+  - the news desk's OpenAI image provider (`seo-agent/app/news/images.py`);
+  - embeddings (Ollama/bge-m3, ONNX).
+- **Data (migration 0045).** The CMS's provider, model and budget configuration is copied to `llm_config_archive` (never
+  a sealed key), then the tables and fields go. A table the migration's role may not drop is kept with a NOTICE.
+  Rollback: `src/db/rollback/0045_litellm_only.down.sql`.
+- **Release order:** the aliases in LiteLLM's Admin UI first, then the LiteLLM keys in both Secrets (moks-rag
+  `scripts/issue-litellm-keys.sh`), then this release, then jithendar.com (ConfigMap cleanup). Released without the
+  keys, the site makes no model calls until they are set. Guide: docs/LLM_GATEWAY.md.

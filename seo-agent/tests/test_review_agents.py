@@ -15,7 +15,7 @@ import pytest
 from app.crews.common import CrewBudgetExceeded, CrewCancelled, CrewRun, feedback_section, long_output_tokens
 from app.crews.editorial import NOTE_CLAIM, NOTES_RULE, EditorialCrew, code_blocks_of, extract_editor_notes, merge_flags, split_review
 from app.index import MemoryRetriever
-from app.llm import BudgetGuard, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Usage
+from app.llm import BudgetExceeded, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Usage, UsageLedger
 from app.main import memory_container
 from app.mcp.common import CLIENT_IP, Guard, RateLimiter, guarded
 from app.schemas import FactCheckFlag
@@ -424,15 +424,16 @@ async def test_mcp_feedback_reaches_the_crew_as_untrusted_data(llm: FakeLlm, web
 
 
 async def test_budget_stop_keeps_the_crews_spend_on_the_run(web: FakeWebApp) -> None:
-    # The researcher's call fits under the cap; the writer's (16k output estimate) would cross it.
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(preexisting_usd=9.85), 10, 1))
-    llm.queue("crew", *editorial_script())
+    # The researcher's call goes through; LiteLLM refuses the writer's (its budget is used up: BudgetExceeded).
+    refused = [BudgetExceeded("litellm_team", "LiteLLM refused the call: the budget of the jithendar.com team is used up.")] * 10
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
+    llm.queue("crew", editorial_script()[0], *refused)
     with pytest.raises(CrewBudgetExceeded) as e:
         await crew_with(llm, web).run(BRIEF)
     assert e.value.tokens == 1500 and e.value.cost_usd > 0
 
-    llm2 = FakeLlm(BudgetGuard(MemorySpendStore(preexisting_usd=9.85), 10, 1))
-    llm2.queue("crew", *editorial_script())
+    llm2 = FakeLlm(UsageLedger(MemorySpendStore()))
+    llm2.queue("crew", editorial_script()[0], *refused)
     c = memory_container(settings(), llm=llm2, web=web, retriever=MemoryRetriever(hits()))
     r = await c.runner.kickoff("new_article_flow", {"calendar_id": CALENDAR, "draft_id": DRAFT})
     done = await c.runner.wait(r["run_id"], 30)

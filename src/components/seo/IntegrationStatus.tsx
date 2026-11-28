@@ -8,7 +8,7 @@ import { failingFlows } from "@/lib/health";
 import { agentToken } from "@/lib/seo-agent/config";
 import { agentStatus } from "@/lib/seo-agent/endpoint";
 import { integrationsView } from "@/lib/seo-intel/queries";
-import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
+import { llmConfig } from "@/lib/llm/client";
 
 /**
  * Settings → "Connections": one line per integration with its state, read from configuration and the last recorded
@@ -20,7 +20,7 @@ export type ConnectionRow = { key: string; name: string; status: "ok" | "degrade
 const sourcePill = (state: string): ConnectionRow["status"] => (state === "ok" ? "ok" : state === "disconnected" ? "not configured" : state === "stale" || state === "never_synced" ? "degraded" : "down");
 
 export async function loadConnections(env: Record<string, string | undefined> = process.env): Promise<ConnectionRow[]> {
-  const [iv, s] = await Promise.all([integrationsView(), getSeoSettings()]);
+  const iv = await integrationsView();
   const rows: ConnectionRow[] = [];
   for (const p of ["gsc", "ga4"] as const) {
     const st = iv.status[p];
@@ -39,12 +39,12 @@ export async function loadConnections(env: Record<string, string | undefined> = 
     status: iv.urlInspection.enabled ? (iv.credentials.configured ? "ok" : "degraded") : "not configured",
     detail: iv.urlInspection.enabled ? `On, up to ${iv.urlInspection.dailyLimit} URLs a day (needs Full permission on the property).` : "Off.",
   });
-  const cfg = claudeConfig(s, env);
+  const llm = llmConfig(env);
   rows.push({
-    key: "claude",
-    name: "Claude (drafting)",
-    status: cfg.apiKey ? "ok" : "not configured",
-    detail: cfg.apiKey ? "Key set (ANTHROPIC_API_KEY). The limit is the LLM budget (Settings → LLM providers & budget)." : "ANTHROPIC_API_KEY is not set: drafting and intent labelling use rules only.",
+    key: "litellm",
+    name: "LiteLLM (model gateway)",
+    status: llm ? "configured" : "not configured",
+    detail: llm ? `Endpoint set; aliases ${llm.model} and ${llm.modelFast}. Models, keys and budgets are LiteLLM's (Settings → AI & models → LiteLLM).` : "LITELLM_BASE_URL and LITELLM_API_KEY are not set: drafting and intent labelling use rules only.",
   });
   // The only line that may probe the network: the agent's status (cached per process; endpoint.ts).
   const st = await agentStatus(env === process.env ? {} : { env });

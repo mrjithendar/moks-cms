@@ -58,14 +58,16 @@ through the SEO optimisation flow). When pgvector is not available, novelty is 1
 - Model: one balanced logistic regression per topic (multi-label), Platt-calibrated, stored as numpy arrays (no pickle;
   the calibration is two arrays `cal_a`, `cal_b`; older artefacts without them load uncalibrated).
 - Prediction: calibrated p; labels with p ≥ 0.5 (at least the best); if the best p < `classifier_threshold` (0.55)
-  Claude Haiku picks 1–3 topics from the allowed list; without a model, keyword rules. Topics record their `method`:
-  `model`, `model_low_conf` (a low-confidence guess kept because Claude was off, failed or over budget), `claude`,
-  `rules`. Claude returns labels, not probabilities: its topics get `claude_topic_p` (Settings, default 0.6), which feeds
-  `topic_match`.
-- The Claude fallback during ingest goes through the news budget (global caps, booked to the job or ingest run); before
-  this it bypassed every cap (app/llm.py's BudgetGuard skips `news.*` purposes).
-- Bootstrap: "Bootstrap labels with Claude" labels up to 1,000 recent items once (≈ 50 calls of 20 items).
-- Training: weekly and on demand, from Claude labels plus the owner's category corrections (human labels win).
+  the fast model (Settings → fast model, a LiteLLM alias; empty: `moks-cms-fast`) picks 1–3 topics from the allowed
+  list; without a classifier model, keyword rules. Topics record their `method`: `model`, `model_low_conf` (a
+  low-confidence guess kept because the LLM was off, failed or refused for a LiteLLM budget), `claude` (the LLM
+  fallback; the name is kept for stored rows and the metric), `rules`. The LLM returns labels, not probabilities: its
+  topics get `claude_topic_p` (Settings, default 0.6), which feeds `topic_match`.
+- The LLM fallback during ingest goes through LiteLLM like every other call (D-110: its budgets apply, there is no news
+  LLM cap); its cost is booked to the job or ingest run.
+- Bootstrap: "Bootstrap labels with Claude" (the button's name; it uses the same fast model) labels up to 1,000 recent
+  items once (≈ 50 calls of 20 items).
+- Training: weekly and on demand, from the LLM's labels plus the owner's category corrections (human labels win).
   1. Grouped hold-out: ≈ 20 % of the rows, whole clusters at a time (two reports of one story never sit on both sides).
   2. Fit on the rest; Platt parameters from grouped 3-fold out-of-fold decision values; per-topic precision/recall/F1
      at p ≥ 0.5, macro F1 and the Brier score on the hold-out. `macro_f1_human` is the same on the hold-out rows with a

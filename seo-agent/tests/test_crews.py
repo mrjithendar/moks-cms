@@ -14,7 +14,7 @@ from app.crews.optimization import AGENTS as OPT_AGENTS
 from app.crews.optimization import OptimizationCrew
 from app.crews.report import ReportCrew, check_numbers, facts
 from app.index import MemoryRetriever
-from app.llm import BudgetExceeded, BudgetGuard, FakeLlm, MemorySpendStore
+from app.llm import BudgetExceeded, FakeLlm, MemorySpendStore, UsageLedger
 from app.main import memory_container
 from app.schemas import NewArticleDraft
 from app.services import review
@@ -75,7 +75,7 @@ async def test_cited_but_unretrieved_sources_are_flagged(llm: FakeLlm, web: Fake
 
 
 async def test_token_cap_returns_a_partial_draft_marked_incomplete(web: FakeWebApp) -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))  # 2,000 tokens per call
+    llm = FakeLlm(UsageLedger(MemorySpendStore()), tokens=(1500, 500))  # 2,000 tokens per call
     llm.queue("crew", *scripted(final_json([])))
     r = await crew_with(llm, web, crew_max_tokens_per_run=3000).run(BRIEF)
     assert r.status == "incomplete" and r.draft.incomplete
@@ -89,7 +89,7 @@ META = {"title": "Rotate cert-manager certificates", "meta_description": "How ce
 
 async def test_a_crew_stopped_in_the_seo_editor_step_gets_fallback_metadata(web: FakeWebApp) -> None:
     web.docs[DOC_URL] = "<title>Ingress</title><p>An Ingress exposes HTTP routes.</p>"
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))  # 2,000 tokens per call
+    llm = FakeLlm(UsageLedger(MemorySpendStore()), tokens=(1500, 500))  # 2,000 tokens per call
     llm.queue("crew", *scripted(final_json([]), with_tool=True)[:-1], META)  # the SEO editor's turn never comes
     r = await crew_with(llm, web, crew_max_tokens_per_run=8000).run(BRIEF)
     d = r.draft
@@ -106,7 +106,7 @@ async def test_a_crew_stopped_in_the_seo_editor_step_gets_fallback_metadata(web:
 async def test_a_failed_fallback_keeps_the_reviewed_draft(web: FakeWebApp) -> None:
     from app.llm import InvalidOutput
 
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()), tokens=(1500, 500))
     llm.queue("crew", *scripted(final_json([]))[:-1], InvalidOutput("no structured output"))
     r = await crew_with(llm, web, crew_max_tokens_per_run=6000).run(BRIEF)
     assert r.draft.incomplete and r.draft.meta_description == "" and r.draft.body_mdx.startswith("## Why rotate")
@@ -114,7 +114,7 @@ async def test_a_failed_fallback_keeps_the_reviewed_draft(web: FakeWebApp) -> No
 
 
 async def test_no_fallback_before_the_technical_review(web: FakeWebApp) -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()), tokens=(1500, 500))
     llm.queue("crew", *scripted(final_json([])))
     r = await crew_with(llm, web, crew_max_tokens_per_run=4000).run(BRIEF)  # stops before the reviewer
     assert r.draft.incomplete and r.draft.meta_description == "" and len(llm.calls) == 2
@@ -128,7 +128,7 @@ async def test_a_cited_section_of_a_retrieved_page_is_not_flagged(llm: FakeLlm, 
 
 
 async def test_wall_clock_timeout_returns_incomplete(web: FakeWebApp) -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("crew", *scripted(final_json([])))
     orig = llm.text
 
@@ -141,12 +141,13 @@ async def test_wall_clock_timeout_returns_incomplete(web: FakeWebApp) -> None:
     assert r.status == "incomplete" and "wall-clock" in (r.draft.incomplete_reason or "")
 
 
-async def test_crew_respects_the_monthly_budget(web: FakeWebApp) -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(preexisting_usd=9.9999), 10, 1))
-    llm.queue("crew", *scripted(final_json([])))
-    with pytest.raises(BudgetExceeded):  # the flow turns this into paused_budget
+async def test_crew_stops_when_litellm_refuses_over_a_budget(web: FakeWebApp) -> None:
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
+    # LiteLLM refuses the first call (HTTP 422 budget_exceeded → BudgetExceeded); the flow turns this into paused_budget.
+    llm.queue("crew", *[BudgetExceeded("litellm_team", "LiteLLM refused the call: the budget of the jithendar.com team is used up.")] * 10)
+    with pytest.raises(BudgetExceeded):
         await crew_with(llm, web).run(BRIEF)
-    assert llm.calls == []
+    assert llm.calls and len(llm.answers["crew"]) > 0  # stopped at the refusal, not after every task
 
 
 def test_agents_hold_only_allowlisted_read_only_tools() -> None:
@@ -277,18 +278,18 @@ async def test_report_crew_writes_from_facts(llm: FakeLlm, web: FakeWebApp) -> N
     llm.queue("report", "Thought: I now know the final answer\nFinal Answer: Clicks rose 14.1% to 665.")
     r = await ReportCrew(settings(), llm, web, MemoryRetriever()).run(sample_report(), facts(sample_report()))
     assert r.narrative == "Clicks rose 14.1% to 665." and r.status == "completed"
-    assert llm.calls[0].model == settings().classify_model  # cheap model for the narrative
+    assert llm.calls[0].model == settings().llm_model_fast  # cheap model for the narrative
 
 
 def test_per_agent_model_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -> None:
     from app.config import load_settings
     from app.tools import ToolContext
 
-    monkeypatch.setenv("SEO_CREW_MODELS", '{"optimization.analyst": "claude-haiku-5-5", "optimization.reviewer": "claude-haiku-5-5", "bad key": "x", "optimization.editor": "gpt-4"}')
+    monkeypatch.setenv("SEO_CREW_MODELS", '{"optimization.analyst": "moks-cms-fast", "optimization.reviewer": "moks-cms-fast", "bad key": "x", "optimization.editor": "not an alias!"}')
     s = load_settings()
-    assert s.crew_models == {"optimization.analyst": "claude-haiku-5-5", "optimization.reviewer": "claude-haiku-5-5"}
+    assert s.crew_models == {"optimization.analyst": "moks-cms-fast", "optimization.reviewer": "moks-cms-fast"}
     agents = build_agents(OPT_AGENTS, s, llm, asyncio.get_event_loop_policy().new_event_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="draft", prompt_version="t", crew="optimization")
-    assert {k: a.llm.model for k, a in agents.items()} == {"analyst": "claude-haiku-5-5", "editor": s.draft_model, "reviewer": "claude-haiku-5-5"}
+    assert {k: a.llm.model for k, a in agents.items()} == {"analyst": "moks-cms-fast", "editor": s.llm_model, "reviewer": "moks-cms-fast"}
 
 
 def test_per_agent_max_iter_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -> None:

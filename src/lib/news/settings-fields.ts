@@ -31,7 +31,7 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   limits: {
     id: "limits",
     title: "Content flow limits",
-    description: "Apply to every content flow together, on top of each flow's own caps. LLM spend has no cap here: it counts in the one LLM budget (Settings → LLM providers & budget).",
+    description: "Apply to every content flow together, on top of each flow's own caps. LLM spend has no cap here: LiteLLM's budgets apply (Settings → AI & models → LiteLLM).",
     fields: [
       { key: "max_drafts_per_day", label: "Drafts per day (all content flows)", kind: "number" },
       { key: "draft_concurrency", label: "Drafts in parallel", kind: "number", hint: "1–4; each draft is one crew run" },
@@ -42,7 +42,7 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
   models: {
     id: "models",
     title: "Content flow models",
-    description: "The models a content flow uses unless the flow names its own (its editor → AI & ML).",
+    description: "The LiteLLM aliases a content flow uses unless the flow names its own (its editor → AI & ML). Which provider and model answer an alias is set in LiteLLM.",
     fields: [
       {
         key: "image_provider",
@@ -54,9 +54,9 @@ export const JOB_SETTING_GROUPS: Record<JobSettingGroupId, SettingGroup> = {
           { value: "openai", label: "OpenAI (OPENAI_API_KEY for the seo-agent)" },
         ],
       },
-      { key: "writer_model", label: "Writer model", kind: "text" },
-      { key: "fast_model", label: "Fast model (topic classification fallback)", kind: "text" },
-      { key: "vision_model", label: "Vision model (cover safety, alt text)", kind: "text" },
+      { key: "writer_model", label: "Writer model (LiteLLM alias)", kind: "text", hint: "Empty: the agent's LITELLM_MODEL (moks-cms-default)" },
+      { key: "fast_model", label: "Fast model (topic classification fallback; LiteLLM alias)", kind: "text", hint: "Empty: the agent's LITELLM_MODEL_FAST (moks-cms-fast)" },
+      { key: "vision_model", label: "Vision model (cover safety, alt text; LiteLLM alias)", kind: "text", hint: "An alias whose model reads images. Empty: LITELLM_MODEL" },
     ],
   },
   quality: {

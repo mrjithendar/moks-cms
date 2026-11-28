@@ -69,7 +69,7 @@ def test_a_good_crew_spec_passes_and_keeps_its_shape() -> None:
         ("context from a later task", lambda s: s["tasks"][0].update(context=["write"])),
         ("an input the crew does not have", lambda s: s["tasks"][0].update(instructions="Research {audience}.")),
         ("an unknown field", lambda s: s.update(memory=True)),
-        ("a model that is not a Claude model id", lambda s: s["agents"][0].update(model="gpt-5")),
+        ("a model that is not a LiteLLM alias name", lambda s: s["agents"][0].update(model="gpt 5; drop")),
     ],
 )
 def test_a_crew_spec_cannot_widen_what_an_agent_may_do(why: str, mutate: Any) -> None:

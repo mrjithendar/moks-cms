@@ -33,13 +33,12 @@ function setIn(obj: Json, path: string[], value: Json): Json {
 
 /**
  * What a save sends: the whole document, or (for one area on its own) only that area's sections with their names in
- * `only`, which the server lays over the stored document. The API key travels only with the section that shows it.
+ * `only`, which the server lays over the stored document.
  */
-export function saveBody(value: Json, sections: string[] | null, llmApiKey: string, clearLlmKey: boolean): Record<string, unknown> {
+export function saveBody(value: Json, sections: string[] | null): Record<string, unknown> {
   const doc = value as Record<string, Json>;
-  if (!sections) return { ...doc, ...(llmApiKey ? { llmApiKey } : {}), clearLlmKey };
-  const withKey = sections.includes("llm");
-  return { ...Object.fromEntries(sections.filter((s) => s in doc).map((s) => [s, doc[s]])), only: sections, ...(withKey && llmApiKey ? { llmApiKey } : {}), ...(withKey ? { clearLlmKey } : {}) };
+  if (!sections) return { ...doc };
+  return { ...Object.fromEntries(sections.filter((s) => s in doc).map((s) => [s, doc[s]])), only: sections };
 }
 
 type Ctx = { changed: Set<string>; defaults: Json; issues: Record<string, string[]>; onChange: (path: string[], v: Json) => void };
@@ -147,15 +146,9 @@ function Field({ path, value, ctx }: { path: string[]; value: Json; ctx: Ctx }) 
  */
 export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSettings; defaults?: PublicSeoSettings; only?: string }) {
   const router = useRouter();
-  const { llmKeySet, ...editableInitial } = initial;
-  const saved = editableInitial as unknown as Json;
-  const defaultsJson = useMemo(() => {
-    if (!defaults) return {} as Json;
-    return Object.fromEntries(Object.entries(defaults).filter(([k]) => k !== "llmKeySet")) as unknown as Json;
-  }, [defaults]);
+  const saved = initial as unknown as Json;
+  const defaultsJson = useMemo(() => (defaults ?? {}) as unknown as Json, [defaults]);
   const [value, setValue] = useState<Json>(saved);
-  const [llmApiKey, setKey] = useState("");
-  const [clearLlmKey, setClear] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string; issues?: string[] } | null>(null);
   const sections = Object.keys(value as Record<string, Json>);
@@ -171,7 +164,7 @@ export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSe
   const tab = only ?? picked ?? (tabs.some((t) => t.id === hashTab) ? hashTab : (tabs[0]?.id ?? "data"));
 
   const changed = useMemo(() => new Set(changedPaths(saved, value)), [saved, value]);
-  const dirty = changed.size > 0 || Boolean(llmApiKey) || clearLlmKey;
+  const dirty = changed.size > 0;
   useUnsavedChanges(dirty);
   const issues = useMemo(() => issuesByPath(result?.ok === false ? (result.issues ?? []) : []), [result]);
   const countIn = (t: { sections: string[] }, paths: Iterable<string>) => [...paths].filter((p) => t.sections.includes(p.split(".")[0]!)).length;
@@ -198,12 +191,10 @@ export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSe
         e.preventDefault();
         setBusy(true);
         setResult(null);
-        const res = await fetch("/api/admin/seo/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(saveBody(value, only ? (tabs[0]?.sections ?? []) : null, llmApiKey, clearLlmKey)) }).catch(() => null);
+        const res = await fetch("/api/admin/seo/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(saveBody(value, only ? (tabs[0]?.sections ?? []) : null)) }).catch(() => null);
         const data = (await res?.json().catch(() => ({}))) as { error?: string; issues?: string[] } | undefined;
         setBusy(false);
         if (res?.ok) {
-          setKey("");
-          setClear(false);
           setResult({ ok: true, text: "Saved." });
           router.refresh();
         } else {
@@ -256,20 +247,6 @@ export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSe
                   <Field key={k} path={[section, k]} value={leaf} ctx={ctx} />
                 ))}
               </div>
-              {section === "llm" && (
-                <div className="mt-4 grid gap-2 border-t border-line pt-4 text-sm">
-                  <p className="text-fg-muted">API key: {llmKeySet ? "saved (encrypted)" : "not saved; the provider's environment variable is used if set"}. Bedrock uses the pod&apos;s AWS credentials; Ollama (OpenAI-compatible base URL on localhost or in-cluster) needs none.</p>
-                  <label className="grid gap-1 text-xs text-fg-subtle">
-                    New API key (write-only)
-                    <input type="password" autoComplete="off" value={llmApiKey} onChange={(e) => setKey(e.target.value)} className="min-h-9 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg" />
-                  </label>
-                  {llmKeySet && (
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" checked={clearLlmKey} onChange={(e) => setClear(e.target.checked)} /> Remove the saved key
-                    </label>
-                  )}
-                </div>
-              )}
             </Card>
           ))}
         </div>
@@ -291,7 +268,7 @@ export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSe
 
       <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface/95 px-4 py-3 shadow-sm backdrop-blur">
         <p className="text-sm text-fg-muted" aria-live="polite">
-          {dirty ? `${changed.size + (llmApiKey || clearLlmKey ? 1 : 0)} unsaved change${changed.size + (llmApiKey || clearLlmKey ? 1 : 0) === 1 ? "" : "s"}` : "All changes saved"}
+          {dirty ? `${changed.size} unsaved change${changed.size === 1 ? "" : "s"}` : "All changes saved"}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -300,8 +277,6 @@ export function SettingsForm({ initial, defaults, only }: { initial: PublicSeoSe
             disabled={!dirty || busy}
             onClick={() => {
               setValue(saved);
-              setKey("");
-              setClear(false);
               setResult(null);
             }}
           >

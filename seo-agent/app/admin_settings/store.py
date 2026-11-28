@@ -1,14 +1,14 @@
 """The admin-editable settings store: values an admin saved from the web app, laid over the deployment's environment.
 
 - Stored in the agent's own table `seo_agent_settings` (key, value jsonb, updated_by, updated_at), created at start-up
-  like `seo_agent_llm_budgets`: no web app migration. The key is the environment-variable name.
+  by the agent itself: no web app migration. The key is the environment-variable name.
 - Precedence: the admin's saved value, then the environment variable, then the default in app/config.py. Clearing a
   field ("use the deployment's value") deletes its row.
 - Set through the internal API: `GET /admin-settings` (schema, effective values, where each comes from, restart
   pending) and `PUT /admin-settings/{group}` (validated against the registry, all or nothing).
 - Secrets are sealed (secrets.py) and never returned: the API says only whether one is set.
 
-Reading follows app/llm_budgets.py: a database error before the first successful read means the deployment's values;
+Reading: a database error before the first successful read means the deployment's values;
 after one, an outage keeps the last known values, so it never silently reverts a saved setting.
 """
 

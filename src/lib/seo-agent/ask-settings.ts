@@ -16,7 +16,7 @@ import { agentEnabled } from "./endpoint";
  * - the seo-agent, which answers the questions, is found and on (endpoint.ts agentStatus());
  * - `enabled` here: the admin's switch, applied without a restart.
  * All three must be on. The seo-agent reads the same row (seo-agent/app/ask_runtime.py) for the fields it owns:
- * enabled, audience, dailyBudgetUsd, cacheTtlSeconds, answerLength, fallbackMessage and conversation.{followUps, turns,
+ * enabled, audience, cacheTtlSeconds, answerLength, fallbackMessage and conversation.{followUps, turns,
  * pageContext, feedback}. Keep the defaults in step.
  */
 export const ASK_SETTINGS_KEY = "ask_blog";
@@ -87,7 +87,6 @@ export const askSettingsSchema = z.object({
     maxQuestion: int(50, ASK_LIMITS.maxQuestion),
   }),
   /** Daily spend cap in USD. The seo-agent never goes above its own ASK_BLOG_DAILY_BUDGET_USD, whatever is saved here. */
-  dailyBudgetUsd: z.coerce.number().min(0.05).max(50),
   /** How long an answer is reused for the same question (0 = never). */
   cacheTtlSeconds: int(0, 86_400),
   answerLength: z.enum(ANSWER_LENGTHS),
@@ -110,7 +109,6 @@ export const DEFAULT_ASK_SETTINGS: AskSettings = {
     examples: [],
   },
   limits: { perMinute: ASK_LIMITS.perMinute, perDay: ASK_LIMITS.perDay, maxQuestion: ASK_LIMITS.maxQuestion },
-  dailyBudgetUsd: 1,
   cacheTtlSeconds: 900,
   answerLength: "standard",
   fallbackMessage: "There is no article on this yet.",
@@ -176,7 +174,7 @@ export async function saveAskSettings(raw: unknown, actorId: string): Promise<{ 
 }
 
 export type AskStatus = {
-  /** Today's (UTC) Ask the Blog spend, as the agent's budget guard counts it. */
+  /** Today's (UTC) Ask the Blog spend: what LiteLLM charged for its calls. Its limit is the Ask key's budget in LiteLLM (D-110). */
   spentTodayUsd: number;
   /** Last 7 days, from the question log. */
   week: { total: number; answered: number; fallback: number; refused: number; cached: number; followUps: number; helpful: number; notHelpful: number };

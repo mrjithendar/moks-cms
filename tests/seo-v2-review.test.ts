@@ -5,7 +5,7 @@ import { rowsOf } from "@/db/rows";
 import type { Actor } from "@/lib/posts";
 import { freshDb } from "./db-helpers";
 import { settingsInput } from "./seo-fixtures";
-import { ARTICLE_BODY, fakeAnthropic, output, seedArticle, seedRecommendation } from "./seo-v2-fixtures";
+import { ARTICLE_BODY, fakeLiteLlm, output, seedArticle, seedRecommendation, useLiteLlm } from "./seo-v2-fixtures";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
@@ -31,7 +31,7 @@ beforeEach(async () => {
   await db.insert(schema.authorProfile).values({ userId: "admin", slug: "admin", displayName: "Admin" });
   await saveSeoSettings(settingsInput(), "admin");
   articleId = (await seedArticle(db, { body: BODY })).id;
-  process.env.ANTHROPIC_API_KEY = "sk-ant-test-not-real";
+  useLiteLlm();
 });
 afterEach(() => {
   process.env = { ...env };
@@ -41,7 +41,7 @@ afterEach(() => {
 async function readyDraft(extra: Record<string, unknown>[] = []) {
   await seedRecommendation(db, articleId, "low_ctr");
   await seedRecommendation(db, articleId, "striking_distance");
-  const api = fakeAnthropic({
+  const api = fakeLiteLlm({
     answers: [
       output([
         { type: "title", before: TITLE, after: "Kubernetes ingress TLS with cert-manager" },

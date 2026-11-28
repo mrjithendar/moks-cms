@@ -83,7 +83,7 @@ describe("settings document", () => {
     expect((await issues({ audience: "admins" })).join()).toContain("audience");
     expect((await issues({ limits: { perMinute: 10, perDay: 5, maxQuestion: 500 } })).join()).toContain("limits.perDay");
     expect((await issues({ limits: { perMinute: 6, perDay: 60, maxQuestion: 5000 } })).join()).toContain("limits.maxQuestion");
-    expect((await issues({ dailyBudgetUsd: 500 })).join()).toContain("dailyBudgetUsd");
+    expect(DEFAULT_ASK_SETTINGS).not.toHaveProperty("dailyBudgetUsd"); // D-110: the limit is the Ask key's budget in LiteLLM
     expect((await issues({ copy: { ...DEFAULT_ASK_SETTINGS.copy, examples: ["one?", "two?", "three?", "four?", "five?"] } })).join()).toContain("copy.examples");
     expect((await issues({ copy: { ...DEFAULT_ASK_SETTINGS.copy, examples: ["Same question?", "same question?"] } })).join()).toContain("copy.examples");
     expect((await issues({ copy: { ...DEFAULT_ASK_SETTINGS.copy, intro: "two\nlines" } })).join()).toContain("copy.intro");

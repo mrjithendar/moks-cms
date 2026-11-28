@@ -270,7 +270,7 @@ class ReportCrew:
         cfg = await crew_config.load("report", self.web)
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
-            agents = build_agents([a for a in cfg.agents() if a.key == "analyst"], self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=cfg.prompt_version, crew="report", default_model=self.settings.classify_model)
+            agents = build_agents([a for a in cfg.agents() if a.key == "analyst"], self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=cfg.prompt_version, crew="report", default_model=self.settings.llm_model_fast)
             kind = report.get("type", "weekly")
             task = Task(
                 description=(
@@ -297,7 +297,7 @@ class ReportCrew:
 
         def build(loop: asyncio.AbstractEventLoop, run: CrewRun) -> tuple[Any, list[Any]]:
             # Analysis is writing work: the drafting model by default (the console sets another per agent).
-            agents = build_agents([a for a in cfg.agents() if a.key == "site_analyst"], self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=cfg.prompt_version, crew="report", default_model=self.settings.draft_model)
+            agents = build_agents([a for a in cfg.agents() if a.key == "site_analyst"], self.settings, self.llm, loop, run, ctx, draft_id=None, purpose="report", prompt_version=cfg.prompt_version, crew="report", default_model=self.settings.llm_model)
             rng = dataset.get("range") or {}
             period = f"{rng.get('start')} to {rng.get('end')} ({rng.get('label') or rng.get('preset') or 'custom'})"
             cats = ", ".join(str(c.get("label")) for c in dataset.get("categories") or []) or "no category"

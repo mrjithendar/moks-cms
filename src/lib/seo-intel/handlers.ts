@@ -1,4 +1,4 @@
-import { pollDraftBatches, weeklyBatch } from "./drafts";
+import { weeklyDrafts } from "./drafts";
 import { registerSeoHandler } from "./jobs";
 import { refreshKeywords, trackedAlerts } from "./keywords";
 import { sendDraftDigest } from "./notify";
@@ -30,11 +30,11 @@ registerSeoHandler("drafts_weekly", async () => {
   // Ask the Blog gaps are re-clustered weekly, whatever the orchestrator.
   await (await import("../seo-agent/gaps")).clusterAskGaps().catch(() => 0);
   // v4: in crewai mode this job type is never scheduled here (the weekly_recommendations_flow CronJob owns it); a
-  // manual "Run now" starts that flow instead of the v2 batch.
+  // manual "Run now" starts that flow instead of the web app's own weekly drafts.
   const viaFlow = await (await import("../seo-agent/orchestrate")).weekly("sync page");
   if (viaFlow) return { status: "succeeded", rows: 0, detail: { orchestrator: "crewai", runId: viaFlow.run_id, existing: viaFlow.existing } };
-  const r = await weeklyBatch();
-  return { status: r.skipped && r.skipped !== "nothing_to_do" ? "skipped" : "succeeded", rows: r.submitted, detail: r, ...(r.skipped === "budget" ? { error: "Monthly LLM budget reached; weekly drafting paused.", errorCode: "budget" } : {}) };
+  const r = await weeklyDrafts();
+  return { status: r.skipped && r.skipped !== "nothing_to_do" ? "skipped" : "succeeded", rows: r.queued, detail: r };
 });
 registerSeoHandler("auto_links", async (ctx) => {
   const r = await (await import("./auto-links")).runAutoLinks(ctx.db, ctx.settings, ctx.now);
@@ -43,10 +43,6 @@ registerSeoHandler("auto_links", async (ctx) => {
 registerSeoHandler("link_check", async (ctx) => {
   const r = await (await import("./broken-links")).runLinkCheck(ctx.db, ctx.settings, ctx.now);
   return { status: "succeeded", rows: r.checked, detail: r };
-});
-registerSeoHandler("drafts_poll", async () => {
-  const r = await pollDraftBatches();
-  return { status: "succeeded", rows: r.processed, detail: r };
 });
 registerSeoHandler("drafts_digest", async (ctx) => {
   const r = await sendDraftDigest(ctx.now);

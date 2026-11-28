@@ -25,7 +25,7 @@ from app.embeddings import (
     question_identifiers,
 )
 from app.index import Hit, MemoryRetriever
-from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+from app.llm import FakeLlm, MemorySpendStore, UsageLedger
 from app.main import memory_container
 from app.rag_eval import BLOG_DIR as BLOG  # tests/fixtures/rag_corpus
 from app.rag_eval import EVAL_PATH, LocalIndex, evaluate, load_articles, load_eval_set, render_markdown, slug_of
@@ -238,7 +238,7 @@ async def test_answer_prompt_gets_only_the_graded_excerpts_and_citations_map_bac
         Hit("a2", "Istio on minikube", "/blog/istio", "Istio › mTLS", "mtls", "STRICT mTLS between sidecars renews workload certificates daily.", 0.8),
         Hit("a3", "Terraform state", "/blog/tf", "State › Locking", "locking", "Use S3 native locking to renew nothing.", 0.7),
     ]
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="2 is about mesh certs", relevant_excerpts=[2]))
     llm.queue("ask_answer", "Istio rotates workload certificates daily under STRICT mTLS [1].")
     c = memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits))

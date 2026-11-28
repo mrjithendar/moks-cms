@@ -167,8 +167,7 @@ export async function decideProposal(id: string, decision: "approve" | "dismiss"
   if (!p || p.status !== "proposed") return null;
   let settingsChange: { before: unknown; after: unknown } | null = null;
   if (decision === "approve") {
-    const { llmKeySet: _unused, ...doc } = publicSettings(await getSeoSettings());
-    void _unused;
+    const doc = publicSettings(await getSeoSettings());
     settingsChange = await saveSeoSettings({ ...doc, weights: { ...doc.weights, ...(j(p.weights) as Record<string, number>) } }, actor);
   }
   await db.execute(sql`update seo_ml_weight_proposals set status = ${decision === "approve" ? "approved" : "dismissed"}, decided_by = ${actor}, decided_at = now() where id = ${id}`);

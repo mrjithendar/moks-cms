@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import AgentLimitsSection from "./agent-limits";
 import AskTheBlogSection from "./ask-the-blog";
-import LlmSection from "./llm";
 import McpSection from "./mcp";
 import MlSection from "./ml";
 import SeoAiSection from "./seo-ai";
@@ -26,7 +25,6 @@ export type SectionRender = (params: Record<string, string | undefined>) => Reac
 export const AI_SEO_RENDERS: Record<string, SectionRender> = {
   "agent-limits": AgentLimitsSection,
   runs: SeoRunsSection,
-  llm: LlmSection,
   ai: SeoAiSection,
   ml: MlSection,
   "ask-the-blog": AskTheBlogSection,

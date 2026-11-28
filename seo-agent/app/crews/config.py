@@ -36,7 +36,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ..llm import PRICES
 from .common import AgentDef
 
 log = logging.getLogger("seo_agent.crews")
@@ -44,7 +43,11 @@ log = logging.getLogger("seo_agent.crews")
 FETCH_TIMEOUT_S = 5.0
 CREW_IDS = ("editorial", "optimization", "report", "promotion", "news")
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
-MODEL_RE = r"^claude-[a-z0-9][a-z0-9.-]{2,60}$"
+# A LiteLLM model alias (app/config.py ALIAS_RE). Which provider and model it stands for is set in LiteLLM.
+MODEL_RE = r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$"
+# The aliases offered for an agent's model: the service's own two (LITELLM_MODEL, LITELLM_MODEL_FAST) and the ones
+# LiteLLM lists for the agent's key (GET /v1/models, refreshed in the background by app/main.py).
+_ALIASES: dict[str, tuple[str, ...]] = {"own": ("moks-cms-default", "moks-cms-fast"), "listed": ()}
 
 # A test run's configuration, per crew (crew_test_flow sets it for its own task only).
 CREW_OVERRIDE: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar("seo_crew_override", default=None)
@@ -76,7 +79,7 @@ class CrewDef:
     tasks: tuple[TaskDef, ...]
     replay: tuple[str, ...]  # flows whose runs a test run can replay (crew_test_flow)
     tools: tuple[str, ...] = ()  # tools an agent of this crew may be given; default: every tool its agents have in code
-    default_models: str = "draft"  # which setting gives the crew's default model: draft | classify | profile
+    default_models: str = "draft"  # the crew's default alias: draft (LITELLM_MODEL) | classify (LITELLM_MODEL_FAST) | profile (the writing profile's)
 
     def allowed_tools(self) -> tuple[str, ...]:
         return self.tools or tuple(dict.fromkeys(t for a in self.agents for t in a.tools))
@@ -120,13 +123,23 @@ class OverlayError(ValueError):
         self.issues = issues
 
 
+def remember_aliases(own: tuple[str, ...] | None = None, listed: list[str] | None = None) -> None:
+    """Set the aliases models() offers: the service's own, and/or the ones LiteLLM listed (None keeps the last)."""
+    if own is not None:
+        _ALIASES["own"] = tuple(a for a in own if a)
+    if listed is not None:
+        _ALIASES["listed"] = tuple(listed)
+
+
 def models() -> list[str]:
-    """The models an agent can be set to: the ones this service has prices for (a cost is never guessed)."""
-    return sorted(PRICES)
+    """The model aliases an agent can be set to (for the crew editor): the service's default and fast aliases and
+    whatever LiteLLM lists for the agent's key. Saving accepts any alias name (MODEL_RE): LiteLLM refuses a call to
+    one the key may not use, and the run says so."""
+    return sorted({*_ALIASES["own"], *_ALIASES["listed"]})
 
 
 def validate(crew: CrewDef, data: Any) -> CrewOverlay:
-    """Strict: the shape, then every agent, task, tool, model and placeholder against the crew's code. Raises
+    """Strict: the shape, then every agent, task, tool and placeholder against the crew's code (a model is any alias name). Raises
     OverlayError with readable issues ("agents.writer.tools: …")."""
     try:
         ov = CrewOverlay.model_validate(data or {})
@@ -136,7 +149,6 @@ def validate(crew: CrewDef, data: Any) -> CrewOverlay:
     agents = {a.key for a in crew.agents}
     tasks = {t.key: t for t in crew.tasks}
     allowed = set(crew.allowed_tools())
-    known_models = set(models())
     for key, a in ov.agents.items():
         if key not in agents:
             issues.append(f"agents.{key}: the {crew.crew} crew has no such agent ({', '.join(sorted(agents))})")
@@ -147,8 +159,6 @@ def validate(crew: CrewDef, data: Any) -> CrewOverlay:
                 issues.append(f"agents.{key}.tools: not allowed for this crew: {', '.join(bad)} (allowed: {', '.join(sorted(allowed)) or 'none'})")
             if len(set(a.tools)) != len(a.tools):
                 issues.append(f"agents.{key}.tools: a tool is listed twice")
-        if a.model is not None and a.model not in known_models:
-            issues.append(f"agents.{key}.model: unknown model {a.model} (known: {', '.join(sorted(known_models))})")
     for key, t in ov.tasks.items():
         task = tasks.get(key)
         if task is None:

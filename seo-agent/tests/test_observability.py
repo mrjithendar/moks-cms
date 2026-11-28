@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from app import metrics
-from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+from app.llm import FakeLlm, MemorySpendStore, UsageLedger
 from app.logs import JsonFormatter
 from app.main import memory_container
 from app.tracing import span
@@ -76,7 +76,7 @@ async def test_crew_task_and_tool_spans_nest_under_the_crew(llm: FakeLlm, web: F
 
 
 async def test_a_stopped_crew_marks_its_running_task_failed(web: FakeWebApp, spans) -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(1500, 500))  # 2,000 tokens per call
+    llm = FakeLlm(UsageLedger(MemorySpendStore()), tokens=(1500, 500))  # 2,000 tokens per call
     llm.queue("crew", *scripted(final_json([])))
     r = await crew_with(llm, web, crew_max_tokens_per_run=3000).run(BRIEF)
     assert r.status == "incomplete"

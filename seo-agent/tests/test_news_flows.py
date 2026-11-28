@@ -173,17 +173,12 @@ async def test_safe_ai_image_is_marked_ai_generated(llm: Any) -> None:
     assert b"trainedAlgorithmicMedia" in base64.b64decode(og)
 
 
-async def test_budget_cap_pauses_the_job_without_drafting(llm: Any) -> None:
-    from app.llm_budgets import Budget
+def test_an_old_llm_cap_in_a_job_is_accepted_and_ignored() -> None:
+    # LLM budgets are LiteLLM's (D-110): a job saved with its own LLM caps still loads, without them; image caps stay.
+    from app.news.config import JobConfig
 
-    # The one LLM budget is used up (there is no per-job news LLM cap any more; an old value in the job is ignored).
-    c, web, store = setup(llm, job_cfg={"budget": {"llm_daily_usd": 100}})
-    llm.guard.budget.value = Budget(daily_usd=0.01)
-    llm.guard.store.preexisting_usd = 0.02
-    fr = await run(c, "news_job_flow", {"job_id": JOB})
-    assert fr["status"] == "paused_budget"
-    nr = news_run(store, fr)
-    assert nr["status"] == "paused_budget" and "budget" in nr["error_summary"] and web.saved == [] and store.step_rows == []
+    b = JobConfig.model_validate({"budget": {"llm_daily_usd": 100, "llm_monthly_usd": 5, "image_daily_usd": 0.5}}).budget
+    assert not hasattr(b, "llm_daily_usd") and not hasattr(b, "llm_monthly_usd") and b.image_daily_usd == 0.5
 
 
 async def test_budget_reached_mid_draft_pauses_that_draft(llm: Any) -> None:

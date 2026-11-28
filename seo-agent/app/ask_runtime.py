@@ -4,8 +4,8 @@ The web app stores one JSON document in the `setting` table (key "ask_blog", mok
 This service reads the fields it owns from the same row, cached for a short time, so a change applies without a
 restart to both entry points: POST /ask (the site widget) and the public MCP `ask_blog` tool.
 
-The environment still has the last word: ASK_BLOG_ENABLED=false switches the assistant off whatever is saved, and
-ASK_BLOG_DAILY_BUDGET_USD is a ceiling the saved budget cannot exceed (app/ask.py applies both).
+The environment still has the last word: ASK_BLOG_ENABLED=false switches the assistant off whatever is saved. Its
+spend is limited in LiteLLM (Ask the Blog's own key, LITELLM_ASK_API_KEY), not here (D-110).
 
 Fail closed: no row, a row that is not valid, or a database error before anything was ever read all mean "off".
 After a successful read, a later database error keeps the last known options (an outage must not flip the switch).
@@ -27,8 +27,7 @@ class AskOptions:
     # Defaults mirror DEFAULT_ASK_SETTINGS in the web app: off, signed-in readers only.
     enabled: bool = False
     audience: str = "members"
-    # None = use the environment's value (ASK_BLOG_DAILY_BUDGET_USD / ASK_BLOG_CACHE_TTL_SECONDS).
-    daily_budget_usd: float | None = None
+    # None = use the environment's value (ASK_BLOG_CACHE_TTL_SECONDS).
     cache_ttl_s: int | None = None
     answer_length: str = "standard"
     fallback_message: str = ""
@@ -51,7 +50,6 @@ def parse_options(value: Any) -> AskOptions:
     or of the wrong type falls back to the safe default for that field (and `enabled` must be exactly true)."""
     if not isinstance(value, dict):
         return AskOptions()
-    budget = value.get("dailyBudgetUsd")
     ttl = value.get("cacheTtlSeconds")
     audience = value.get("audience")
     length = value.get("answerLength")
@@ -71,7 +69,6 @@ def parse_options(value: Any) -> AskOptions:
         feedback=flag("feedback", d.feedback),
         enabled=value.get("enabled") is True,
         audience=audience if isinstance(audience, str) and audience in AUDIENCES else "members",
-        daily_budget_usd=float(budget) if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget >= 0 else None,
         cache_ttl_s=int(ttl) if isinstance(ttl, (int, float)) and not isinstance(ttl, bool) and 0 <= ttl <= 86_400 else None,
         answer_length=length if isinstance(length, str) and length in ANSWER_LENGTHS else "standard",
         fallback_message=_one_line(value.get("fallbackMessage"), 200),

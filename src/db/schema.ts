@@ -1115,7 +1115,7 @@ export const practiceAiUsage = pgTable(
     problemId: uuid("problem_id"),
     inputTokens: integer("input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
-    /** Estimated cost in millionths of a US dollar, from the per-million-token prices in the settings. */
+    /** What LiteLLM charged for the call (x-litellm-response-cost), in millionths of a US dollar; 0 when it did not say. */
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull().default(0),
     latencyMs: integer("latency_ms").notNull().default(0),
     /** ok | error | quota | disabled */

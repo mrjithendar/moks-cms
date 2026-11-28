@@ -6,7 +6,7 @@ import { Empty } from "@/components/seo/ui";
 import { buttonClass } from "@/components/ui/form";
 import { reviewQueue, type QueueFilter } from "@/lib/seo-intel/drafts";
 import { unreviewedArticles } from "@/lib/seo-intel/review-scan";
-import { claudeConfig, getSeoSettings } from "@/lib/seo-intel/settings";
+import { llmConfig } from "@/lib/llm/client";
 
 export const metadata = { title: "Review queue" };
 
@@ -27,15 +27,14 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     sort: sp.sort === "newest" || sp.sort === "oldest" || sp.sort === "changes" ? sp.sort : "priority",
     done: tab === "done",
   };
-  const [queue, articles, news, unreviewed, s] = await Promise.all([
+  const [queue, articles, news, unreviewed] = await Promise.all([
     tab === "unreviewed" ? Promise.resolve([]) : reviewQueue(f),
     reviewQueue({ collection: "blog" }),
     reviewQueue({ collection: "news" }),
     unreviewedArticles({ q: tab === "unreviewed" ? q : undefined }),
-    getSeoSettings(),
   ]);
   const items = queue.filter((i) => (!q || i.title.toLowerCase().includes(q.toLowerCase())) && (!sp.status || i.status === sp.status) && (!sp.kind || i.kind === sp.kind));
-  const keySet = Boolean(claudeConfig(s).apiKey);
+  const keySet = llmConfig() !== null;
   const link = (patch: Record<string, string>) => `?${new URLSearchParams(Object.entries({ ...sp, ...patch }).filter(([, v]) => v) as [string, string][])}`;
   const input = "min-h-11 rounded-md border border-line-strong bg-surface px-2 text-sm text-fg md:min-h-9";
   const counts: Record<Tab, number | null> = { articles: articles.length, news: news.length, unreviewed: unreviewed.length, done: null };
@@ -43,7 +42,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <AdminHeader title="Review queue" description="AI-drafted changes waiting for you. Nothing goes live until you approve an article; approving publishes it and submits it to search engines." />
-      {!keySet && <p role="status" className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg">Needs credentials: set <code>ANTHROPIC_API_KEY</code> to start drafting (docs/seo/MANUAL_SETUP.md). Existing drafts can still be reviewed.</p>}
+      {!keySet && <p role="status" className="mb-4 rounded-lg border border-line bg-surface-muted px-4 py-3 text-sm text-fg">No model is connected: set <code>LITELLM_BASE_URL</code> and <code>LITELLM_API_KEY</code> to start drafting (docs/LLM_GATEWAY.md). Existing drafts can still be reviewed.</p>}
 
       <Card className="mb-6 !p-4">
         <h2 className="mb-2 text-sm font-semibold text-fg">Rescan for re-review</h2>

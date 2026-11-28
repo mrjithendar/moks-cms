@@ -10,7 +10,7 @@ import pytest
 
 from app.embeddings import HashEmbeddings, chunk_markdown, github_slug
 from app.index import MemoryRetriever
-from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+from app.llm import FakeLlm, MemorySpendStore, UsageLedger
 from app.main import memory_container
 from app.schemas import Relevance
 from app.services.ask_pipeline import check_input, guard_answer, normalize_question
@@ -58,7 +58,7 @@ async def test_known_question_cites_the_right_article_section(llm: FakeLlm, web:
     r = await c.ask.ask("How does cert-manager renew certificates?")
     assert r["outcome"] == "answered"
     assert r["citations"] == [{"title": "Ingress and TLS on Kubernetes › cert-manager issuers", "url": "/blog/ingress-tls#cert-manager-issuers", "refs": [1]}]
-    assert llm.calls[0].model == settings().classify_model and llm.calls[1].model == settings().draft_model
+    assert llm.calls[0].model == settings().llm_model_fast and llm.calls[1].model == settings().llm_model
 
 
 async def test_unknown_question_falls_back_with_related_links_and_logs_a_gap(llm: FakeLlm, web: FakeWebApp) -> None:
@@ -121,24 +121,14 @@ async def test_kill_switch_default_off(llm: FakeLlm, web: FakeWebApp) -> None:
     assert r["outcome"] == "disabled" and llm.calls == []
 
 
-async def test_the_daily_public_limit_stops_the_assistant_not_the_admins_work(web: FakeWebApp) -> None:
-    store = MemorySpendStore()
-    store.rows.append({"purpose": "ask_answer", "cost_usd": 1.0})
-    llm = FakeLlm(BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=1.0))
-    r = await memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits())).ask.ask("How does cert-manager renew certificates?")
-    assert r["outcome"] == "budget" and llm.calls == []
-    await llm.guard.ensure("claude-sonnet-5-5", 1000, 1000, "draft")  # readers reaching their limit does not stop drafting
-
-
-async def test_public_spend_counts_in_the_one_llm_budget(web: FakeWebApp) -> None:
+async def test_litellms_budget_for_ask_the_blog_stops_the_assistant_politely(web: FakeWebApp) -> None:
     from app.llm import BudgetExceeded
 
-    store = MemorySpendStore()
-    store.rows.append({"purpose": "ask_answer", "cost_usd": 9.99})  # a month of public answers
-    guard = BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=100.0)
-    with pytest.raises(BudgetExceeded) as e:  # one budget for everything: the assistant's spend is spend
-        await guard.ensure("claude-sonnet-5-5", 4000, 4096, "draft")
-    assert e.value.scope == "llm_monthly" and (await guard.status())["month_spend_usd"] == 9.99
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
+    # LiteLLM refuses the call over Ask the Blog's key budget (HTTP 422 budget_exceeded → BudgetExceeded).
+    llm.queue("ask_grade", BudgetExceeded("litellm_key", "LiteLLM refused the call: the budget of Ask the Blog's key is used up."))
+    r = await memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits())).ask.ask("How does cert-manager renew certificates?")
+    assert r["outcome"] == "budget" and "resting" in r["answer"]
 
 
 async def test_streaming_emits_deltas_then_a_guarded_final(llm: FakeLlm, web: FakeWebApp) -> None:
@@ -257,8 +247,9 @@ def test_stored_settings_parse_tolerantly_and_default_to_off() -> None:
 
     assert parse_options(None) == AskOptions() and AskOptions().enabled is False and AskOptions().audience == "members"
     assert parse_options({"enabled": "true"}).enabled is False  # only a real boolean true switches it on
+    # A daily budget saved before D-110 is ignored: Ask the Blog's budget is its key's, in LiteLLM.
     o = parse_options({"enabled": True, "audience": "everyone", "dailyBudgetUsd": 0.5, "cacheTtlSeconds": 60, "answerLength": "short", "fallbackMessage": "Nothing\non this\x00 yet."})
-    assert o == AskOptions(enabled=True, audience="everyone", daily_budget_usd=0.5, cache_ttl_s=60, answer_length="short", fallback_message="Nothing on this yet.")
+    assert o == AskOptions(enabled=True, audience="everyone", cache_ttl_s=60, answer_length="short", fallback_message="Nothing on this yet.")
     bad = parse_options({"enabled": True, "audience": "admins", "dailyBudgetUsd": -1, "cacheTtlSeconds": True, "answerLength": "essay", "fallbackMessage": 7})
     assert bad == AskOptions(enabled=True)  # every invalid field falls back to its safe default
 
@@ -338,21 +329,6 @@ async def test_signed_in_only_mode_switches_the_public_mcp_tool_off_but_not_the_
     assert (await c.ask.ask("How does cert-manager renew certificates?"))["outcome"] == "answered"  # the web app checked the session
 
 
-async def test_admin_budget_applies_but_never_above_the_environment_ceiling(web: FakeWebApp) -> None:
-    from app.ask_runtime import AskOptions
-
-    store = MemorySpendStore()
-    store.rows.append({"purpose": "ask_answer", "cost_usd": 0.5})
-    llm = FakeLlm(BudgetGuard(store, monthly_usd=10.0, ask_daily_usd=1.0))
-    c = memory_container(settings(), llm=llm, web=web, retriever=MemoryRetriever(hits()))
-    c.ask.runtime.value = AskOptions(enabled=True, audience="everyone", daily_budget_usd=0.25)
-    assert (await c.ask.ask("How does cert-manager renew certificates?"))["outcome"] == "budget" and llm.guard.ask_daily_usd == 0.25
-    c.ask.runtime.value = AskOptions(enabled=True, audience="everyone", daily_budget_usd=50.0)
-    llm.queue("ask_grade", Relevance(relevant=False, reason="r"))
-    await c.ask.ask("How does cert-manager renew certificates?")
-    assert llm.guard.ask_daily_usd == 1.0  # ASK_BLOG_DAILY_BUDGET_USD is the ceiling
-
-
 async def test_answer_length_changes_the_prompt_the_token_cap_and_the_cache_key(llm: FakeLlm, web: FakeWebApp) -> None:
     from app.ask_runtime import AskOptions
     from app.services.ask_pipeline import ANSWER_RULES, answer_rules, prompt_version
@@ -412,7 +388,7 @@ async def test_follow_up_is_condensed_before_retrieval_and_logged_with_both_form
     r = await c.ask.ask("And which solver does it use?", history=history)
     assert r["outcome"] == "answered"
     condense = next(s for s in llm.calls if s.purpose == "ask_condense")
-    assert "<data" in condense.user and "How does cert-manager renew certificates?" in condense.user and condense.model == c.settings.classify_model
+    assert "<data" in condense.user and "How does cert-manager renew certificates?" in condense.user and condense.model == c.settings.llm_model_fast
     assert c.deps.retriever.queries[-1].startswith("Which ACME solver")  # retrieval sees the standalone question
     row = c.ask.log.rows[-1]
     assert row["question"] == "And which solver does it use?" and row["standalone"].startswith("Which ACME solver")

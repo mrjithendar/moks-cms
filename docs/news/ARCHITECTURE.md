@@ -12,7 +12,7 @@ Where things run:
 | Part | Where | Notes |
 |---|---|---|
 | Flows, ML, crew, quality gates, covers | `moks-seo-agent` (`app/news/`, `app/flows/news.py`) | CrewAI Flows are the only orchestrator; ML steps are plain Python inside them |
-| Fetching (SSRF-safe, robots.txt), CMS drafts, media storage, notifications | web app callback API (`src/lib/news/callbacks.ts`) | the agent's egress stays the Anthropic API (+ OpenAI Images only if configured) |
+| Fetching (SSRF-safe, robots.txt), CMS drafts, media storage, notifications | web app callback API (`src/lib/news/callbacks.ts`) | the agent's model calls go only to LiteLLM (`rag/litellm:4000`, D-110, [LLM_GATEWAY.md](../LLM_GATEWAY.md)); its other egress is OpenAI Images, only if configured |
 | Admin UI, admin API, review, publish additions, corrections, feed | web app (`src/app/admin/news`, `src/app/api/admin/news`, `src/lib/news`) | admin-only, same-origin, rate-limited, audited |
 | Scheduling | CronJobs `news-dispatch` (15 min), `news-train`, `news-style-review` | `kubernetes/seo-agent-61-news-triggers.yaml` |
 | Data | the shared Postgres, migration `0017_news_desk.sql` | 17 tables, additive; manual rollback script |
@@ -60,7 +60,8 @@ callback; a static test and a runtime test check that (`tests/test_news_flows.py
 - One active draft per story per job: `news_articles` partial unique index; another job's open draft or any published
   article for the story is a duplicate.
 - Caps (per run, per day in the job's time zone, global per day) are counted from `news_articles` and the run's own
-  selections; budgets are checked before every LLM call and image generation (`app/news/budget.py`).
+  selections; the image budgets are checked before every image generation (`app/news/budget.py`). LLM calls have no
+  news cap: LiteLLM's budgets apply to them (D-110).
 - Rerun / "retry failed drafts" are idempotent: covered stories are skipped; only the parent run's selected stories that
   did not reach review are drafted again.
 

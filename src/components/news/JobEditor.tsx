@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Alert, Button, Input, Select, Textarea } from "@/components/ui/form";
+import { AliasPicker } from "@/components/seo/AliasPicker";
 import { MAX_DEFAULT_CATEGORIES } from "@/lib/news/limits";
 import { Field } from "./Fld";
 import { api, when } from "./api";
@@ -217,16 +218,11 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               </div>
               <Field label="Author (author profile slug)" hint="Blank = the first admin."><Input value={String(c.author ?? "")} onChange={(e) => setC("author", e.target.value || null)} /></Field>
               <details className="rounded-lg border border-line p-4">
-                <summary className="cursor-pointer text-sm font-semibold">Models per agent</summary>
+                <summary className="cursor-pointer text-sm font-semibold">Models per agent (LiteLLM aliases)</summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {AGENTS.map((a) => (
                     <Field key={a} label={a.replace(/_/g, " ")}>
-                      <Select value={c.models[a] ?? ""} onChange={(e) => setF((x) => { const m = { ...x.config.models }; if (!e.target.value) delete m[a]; else m[a] = e.target.value; return { ...x, config: { ...x.config, models: m } }; })}>
-                        <option value="">Default</option>
-                        <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
-                        <option value="claude-haiku-5-5">Claude Haiku 5.5</option>
-                        <option value="claude-opus-5-5">Claude Opus 5.5</option>
-                      </Select>
+                      <AliasPicker value={c.models[a] ?? ""} onChange={(v) => setF((x) => { const m = { ...x.config.models }; if (!v) delete m[a]; else m[a] = v; return { ...x, config: { ...x.config, models: m } }; })} />
                     </Field>
                   ))}
                 </div>
@@ -305,7 +301,7 @@ export function JobEditor({ id, initial, versions, sources, topics, categories, 
               {num("Images per day (USD)", Number(c.budget.image_daily_usd), (n) => setNested("budget", "image_daily_usd", n), { min: 0, max: 100, step: 0.05 })}
               {num("Images per month (USD)", Number(c.budget.image_monthly_usd), (n) => setNested("budget", "image_monthly_usd", n), { min: 0, max: 1000, step: 0.5 })}
               {num("Tokens per draft (crew cap)", Number(c.budget.max_tokens_per_draft), (n) => setNested("budget", "max_tokens_per_draft", n), { min: 10_000, max: 400_000, step: 1000 })}
-              <p className="text-sm text-fg-subtle sm:col-span-2">These are image caps and a token limit per draft. LLM spend has no cap per flow: it counts in the one LLM budget (Settings → AI &amp; models → LLM providers &amp; budget), and a run stops as “paused (budget)” when that is used up or an image cap is reached. The global image caps (Settings) apply too.</p>
+              <p className="text-sm text-fg-subtle sm:col-span-2">These are image caps and a token limit per draft. LLM spend has no cap per flow: LiteLLM&apos;s budgets apply (Settings → AI &amp; models → LiteLLM), and a run stops as “paused (budget)” when LiteLLM refuses a call for its budget or an image cap is reached. The global image caps (Settings) apply too.</p>
             </div>
           )}
           {tab === "Review" && (

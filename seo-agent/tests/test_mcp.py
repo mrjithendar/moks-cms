@@ -182,7 +182,7 @@ async def test_admin_tools_call_services_audit_and_link_to_review(llm, web) -> N
         assert payload(await s.call_tool("get_keyword_opportunities", {"view": "striking"}))["rows"] == []
         assert payload(await s.call_tool("get_page_report", {"slug": "ingress-tls"}))["name"] == "page-report"
         assert payload(await s.call_tool("get_audit_issues", {"severity": "error"}))["name"] == "audit-issues"
-        assert "budget" in payload(await s.call_tool("get_llm_usage", {}))
+        assert "budgets" in payload(await s.call_tool("get_llm_usage", {}))  # LiteLLM's budgets (None: LiteLLM not configured)
         assert payload(await s.call_tool("get_ai_visibility", {}))["prompts"] == []
         assert payload(await s.call_tool("get_tracked_keywords", {}))["rows"] == []
         assert payload(await s.call_tool("get_backlinks", {}))["name"] == "backlinks"
@@ -218,13 +218,13 @@ async def test_kickoff_rate_limit(llm, web) -> None:
     assert [x.isError for x in ok] == [False, False, True] and "limited" in ok[2].content[0].text
 
 
-async def test_kickoff_respects_the_budget(llm, web) -> None:
-    llm.guard.store.preexisting_usd = 10.0
+async def test_kickoff_leaves_budgets_to_litellm(llm, web) -> None:
+    # No budget check of its own any more (D-110): LiteLLM refuses a call over a budget and the run pauses.
     _c, app, _a, _v = edge(llm, web)
     async with as_admin(["seo:read", "seo:flows"]), create_connected_server_and_client_session(app.state.admin) as s:
-        r = await s.call_tool("kickoff_flow", {"flow_name": "optimize_article_flow", "inputs": {"article_id": ARTICLE, "draft_id": DRAFT}})
-        g = await s.call_tool("kickoff_flow", {"flow_name": "gsc_sync_flow"})  # no LLM: still allowed
-    assert r.isError and "budget" in r.content[0].text and not g.isError
+        r = await s.call_tool("kickoff_flow", {"flow_name": "report_flow", "inputs": {"period": "weekly"}})
+        g = await s.call_tool("kickoff_flow", {"flow_name": "gsc_sync_flow"})
+    assert not r.isError and not g.isError
 
 
 async def test_errors_are_safe(llm, web) -> None:

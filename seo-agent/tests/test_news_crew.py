@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+from app.llm import FakeLlm, MemorySpendStore, UsageLedger
 from app.news.crew import AGENTS, ROLES, NewsDeskCrew
 from app.news.schemas import NewsDraft
 from app.tools import NEWS_TOOLS, ToolContext, ToolError, build_tools
@@ -50,7 +50,7 @@ async def go(c: NewsDeskCrew, max_tokens: int = 100_000) -> Any:
 async def test_crew_produces_a_news_draft_with_a_real_tool_call() -> None:
     web = NewsWeb()
     web.feeds[PRIMARY] = "<html><title>Kubernetes v1.35</title><main>Release notes for 1.35.</main></html>"
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     d = good_draft([ITEM["url"], PRIMARY, "https://made-up.example.com/never-fetched"])
     llm.queue("news.crew", *script(d))
     r = await go(crew(llm, web))
@@ -64,7 +64,7 @@ async def test_crew_produces_a_news_draft_with_a_real_tool_call() -> None:
 
 
 async def test_token_cap_returns_an_incomplete_draft() -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1), tokens=(8000, 2000))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()), tokens=(8000, 2000))
     llm.queue("news.crew", *script(good_draft(), with_tool=False))
     r = await go(crew(llm, NewsWeb()), max_tokens=25_000)
     assert r.status == "incomplete" and r.draft.incomplete and "token cap" in (r.draft.incomplete_reason or "")

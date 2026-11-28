@@ -3,12 +3,13 @@ import { z } from "zod";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { log } from "../log";
-import { claudeJson } from "./claude";
+import { modelJson } from "./model-calls";
 import { dataBlock, safeQueries } from "./llm";
 import { mlDecision, mlIntents, mlQueryClusters } from "./ml";
 import { sendSeoAlert } from "./notify";
 import { expectedCtr as fallbackCtr } from "./queries";
-import { claudeConfig, claudeReady, getSeoSettings, type SeoSettings } from "./settings";
+import { getSeoSettings, type SeoSettings } from "./settings";
+import { llmConfig } from "../llm/client";
 import { addDays } from "./sqlutil";
 
 /**
@@ -21,7 +22,7 @@ import { addDays } from "./sqlutil";
  *   labelled "estimate, based on your site's CTR curve".
  * - Views: all, striking distance, low CTR, rising, new, lost/declining, cannibalization, content gaps.
  * - Clusters: token-set similarity (no embedding store); parent topic = the cluster's top query.
- * - Intent: Claude Haiku (SEO_CLASSIFY_MODEL) in small batches, cached per query; rules fallback.
+ * - Intent: LiteLLM's fast alias (LITELLM_MODEL_FAST) in small batches, cached per query; rules fallback.
  * All sorting and pagination happen in SQL.
  */
 export const VIEWS = ["all", "striking", "low_ctr", "rising", "new", "lost", "cannibalization", "gaps"] as const;
@@ -409,9 +410,9 @@ export async function refreshKeywords(deps: { fetchImpl?: typeof fetch; now?: Da
   const known = new Set(rowsOf<{ query: string }>(await db.execute(sql`select query from seo_query_intents`)).map((r) => r.query));
   let todo = top.map((t) => t.query).filter((q) => !known.has(q));
   const brand = brandRegex(s);
-  const cfg = claudeConfig(s);
+  const llmCfg = llmConfig();
   let byLlm = 0;
-  // v5: the distilled intent classifier answers when it is in use and confident; the rest go to Haiku (whose answers
+  // v5: the distilled intent classifier answers when it is in use and confident; the rest go to the fast model (whose answers
   // become the classifier's next training data) or the rules.
   let byModel = 0;
   const intentDecision = await mlDecision(db, "intent");
@@ -428,9 +429,9 @@ export async function refreshKeywords(deps: { fetchImpl?: typeof fetch; now?: Da
     const chunk = todo.slice(i, i + batch);
     const safe = safeQueries(chunk);
     let llm: Map<string, Intent> | null = null;
-    if (s.keywords.classifyWithLlm && claudeReady(cfg) && safe.length) {
-      const res = await claudeJson(db, cfg, {
-        model: cfg.classifyModel,
+    if (s.keywords.classifyWithLlm && llmCfg && safe.length) {
+      const res = await modelJson(db, {
+        model: llmCfg.modelFast,
         purpose: "intent",
         promptVersion: INTENT_PROMPT_VERSION,
         call: {
@@ -439,21 +440,20 @@ export async function refreshKeywords(deps: { fetchImpl?: typeof fetch; now?: Da
           user: `Classify each query.\n\n${dataBlock("queries", safe)}`,
           schema: intentJsonSchema,
           maxTokens: 4000,
-          effort: "low",
         },
         schema: intentSchema,
         check: (v) => (v.items.filter((x) => safe.includes(x.query)).length < Math.ceil(safe.length * 0.9) ? ["return one item for each query, copied exactly"] : []),
         fetchImpl: deps.fetchImpl,
-        now: deps.now,
+        config: llmCfg,
       });
       if (res.ok) {
         llm = new Map(res.value.items.filter((x) => safe.includes(x.query)).map((x) => [x.query, x.intent]));
         byLlm += llm.size;
-      } else if (res.reason === "budget") log.info("intent classification paused by budget", { operation: "seo_intent", outcome: "budget" });
+      } else if (res.reason === "budget") log.info("intent classification paused by the LiteLLM budget", { operation: "seo_intent", outcome: "budget" });
     }
     for (const q of chunk) {
       const viaLlm = llm?.get(q);
-      await db.execute(sql`insert into seo_query_intents (query, intent, source, model, prompt_version) values (${q}, ${viaLlm ?? intentByRules(q, brand)}, ${viaLlm ? "llm" : "rules"}, ${viaLlm ? cfg.classifyModel : null}, ${viaLlm ? INTENT_PROMPT_VERSION : null}) on conflict (query) do nothing`);
+      await db.execute(sql`insert into seo_query_intents (query, intent, source, model, prompt_version) values (${q}, ${viaLlm ?? intentByRules(q, brand)}, ${viaLlm ? "llm" : "rules"}, ${viaLlm ? llmCfg!.modelFast : null}, ${viaLlm ? INTENT_PROMPT_VERSION : null}) on conflict (query) do nothing`);
     }
   }
   return { clustered: clusters.size, classified: todo.length + byModel, byLlm, byModel, clusterSource: clusterDecision.label, intentSource: intentDecision.label };

@@ -105,10 +105,11 @@ The reference is the trace id (kept by the collector); without tracing it falls 
 proxy forwards `x-request-id` to the app (an upstream value is kept only if it matches `[A-Za-z0-9._:-]{8,128}`).
 Errors logged at level `error` also mark the active span failed.
 
-**Custom spans** (`src/lib/trace.ts`): `r2.*`, `s3.*` (legacy), `ses.*`, `bedrock.*` per AWS SDK call;
-`mail.send`; `job <kind>` per queued job; `backup backup`, `backup verify`, `backup restore` (one per backup operation, docs/BACKUPS.md); `startup.migrate`. `fetch` (Gemini, Turnstile, IndexNow)
-is traced by `@vercel/otel`. Database queries are not traced: Drizzle's built-in tracing would put SQL and
-parameters on spans, and postgres.js has no safe hook.
+**Custom spans** (`src/lib/trace.ts`): `r2.*`, `s3.*` (legacy), `ses.*` per AWS SDK call;
+`mail.send`; `job <kind>` per queued job; `backup backup`, `backup verify`, `backup restore` (one per backup operation, docs/BACKUPS.md); `startup.migrate`. `fetch` (LiteLLM, Gemini, Turnstile, IndexNow)
+is traced by `@vercel/otel`. (`bedrock.*` spans went with the Bedrock SDK in D-110: model calls go to LiteLLM.)
+Database queries are not traced: Drizzle's built-in tracing would put SQL and parameters on spans, and postgres.js has
+no safe hook.
 
 ## Alerts (Prometheus, `tools/deploy/minikube/observability/prometheus/files/alerts.yml`)
 

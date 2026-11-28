@@ -17,6 +17,11 @@ export const INTAKES = ["sources", "ideas"] as const;
 export const MAX_NEWS_JOBS = 25; // bounds the `job` metric label (seo-agent app/metrics.py MAX_NEWS_JOBS)
 
 const words = z.array(z.string().trim().min(1).max(80)).max(100);
+/** A LiteLLM alias (D-110): which provider and model answer it is set in LiteLLM, never here. */
+const modelAlias = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,119}$/, "Use a LiteLLM alias, e.g. moks-cms-default.");
+/** Rows saved before D-110 carry LLM $ caps nothing reads (LiteLLM's budgets apply): dropped, so the strict schemas still load them. */
+const RETIRED = new Set(["llm_daily_usd", "llm_monthly_usd"]);
+export const withoutLlmCaps = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => !RETIRED.has(k))) : v);
 
 export const jobConfigSchema = z
   .object({
@@ -37,17 +42,15 @@ export const jobConfigSchema = z
     default_categories: z.array(z.string().max(60)).max(MAX_DEFAULT_CATEGORIES).default([]),
     writing_profile_version: z.number().int().min(1).nullable().default(null),
     image_profile_version: z.number().int().min(1).nullable().default(null),
-    models: z.partialRecord(z.enum(AGENT_KEYS), z.string().regex(/^claude-[a-z0-9-]{3,40}$/)).default({}),
+    models: z.partialRecord(z.enum(AGENT_KEYS), modelAlias).default({}),
     budget: z
-      .object({
-        llm_daily_usd: z.number().min(0).max(100).default(1),
-        llm_monthly_usd: z.number().min(0).max(1000).default(15),
+      .preprocess(withoutLlmCaps, z.object({
         image_daily_usd: z.number().min(0).max(100).default(0.5),
         image_monthly_usd: z.number().min(0).max(1000).default(5),
         max_tokens_per_draft: z.number().int().min(10_000).max(400_000).default(120_000),
       })
-      .strict()
-      .default({ llm_daily_usd: 1, llm_monthly_usd: 15, image_daily_usd: 0.5, image_monthly_usd: 5, max_tokens_per_draft: 120_000 }),
+      .strict())
+      .default({ image_daily_usd: 0.5, image_monthly_usd: 5, max_tokens_per_draft: 120_000 }),
     diversity: z.object({ max_per_topic_per_day: z.number().int().min(1).max(20).default(2), max_per_source_per_day: z.number().int().min(1).max(20).default(2) }).strict().default({ max_per_topic_per_day: 2, max_per_source_per_day: 2 }),
     image: z.object({ enabled: z.boolean().default(true), provider: z.enum(IMAGE_PROVIDERS).nullable().default(null), variants: z.number().int().min(1).max(4).nullable().default(null) }).strict().default({ enabled: true, provider: null, variants: null }),
     digest_size: z.number().int().min(2).max(12).default(5),
@@ -122,7 +125,7 @@ export const writingProfileInput = z
     required_sections: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
     examples: z.array(z.record(z.string(), z.string().max(4000))).max(6).default([]),
     temperature: z.number().min(0).max(1).nullable().default(null),
-    model: z.string().regex(/^claude-[a-z0-9-]{3,40}$/).nullable().default(null),
+    model: modelAlias.nullable().default(null),
   })
   .strict();
 
@@ -168,16 +171,14 @@ export const newsSettingsSchema = z
   .object({
     enabled: z.boolean().optional(),
     paused: z.boolean().default(false),
-    // Not enforced since the one LLM budget (plan P5): kept so rows saved before still load. No form shows them.
-    llm_daily_usd: z.number().min(0).max(100).default(2),
-    llm_monthly_usd: z.number().min(0).max(1000).default(20),
     image_daily_usd: z.number().min(0).max(100).default(1),
     image_monthly_usd: z.number().min(0).max(1000).default(10),
     max_drafts_per_day: z.number().int().min(0).max(100).default(10),
     image_provider: z.enum(IMAGE_PROVIDERS).default("template"),
-    writer_model: z.string().regex(/^claude-[a-z0-9-]{3,40}$/).default("claude-sonnet-5-5"),
-    fast_model: z.string().regex(/^claude-[a-z0-9-]{3,40}$/).default("claude-haiku-5-5"),
-    vision_model: z.string().regex(/^claude-[a-z0-9-]{3,40}$/).default("claude-haiku-5-5"),
+    // Empty: the SEO agent's own aliases (LITELLM_MODEL for writing and vision, LITELLM_MODEL_FAST for the fast model).
+    writer_model: modelAlias.or(z.literal("")).default(""),
+    fast_model: modelAlias.or(z.literal("")).default(""),
+    vision_model: modelAlias.or(z.literal("")).default(""),
     classifier_threshold: z.number().min(0).max(1).default(0.55),
     ranker_min_feedback: z.number().int().min(20).max(10_000).default(100),
     log_retention_days: z.number().int().min(7).max(730).default(90),

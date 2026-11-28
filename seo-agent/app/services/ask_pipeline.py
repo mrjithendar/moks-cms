@@ -5,8 +5,8 @@ guard_input → retrieve (hybrid top-k) → grade_relevance (cheap model, picks 
                                                                                                    └─ not relevant → fallback ("no article yet" + related)
 
 Answers come only from retrieved site chunks. Citations are the retrieved chunks the answer actually references
-([1], [2] …), as "/blog/slug#heading" links; the model never writes URLs itself. The grader is SEO_CLASSIFY_MODEL, the
-answer the draft model, streamed. Shared by the public widget (/ask) and the public MCP `ask_blog` tool.
+([1], [2] …), as "/blog/slug#heading" links; the model never writes URLs itself. The grader is the fast alias (LITELLM_MODEL_FAST),
+the answer the default alias (LITELLM_MODEL), streamed. Shared by the public widget (/ask) and the public MCP `ask_blog` tool.
 
 Sitewide chat (D-90): a follow-up is first rewritten as a standalone question by `AskPipeline.condense` (called by
 AskService before the cache lookup, only when the request has earlier turns and follow-ups are on); the rest of the
@@ -272,7 +272,7 @@ class AskPipeline:
         "resting for today")."""
         deps = self.deps
         turns = [{"question": t.get("q", "")[:MAX_QUESTION], "answer": t.get("a", "")[:HISTORY_ANSWER_CHARS]} for t in history]
-        spec = CallSpec(model=deps.settings.classify_model, purpose="ask_condense", prompt_version=CONDENSE_VERSION, cached_system=[CONDENSE_RULES], user=f"{data_block('conversation', turns)}\n\n{data_block('latest_question', question)}", max_tokens=200)
+        spec = CallSpec(model=deps.settings.llm_model_fast, purpose="ask_condense", prompt_version=CONDENSE_VERSION, cached_system=[CONDENSE_RULES], user=f"{data_block('conversation', turns)}\n\n{data_block('latest_question', question)}", max_tokens=200)
         try:
             r, u = await deps.llm.structured(spec, Standalone)
         except InvalidOutput as e:
@@ -306,7 +306,7 @@ class AskPipeline:
             if not s.get("hits"):
                 return {"relevant": False}
             excerpts = [{"n": i + 1, "title": h["title"], "section": h["section"], "text": h["content"]} for i, h in enumerate(s["hits"])]
-            spec = CallSpec(model=deps.settings.classify_model, purpose="ask_grade", prompt_version=PROMPT_VERSION, cached_system=[GRADE_RULES], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=200)
+            spec = CallSpec(model=deps.settings.llm_model_fast, purpose="ask_grade", prompt_version=PROMPT_VERSION, cached_system=[GRADE_RULES], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=200)
             try:
                 r, u = await deps.llm.structured(spec, Relevance)
             except InvalidOutput as e:  # still billed: the logged cost includes it
@@ -318,7 +318,7 @@ class AskPipeline:
             hits = s.get("answer_hits") or s["hits"]
             excerpts = [{"n": i + 1, "title": h["title"], "section": h["section"], "text": h["content"]} for i, h in enumerate(hits)]
             length = answer_length(s.get("answer_length"))
-            spec = CallSpec(model=deps.settings.draft_model, purpose="ask_answer", prompt_version=prompt_version(length), cached_system=[answer_rules(length)], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=ANSWER_LENGTHS[length][1])
+            spec = CallSpec(model=deps.settings.llm_model, purpose="ask_answer", prompt_version=prompt_version(length), cached_system=[answer_rules(length)], user=f"{data_block('question', s['question'])}\n\n{data_block('excerpts', excerpts)}", max_tokens=ANSWER_LENGTHS[length][1])
             q: asyncio.Queue[str | None] | None = s.get("stream")
             gate = StreamGate(len(hits), site_hosts)
             parts: list[str] = []

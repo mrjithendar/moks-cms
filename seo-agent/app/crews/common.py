@@ -1,10 +1,9 @@
-"""What every Crew shares: the Claude LLM adapter, the allowlisted tool adapter, per-run limits and the runner.
+"""What every Crew shares: the LLM adapter, the allowlisted tool adapter, per-run limits and the runner.
 
-- `ClaudeCrewLLM` is a CrewAI `BaseLLM` (CrewAI's LLM extension point) that calls this service's `Llm`, so every crew
-  call goes through the same budget guard, usage rows and prices as everything else, and the stable prefix (the
-  untrusted-data rule + CrewAI's per-agent system prompt) is sent as a cached system block. CrewAI's own Anthropic
-  provider would also stamp cache_control, but it needs anthropic~=0.73 (the crewai[anthropic] extra), which
-  conflicts with the anthropic 2.3.0 pin (D-55).
+- `ClaudeCrewLLM` is a CrewAI `BaseLLM` (CrewAI's LLM extension point) that calls this service's `Llm` (LiteLLM, the
+  only model gateway: app/llm_gateway.py), so every crew call has the same usage rows and LiteLLM budgets as everything
+  else, and the stable prefix (the untrusted-data rule + CrewAI's per-agent system prompt) is sent as a cached system
+  block. The agent's `model` is a LiteLLM alias. CrewAI's own provider clients are not used.
 - Limits (D-57): sequential process, no delegation, no memory/planning/knowledge, no code execution; per agent
   `max_iter`, `max_execution_time`, `max_rpm`; per run `CREW_MAX_TOKENS_PER_RUN` (checked before every call) and
   `CREW_TIMEOUT_SECONDS` (wall clock). Hitting a limit returns a partial result marked incomplete; nothing loops.
@@ -335,7 +334,7 @@ def build_agents(defs: list[AgentDef], settings: Settings, llm: Llm, loop: async
         tools = [ToolClass(name=s.name, description=s.description).bind(s, loop, run) for s in specs]
         # Per-agent model: a per-run override (brief.models), then the crew configuration's (crews/config.py), then
         # SEO_CREW_MODELS "<crew>.<agent>", then the crew default.
-        model = (models or {}).get(d.key) or d.model or settings.crew_models.get(f"{crew}.{d.key}") or default_model or settings.draft_model
+        model = (models or {}).get(d.key) or d.model or settings.crew_models.get(f"{crew}.{d.key}") or default_model or settings.llm_model
         max_tokens = d.max_tokens or (long_output_tokens(settings) if d.key in LONG_OUTPUT_AGENTS else DEFAULT_MAX_TOKENS)
         agent_llm = LLMClass(model=model, max_tokens=max_tokens).bind(llm, loop, run, draft_id, purpose, prompt_version, agent=d.key)
         chosen = agent_skills.select(run.skills, crew, d.key, run.tags)

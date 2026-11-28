@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { jobConfigSchema } from "@/lib/news/schema";
-import { AgentError, configCatalogue, crewCatalogue, flowCatalogue, getLlmProviders, type AgentConfigCatalogue, type AgentDeps, type AgentLlmProvidersView } from "@/lib/seo-agent/client";
+import { AgentError, configCatalogue, crewCatalogue, flowCatalogue, type AgentConfigCatalogue, type AgentDeps } from "@/lib/seo-agent/client";
 import { listSkills } from "@/lib/seo-agent/skills";
 import { allItems, listCategories, RUNNER_FLOWS, syncFromAgent } from "../catalog";
 import { activeVersions } from "../crews";
@@ -15,26 +15,25 @@ import { emptyConfig, findSecrets, idOf, KINDS, redactSecrets, type CrewConfig, 
  * flow of the catalogue (after adding what the agent reports and the catalogue lacks, as its pages do), each code crew's
  * agents and tasks as they run (the agent's code defaults plus the active version), each spec crew's and flow's spec,
  * each content flow's settings and sources, every skill (shipped ones too), schedule and category, and the agent's tools,
- * guardrails and providers (read-only). What cannot be exported is reported with the reason, never left out silently.
+ * guardrails (read-only). What cannot be exported is reported with the reason, never left out silently.
  */
 
-export type AgentSide = { catalogue: AgentConfigCatalogue | null; providers: AgentLlmProvidersView | null; error: string | null; legacy: boolean };
+export type AgentSide = { catalogue: AgentConfigCatalogue | null; error: string | null; legacy: boolean };
 
 /** What the agent defines in code. An agent older than GET /config-catalogue still gives its crews and flows. */
 export async function loadAgentSide(deps: AgentDeps = {}): Promise<AgentSide> {
-  const providers = await getLlmProviders(deps).catch(() => null);
   try {
-    return { catalogue: await configCatalogue(deps), providers, error: null, legacy: false };
+    return { catalogue: await configCatalogue(deps), error: null, legacy: false };
   } catch (e) {
     if (e instanceof AgentError && e.status === 404) {
       try {
         const [crews, flows] = await Promise.all([crewCatalogue(deps), flowCatalogue(deps)]);
-        return { catalogue: { format: 0, service: "moks-seo-agent", version: "", crews: crews.items, flows: flows.items, tools: [], custom_tools: [], guardrails: [], models: [] }, providers, error: null, legacy: true };
+        return { catalogue: { format: 0, service: "moks-seo-agent", version: "", crews: crews.items, flows: flows.items, tools: [], custom_tools: [], guardrails: [], models: [] }, error: null, legacy: true };
       } catch (e2) {
-        return { catalogue: null, providers, error: (e2 as Error).message, legacy: false };
+        return { catalogue: null, error: (e2 as Error).message, legacy: false };
       }
     }
-    return { catalogue: null, providers, error: (e as Error).message, legacy: false };
+    return { catalogue: null, error: (e as Error).message, legacy: false };
   }
 }
 
@@ -54,7 +53,8 @@ export type ExportReport = {
 
 const NOT_COVERED = [
   { component: "content profiles (writing and image)", reason: "Content flows name them by key (writing_profile_key, image_profile_key); they are edited under AI & SEO → Content → Profiles and are not part of the bundle yet. An import refuses a content flow whose profile this site lacks." },
-  { component: "LLM provider keys, budgets and the agent's settings", reason: "Credentials and runtime limits: set per site in Settings (providers are listed read-only, with where their key is)." },
+  { component: "LLM providers, models, keys and budgets", reason: "They live in LiteLLM (D-110): crews and flows name LiteLLM aliases only." },
+  { component: "the agent's settings", reason: "Runtime limits: set per site in Settings." },
   { component: "run history, drafts and model state", reason: "Runtime data, not configuration." },
 ];
 
@@ -211,18 +211,6 @@ export async function exportRuntime(opts: RuntimeOptions = {}): Promise<Runtime>
 
   for (const t of cat?.tools ?? []) push("tools", t, t.name);
   for (const g of cat?.guardrails ?? []) push("guardrails", g, g.id);
-  if (agent.providers) {
-    const kinds = new Map(agent.providers.kinds.map((k) => [k.id, k]));
-    for (const p of agent.providers.providers) {
-      const env = kinds.get(p.kind)?.env_key;
-      const keyRef = p.key === "saved" ? "stored encrypted by the SEO agent (Settings → LLM providers)" : p.key === "env" ? `environment variable ${env || agent.providers.key_env || "of the deployment"}` : p.key === "not_needed" ? "no key needed" : "no key yet";
-      push(
-        "providers",
-        { id: p.id, kind: p.kind, name: p.name, enabled: p.enabled, base_url: p.base_url, region: p.region, deployment: p.deployment, api_version: p.api_version, key: p.key, key_ref: keyRef, models: p.models.map((m) => ({ model_id: m.model_id, label: m.label, enabled: m.enabled, free: m.free, price_state: m.price_state, context_window: m.context_window, max_output: m.max_output })) },
-        p.id,
-      );
-    }
-  } else if (cat) report.unsupported.push({ component: "model providers", reason: "The SEO agent did not list its LLM providers (GET /llm-providers)." });
 
   // Nothing that looks like a credential leaves the site.
   for (const k of KINDS) {

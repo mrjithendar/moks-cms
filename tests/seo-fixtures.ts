@@ -20,8 +20,7 @@ export const FAKE_SA_JSON = JSON.stringify({
 export const FIXTURE_ENV = { GOOGLE_SEO_SERVICE_ACCOUNT_JSON: FAKE_SA_JSON, SITE_URL: "https://jithendar.com" };
 
 export function settingsInput(overrides: Partial<SeoSettingsInput> = {}): SeoSettingsInput {
-  const { llmKeySet: _k, ...base } = publicSettings(DEFAULT_SEO_SETTINGS);
-  void _k;
+  const base = publicSettings(DEFAULT_SEO_SETTINGS);
   return {
     ...base,
     google: { ...base.google, gscProperty: "sc-domain:jithendar.com", ga4PropertyId: "123456789" },

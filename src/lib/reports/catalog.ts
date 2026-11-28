@@ -45,7 +45,7 @@ export const SOURCES: SourceDef[] = [
   { key: "run_steps", label: "Flow run steps", tables: ["seo_flow_run_steps"], empty: "no step history yet (run history needs migration 0036 and the agent's grants)", external: true },
   { key: "run_calls", label: "Model calls per agent", tables: ["seo_flow_run_calls"], empty: "no model call recorded per agent yet (Settings → SEO agent → Run history)", external: true },
   { key: "llm_usage", label: "LLM usage ledger", tables: ["seo_llm_usage"], empty: "no LLM call recorded yet" },
-  { key: "llm_budget", label: "LLM budget", tables: ["seo_agent_llm_budget"], empty: "no LLM budget set (Settings → AI & models → LLM providers & budget)", external: true },
+  { key: "llm_budget", label: "LiteLLM budgets (live)", tables: [], empty: "" },
   { key: "gsc_totals", label: "Google Search Console (site totals)", tables: ["seo_gsc_daily_totals"], empty: "nothing synced from Search Console yet (Settings → Search & SEO → Data sources)", external: true },
   { key: "gsc_pages", label: "Google Search Console (pages)", tables: ["seo_gsc_page_daily"], empty: "nothing synced from Search Console yet", external: true },
   { key: "gsc_queries", label: "Google Search Console (queries)", tables: ["seo_gsc_query_daily"], empty: "nothing synced from Search Console yet", external: true },

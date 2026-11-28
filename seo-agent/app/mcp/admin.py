@@ -19,7 +19,6 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from ..flows import MCP_KICKOFF_ALLOWLIST
-from ..llm import used_up
 from ..runs import RunError
 from ..services import review, seo_data
 from ..services.content import ContentError
@@ -171,8 +170,9 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
     @mcp.tool(name="get_llm_usage", title="LLM usage", annotations=READ)
     @guarded(guard, "get_llm_usage", scope="seo:read")
     async def get_llm_usage(period: Literal["day", "week", "month"] = "month") -> dict[str, Any]:
-        """Tokens and cost by purpose and model against the monthly budget (and the Ask-the-Blog daily cap)."""
-        return await seo_data.llm_usage(web, c.guard, period)
+        """Tokens and cost by purpose and model (as LiteLLM reported them), and LiteLLM's budgets for the agent's keys and
+        their team (LiteLLM holds and enforces every LLM budget)."""
+        return await seo_data.llm_usage(web, c.gateway, period)
 
     @mcp.tool(name="get_ai_visibility", title="AI visibility", annotations=READ)
     @guarded(guard, "get_ai_visibility", scope="seo:read")
@@ -207,14 +207,11 @@ def build_admin(c: Any, guard: Guard, security: TransportSecuritySettings, verif
     async def kickoff_flow(flow_name: KickoffName, inputs: Annotated[dict[str, Any] | None, Field(description="Flow inputs, e.g. {\"article_id\": …, \"draft_id\": …}. Validated strictly.")] = None) -> dict[str, Any]:
         """Start one of: optimize_article_flow, new_article_flow, internal_linking_flow, tech_audit_flow, report_flow,
         gsc_sync_flow, ga4_sync_flow. Drafting flows end at a draft awaiting review; nothing is published. Respects the
-        LLM budget and the one-run-per-target locks. Limited to a few starts per hour."""
+        one-run-per-target locks (LiteLLM's budgets pause a run that reaches one). Limited to a few starts per hour."""
         if flow_name not in MCP_KICKOFF_ALLOWLIST:  # Literal already refuses; this is the second line
             raise ContentError(f"{flow_name} cannot be started from MCP")
         if flow_name in getattr(c.settings, "mcp_kickoffs_off", ()):  # the admin's setting: it can only narrow the allowlist
             raise ContentError(f"{flow_name} cannot be started from MCP: switched off by the site's admin")
-        st = await c.guard.status()
-        if flow_name in ("optimize_article_flow", "new_article_flow", "report_flow") and used_up(st):
-            raise ContentError("the LLM budget is used up; drafting flows are paused")
         # Drafting flows: only a new draft or one whose generation failed (never a draft awaiting review). Feedback given
         # here reaches the crew as untrusted data (triggered_by="mcp"), not as instructions.
         await review.check_mcp_draft(web, flow_name, inputs or {})

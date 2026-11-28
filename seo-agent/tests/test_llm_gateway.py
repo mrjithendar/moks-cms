@@ -1,10 +1,12 @@
-"""LiteLLM as the gateway (D-109, app/llm_gateway.py): every model call through LiteLLM's Chat Completions API, its
-aliases choosing the models and its team and virtual keys holding the budgets.
+"""LiteLLM, the only model gateway (D-109, D-110; app/llm_gateway.py): every model call through LiteLLM's Chat
+Completions API, its aliases choosing the models and its team and virtual keys holding the budgets. The service has no
+provider client, no prices and no budget of its own.
 
 The stand-in below answers like LiteLLM 1.111 did against a local proxy on 2026-11-28 (moks-cms PR notes): the alias
-in the body, the target in x-litellm-model-name, the charge in x-litellm-response-cost (none on a stream: the price
-comes from GET /model/info), HTTP 422 error.type budget_exceeded for a key ("Key=…") or a team ("Team=…") over its
-budget, 403 key_model_access_denied, /key/info and /team/info readable with the key itself, at LiteLLM's root.
+in the body, the target in x-litellm-model-name, the charge in x-litellm-response-cost (none on a stream), HTTP 422
+error.type budget_exceeded for a key ("Key=…") or a team ("Team=…") over its budget, 403 key_model_access_denied,
+GET /v1/models with the aliases the key may use, /key/info and /team/info readable with the key itself, at LiteLLM's
+root.
 """
 
 from __future__ import annotations
@@ -19,8 +21,8 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from app.config import load_settings
-from app.llm import BudgetExceeded, BudgetGuard, CallSpec, InvalidOutput, MemorySpendStore, Truncated
-from app.llm_gateway import Gateway, GatewayError, GatewayLlm, budget_refusal, gateway_status
+from app.llm import BudgetExceeded, CallSpec, InvalidOutput, MemorySpendStore, Truncated, UsageLedger
+from app.llm_gateway import Gateway, GatewayError, GatewayLlm, LlmNotConfigured, budget_refusal, gateway_status, list_aliases
 from app.main import create_app, memory_container
 from tests.conftest import FakeWebApp, settings
 
@@ -52,8 +54,12 @@ class FakeLiteLLM:
             return httpx.Response(200, json={"key": "hashed", "info": info})
         if req.url.path == "/team/info":
             return httpx.Response(200, json={"team_id": "team-1", "team_info": {"team_alias": "jithendar.com", "spend": 3.5, "max_budget": 20.0, "budget_duration": "30d", "budget_reset_at": "2026-12-28T00:00:00+00:00", "models": ["moks-cms-default", "moks-cms-fast"]}})
+        if req.url.path == "/v1/models":
+            if key not in (AGENT, ASK):
+                return httpx.Response(401, json={"error": {"message": "Authentication Error, Invalid proxy server token passed.", "type": "auth_error"}})
+            return httpx.Response(200, json={"object": "list", "data": [{"id": n, "object": "model", "owned_by": "openai"} for n in TARGET]})
         if req.url.path == "/v1/model/info":
-            data = [{"model_name": n, "litellm_params": {"model": t}, "model_info": {"input_cost_per_token": 3e-6 if "sonnet" in t else 1e-6, "output_cost_per_token": 15e-6 if "sonnet" in t else 5e-6, "cache_read_input_token_cost": 3e-7 if "sonnet" in t else 1e-7, "cache_creation_input_token_cost": 3.75e-6 if "sonnet" in t else 1.25e-6}} for n, t in TARGET.items()]
+            data = [{"model_name": n, "litellm_params": {"model": t}, "model_info": {"input_cost_per_token": 3e-6}} for n, t in TARGET.items()]
             return httpx.Response(200, json={"data": data})
         assert req.url.path == "/v1/chat/completions", req.url.path
         a = self.answers.pop(0) if self.answers else {}
@@ -72,17 +78,17 @@ class FakeLiteLLM:
         return httpx.Response(200, headers=headers, json={"id": "chatcmpl-1", "model": model, "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": finish}], "usage": USAGE})
 
 
-def gateway(fake: FakeLiteLLM, *, ask: bool = True) -> tuple[GatewayLlm, MemorySpendStore]:
+def gateway(fake: FakeLiteLLM, *, ask: bool = True, key: str = AGENT) -> tuple[GatewayLlm, MemorySpendStore]:
     store = MemorySpendStore()
-    gw = Gateway(base_url=BASE, api_key=AGENT, ask_api_key=ASK if ask else "")
+    gw = Gateway(base_url=BASE, api_key=key, ask_api_key=ASK if ask else "")
 
     async def no_sleep(_s: float) -> None:
         return None
 
-    return GatewayLlm(gw, BudgetGuard(store, None, 0.0, gateway=True), client=httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)), sleep=no_sleep), store
+    return GatewayLlm(gw, UsageLedger(store), client=httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)), sleep=no_sleep), store
 
 
-def spec(model: str = "claude-sonnet-5-5", purpose: str = "draft", **kw: Any) -> CallSpec:
+def spec(model: str = "moks-cms-default", purpose: str = "draft", **kw: Any) -> CallSpec:
     return CallSpec(model=model, purpose=purpose, prompt_version="v1", cached_system=["Rules.", "Style guide."], user="Write it.", max_tokens=500, run_id="run-1", **kw)
 
 
@@ -90,24 +96,42 @@ def chat_bodies(fake: FakeLiteLLM) -> list[dict[str, Any]]:
     return [b for p, b, _ in fake.requests if p == "/v1/chat/completions"]
 
 
-def test_settings_turn_the_gateway_on_only_with_a_url_and_a_key() -> None:
-    assert Gateway.from_settings(load_settings({"LITELLM_BASE_URL": BASE})) is None
-    assert Gateway.from_settings(load_settings({"LITELLM_API_KEY": AGENT})) is None
-    gw = Gateway.from_settings(load_settings({"LITELLM_BASE_URL": BASE + "/", "LITELLM_API_KEY": AGENT, "LITELLM_ASK_API_KEY": ASK, "LITELLM_MODEL_FAST": "my-fast"}))
-    assert gw is not None and gw.base_url == BASE and gw.root == "http://litellm.test:4000" and gw.model_fast == "my-fast"
+def test_settings_name_litellm_and_its_aliases_and_nothing_else() -> None:
+    assert not Gateway.from_settings(load_settings({"LITELLM_BASE_URL": BASE})).configured
+    assert not Gateway.from_settings(load_settings({"LITELLM_API_KEY": AGENT})).configured
+    gw = Gateway.from_settings(load_settings({"LITELLM_BASE_URL": BASE + "/", "LITELLM_API_KEY": AGENT, "LITELLM_ASK_API_KEY": ASK, "LITELLM_MODEL": "my-default", "LITELLM_MODEL_FAST": "my-fast"}))
+    assert gw.configured and gw.base_url == BASE and gw.root == "http://litellm.test:4000" and (gw.model_default, gw.model_fast) == ("my-default", "my-fast")
     assert AGENT not in repr(gw) and ASK not in repr(gw) and AGENT not in repr(load_settings({"LITELLM_API_KEY": AGENT}))
+    plain = load_settings({})
+    assert (plain.llm_model, plain.llm_model_fast) == ("moks-cms-default", "moks-cms-fast")
+    # The provider settings are gone: a provider's key or model in the environment changes nothing.
+    old = load_settings({"ANTHROPIC_API_KEY": "sk-ant", "SEO_DRAFT_MODEL": "claude-opus-5-5", "SEO_CLASSIFY_MODEL": "claude-haiku-5-5", "LITELLM_MODEL": "not an alias!"})
+    assert (old.llm_model, old.llm_model_fast) == ("moks-cms-default", "moks-cms-fast") and not hasattr(old, "anthropic_api_key")
+    assert load_settings({"SEO_CREW_MODELS": '{"editorial.writer": "moks-cms-quality", "editorial.reviewer": "bad name"}'}).crew_models == {"editorial.writer": "moks-cms-quality"}
 
 
-def test_models_are_asked_by_tier_and_aliases_pass_through() -> None:
+def test_models_are_aliases_passed_as_they_are() -> None:
     gw = Gateway(base_url=BASE, api_key=AGENT, ask_api_key=ASK)
-    assert gw.model_for("claude-sonnet-5-5") == "moks-cms-default" and gw.model_for("claude-opus-5-5") == "moks-cms-default"
-    assert gw.model_for("claude-haiku-5-5") == "moks-cms-fast"
-    assert gw.model_for("moks-cms-writer") == "moks-cms-writer" and gw.model_for("") == "moks-cms-default"
+    assert gw.model_for("moks-cms-quality") == "moks-cms-quality" and gw.model_for("claude-sonnet-5-5") == "claude-sonnet-5-5"
+    assert gw.model_for("") == "moks-cms-default" and gw.model_for("  ") == "moks-cms-default"
     assert gw.key_for("ask_answer") == ASK and gw.key_for("draft") == AGENT
     assert Gateway(base_url=BASE, api_key=AGENT).key_for("ask_answer") == AGENT  # no Ask key: the agent's
 
 
-async def test_a_call_goes_through_litellm_and_is_booked_at_its_charge() -> None:
+async def test_without_litellm_every_call_fails_at_once_and_nothing_is_sent() -> None:
+    fake = FakeLiteLLM()
+    llm = GatewayLlm(Gateway(), UsageLedger(MemorySpendStore()), client=httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)))
+    with pytest.raises(LlmNotConfigured) as e:
+        await llm.text(spec())
+    assert e.value.code == "not_configured" and "LITELLM_BASE_URL" in str(e.value)
+    with pytest.raises(LlmNotConfigured):
+        await llm.structured(spec(), Verdict)
+    with pytest.raises(LlmNotConfigured):
+        [t async for t in llm.stream(spec())]
+    assert fake.requests == [] and llm.ledger.store.rows == []  # type: ignore[attr-defined]
+
+
+async def test_a_call_goes_through_litellm_and_is_recorded_at_its_charge() -> None:
     fake = FakeLiteLLM()
     llm, store = gateway(fake)
     text, usage = await llm.text(spec())
@@ -119,13 +143,21 @@ async def test_a_call_goes_through_litellm_and_is_booked_at_its_charge() -> None
     assert fake.requests[0][2]["authorization"] == f"Bearer {AGENT}"
     assert (usage.model, usage.provider, usage.input_tokens, usage.cache_read_tokens, usage.cache_write_tokens, usage.output_tokens) == ("claude-sonnet-5-5", "litellm", 500, 400, 100, 200)
     [row] = store.rows
-    assert row["provider"] == "litellm" and row["model"] == "claude-sonnet-5-5" and row["cost_usd"] == pytest.approx(0.0042) and row["outcome"] == "ok" and row["run_id"] == "run-1"
+    assert (row["provider"] == "litellm" and row["model"] == "claude-sonnet-5-5" and row["cost_usd"] == pytest.approx(0.0042) and row["outcome"] == "ok" and row["run_id"] == "run-1")
+    assert [p for p, _, _ in fake.requests] == ["/v1/chat/completions"]  # no price list is read: the cost is LiteLLM's
+
+
+async def test_a_call_without_a_cost_header_is_recorded_without_a_cost() -> None:
+    fake = FakeLiteLLM([{"cost": ""}])
+    llm, store = gateway(fake)
+    _, usage = await llm.text(spec())
+    assert usage.cost is None and usage.cost_usd() == 0.0 and store.rows[0]["cost_usd"] == 0.0
 
 
 async def test_ask_the_blog_uses_its_own_key_and_images_go_as_data_urls() -> None:
     fake = FakeLiteLLM()
     llm, _ = gateway(fake)
-    await llm.text(spec("claude-haiku-5-5", "ask_answer", images=[("image/png", b"\x89PNG")]))
+    await llm.text(spec("moks-cms-fast", "ask_answer", images=[("image/png", b"\x89PNG")]))
     _, body, headers = fake.requests[0]
     assert headers["authorization"] == f"Bearer {ASK}" and body["model"] == "moks-cms-fast"
     assert body["messages"][1]["content"][0] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw=="}}
@@ -147,31 +179,64 @@ async def test_structured_answers_are_validated_with_one_repair() -> None:
     assert [r["outcome"] for r in store2.rows] == ["invalid", "invalid"]
 
 
-async def test_a_stream_is_priced_with_litellms_own_prices_and_booked_once() -> None:
+async def test_a_stream_is_recorded_once_with_litellms_tokens_and_no_computed_cost() -> None:
     fake = FakeLiteLLM([{"content": "Hello there"}])
     llm, store = gateway(fake)
     seen: list[Any] = []
-    out = [t async for t in llm.stream(spec("claude-haiku-5-5", "ask_answer"), on_usage=seen.append)]
+    out = [t async for t in llm.stream(spec("moks-cms-fast", "ask_answer"), on_usage=seen.append)]
     assert "".join(out) == "Hello there" and chat_bodies(fake)[0]["stream_options"] == {"include_usage": True}
-    # 500 in × 1e-6 + 200 out × 5e-6 + 400 cache read × 1e-7 + 100 cache write × 1.25e-6 (moks-cms-fast in /model/info)
-    expected = 500e-6 + 200 * 5e-6 + 400e-7 + 100 * 1.25e-6
     [row] = store.rows
-    assert row["cost_usd"] == pytest.approx(expected) and row["provider"] == "litellm" and seen[0].cost_override == pytest.approx(expected)
+    assert row["cost_usd"] == 0.0 and row["provider"] == "litellm" and row["input_tokens"] == 500 and row["output_tokens"] == 200
+    assert seen[0].cost is None and [p for p, _, _ in fake.requests] == ["/v1/chat/completions"]
 
 
-async def test_a_budget_litellm_refuses_pauses_like_the_services_own_did() -> None:
+async def test_a_stream_closed_early_is_recorded_once_as_cancelled() -> None:
+    fake = FakeLiteLLM([{"content": "Hello there, a longer answer"}])
+    llm, store = gateway(fake)
+    seen: list[Any] = []
+    gen = llm.stream(spec("moks-cms-fast", "ask_answer"), on_usage=seen.append)
+    assert await gen.__anext__() == "Hel"
+    await gen.aclose()  # the reader went away
+    [row] = store.rows
+    assert row["outcome"] == "cancelled" and row["error_code"] == "stream_closed" and row["cost_usd"] == 0.0 and len(seen) == 1
+
+
+async def test_a_budget_litellm_refuses_raises_budget_exceeded_and_pauses_the_run() -> None:
     key_over = {"status": 422, "error": {"message": "Budget has been exceeded! Key=abc Current cost: 0.51, Max budget: 0.5", "type": "budget_exceeded", "code": "422"}}
     team_over = {"status": 422, "error": {"message": "Budget has been exceeded! Team=team-1 Current cost: 20.1, Max budget: 20.0", "type": "budget_exceeded", "code": "422"}}
     fake = FakeLiteLLM([key_over, team_over])
     llm, store = gateway(fake)
     with pytest.raises(BudgetExceeded) as ask:
-        await llm.text(spec("claude-haiku-5-5", "ask_answer"))
+        await llm.text(spec("moks-cms-fast", "ask_answer"))
     assert ask.value.scope == "litellm_key" and "Ask the Blog's key" in ask.value.detail and "0.51, Max budget: 0.5" in ask.value.detail
     with pytest.raises(BudgetExceeded) as team:
         await llm.text(spec())
     assert team.value.scope == "litellm_team" and "jithendar.com team" in team.value.detail
     assert store.rows == [] and len(chat_bodies(fake)) == 2  # refused before any token, and never retried
     assert budget_refusal(400, {"error": {"message": "nope", "type": "invalid_request_error"}}, "draft") is None
+
+
+def test_a_flow_run_refused_by_litellms_budget_ends_paused_budget() -> None:
+    over = {"status": 422, "error": {"message": "Budget has been exceeded! Team=team-1 Current cost: 20.1, Max budget: 20.0", "type": "budget_exceeded", "code": "422"}}
+    fake = FakeLiteLLM([over] * 8)
+    llm, _ = gateway(fake)
+    web = FakeWebApp()
+    c = memory_container(settings(), llm=llm, web=web)
+    client = TestClient(create_app(c))
+    auth = {"Authorization": "Bearer " + settings().agent_token}
+    with client:
+        run = client.post("/flows/report_flow/kickoff", headers=auth, json={"inputs": {"period": "weekly"}, "triggered_by": "manual"})
+        assert run.status_code in (200, 202), run.text
+        rid = run.json()["run_id"]
+        import time
+
+        for _ in range(200):
+            view = client.get(f"/flows/runs/{rid}", headers=auth).json()
+            if view["status"] not in ("queued", "running"):
+                break
+            time.sleep(0.02)
+    assert view["status"] == "paused_budget", view
+    assert chat_bodies(fake), "the run asked LiteLLM"
 
 
 async def test_a_refused_model_is_not_retried_a_server_error_is() -> None:
@@ -185,7 +250,7 @@ async def test_a_refused_model_is_not_retried_a_server_error_is() -> None:
     assert (await llm2.text(spec()))[0] == "Hello" and len(chat_bodies(flaky)) == 2 and len(store2.rows) == 1
 
 
-async def test_a_cut_off_answer_is_booked_as_truncated() -> None:
+async def test_a_cut_off_answer_is_recorded_as_truncated() -> None:
     fake = FakeLiteLLM([{"content": "Half an ans", "finish": "length"}])
     llm, store = gateway(fake)
     with pytest.raises(Truncated):
@@ -193,44 +258,66 @@ async def test_a_cut_off_answer_is_booked_as_truncated() -> None:
     assert store.rows[0]["outcome"] == "truncated" and store.rows[0]["error_code"] == "max_tokens"
 
 
-async def test_the_status_is_litellms_view_of_the_keys_the_team_and_the_aliases() -> None:
+async def test_the_status_says_whether_litellm_answers_and_shows_its_keys_team_and_aliases() -> None:
     fake = FakeLiteLLM()
     llm, _ = gateway(fake)
     st = await gateway_status(llm.gw, llm.client)
-    assert st["errors"] == [] and [k["caller"] for k in st["keys"]] == ["agent", "ask"]
+    assert set(st) == {"gateway", "configured", "base_url", "aliases", "healthy", "checked_at", "keys", "team", "models", "errors"}
+    assert st["gateway"] == "litellm" and st["configured"] is True and st["healthy"] is True and st["base_url"] == BASE and st["errors"] == []
+    assert st["aliases"] == {"default": "moks-cms-default", "fast": "moks-cms-fast"} and "T" in st["checked_at"]
+    assert [k["caller"] for k in st["keys"]] == ["agent", "ask"]
     assert st["keys"][1] | {} == {**st["keys"][1], "alias": "jithendar-ask", "max_budget_usd": 0.5, "budget_duration": "1d"}
     assert st["team"] == {"alias": "jithendar.com", "spend_usd": 3.5, "max_budget_usd": 20.0, "budget_duration": "30d", "budget_reset_at": "2026-12-28T00:00:00+00:00", "models": ["moks-cms-default", "moks-cms-fast"]}
-    assert {m["name"]: m["target"] for m in st["models"]} == TARGET and st["models"][0]["input_usd_per_mtok"] == 3.0
+    assert st["models"] == [{"name": n, "target": t} for n, t in sorted(TARGET.items())]  # no prices: those are LiteLLM's
     paths = [p for p, _, _ in fake.requests]
-    assert "/key/info" in paths and "/team/info" in paths  # at LiteLLM's root, not under /v1
-    assert all(AGENT not in json.dumps(v) for v in st.values())
+    assert "/key/info" in paths and "/team/info" in paths and "/v1/models" in paths  # LiteLLM's own routes at its root
+    assert all(AGENT not in json.dumps(v) and ASK not in json.dumps(v) for v in st.values())
 
 
-def test_the_budget_api_shows_litellms_budgets_and_keeps_one_for_calls_outside_it() -> None:
+async def test_the_status_without_litellm_or_with_a_bad_key() -> None:
+    st = await gateway_status(Gateway())
+    assert st["configured"] is False and st["healthy"] is None and st["base_url"] is None and st["keys"] == [] and "LITELLM_BASE_URL" in st["errors"][0]
     fake = FakeLiteLLM()
-    llm, store = gateway(fake)
+    llm, _ = gateway(fake, key="sk-revoked")
+    bad = await gateway_status(llm.gw, llm.client)
+    assert bad["healthy"] is False and any("HTTP 401" in e for e in bad["errors"]) and "sk-revoked" not in json.dumps(bad)
+
+
+async def test_the_aliases_the_key_may_use_are_listed_for_the_crew_editor() -> None:
+    fake = FakeLiteLLM()
+    llm, _ = gateway(fake)
+    assert await list_aliases(llm.gw, llm.client) == sorted(TARGET)
+    assert await list_aliases(Gateway()) is None
+
+
+def test_the_status_route_and_the_removed_budget_and_provider_routes() -> None:
+    fake = FakeLiteLLM()
+    llm, _ = gateway(fake)
     c = memory_container(settings(), llm=llm, web=FakeWebApp())
     client = TestClient(create_app(c))
     auth = {"Authorization": "Bearer " + settings().agent_token}
     with client:
-        view = client.get("/llm-budget", headers=auth).json()
-        assert view["gateway"]["team"]["max_budget_usd"] == 20.0 and view["ask_daily"]["limit_usd"] is None
-        assert "outside LiteLLM (AI visibility)" in view["gateway"]["budget_note"]
-        # The admin's budget now covers only what cannot go through LiteLLM: AI visibility asks each assistant itself.
-        assert client.put("/llm-budget", headers=auth, json={"daily_usd": 1, "monthly_usd": None}).status_code == 200
-        store.rows.append({"provider": "litellm", "model": "claude-sonnet-5-5", "purpose": "draft", "cost_usd": 50.0})
-        assert client.post("/llm-budget/reserve", headers=auth, json={"max_usd": 0.5, "purpose": "ai_visibility"}).status_code == 200
-        store.rows.append({"provider": "openai", "model": "gpt-x", "purpose": "ai_visibility", "cost_usd": 0.9})
-        refused = client.post("/llm-budget/reserve", headers=auth, json={"max_usd": 0.5, "purpose": "ai_visibility"})
-        assert refused.status_code == 402 and "outside LiteLLM" in refused.json()["error"]
+        st = client.get("/llm-status", headers=auth).json()
+        assert st["configured"] is True and st["healthy"] is True and st["team"]["max_budget_usd"] == 20.0
+        assert client.get("/llm-status").status_code == 401
+        for method, path in (("GET", "/budget"), ("GET", "/llm-budget"), ("PUT", "/llm-budget"), ("POST", "/llm-budget/reserve"), ("POST", "/llm-budget/settle"), ("GET", "/llm-budgets"), ("GET", "/llm-providers"), ("PUT", "/llm-providers"), ("POST", "/llm-providers/anthropic/discover"), ("GET", "/llm-models")):
+            assert client.request(method, path, headers=auth).status_code in (404, 405), path
+    unconfigured = TestClient(create_app(memory_container(settings(), llm=llm, web=FakeWebApp(), gateway=Gateway())))
+    with unconfigured:
+        assert unconfigured.get("/llm-status", headers=auth).json()["configured"] is False
 
 
-async def test_the_guard_never_checks_its_own_calls_in_gateway_mode_but_books_them() -> None:
-    guard = BudgetGuard(MemorySpendStore(), 0.0, 0.0, gateway=True)  # a zero budget and a zero Ask cap: not for these
-    await guard.ensure("claude-sonnet-5-5", 10_000, 4096, "draft")
-    await guard.ensure("claude-haiku-5-5", 10_000, 4096, "ask_answer")
-    with pytest.raises(BudgetExceeded):  # a call outside LiteLLM still is
-        await guard.hold(0.01, "ai_visibility")
-    closed = BudgetGuard(MemorySpendStore(), 0.0, 0.0)
-    with pytest.raises(BudgetExceeded):
-        await closed.ensure("claude-sonnet-5-5", 10_000, 4096, "draft")
+def test_no_provider_client_remains_in_the_agent() -> None:
+    """Every chat model call goes through LiteLLM: no provider SDK or provider chat endpoint anywhere in app/. Image
+    generation (app/news/images.py: Gemini and OpenAI image APIs) is the one documented exception (D-110)."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "app"
+    banned = re.compile(r"api\.anthropic\.com|api\.openai\.com/v1/(chat|responses|completions)|generativelanguage\.googleapis\.com|^\s*(import|from)\s+(anthropic|openai|google\.genai|google\.generativeai)\b|AsyncAnthropic|bedrock-runtime|api\.perplexity\.ai", re.M)
+    hits = [f"{p.relative_to(root)}: {m.group(0)}" for p in root.rglob("*.py") if p.name != "images.py" or p.parent.name != "news" for m in [banned.search(p.read_text())] if m]
+    assert hits == []
+    import importlib.util
+
+    for gone in ("app.llm_budgets", "app.llm_providers", "app.llm_adapters"):
+        assert importlib.util.find_spec(gone) is None, gone

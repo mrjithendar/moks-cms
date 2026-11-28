@@ -1,7 +1,8 @@
 """Every schema sent as a structured output must let the model say something.
 
-`AnthropicLlm.structured` calls `messages.parse(output_format=Schema)`, which sends the strict JSON schema the SDK
-derives from the Pydantic model. A free-form object (`dict[str, Any]`, `dict[str, str]`) becomes
+`GatewayLlm.structured` sends the Pydantic model's JSON schema as LiteLLM's `json_schema` response format, and LiteLLM
+may hand it to a provider as a strict schema (Anthropic's structured outputs). There a free-form object
+(`dict[str, Any]`, `dict[str, str]`: an object without properties) becomes
 `{"type": "object", "properties": {}, "additionalProperties": false}`: the only valid answer is `{}`. That silently
 emptied every topic label (TopicLabels.items) from the day structured outputs were switched on until 2026-11-24, so the
 news topic classifier never trained and content flows found every story "off-topic".
@@ -18,7 +19,6 @@ import re
 from typing import Any
 
 import pytest
-from anthropic.lib._parse._transform import transform_schema
 from pydantic import BaseModel
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
@@ -43,7 +43,7 @@ def _structured_schemas() -> dict[str, type[BaseModel]]:
 def _empty_objects(node: Any, path: str = "$") -> list[str]:
     out: list[str] = []
     if isinstance(node, dict):
-        if node.get("type") == "object" and node.get("properties") == {} and node.get("additionalProperties") is False:
+        if node.get("type") == "object" and not node.get("properties"):  # a strict schema can only answer {} here
             out.append(path)
         for k, v in node.items():
             out += _empty_objects(v, f"{path}.{k}")
@@ -63,13 +63,13 @@ def test_the_scan_finds_the_known_structured_outputs() -> None:
 
 @pytest.mark.parametrize("name", sorted(SCHEMAS))
 def test_no_structured_output_has_an_object_the_model_cannot_fill(name: str) -> None:
-    assert _empty_objects(transform_schema(SCHEMAS[name])) == [], f"{name}: type these fields with a model, not dict[...]"
+    assert _empty_objects(SCHEMAS[name].model_json_schema()) == [], f"{name}: type these fields with a model, not dict[...]"
 
 
 def test_topic_labels_round_trip_through_the_strict_schema() -> None:
     from app.news.schemas import TopicLabels
 
-    schema = transform_schema(TopicLabels)
+    schema = TopicLabels.model_json_schema()
     item = schema["properties"]["items"]["items"]
     item = schema.get("$defs", {}).get(item["$ref"].rsplit("/", 1)[1], item) if "$ref" in item else item
     assert set(item["properties"]) == {"i", "topics"}

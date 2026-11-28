@@ -275,7 +275,7 @@ export const llmCost: Builder = async (ctx) => {
     kpi(ctx, "Input tokens", cur.input, prev.input, "tokens"),
     kpi(ctx, "Output tokens", cur.output, prev.output, "tokens"),
   );
-  if (cur.unpriced) p.kpis.push(kpi(ctx, "Calls with unknown cost", cur.unpriced, null, "int", "down", "tokens recorded but no price configured for the model"));
+  if (cur.unpriced) p.kpis.push(kpi(ctx, "Calls with unknown cost", cur.unpriced, null, "int", "down", "tokens recorded but LiteLLM reported no cost"));
   // Daily cost against the previous period, day by day.
   const dayCost = await q(ctx, sql`select ${istDay("u.at")} as d, coalesce(sum(cost_usd), 0)::float8 as cost from seo_llm_usage u where ${inRange("u.at", ctx.cur)} and ${usageScope(ctx)} group by 1`);
   const prevCost = await q(ctx, sql`select ${istDay("u.at")} as d, coalesce(sum(cost_usd), 0)::float8 as cost from seo_llm_usage u where ${inRange("u.at", ctx.prev)} and ${usageScope(ctx)} group by 1`);
@@ -313,43 +313,51 @@ export const llmCost: Builder = async (ctx) => {
     from seo_flow_runs r join seo_llm_usage u on u.run_id = r.run_id::text where ${inRange("r.started_at", ctx.cur)} and ${runScope(ctx)} group by 1 order by 3 desc nulls last limit 10`);
   const perRunTable = table(ctx, "Cost per run by flow", [{ key: "flow", label: "Flow", width: 0.34 }, { key: "runs", label: "Runs with model calls", format: "int" }, { key: "avg", label: "Average per run", format: "usd" }, { key: "max", label: "Most expensive run", format: "usd" }], perRun.map((r) => ({ flow: String(r.flow), runs: int(r.runs), avg: num(r.avg), max: num(r.max) })));
   p.tables.push(perRunTable);
-  // Budget: the one LLM budget the SEO agent keeps (UTC day and month). Asked from the agent (it owns it); else read
-  // from its table; else unknown, which is said as such (never "no budget").
-  const budget = await llmBudget(ctx);
-  p.rows.llm_budget = budget ? 1 : null;
-  if (!budget) {
-    p.note = "The LLM budget could not be read: the SEO agent did not answer and its budget table is not on this database.";
+  // Budgets are LiteLLM's (D-110): its team's and each key's spend and budget, read through the SEO agent (GET
+  // /llm-status) and with the web app's own keys. Unknown is said as such (never "no budget").
+  const lim = await litellmBudgets();
+  p.rows.llm_budget = lim ? 1 : null;
+  if (!lim) {
+    p.note = "LiteLLM's budgets could not be read: neither the SEO agent nor the web app reached LiteLLM.";
   } else {
+    const team = lim.team;
     p.kpis.push(
-      kpi(ctx, "Spent this month (UTC, now)", budget.month, null, "usd", "down", budget.forecast !== null ? `forecast for the month ${fmt(budget.forecast, "usd")}` : undefined),
-      kpi(ctx, "Monthly LLM budget", budget.monthly, null, "usd", null, budget.monthly === null ? "no monthly limit set" : undefined),
-      kpi(ctx, "Daily LLM budget", budget.daily, null, "usd", null, budget.daily === null ? "no daily limit set" : undefined),
+      kpi(ctx, "LiteLLM team spend (its budget period)", team?.spend ?? null, null, "usd", "down", team?.duration ? `budget period ${team.duration}` : undefined),
+      kpi(ctx, "LiteLLM team budget", team?.max ?? null, null, "usd", null, team?.max == null ? "no team budget set in LiteLLM" : undefined),
     );
-    const [mtdKpi, monthlyKpi] = p.kpis.slice(-3);
-    const monthly = budget.monthly;
-    if (monthly === null && budget.daily === null) p.findings.push({ severity: "low", title: "No LLM budget is set", detail: "Neither a daily nor a monthly limit: nothing stops LLM spending.", impact: "A runaway flow or a retry loop is only stopped by the provider's own limit.", evidence: [monthlyKpi!.id], confirmed: true, owner: "Settings → AI & models → LLM providers & budget" });
-    else if (monthly !== null && monthly > 0 && (budget.month ?? 0) / monthly >= 0.8) {
-      const used = (budget.month ?? 0) / monthly;
-      p.findings.push({ severity: used >= 1 ? "critical" : "high", title: used >= 1 ? "The monthly LLM budget is used up" : `${fmt(used, "pct")} of the monthly LLM budget is used`, detail: `${fmt(budget.month, "usd")} of ${fmt(monthly, "usd")} this month (UTC).`, impact: used >= 1 ? "LLM calls are refused until the month ends or the limit is raised: flows pause with budget errors." : "At this pace LLM calls will be refused before the month ends.", evidence: [mtdKpi!.id, monthlyKpi!.id], confirmed: true, owner: "Settings → AI & models → LLM providers & budget" });
-    } else if (monthly !== null && budget.forecast !== null && budget.forecast > monthly) p.findings.push({ severity: "medium", title: "The month's LLM spend is on course to pass the monthly budget", detail: `Forecast ${fmt(budget.forecast, "usd")} against a limit of ${fmt(monthly, "usd")}.`, impact: "LLM calls would be refused before the month ends.", evidence: [mtdKpi!.id, monthlyKpi!.id], confirmed: false, owner: "Settings → AI & models → LLM providers & budget" });
+    const [spendKpi, budgetKpi] = p.kpis.slice(-2);
+    const owner = "LiteLLM (https://jithendar.com/llm/ui) → Teams, Virtual Keys";
+    if ((!team || team.max === null) && lim.keys.every((k) => k.max === null)) p.findings.push({ severity: "low", title: "No LiteLLM budget is set", detail: "Neither the team nor any of this site's keys has a budget in LiteLLM: nothing stops LLM spending.", impact: "A runaway flow or a retry loop is only stopped by the provider's own limit.", evidence: [budgetKpi!.id], confirmed: true, owner });
+    else if (team?.max && team.spend !== null && team.spend / team.max >= 0.8) {
+      const used = team.spend / team.max;
+      p.findings.push({ severity: used >= 1 ? "critical" : "high", title: used >= 1 ? "The LiteLLM team budget is used up" : `${fmt(used, "pct")} of the LiteLLM team budget is used`, detail: `${fmt(team.spend, "usd")} of ${fmt(team.max, "usd")}${team.duration ? ` per ${team.duration}` : ""}.`, impact: used >= 1 ? "LiteLLM refuses the site's LLM calls until the budget resets or is raised: flows pause with budget errors." : "At this pace LiteLLM will refuse LLM calls before the budget resets.", evidence: [spendKpi!.id, budgetKpi!.id], confirmed: true, owner });
+    }
+    for (const k of lim.keys) {
+      if (!k.max || k.spend === null || k.spend / k.max < 0.8) continue;
+      const used = k.spend / k.max;
+      p.findings.push({ severity: used >= 1 ? "high" : "medium", title: `The ${k.alias} key has used ${fmt(used, "pct")} of its LiteLLM budget`, detail: `${fmt(k.spend, "usd")} of ${fmt(k.max, "usd")}.`, impact: used >= 1 ? "LiteLLM refuses this key's calls until its budget resets or is raised." : "LiteLLM will refuse this key's calls before its budget resets.", evidence: [spendKpi!.id], confirmed: true, owner });
+    }
   }
   if ((num(runs[0]?.failed_cost) ?? 0) > 0) p.findings.push({ severity: (num(runs[0]?.failed_cost) ?? 0) > cur.cost * 0.2 ? "medium" : "low", title: `${fmt(num(runs[0]?.failed_cost), "usd")} was spent on runs that failed or were cancelled`, detail: `${int(runs[0]?.failed_runs)} run(s) used the model and did not finish.`, impact: "Paid work with nothing to show; fixing the failure saves this cost.", evidence: [p.kpis[3]!.id], confirmed: true });
-  if (cur.unpriced) p.findings.push({ severity: "low", title: `${cur.unpriced} call(s) have tokens but no recorded cost`, detail: "Their model has no price in the agent's price table, so their cost is unknown, not zero.", impact: "Cost totals are lower than the real spend.", evidence: [p.kpis.find((k) => k.label === "Calls with unknown cost")!.id], confirmed: true, owner: "Settings → AI & models → LLM providers & budget (model prices)" });
+  if (cur.unpriced) p.findings.push({ severity: "low", title: `${cur.unpriced} call(s) have tokens but no recorded cost`, detail: "LiteLLM reported no cost for them (a stream, or a model without a price in LiteLLM), so their cost is unknown, not zero.", impact: "Cost totals are lower than the real spend.", evidence: [p.kpis.find((k) => k.label === "Calls with unknown cost")!.id], confirmed: true, owner: "LiteLLM → Models + Endpoints (model prices)" });
   if (prev.cost > 0 && cur.cost / prev.cost >= 1.5 && cur.cost - prev.cost >= 1) p.findings.push({ severity: "medium", title: `LLM cost rose ${signedPct(change(cur.cost, prev.cost))}`, detail: `${fmt(cur.cost, "usd")} against ${fmt(prev.cost, "usd")} in the previous period.`, impact: "See cost by flow and by agent for where it went.", evidence: [p.kpis[0]!.id, byFlow.id], confirmed: false });
   return p;
 };
 
-async function llmBudget(ctx: Ctx): Promise<{ daily: number | null; monthly: number | null; month: number | null; forecast: number | null } | null> {
-  try {
-    const { getLlmBudget } = await import("../seo-agent/client");
-    const v = await getLlmBudget("month");
-    return { daily: num(v.budget.daily_usd), monthly: num(v.budget.monthly_usd), month: num(v.spent_usd), forecast: num(v.forecast_usd) };
-  } catch {
-    const row = await q<{ daily_usd: unknown; monthly_usd: unknown }>(ctx, sql`select daily_usd, monthly_usd from seo_agent_llm_budget limit 1`).catch(() => null);
-    if (row === null) return null;
-    const [mtd] = await q(ctx, sql`select coalesce(sum(cost_usd), 0)::float8 as month from seo_llm_usage where at >= date_trunc('month', now() at time zone 'UTC') at time zone 'UTC'`);
-    return { daily: num(row[0]?.daily_usd), monthly: num(row[0]?.monthly_usd), month: num(mtd?.month), forecast: null };
-  }
+type BudgetLine = { alias: string; spend: number | null; max: number | null };
+
+/** LiteLLM's team and keys of this site: the agent's view, else the web app's own (both read with the keys themselves). */
+async function litellmBudgets(): Promise<{ team: { spend: number | null; max: number | null; duration: string | null } | null; keys: BudgetLine[] } | null> {
+  const [{ getLlmStatus }, { llmConfig, llmUsage }] = await Promise.all([import("../seo-agent/client"), import("../llm/client")]);
+  const agent = await getLlmStatus().catch(() => null);
+  const web = llmConfig() ? await llmUsage().catch(() => null) : null;
+  if (!agent?.configured && !web?.keys.length) return null;
+  const team = agent?.team ? { spend: num(agent.team.spend_usd), max: num(agent.team.max_budget_usd), duration: agent.team.budget_duration } : web?.team ? { spend: web.team.spendUsd, max: web.team.maxBudgetUsd, duration: web.team.budgetDuration } : null;
+  const keys: BudgetLine[] = [
+    ...(agent?.keys ?? []).map((k) => ({ alias: k.alias ?? k.caller, spend: num(k.spend_usd), max: num(k.max_budget_usd) })),
+    ...(web?.keys ?? []).map((k) => ({ alias: k.alias ?? k.caller, spend: k.spendUsd, max: k.maxBudgetUsd })),
+  ];
+  return { team, keys };
 }
 
 export const agents: Builder = async (ctx) => {

@@ -2,13 +2,11 @@ import { sql } from "drizzle-orm";
 import { site } from "@/config/site";
 import { getDb, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
-import { anthropicClient } from "../practice/ai/anthropic";
-import { costUsd, estimateCostUsd } from "./claude";
+import { chat, LlmError, llmConfig, type ChatResult, type LlmConfig } from "../llm/client";
 import { DataForSeoError, DfsClient, dfsCredentials } from "./dataforseo";
 import { SkipRun, type RunContext, type RunOutcome } from "./jobs";
 import type { SeoSettings } from "./settings";
 import { siteOrigin } from "./urls";
-import { agentGate, type LlmGate } from "./llm-gate";
 
 /**
  * AI visibility: does this site show up when people ask AI assistants about its subjects?
@@ -17,36 +15,33 @@ import { agentGate, type LlmGate } from "./llm-gate";
  * with web search on, and stores the answer, the sources it cited, whether one of them is on this site (and at which
  * rank), and whether the answer names the site (`seo_ai_answers`, one row per prompt, assistant and day).
  *
- * Assistants (each off until switched on and configured; Settings → AI visibility):
- * - `claude`: Anthropic Messages API with the web search server tool (ANTHROPIC_API_KEY, already used for drafts).
- * - `chatgpt`: OpenAI Responses API with web search (OPENAI_API_KEY; model must be set: no default is guessed).
- * - `perplexity`: Perplexity Sonar (PERPLEXITY_API_KEY).
- * - `gemini`: Gemini API with Google Search grounding (GEMINI_API_KEY; model must be set).
+ * Assistants (each off until switched on; Settings → AI & drafts → AI visibility):
+ * - `claude`, `chatgpt`, `perplexity`, `gemini`: asked through LiteLLM (lib/llm/client.ts, D-110), each through its own
+ *   alias (`aliases` in the settings, e.g. moks-cms-visibility-claude), with `web_search_options`. The alias must point
+ *   at that assistant's model with web search: Anthropic web search, an OpenAI search model, Perplexity Sonar, Gemini
+ *   with Google Search grounding. Provider keys live in LiteLLM, not here.
  * - `google_ai_overview`: the AI Overview on Google's results page, read through DataForSEO's SERP API (needs
  *   DataForSEO credentials; a query without an AI Overview is recorded as such, not as "not cited").
  *
  * These are API answers. The consumer apps (chatgpt.com, claude.ai, perplexity.ai) can differ: other models, memory,
  * location, personalisation. Treat the numbers as a trend for the same prompts, not as what every reader sees.
  *
- * Spend: Claude's cost is computed from the returned token usage and search count; DataForSEO returns its cost; the
- * other APIs are counted at `costPerAnswerUsd` (an estimate, set it from the provider's pricing).
- *
- * There is no limit of its own. Every call first holds its upper bound against the one LLM budget (llm-gate.ts) and
- * the run stops at the first call that does not fit. Each answer's cost is also written to `seo_llm_usage` (purpose
- * `ai_visibility`), which is what the budget adds up, so this spend counts in the total.
+ * Spend: each answer's cost is what LiteLLM charged for it (x-litellm-response-cost), DataForSEO's what it returned.
+ * LiteLLM's budgets apply: a call it refuses for a budget stops the run. LLM answers are also written to
+ * `seo_llm_usage` (provider litellm, purpose `ai_visibility`).
  */
 export const AI_PROVIDERS = ["claude", "chatgpt", "perplexity", "gemini", "google_ai_overview"] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 export const AI_PROVIDER_LABEL: Record<AiProvider, string> = { claude: "Claude", chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", google_ai_overview: "Google AI Overview" };
-/** How each assistant is named in seo_llm_usage (the budget page groups spend by provider). */
-const USAGE_PROVIDER: Record<AiProvider, string> = { claude: "anthropic", chatgpt: "openai", perplexity: "perplexity", gemini: "gemini", google_ai_overview: "dataforseo" };
-const WEB_SEARCH_USD = 0.01; // Anthropic web search: $10 per 1,000 searches
+/** The assistants asked through LiteLLM (the rest: DataForSEO). */
+export type LlmAssistant = Exclude<AiProvider, "google_ai_overview">;
+const THROUGH_LITELLM = (id: AiProvider): id is LlmAssistant => id !== "google_ai_overview";
 const MAX_ANSWER_CHARS = 8000;
 export const NO_AI_OVERVIEW = "no_ai_overview";
 
 export type Source = { url: string; title: string; domain: string };
 export type Answer = { text: string; sources: Source[]; model: string; costUsd: number; error?: string };
-export type AiDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined>; gate?: LlmGate };
+export type AiDeps = { fetchImpl?: typeof fetch; env?: Record<string, string | undefined>; llm?: LlmConfig | null };
 
 // --- Matching (pure) ---------------------------------------------------------------------------------------------
 
@@ -85,23 +80,14 @@ export function analyzeAnswer(text: string, sources: Source[], host: string, nam
 
 // --- Providers ---------------------------------------------------------------------------------------------------
 
-type Ctx = { settings: SeoSettings["aiVisibility"]; dfs: SeoSettings["dataforseo"]; env: Record<string, string | undefined>; fetchImpl: typeof fetch; dfsClient: DfsClient | null };
+type Ctx = { settings: SeoSettings["aiVisibility"]; dfs: SeoSettings["dataforseo"]; env: Record<string, string | undefined>; fetchImpl: typeof fetch; dfsClient: DfsClient | null; llm: LlmConfig | null };
 
-export function providerReadiness(s: SeoSettings, env: Record<string, string | undefined> = process.env): { id: AiProvider; label: string; enabled: boolean; ready: boolean; reason: string | null }[] {
+export function providerReadiness(s: SeoSettings, env: Record<string, string | undefined> = process.env, llm: LlmConfig | null = llmConfig(env)): { id: AiProvider; label: string; enabled: boolean; ready: boolean; reason: string | null }[] {
   const a = s.aiVisibility;
   const need = (id: AiProvider): string | null => {
-    switch (id) {
-      case "claude":
-        return env.ANTHROPIC_API_KEY?.trim() ? null : "ANTHROPIC_API_KEY is not set";
-      case "chatgpt":
-        return !env.OPENAI_API_KEY?.trim() ? "OPENAI_API_KEY is not set" : !a.models.chatgpt ? "set the model in Settings" : null;
-      case "perplexity":
-        return env.PERPLEXITY_API_KEY?.trim() ? null : "PERPLEXITY_API_KEY is not set";
-      case "gemini":
-        return !env.GEMINI_API_KEY?.trim() ? "GEMINI_API_KEY is not set" : !a.models.gemini ? "set the model in Settings" : null;
-      case "google_ai_overview":
-        return !dfsCredentials(env) ? "DataForSEO credentials are not set" : null;
-    }
+    if (id === "google_ai_overview") return !dfsCredentials(env) ? "DataForSEO credentials are not set" : null;
+    if (!llm) return "LiteLLM is not configured (LITELLM_BASE_URL, LITELLM_API_KEY)";
+    return a.aliases[id] ? null : "set its LiteLLM alias in Settings";
   };
   return AI_PROVIDERS.map((id) => {
     const reason = need(id);
@@ -109,76 +95,52 @@ export function providerReadiness(s: SeoSettings, env: Record<string, string | u
   });
 }
 
-async function postJson(fetchImpl: typeof fetch, url: string, headers: Record<string, string>, body: unknown): Promise<Record<string, unknown>> {
-  const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}${res.status === 401 || res.status === 403 ? " (check the API key)" : res.status === 429 ? " (rate limited or out of credit)" : ""}`);
-  return (await res.json()) as Record<string, unknown>;
+type Ref = { url: string; title?: string | null; domain?: string | null };
+const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object") : []);
+const text = (v: unknown) => (typeof v === "string" ? v : null);
+/** Grounding links are redirects (vertexaisearch.cloud.google.com); their title carries the source's domain. */
+const DOMAIN_TITLE = /^[a-z0-9.-]+\.[a-z]{2,}$/i;
+const ref = (url: unknown, title: unknown): Ref[] => {
+  const u = text(url);
+  if (!u) return [];
+  const t = text(title);
+  return [{ url: u, title: t, domain: t && DOMAIN_TITLE.test(t) && /(^|\.)google\.com$/i.test(domainOf(u)) ? t : null }];
+};
+
+/**
+ * The sources an answer cites, whatever shape LiteLLM gave them for the provider behind the alias, and the ones it
+ * read: OpenAI-style `annotations` (url_citation; LiteLLM's form for OpenAI, Perplexity and Gemini), Anthropic's
+ * citations and web search results (`provider_specific_fields`), Perplexity's `search_results`/`citations` and
+ * Gemini's grounding chunks on the response.
+ */
+export function sourcesOf(r: Pick<ChatResult, "message" | "response">): { cited: Ref[]; consulted: Ref[] } {
+  const cited: Ref[] = [];
+  const consulted: Ref[] = [];
+  for (const a of list(r.message.annotations)) {
+    if (a.type !== "url_citation") continue;
+    const c = (a.url_citation && typeof a.url_citation === "object" ? a.url_citation : a) as Record<string, unknown>;
+    cited.push(...ref(c.url, c.title));
+  }
+  const psf = (r.message.provider_specific_fields && typeof r.message.provider_specific_fields === "object" ? r.message.provider_specific_fields : {}) as Record<string, unknown>;
+  for (const group of Array.isArray(psf.citations) ? psf.citations : []) for (const c of Array.isArray(group) ? list(group) : list([group])) cited.push(...ref(c.url, c.title));
+  for (const block of list(psf.web_search_results)) {
+    const content = Array.isArray(block.content) ? list(block.content) : [block];
+    for (const c of content) consulted.push(...ref(c.url, c.title));
+  }
+  for (const sr of list(r.response.search_results)) cited.push(...ref(sr.url, sr.title));
+  for (const c of Array.isArray(r.response.citations) ? r.response.citations : []) cited.push(...ref(c, null));
+  const grounding = Array.isArray(r.response.vertex_ai_grounding_metadata) ? list(r.response.vertex_ai_grounding_metadata) : list([r.response.vertex_ai_grounding_metadata]);
+  for (const g of grounding) for (const ch of list(g.groundingChunks)) cited.push(...ref((ch.web as Record<string, unknown> | undefined)?.uri, (ch.web as Record<string, unknown> | undefined)?.title));
+  return { cited, consulted };
 }
 
-async function askClaude(prompt: string, c: Ctx): Promise<Answer> {
-  const model = c.settings.models.claude;
-  const client = anthropicClient(c.env.ANTHROPIC_API_KEY?.trim() ?? null, c.fetchImpl);
-  const res = await client.beta.messages.create({
-    model,
-    max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
-    messages: [{ role: "user", content: prompt }],
-  });
-  let text = "";
-  const cited: { url: string; title?: string | null }[] = [];
-  const consulted: { url: string; title?: string | null }[] = [];
-  for (const block of res.content) {
-    if (block.type === "text") {
-      text += block.text;
-      for (const ci of block.citations ?? []) if (ci.type === "web_search_result_location") cited.push({ url: ci.url, title: ci.title });
-    } else if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
-      for (const r of block.content) consulted.push({ url: r.url, title: r.title });
-    }
-  }
-  const u = res.usage;
-  const cost = costUsd(res.model, { inputTokens: u.input_tokens, outputTokens: u.output_tokens, cacheReadTokens: u.cache_read_input_tokens ?? 0, cacheWriteTokens: u.cache_creation_input_tokens ?? 0 }) + (u.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_USD;
+/** One assistant through its LiteLLM alias, with web search. */
+async function askThroughLiteLlm(id: LlmAssistant, prompt: string, c: Ctx): Promise<Answer> {
+  const alias = c.settings.aliases[id];
+  const res = await chat({ caller: "seo", model: alias, user: prompt, maxTokens: 4000, webSearch: true, timeoutMs: 120_000, retries: 1, tags: ["moks-cms", "purpose:ai_visibility", `assistant:${id}`] }, { config: c.llm, fetchImpl: c.fetchImpl });
+  const { cited, consulted } = sourcesOf(res);
   // Sources are what the answer cites; when it cites nothing, what it read.
-  return { text, sources: dedupeSources(cited.length ? cited : consulted), model: res.model, costUsd: cost, ...(res.stop_reason === "refusal" ? { error: "refusal" } : {}) };
-}
-
-type OpenAiOutput = { type: string; content?: { type: string; text?: string; annotations?: { type: string; url?: string; title?: string }[] }[] }[];
-
-async function askChatGpt(prompt: string, c: Ctx): Promise<Answer> {
-  const model = c.settings.models.chatgpt;
-  const d = await postJson(c.fetchImpl, "https://api.openai.com/v1/responses", { Authorization: `Bearer ${c.env.OPENAI_API_KEY!.trim()}` }, { model, input: prompt, tools: [{ type: "web_search" }] });
-  let text = "";
-  const cited: { url: string; title?: string }[] = [];
-  for (const item of (d.output as OpenAiOutput | undefined) ?? []) {
-    if (item.type !== "message") continue;
-    for (const part of item.content ?? []) {
-      if (part.type !== "output_text") continue;
-      text += part.text ?? "";
-      for (const a of part.annotations ?? []) if (a.type === "url_citation" && a.url) cited.push({ url: a.url, title: a.title });
-    }
-  }
-  return { text, sources: dedupeSources(cited), model, costUsd: c.settings.costPerAnswerUsd };
-}
-
-async function askPerplexity(prompt: string, c: Ctx): Promise<Answer> {
-  const model = c.settings.models.perplexity || "sonar";
-  const d = await postJson(c.fetchImpl, "https://api.perplexity.ai/chat/completions", { Authorization: `Bearer ${c.env.PERPLEXITY_API_KEY!.trim()}` }, { model, messages: [{ role: "user", content: prompt }] });
-  const text = String((d.choices as { message?: { content?: string } }[] | undefined)?.[0]?.message?.content ?? "");
-  const results = (d.search_results as { url: string; title?: string }[] | undefined) ?? ((d.citations as string[] | undefined) ?? []).map((url) => ({ url }));
-  return { text, sources: dedupeSources(results), model, costUsd: c.settings.costPerAnswerUsd };
-}
-
-type GeminiResponse = { candidates?: { content?: { parts?: { text?: string }[] }; groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] } }[] };
-
-async function askGemini(prompt: string, c: Ctx): Promise<Answer> {
-  const model = c.settings.models.gemini;
-  const d = (await postJson(c.fetchImpl, `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, { "x-goog-api-key": c.env.GEMINI_API_KEY!.trim() }, { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }] })) as GeminiResponse;
-  const cand = d.candidates?.[0];
-  const text = (cand?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-  // Grounding URIs are Google redirect links; the title carries the source's domain.
-  const chunks = (cand?.groundingMetadata?.groundingChunks ?? []).flatMap((g) => (g.web?.uri ? [{ url: g.web.uri, title: g.web.title ?? "", domain: /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(g.web.title ?? "") ? g.web.title! : null }] : []));
-  return { text, sources: dedupeSources(chunks), model, costUsd: c.settings.costPerAnswerUsd };
+  return { text: res.text, sources: dedupeSources(cited.length ? cited : consulted), model: res.model, costUsd: res.costUsd ?? 0 };
 }
 
 type SerpItem = { type: string; markdown?: string | null; text?: string | null; items?: unknown[] | null; references?: { url?: string; title?: string; domain?: string }[] | null };
@@ -207,14 +169,7 @@ async function askGoogleAiOverview(prompt: string, c: Ctx): Promise<Answer> {
   return { text, sources: dedupeSources(aiOverviewRefs(ov)), model: "google_serp", costUsd: cost };
 }
 
-const ASK: Record<AiProvider, (prompt: string, c: Ctx) => Promise<Answer>> = { claude: askClaude, chatgpt: askChatGpt, perplexity: askPerplexity, gemini: askGemini, google_ai_overview: askGoogleAiOverview };
-
-/** Upper bound on one call, held against the one LLM budget before it is made. */
-function estimate(p: AiProvider, s: SeoSettings["aiVisibility"]): number {
-  if (p === "claude") return estimateCostUsd(s.models.claude, 60_000, 4000) + 5 * WEB_SEARCH_USD;
-  if (p === "google_ai_overview") return 0.01;
-  return s.costPerAnswerUsd;
-}
+const ask = (id: AiProvider, prompt: string, c: Ctx): Promise<Answer> => (THROUGH_LITELLM(id) ? askThroughLiteLlm(id, prompt, c) : askGoogleAiOverview(prompt, c));
 
 // --- Job ---------------------------------------------------------------------------------------------------------
 
@@ -227,14 +182,14 @@ export async function runAiVisibility(ctx: RunContext, deps: AiDeps = {}): Promi
   const s = ctx.settings.aiVisibility;
   const env = deps.env ?? ctx.deps.env ?? process.env;
   if (!s.enabled) throw new SkipRun("AI visibility is switched off (Settings → AI visibility).", "disabled");
-  const providers = providerReadiness(ctx.settings, env).filter((p) => p.ready).map((p) => p.id);
-  if (!providers.length) throw new SkipRun("No assistant is both enabled and configured (Settings → AI visibility, and its API key).", "not_configured");
+  const llm = deps.llm !== undefined ? deps.llm : llmConfig(env);
+  const providers = providerReadiness(ctx.settings, env, llm).filter((p) => p.ready).map((p) => p.id);
+  if (!providers.length) throw new SkipRun("No assistant is both enabled and configured (Settings → AI visibility: its LiteLLM alias, or DataForSEO).", "not_configured");
   const prompts = rowsOf<{ id: string; prompt: string }>(await ctx.db.execute(sql`select id, prompt from seo_ai_prompts where active order by added_at, prompt limit ${s.maxPrompts}`));
   if (!prompts.length) return { status: "skipped", rows: 0, error: "No prompts yet: add some on the AI visibility page.", errorCode: "no_prompts" };
-  const gate = deps.gate ?? ctx.deps.gate ?? agentGate({ env });
   const fetchImpl = deps.fetchImpl ?? ctx.deps.fetchImpl ?? fetch;
   const creds = dfsCredentials(env);
-  const c: Ctx = { settings: s, dfs: ctx.settings.dataforseo, env, fetchImpl, dfsClient: creds ? new DfsClient(creds, Number.POSITIVE_INFINITY, fetchImpl) : null };
+  const c: Ctx = { settings: s, dfs: ctx.settings.dataforseo, env, fetchImpl, dfsClient: creds ? new DfsClient(creds, Number.POSITIVE_INFINITY, fetchImpl) : null, llm };
   const host = siteOrigin(env).hostname;
   const names = [site.name, ...s.brandNames];
   const day = ctx.now.toISOString().slice(0, 10);
@@ -245,21 +200,15 @@ export async function runAiVisibility(ctx: RunContext, deps: AiDeps = {}): Promi
   let stopped: string | null = null;
   for (const p of prompts) {
     const todo = providers.filter((id) => !done.has(`${p.id}:${id}`));
-    const affordable: AiProvider[] = [];
-    const holds: (string | null)[] = [];
-    for (const id of todo) {
-      const held = await gate.reserve(estimate(id, s), "ai_visibility");
-      if (!held.ok) {
-        stopped = held.detail;
-        break;
-      }
-      holds.push(held.id);
-      affordable.push(id);
-    }
-    const results = await Promise.allSettled(affordable.map((id) => ASK[id](p.prompt, c)));
+    const results = await Promise.allSettled(todo.map((id) => ask(id, p.prompt, c)));
     for (const [i, r] of results.entries()) {
-      const id = affordable[i]!;
-      const a: Answer = r.status === "fulfilled" ? r.value : { text: "", sources: [], model: id === "claude" ? s.models.claude : (s.models as Record<string, string>)[id] ?? "", costUsd: 0, error: errorText(r.reason) };
+      const id = todo[i]!;
+      if (r.status === "rejected" && r.reason instanceof LlmError && r.reason.code === "budget") {
+        // LiteLLM's budget: nothing was answered, so nothing is stored; the run stops after this prompt.
+        stopped = r.reason.message;
+        continue;
+      }
+      const a: Answer = r.status === "fulfilled" ? r.value : { text: "", sources: [], model: THROUGH_LITELLM(id) ? s.aliases[id] : "google_serp", costUsd: 0, error: errorText(r.reason) };
       spent += a.costUsd;
       if (a.error && a.error !== NO_AI_OVERVIEW) errors++;
       const m = analyzeAnswer(a.text, a.sources, host, names);
@@ -268,18 +217,17 @@ export async function runAiVisibility(ctx: RunContext, deps: AiDeps = {}): Promi
         values (${p.id}, ${id}, ${a.model.slice(0, 120)}, ${day}, ${a.text.slice(0, MAX_ANSWER_CHARS)}, ${JSON.stringify(a.sources.slice(0, 50))}::jsonb, ${m.cited}, ${JSON.stringify(m.citedUrls)}::jsonb, ${m.mentioned}, ${m.citedRank}, ${a.costUsd}, ${a.error?.slice(0, 500) ?? null})
         on conflict (prompt_id, provider, run_on) do update set model = excluded.model, answer = excluded.answer, sources = excluded.sources, cited = excluded.cited,
           cited_urls = excluded.cited_urls, mentioned = excluded.mentioned, cited_rank = excluded.cited_rank, cost_usd = seo_ai_answers.cost_usd + excluded.cost_usd, error = excluded.error, created_at = now()`);
-      if (a.costUsd > 0) {
+      if (THROUGH_LITELLM(id)) {
         await ctx.db.execute(sql`insert into seo_llm_usage (provider, model, purpose, prompt_version, mode, cost_usd, outcome)
-          values (${USAGE_PROVIDER[id]}, ${(a.model || id).slice(0, 120)}, 'ai_visibility', 'ai-visibility', 'sync', ${a.costUsd}, ${a.error && a.error !== NO_AI_OVERVIEW ? "error" : "ok"})`);
+          values ('litellm', ${(a.model || id).slice(0, 120)}, 'ai_visibility', 'ai-visibility', 'sync', ${a.costUsd}, ${a.error ? "error" : "ok"})`);
       }
-      await gate.settle(holds[i] ?? null);
       rows++;
     }
     await ctx.heartbeat();
     if (stopped) break;
   }
   const detail = { prompts: prompts.length, providers, costUsd: Math.round(spent * 1e5) / 1e5, errors };
-  if (stopped) return { status: rows ? "partial" : "skipped", rows, error: `Stopped by the LLM budget: ${stopped} The rest waits for the budget to reset or a higher limit.`, errorCode: "budget", detail };
+  if (stopped) return { status: rows ? "partial" : "skipped", rows, error: `Stopped by LiteLLM: ${stopped} The rest waits for the budget to reset or a higher limit in LiteLLM.`, errorCode: "budget", detail };
   return { status: errors && errors === rows ? "failed" : errors ? "partial" : "succeeded", rows, detail, ...(errors ? { error: `${errors} answer(s) failed; see the AI visibility page.` } : {}) };
 }
 

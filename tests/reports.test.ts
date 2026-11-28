@@ -152,23 +152,32 @@ describe("building a report", () => {
     const byCrew = cost.tables.find((t) => t.title === "Cost by crew")!;
     expect(byCrew.rows.map((x) => x.crew)).toEqual(expect.arrayContaining(["Optimization crew", "Editorial crew", "news-classify (prompt family)"]));
     expect(cost.tables.find((t) => t.title === "Cost by flow")!.rows.map((x) => x.flow)).toEqual(expect.arrayContaining(["optimize_article_flow", "web app (no flow run)"]));
-    expect(r.findings.map((f) => f.title)).toEqual(expect.arrayContaining(["No LLM budget is set", "1 call(s) have tokens but no recorded cost", "1 model call(s) were cut off at their output limit"]));
+    expect(r.findings.map((f) => f.title)).toEqual(expect.arrayContaining(["1 call(s) have tokens but no recorded cost", "1 model call(s) were cut off at their output limit"]));
     expect(r.categories.find((c) => c.key === "agents")!.tables[0]!.rows.map((x) => x.agent)).toEqual(expect.arrayContaining(["editor", "writer"]));
   });
 
-  it("says the budget is unknown, not unset, when neither the agent nor its table answers", async () => {
+  it("says LiteLLM's budgets are unknown, not unset, when neither the agent nor the web app reaches LiteLLM", async () => {
     const r = await build(["llm_cost"]);
-    expect(r.categories[0]!.note).toMatch(/LLM budget could not be read/);
-    expect(r.findings.map((f) => f.title)).not.toContain("No LLM budget is set");
-    expect(r.sources.find((s) => s.key === "llm_budget")?.status).toBe("unavailable");
+    expect(r.categories[0]!.note).toMatch(/LiteLLM's budgets could not be read/);
+    expect(r.findings.map((f) => f.title)).not.toContain("No LiteLLM budget is set");
   });
 
-  it("reads the budget from the agent when it answers", async () => {
+  it("reads LiteLLM's team and key budgets through the agent (D-110)", async () => {
     const client = await import("@/lib/seo-agent/client");
-    const spy = vi.spyOn(client, "getLlmBudget").mockResolvedValue({ budget: { daily_usd: 5, monthly_usd: 1 }, spent_usd: 0.95, forecast_usd: 3 } as never);
-    const r = await build(["llm_cost"]);
+    const status = (team: Record<string, unknown> | null, keys: Record<string, unknown>[] = []) => ({ gateway: "litellm", configured: true, base_url: "http://litellm.test/v1", aliases: { default: "moks-cms-default", fast: "moks-cms-fast" }, healthy: true, checked_at: "2026-11-28T00:00:00Z", team, keys, models: [], errors: [] });
+    let spy = vi.spyOn(client, "getLlmStatus").mockResolvedValue(status({ alias: "jithendar.com", spend_usd: 0.95, max_budget_usd: 1, budget_duration: "30d", budget_reset_at: null, models: [] }) as never);
+    let r = await build(["llm_cost"]);
+    expect(r.findings.find((f) => f.title === "95.0% of the LiteLLM team budget is used")).toMatchObject({ severity: "high", confirmed: true });
     spy.mockRestore();
-    expect(r.findings.find((f) => f.title === "95.0% of the monthly LLM budget is used")).toMatchObject({ severity: "high", confirmed: true });
+    spy = vi.spyOn(client, "getLlmStatus").mockResolvedValue(status({ alias: "jithendar.com", spend_usd: 3, max_budget_usd: null, budget_duration: null, budget_reset_at: null, models: [] }, [{ caller: "ask", alias: "jithendar-ask", spend_usd: 1.2, max_budget_usd: 1, budget_duration: "1d", budget_reset_at: null, models: [], tpm_limit: null, rpm_limit: null }]) as never);
+    r = await build(["llm_cost"]);
+    expect(r.findings.find((f) => f.title.startsWith("The jithendar-ask key has used"))).toMatchObject({ severity: "high" });
+    expect(r.findings.map((f) => f.title)).not.toContain("No LiteLLM budget is set");
+    spy.mockRestore();
+    spy = vi.spyOn(client, "getLlmStatus").mockResolvedValue(status({ alias: "jithendar.com", spend_usd: 3, max_budget_usd: null, budget_duration: null, budget_reset_at: null, models: [] }) as never);
+    r = await build(["llm_cost"]);
+    expect(r.findings.find((f) => f.title === "No LiteLLM budget is set")).toMatchObject({ severity: "low" });
+    spy.mockRestore();
   });
 
   it("reports sources that are not there instead of leaving them out", async () => {

@@ -410,33 +410,6 @@ describe("Ask the Blog", () => {
   });
 });
 
-describe("budgets", () => {
-  it("Ask-the-Blog spend is left out of the LLM usage card's figure", async () => {
-    const { budgetState } = await import("@/lib/seo-intel/claude");
-    await db.execute(sql`insert into seo_llm_usage (provider, model, purpose, prompt_version, outcome, cost_usd) values ('anthropic', 'claude-sonnet-5-5', 'ask_answer', 'ask-blog-v1', 'ok', 9.5), ('anthropic', 'claude-sonnet-5-5', 'draft', 'seo-draft-v3', 'ok', 0.4)`);
-    const b = await budgetState(db);
-    expect(b.spentUsd).toBeCloseTo(0.4);
-  });
-
-  it("v5: per-flow breakdown from seo_flow_runs; news excluded; the rest is 'outside flows'", async () => {
-    const { budgetState, flowCostBreakdown } = await import("@/lib/seo-intel/claude");
-    await db.execute(sql`delete from seo_llm_usage`);
-    await db.execute(sql`delete from seo_flow_runs`);
-    await db.execute(sql`insert into seo_llm_usage (provider, model, purpose, prompt_version, outcome, cost_usd) values ('anthropic', 'claude-sonnet-5-5', 'crew', 'v', 'ok', 1.5), ('anthropic', 'claude-haiku-5-5', 'intent', 'v', 'ok', 0.2)`);
-    await db.execute(sql`insert into seo_flow_runs (run_id, flow_name, target_id, status, triggered_by, cost_usd, tokens) values
-      (gen_random_uuid(), 'optimize_article_flow', 'd1', 'succeeded', 'cron', 0.9, 1000), (gen_random_uuid(), 'optimize_article_flow', 'd2', 'succeeded', 'cron', 0.3, 500),
-      (gen_random_uuid(), 'new_article_flow', 'd3', 'failed', 'manual', 0.3, 300), (gen_random_uuid(), 'news_job_flow', 'job:x', 'succeeded', 'cron', 4, 9000),
-      (gen_random_uuid(), 'gsc_sync_flow', 'site', 'succeeded', 'cron', 0, 0)`);
-    const b = await budgetState(db);
-    const f = await flowCostBreakdown(db, b.spentUsd);
-    expect(f.flows.map((x) => x.flow)).toEqual(["optimize_article_flow", "new_article_flow", "gsc_sync_flow"]);
-    expect(f.flows[0]).toMatchObject({ runs: 2 });
-    expect(f.flows[0]!.costUsd).toBeCloseTo(1.2);
-    expect(f.outsideFlowsUsd).toBeCloseTo(0.2);
-    expect(f.flows[0]!.share).toBeCloseTo(1.2 / 1.7);
-  });
-});
-
 describe("migration 0015", () => {
   it("applies, rolls back and re-applies", async () => {
     const fs = await import("node:fs");
