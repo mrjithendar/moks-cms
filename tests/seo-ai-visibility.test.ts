@@ -11,7 +11,7 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 await import("@/lib/seo-intel/handlers");
 const { runSeoJob, dueSlots } = await import("@/lib/seo-intel/jobs");
 const { DEFAULT_SEO_SETTINGS, saveSeoSettings } = await import("@/lib/seo-intel/settings");
-const { analyzeAnswer, dedupeSources, aiVisibilityOverview, suggestPrompts, addPrompt, providerReadiness } = await import("@/lib/seo-intel/ai-visibility");
+const { analyzeAnswer, dedupeSources, aiVisibilityOverview, suggestPrompts, addPrompt, providerReadiness, sourcesOf } = await import("@/lib/seo-intel/ai-visibility");
 
 const NOW = new Date("2026-11-12T08:00:00Z");
 const LITELLM = { LITELLM_BASE_URL: "http://litellm.test:4000/v1", LITELLM_API_KEY: "sk-test-not-real" };
@@ -70,6 +70,28 @@ describe("matching", () => {
     expect(analyzeAnswer("…", sources, "jithendar.com", [])).toMatchObject({ cited: true, citedRank: 2 });
     expect(analyzeAnswer("As Jithendar.com shows", [], "jithendar.com", ["Jithendar.com"]).mentioned).toBe(true);
     expect(analyzeAnswer("notjithendar.comx", [], "jithendar.com", ["Jithendar.com"]).mentioned).toBe(false);
+  });
+});
+
+describe("sources from LiteLLM's answers (shapes captured from LiteLLM 1.111 with web_search_options, 2026-11-28)", () => {
+  const urls = (r: Parameters<typeof sourcesOf>[0]) => {
+    const { cited, consulted } = sourcesOf(r);
+    return { cited: dedupeSources(cited).map((x) => `${x.domain} ${x.url}`), consulted: dedupeSources(consulted).map((x) => x.domain) };
+  };
+  it("Anthropic: citations and web search results in provider_specific_fields", () => {
+    const message = { role: "assistant", content: "Jithendar.com explains sync waves well.", provider_specific_fields: { citations: [[{ type: "web_search_result_location", url: "https://www.jithendar.com/blog/argo-cd-sync-waves", title: "Sync waves", cited_text: "...", encrypted_index: "x", supported_text: "Jithendar.com explains sync waves well." }]], web_search_results: [{ type: "web_search_tool_result", tool_use_id: "srvtoolu_1", content: [{ type: "web_search_result", url: "https://argo-cd.readthedocs.io/en/stable/", title: "Argo CD docs", encrypted_content: "x", page_age: null }] }], thinking_blocks: null } };
+    expect(urls({ message, response: {} })).toEqual({ cited: ["jithendar.com https://www.jithendar.com/blog/argo-cd-sync-waves"], consulted: ["argo-cd.readthedocs.io"] });
+  });
+  it("Perplexity: citations and search_results on the response", () => {
+    expect(urls({ message: { role: "assistant", content: "See the Kubernetes docs [1]." }, response: { citations: ["https://kubernetes.io/docs/"], search_results: [{ url: "https://kubernetes.io/docs/", title: "Docs" }] } }).cited).toEqual(["kubernetes.io https://kubernetes.io/docs/"]);
+  });
+  it("Gemini: url_citation annotations and grounding chunks, whose title carries the domain", () => {
+    const uri = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc";
+    const r = { message: { role: "assistant", content: "Use sync waves.", annotations: [{ type: "url_citation", url_citation: { end_index: 15, start_index: 0, title: "jithendar.com", url: uri } }] }, response: { vertex_ai_grounding_metadata: [{ webSearchQueries: ["argo cd sync waves"], groundingChunks: [{ web: { uri, title: "jithendar.com" } }] }] } };
+    expect(urls(r).cited).toEqual([`jithendar.com ${uri}`]);
+  });
+  it("OpenAI: url_citation annotations", () => {
+    expect(urls({ message: { role: "assistant", content: "x", annotations: [{ type: "url_citation", url_citation: { url: "https://jithendar.com/a", title: "A" } }] }, response: {} }).cited).toEqual(["jithendar.com https://jithendar.com/a"]);
   });
 });
 
