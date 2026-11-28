@@ -56,8 +56,7 @@ export async function register() {
   const { syncBundledPosts } = await import("./lib/bundled-posts");
   await syncBundledPosts().catch((err) => log.warn("bundled post import failed", { err }));
 
-  const { startBackupScheduler } = await import("./lib/backups");
-  startBackupScheduler();
+  // Site backups (D-108) run on the worker's own backup loop (lib/scheduler.ts), schedule included.
 
   // Scheduled publishing and the job queue (IndexNow submissions with retries).
   const { startWorker } = await import("./lib/scheduler");

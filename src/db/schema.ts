@@ -671,21 +671,36 @@ export const preview = pgTable(
   (t) => [index("preview_expires_idx").on(t.expiresAt)],
 );
 
-/** History of backup runs (manual or scheduled). */
+/** Progress of a running backup operation, for the admin page (lib/backup/service.ts). */
+export type BackupProgress = { seq?: number; phase?: string; message?: string; done?: number; total?: number; bytes?: number; percent?: number; at?: string };
+
+/**
+ * Every backup operation (D-108, migration 0044): backups (manual, scheduled, by a flow, before a restore),
+ * verifications and restores. pending → running → completed | failed | cancelled.
+ */
 export const backupRun = pgTable(
   "backup_run",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    operation: text("operation").$type<"backup" | "verify" | "restore">().notNull().default("backup"),
+    backupType: text("backup_type").$type<"full" | "database" | "prerestore" | "legacy">(),
     trigger: text("trigger").notNull(),
-    status: text("status").notNull(),
+    status: text("status").$type<"pending" | "running" | "completed" | "failed" | "cancelled">().notNull(),
     filename: text("filename"),
-    sizeBytes: integer("size_bytes"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    sha256: text("sha256"),
     results: jsonb("results").$type<{ destination: string; ok: boolean; detail: string }[]>().notNull().default([]),
+    progress: jsonb("progress").$type<BackupProgress>().notNull().default({}),
+    detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default({}),
+    error: text("error"),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
+    attempts: integer("attempts").notNull().default(0),
+    requestedByRef: text("requested_by_ref"),
     startedAt: ts("started_at").notNull().defaultNow(),
     finishedAt: ts("finished_at"),
     triggeredBy: text("triggered_by"),
   },
-  (t) => [index("backup_run_started_idx").on(t.startedAt)],
+  (t) => [index("backup_run_started_idx").on(t.startedAt), index("backup_run_filename_idx").on(t.filename)],
 );
 
 // --- Python practice (/python-practice; see docs/PYTHON_PRACTICE.md) --------------------------------------

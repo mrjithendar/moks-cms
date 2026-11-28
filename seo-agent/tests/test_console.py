@@ -387,7 +387,8 @@ async def test_pg_schedule_store_claims_each_slot_once() -> None:
         # Schedulable without a built-in row (their schedules are the ones an admin adds): custom_flow (moks-seo-agent#34)
         # and seo_intel_sync_flow (moks-seo-agent#39, "schedule it after seo_ml_flow", seo-agent/README.md).
         # rag_reindex_flow (D-107) neither: Settings → Integrations → Hybrid RAG → Reindex all posts starts it.
-        assert len(rows) == 15 and {r["flow_name"] for r in rows} == CRON_FLOWS - {"custom_flow", "seo_intel_sync_flow", "rag_reindex_flow"}
+        # backup_flow (D-108) neither: when a site backs up is its own choice (jithendar.com crewconfig: website-full-backup).
+        assert len(rows) == 15 and {r["flow_name"] for r in rows} == CRON_FLOWS - {"custom_flow", "seo_intel_sync_flow", "rag_reindex_flow", "backup_flow"}
         runner = Runner()
         now = datetime.now(UTC).replace(hour=6, minute=10, second=5, microsecond=0)
         out = await dispatch(store, runner, schedulable=CRON_FLOWS, now=now)

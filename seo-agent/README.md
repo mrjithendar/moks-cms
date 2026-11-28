@@ -300,6 +300,13 @@ Off unless both the URL and the token are set; every feature below then says so 
   and documents), logging each post before and after (chunks, unchanged or embedded, seconds), each removal (address
   and title in the run's log only) and a summary. rag-api down or slow: it stops and hands the rest to the web app's
   background sync (`POST /rag/posts/queue`). See moks-cms docs/RAG.md "Backfill".
+- **Website backup** (**`backup_flow`**, `app/flows/backup.py`, D-108): a CrewAI schedule (jithendar.com:
+  `website-full-backup`, daily 02:00 Asia/Kolkata) or Run starts it. No crew and no model: the web app's backup service
+  makes, verifies and stores the archive (`POST /backups/start`, the same job as Admin → Backups → Back up now); the flow
+  follows it (`GET /backups/runs/{id}`, one line per phase, stalled after 10 minutes without a heartbeat), reports the
+  archive, size, location and validation, and asks the web app to email the report (`POST /backups/notify`). Another
+  backup operation running: the run is skipped. Success only when the web app says completed and verified. See
+  moks-cms docs/BACKUPS.md.
 - **Drafting help** (`app/site_context.py`), no model call: `POST /site-context/internal-links` `{title, headings,
   exclude?}` returns up to 5 existing articles with their URL, anchor suggestions and the draft heading each fits
   under. `POST /site-context/cannibalization` `{keyword, topic?, exclude?}` flags a published article whose title has

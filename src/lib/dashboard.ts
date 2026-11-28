@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
-import { recentRuns } from "./backups";
+import { lastBackups } from "./backup/service";
 import { moderationCounts } from "./comments";
 import { activeProviders, resolveGeminiImageConfig } from "./integrations";
 import { emailSummary } from "./mail";
@@ -76,7 +76,7 @@ export async function dashboardData(user: { id: string; role: string }) {
         db.select({ n: sql<number>`count(*)::int` }).from(schema.contactMessage).where(eq(schema.contactMessage.status, "new")),
         db.select().from(schema.auditLog).orderBy(desc(schema.auditLog.createdAt)).limit(8),
         securityOverview(24),
-        recentRuns(1),
+        lastBackups(),
         storageReady(),
         emailSummary(),
         activeProviders(),
@@ -102,8 +102,8 @@ export async function dashboardData(user: { id: string; role: string }) {
         { label: "Image generation", ok: Boolean(gemini), detail: gemini ? gemini.model : "Off", href: "/admin/settings/ai?section=gemini" },
         {
           label: "Backups",
-          ok: lastBackup?.status === "success",
-          detail: lastBackup ? lastBackup.status : "Never run",
+          ok: lastBackup?.status === "completed",
+          detail: lastBackup ? `${lastBackup.status}${lastBackup.backupType ? ` (${lastBackup.backupType})` : ""}` : "Never run",
           at: lastBackup?.startedAt.toISOString(),
           href: "/admin/backups",
         },

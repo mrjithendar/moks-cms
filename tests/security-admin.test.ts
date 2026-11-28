@@ -28,6 +28,27 @@ vi.mock("@/lib/storage", async (orig) => ({
 }));
 
 const admin: Actor = { id: "admin", role: "admin", label: "admin@example.com" };
+
+// Format-1 backups (content only) in the in-memory bucket: the site no longer makes them (D-108) but still restores them.
+async function legacyBucket() {
+  const { readBackupConfig } = await import("@/lib/backups");
+  return (await readBackupConfig()).r2?.bucket || "media";
+}
+async function storeLegacyBackup(): Promise<string> {
+  const { legacyBackup } = await import("./legacy-backup");
+  const b = await legacyBackup();
+  bucket.set(`${await legacyBucket()}/jithendar/backups/${b.filename}`, b.data);
+  return b.filename;
+}
+async function storedLegacyNames(): Promise<string[]> {
+  const prefix = `${await legacyBucket()}/jithendar/backups/`;
+  return [...bucket.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length)).sort().reverse();
+}
+/** restoreLegacyBackup with a format-1 safety backup, as before D-108 (the job makes a full database backup instead). */
+async function restoreStoredBackup(actor: Actor, name: string) {
+  const { restoreLegacyBackup } = await import("@/lib/backups");
+  return restoreLegacyBackup(actor, name, storeLegacyBackup);
+}
 const author: Actor = { id: "author", role: "author", label: "a@example.com" };
 let db: Db;
 
@@ -152,31 +173,27 @@ describe("integrations", () => {
 });
 
 describe("R2 backups", () => {
-  it("writes zip backups under jithendar/backups/, prunes old ones, and refuses odd names", async () => {
-    const { listStoredBackups, readStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
-    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "1", passphrase: "correct horse battery staple", encrypt: "on" });
+  it("checks the bucket name, and reads only names the site writes", async () => {
+    const { readStoredBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
+    await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "1", encrypt: "on" });
     await expect(saveDestination(admin, { enabled: true, bucket: "Bad_Bucket" })).rejects.toThrow(/Bucket names/);
     await saveDestination(admin, { enabled: true, bucket: "jithendar-backups" });
-    bucket.set("jithendar-backups/jithendar/backups/jithendar-backup-20200101-000000.json.gz.enc", Buffer.from("old"));
-    const r = await runBackup("manual", admin);
-    expect(r).toMatchObject({ status: "success", results: [{ destination: "r2", ok: true }] });
-    const stored = await listStoredBackups();
-    expect(stored).toHaveLength(1);
-    expect(stored[0]!.name).toMatch(/^jithendar-backup-\d{8}-\d{6}\.zip$/);
-    expect((await readStoredBackup(stored[0]!.name)).subarray(0, 2).toString()).toBe("PK");
+    const name = await storeLegacyBackup();
+    expect(name).toMatch(/^jithendar-backup-\d{8}-\d{6}\.zip$/);
+    expect((await readStoredBackup(name)).subarray(0, 2).toString()).toBe("PK");
     await expect(readStoredBackup("../../etc/passwd")).rejects.toThrow(/Unknown/);
+    await expect(readStoredBackup("jithendar-com-backup-2026-11-28-120000-full.zip")).rejects.toThrow(/Unknown/);
   });
 });
 
 describe("restore", () => {
   it("replaces content with a stored backup in one step, after saving the current state", async () => {
-    const { listStoredBackups, restoreStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
+    const { saveDestination, saveGeneral } = await import("@/lib/backups");
     const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
     await db.insert(schema.post).values({ ...base, slug: "kept", title: "Original title" });
     await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "correct horse battery staple", encrypt: "on" });
     await saveDestination(admin, { enabled: true, bucket: "" });
-    await runBackup("manual", admin);
-    const [snapshot] = await listStoredBackups();
+    const snapshot = { name: await storeLegacyBackup() };
 
     // Later changes: an edit, a new post, a lost account.
     await db.update(schema.post).set({ title: "Edited later" }).where(eq(schema.post.slug, "kept"));
@@ -188,7 +205,7 @@ describe("restore", () => {
     const posts = await db.select({ slug: schema.post.slug, title: schema.post.title }).from(schema.post);
     expect(posts).toEqual([{ slug: "kept", title: "Original title" }]);
     expect(r.restored.post).toBe(1);
-    expect((await listStoredBackups()).map((b) => b.name)).toContain(r.safetyBackup);
+    expect(await storedLegacyNames()).toContain(r.safetyBackup);
     const [entry] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "backup.restore"));
     expect(entry).toMatchObject({ severity: "critical", target: snapshot!.name });
 
@@ -198,11 +215,10 @@ describe("restore", () => {
   });
 
   it("stores backups encrypted with the server key and downloads them as plain copies; no passphrase anywhere", async () => {
-    const { listStoredBackups, plainCopyOfStoredBackup, parseBackup, readStoredBackup, runBackup, saveDestination, saveGeneral, unzipBackup } = await import("@/lib/backups");
+    const { plainCopyOfStoredBackup, parseBackup, readStoredBackup, saveDestination, saveGeneral, unzipBackup } = await import("@/lib/backups");
     await saveDestination(admin, { enabled: true, bucket: "" });
     await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", encrypt: "on" });
-    expect(await runBackup("manual", admin)).toMatchObject({ status: "success" });
-    const [stored] = await listStoredBackups();
+    const stored = { name: await storeLegacyBackup() };
     const raw = await readStoredBackup(stored!.name);
     await expect(unzipBackup(raw)).rejects.toThrow("encrypted");
     const plain = await plainCopyOfStoredBackup(stored!.name);
@@ -214,7 +230,7 @@ describe("restore", () => {
   it("still restores a backup from before the zip format (.json.gz.enc), and a plain zip without any passphrase", async () => {
     const { gzipSync } = await import("node:zlib");
     const { encryptWithPassphrase } = await import("@/lib/secrets");
-    const { restoreStoredBackup, saveDestination, saveGeneral, zipBackup } = await import("@/lib/backups");
+    const { saveDestination, saveGeneral, zipBackup } = await import("@/lib/backups");
     const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
     // A backup holds database rows: column names, not the schema's field names.
     const row = { collection: "blog", description: base.description, category: "kubernetes", content_type: "tutorial", author_id: "author", status: "published", published_at: "2026-10-20T03:30:00.000Z" };
@@ -240,14 +256,13 @@ describe("restore", () => {
   });
 
   it("keeps what hangs off a post or category outside the backup (SEO drafts, URL map, news topics); it goes only with a post the backup does not have", async () => {
-    const { listStoredBackups, restoreStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
+    const { saveDestination, saveGeneral } = await import("@/lib/backups");
     const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
     await db.insert(schema.category).values({ slug: "kubernetes", label: "Kubernetes", intro: "Clusters and what runs on them." }).onConflictDoNothing();
     const [kept] = await db.insert(schema.post).values({ ...base, slug: "kept", title: "Original title" }).returning({ id: schema.post.id });
     await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "" });
     await saveDestination(admin, { enabled: true, bucket: "" });
-    await runBackup("manual", admin);
-    const [snapshot] = await listStoredBackups();
+    const snapshot = { name: await storeLegacyBackup() };
 
     // After the backup: SEO work on the kept post, a news topic in its category, an edit, and a new post with a draft.
     const draftOf = (id: string) => sql`insert into seo_drafts (article_id, collection, base_version, base_snapshot) values (${id}::uuid, 'blog', 1, '{}'::jsonb)`;
@@ -269,14 +284,13 @@ describe("restore", () => {
   });
 
   it("restores posts that have traded slugs since the backup", async () => {
-    const { listStoredBackups, restoreStoredBackup, runBackup, saveDestination, saveGeneral } = await import("@/lib/backups");
+    const { saveDestination, saveGeneral } = await import("@/lib/backups");
     const base = { collection: "blog", description: "A description that is comfortably longer than fifty characters for the schema.", category: "kubernetes", contentType: "tutorial", authorId: "author", status: "published", publishedAt: new Date("2026-10-20T03:30:00Z") };
     const [one] = await db.insert(schema.post).values({ ...base, slug: "one", title: "One" }).returning({ id: schema.post.id });
     const [two] = await db.insert(schema.post).values({ ...base, slug: "two", title: "Two" }).returning({ id: schema.post.id });
     await saveGeneral(admin, { schedule: "off", hourUtc: "3", retention: "30", passphrase: "" });
     await saveDestination(admin, { enabled: true, bucket: "" });
-    await runBackup("manual", admin);
-    const [snapshot] = await listStoredBackups();
+    const snapshot = { name: await storeLegacyBackup() };
 
     await db.update(schema.post).set({ slug: "parked" }).where(eq(schema.post.id, one!.id));
     await db.update(schema.post).set({ slug: "one" }).where(eq(schema.post.id, two!.id));
@@ -289,7 +303,7 @@ describe("restore", () => {
   });
 
   it("recreates a missing account as a reader, whatever role the backup file gives it, and never changes an existing one", async () => {
-    const { restoreStoredBackup, saveDestination, saveGeneral, zipBackup } = await import("@/lib/backups");
+    const { saveDestination, saveGeneral, zipBackup } = await import("@/lib/backups");
     // A file put into the bucket by someone else: an admin nobody created, and a promotion for an existing author.
     const payload = JSON.stringify({
       format: "jithendar-backup",

@@ -1,37 +1,35 @@
-import { configure, TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js";
-import { desc, eq, sql } from "drizzle-orm";
+import { TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js";
+import { eq, sql } from "drizzle-orm";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
+import "./backup/archive"; // configures zip.js (no Web Workers on the server)
+import { BACKUP_ROOT, LEGACY_NAME } from "./backup/format";
 import { audit } from "./audit";
 import { log } from "./log";
-import { withSpan } from "./trace";
 import type { Actor } from "./posts";
 import { PostError } from "./posts";
 import { decryptWithPassphrase, derivedSecret, unseal, type Sealed } from "./secrets";
 import { bucketOps, storageReady } from "./storage";
 
 /**
- * Site backups to the media storage account, Cloudflare R2 or Amazon S3 (optionally a separate private bucket).
- * Contents: content, configuration and accounts WITHOUT password hashes, sessions, API-key hashes or stored
- * credentials. Each file is a standard zip: backup.json (the data) and README.txt (what it is, how to open it).
- * Encryption is the admin's choice (Admin → Backups), on by default: backup.json is AES-256 encrypted inside the zip
- * (WinZip AES) with a key derived from SETTINGS_ENCRYPTION_KEY (owner request 2026-11-18: no backup passphrase). The
- * key lives in the Kubernetes Secret, outside the database, so a backup can be restored after the database is lost;
- * nobody has to type or keep a passphrase. Downloading a backup gives an unencrypted copy (the owner can open it with
- * any zip tool). A passphrase stored before 2026-11-18 is kept (sealed) only to restore backups made with it.
+ * Site backup settings (Settings → System → Backups), and the backups of format 1.
  *
- * Objects: {bucket}/jithendar/backups/jithendar-backup-{yyyymmdd-hhmmss}.zip. Backups made before the zip format
- * (….json.gz.enc: gzip + AES-256-GCM, lib/secrets) are still listed, downloaded and restored.
+ * Since D-108 (2026-11-28) a backup is the whole site: lib/backup/ (format 2: every table, every file in the bucket,
+ * configuration, manifest, checksums; made, verified and restored by background jobs). This file keeps:
+ * - the settings: schedule, what a scheduled backup holds, retention, a size limit, encryption and the bucket;
+ * - format 1 (2026-11-14 → 2026-11-28): a zip of backup.json (12 content tables, no files) and README.txt. Those
+ *   archives are still listed, downloaded (as plain copies) and restored, with the rules they were made for.
+ *
+ * Encryption is the admin's choice, on by default: AES-256 inside the zip (WinZip AES) with a key derived from
+ * SETTINGS_ENCRYPTION_KEY (owner request 2026-11-18: no backup passphrase). The key lives in the Kubernetes Secret,
+ * outside the database, so a backup can be restored after the database is lost. A passphrase stored before 2026-11-18
+ * is kept (sealed) only to restore the backups made with it.
  */
-// zip.js would otherwise start Web Workers, which the Node server does not have.
-configure({ useWebWorkers: false });
 
 const KEY = "backups";
-const PREFIX = "jithendar-backup-";
-export const BACKUP_ROOT = "jithendar/backups";
-const LOCK_ID = 7_250_032;
+export { BACKUP_ROOT };
 
 type R2Dest = { enabled: boolean; bucket: string };
 export type BackupConfig = {
@@ -41,11 +39,18 @@ export type BackupConfig = {
   passphrase: Sealed | null;
   schedule: "off" | "daily" | "weekly";
   hourUtc: number;
+  /** What a scheduled backup holds: the whole site, or the database (with configuration) only. */
+  scheduleType: "full" | "database";
+  /** Backups kept per type (full, database only, before a restore): the newest N. */
   retention: number;
+  /** Also delete backups older than this many days (never the newest of a type). null: no age limit. */
+  maxAgeDays: number | null;
+  /** Refuse to start a backup expected to be larger than this (MB). null: no limit. */
+  maxSizeMb: number | null;
   r2: R2Dest | null;
 };
 
-const empty: BackupConfig = { encrypt: true, passphrase: null, schedule: "off", hourUtc: 21, retention: 14, r2: null };
+const empty: BackupConfig = { encrypt: true, passphrase: null, schedule: "off", hourUtc: 21, scheduleType: "full", retention: 14, maxAgeDays: null, maxSizeMb: null, r2: null };
 
 export async function readBackupConfig(): Promise<BackupConfig> {
   const db = await getDb();
@@ -53,7 +58,17 @@ export async function readBackupConfig(): Promise<BackupConfig> {
   const v = (row?.value as Partial<BackupConfig> | undefined) ?? {};
   // Older rows may still hold s3/sftp/gdrive destinations (removed): only the known fields are kept.
   // Rows from before the switch were always encrypted: encrypt stays on unless an admin turns it off.
-  return { encrypt: v.encrypt ?? empty.encrypt, passphrase: v.passphrase ?? empty.passphrase, schedule: v.schedule ?? empty.schedule, hourUtc: v.hourUtc ?? empty.hourUtc, retention: v.retention ?? empty.retention, r2: v.r2 ?? null };
+  return {
+    encrypt: v.encrypt ?? empty.encrypt,
+    passphrase: v.passphrase ?? empty.passphrase,
+    schedule: v.schedule ?? empty.schedule,
+    hourUtc: v.hourUtc ?? empty.hourUtc,
+    scheduleType: v.scheduleType === "database" ? "database" : "full",
+    retention: v.retention ?? empty.retention,
+    maxAgeDays: typeof v.maxAgeDays === "number" && v.maxAgeDays > 0 ? v.maxAgeDays : null,
+    maxSizeMb: typeof v.maxSizeMb === "number" && v.maxSizeMb > 0 ? v.maxSizeMb : null,
+    r2: v.r2 ?? null,
+  };
 }
 
 async function writeConfig(c: BackupConfig, userId: string) {
@@ -73,7 +88,10 @@ export async function backupSummary() {
     legacyPassphrase: Boolean(c.passphrase),
     schedule: c.schedule,
     hourUtc: c.hourUtc,
+    scheduleType: c.scheduleType,
     retention: c.retention,
+    maxAgeDays: c.maxAgeDays,
+    maxSizeMb: c.maxSizeMb,
     storageReady: await storageReady(),
     r2: c.r2 && { enabled: c.r2.enabled, bucket: c.r2.bucket },
   };
@@ -83,10 +101,17 @@ function admin(actor: Actor) {
   if (actor.role !== "admin") throw new PostError("Only admins can manage backups.", 403);
 }
 
+/** "" or absent: no limit (null); otherwise a whole number in range. */
+const optionalLimit = (max: number) =>
+  z.preprocess((v) => (v === "" || v === undefined || v === null ? null : v), z.coerce.number().int().min(1).max(max).nullable());
+
 const generalInput = z.object({
   schedule: z.enum(["off", "daily", "weekly"]),
   hourUtc: z.coerce.number().int().min(0).max(23),
+  scheduleType: z.enum(["full", "database"]).default("full"),
   retention: z.coerce.number().int().min(1).max(365),
+  maxAgeDays: optionalLimit(3650).default(null),
+  maxSizeMb: optionalLimit(10_000_000).default(null),
   // A checkbox: present ("on") when ticked, absent otherwise.
   encrypt: z.preprocess((v) => v === true || v === "on" || v === "true", z.boolean()).default(false),
 });
@@ -96,23 +121,15 @@ export async function saveGeneral(actor: Actor, raw: unknown) {
   const parsed = generalInput.safeParse(raw);
   if (!parsed.success) throw new PostError("Backup settings are not valid.", 400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`));
   const c = await readBackupConfig();
+  const d = parsed.data;
   // An old stored passphrase is kept whatever is chosen: backups made with it still need it to restore.
-  await writeConfig(
-    {
-      ...c,
-      encrypt: parsed.data.encrypt,
-      schedule: parsed.data.schedule,
-      hourUtc: parsed.data.hourUtc,
-      retention: parsed.data.retention,
-    },
-    actor.id,
-  );
-  await audit(actor, "backup.configure", "general", { schedule: parsed.data.schedule, retention: parsed.data.retention, encrypt: parsed.data.encrypt });
+  await writeConfig({ ...c, encrypt: d.encrypt, schedule: d.schedule, hourUtc: d.hourUtc, scheduleType: d.scheduleType, retention: d.retention, maxAgeDays: d.maxAgeDays, maxSizeMb: d.maxSizeMb }, actor.id);
+  await audit(actor, "backup.configure", "general", { schedule: d.schedule, scheduleType: d.scheduleType, retention: d.retention, maxAgeDays: d.maxAgeDays, maxSizeMb: d.maxSizeMb, encrypt: d.encrypt });
 }
 
 const BUCKET = /^$|^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 
-/** Turn the R2 destination on or off and choose its bucket ("" = the media bucket). */
+/** Turn the backup destination on or off and choose its bucket ("" = the media bucket). */
 export async function saveDestination(actor: Actor, f: { enabled: boolean; bucket: string }) {
   admin(actor);
   const bucket = f.bucket.trim().toLowerCase();
@@ -121,29 +138,6 @@ export async function saveDestination(actor: Actor, f: { enabled: boolean; bucke
   const c = await readBackupConfig();
   await writeConfig({ ...c, r2: { enabled: f.enabled, bucket } }, actor.id);
   await audit(actor, "backup.destination", "r2", { enabled: f.enabled, bucket: bucket || "(media bucket)" });
-}
-
-// --- Destination ---------------------------------------------------------------------------
-
-type Target = { name: string; put: (file: string, data: Buffer) => Promise<void>; prune: (retention: number) => Promise<number> };
-
-async function r2Target(d: R2Dest): Promise<Target> {
-  const ops = await bucketOps(d.bucket);
-  const key = (f: string) => `${BACKUP_ROOT}/${f}`;
-  return {
-    name: "r2",
-    put: (file, data) => ops.put(key(file), data),
-    prune: async (retention) => {
-      const old = (await ops.list(key(PREFIX))).map((o) => o.key).sort().reverse().slice(retention);
-      for (const k of old) await ops.remove(k);
-      return old.length;
-    },
-  };
-}
-
-async function targets(c: BackupConfig, onlyEnabled = true): Promise<Target[]> {
-  if (!c.r2 || (onlyEnabled && !c.r2.enabled)) return [];
-  return [await r2Target(c.r2)];
 }
 
 /** Write and remove a small probe object to prove the bucket is writable. */
@@ -161,52 +155,13 @@ export async function testDestination(actor: Actor) {
   }
 }
 
-/** Backups stored in R2, newest first (for the admin list). */
-export async function listStoredBackups(): Promise<{ key: string; name: string; size: number; lastModified: string | null }[]> {
-  const c = await readBackupConfig();
-  if (!c.r2 || !(await storageReady())) return [];
-  const ops = await bucketOps(c.r2.bucket);
-  return (await ops.list(`${BACKUP_ROOT}/${PREFIX}`))
-    .map((o) => ({ ...o, name: o.key.slice(BACKUP_ROOT.length + 1) }))
-    .sort((a, b) => b.name.localeCompare(a.name));
-}
-
-/** Names this site writes: the zip format, and the gzip + AES-GCM files from before it. */
-const BACKUP_NAME = /^jithendar-backup-\d{8}-\d{6}\.(zip|json\.gz\.enc)$/;
-export const isLegacyBackup = (name: string) => name.endsWith(".json.gz.enc");
-
-/** Bytes of one stored backup (admin download). Only names this site writes are accepted. */
-export async function readStoredBackup(name: string): Promise<Buffer> {
-  if (!BACKUP_NAME.test(name)) throw new PostError("Unknown backup.", 404);
-  const c = await readBackupConfig();
-  if (!c.r2) throw new PostError("Backups are not configured.", 404);
-  return (await bucketOps(c.r2.bucket)).get(`${BACKUP_ROOT}/${name}`);
-}
-
-// --- Building and running -----------------------------------------------------------
-
-/** Tables in the backup, and columns that must never leave the server. */
-const TABLES: { name: string; omit?: string[] }[] = [
-  { name: "post" },
-  { name: "page" },
-  { name: "category" },
-  { name: "author_profile" },
-  { name: "comment" },
-  { name: "comment_like" },
-  { name: "comment_report" },
-  { name: "contact_message" },
-  { name: "media" },
-  { name: "redirect" },
-  // Appearance & settings (published and draft); holds no credentials.
-  { name: "site_config" },
-  { name: "user", omit: [] },
-];
+// --- Keys ------------------------------------------------------------------------------------------------
 
 /** The AES password of backups made since 2026-11-18: derived from SETTINGS_ENCRYPTION_KEY, never stored or shown. */
-const serverBackupPassword = () => derivedSecret("backup-zip-v1");
+export const serverBackupPassword = () => derivedSecret("backup-zip-v1");
 
 /** Every password a stored backup may use: the server key, then a passphrase kept from before 2026-11-18. */
-function backupPasswords(c: BackupConfig): string[] {
+export function backupPasswords(c: BackupConfig): string[] {
   const out = [serverBackupPassword()];
   if (c.passphrase) {
     try {
@@ -216,6 +171,19 @@ function backupPasswords(c: BackupConfig): string[] {
     }
   }
   return out;
+}
+
+// --- Format 1 (content only, 2026-11-14 → 2026-11-28) ------------------------------------------------------
+
+export const isLegacyBackup = (name: string) => LEGACY_NAME.test(name);
+const isLegacyGzip = (name: string) => name.endsWith(".json.gz.enc");
+
+/** Bytes of one stored format-1 backup (download, restore). Only names format 1 wrote are accepted. */
+export async function readStoredBackup(name: string): Promise<Buffer> {
+  if (!isLegacyBackup(name)) throw new PostError("Unknown backup.", 404);
+  const c = await readBackupConfig();
+  if (!c.r2) throw new PostError("Backups are not configured.", 404);
+  return (await bucketOps(c.r2.bucket)).get(`${BACKUP_ROOT}/${name}`);
 }
 
 const README = (encrypted: boolean, createdAt: string) =>
@@ -235,7 +203,7 @@ const README = (encrypted: boolean, createdAt: string) =>
     "",
   ].join("\n");
 
-/** A zip of backup.json (AES-256 with `password` when given) and an unencrypted README.txt. */
+/** A format-1 zip: backup.json (AES-256 with `password` when given) and an unencrypted README.txt. */
 export async function zipBackup(json: string, createdAt: string, password?: string): Promise<Buffer> {
   const zip = new ZipWriter(new Uint8ArrayWriter(), { level: 6 });
   await zip.add("README.txt", new TextReader(README(Boolean(password), createdAt)));
@@ -243,7 +211,7 @@ export async function zipBackup(json: string, createdAt: string, password?: stri
   return Buffer.from(await zip.close());
 }
 
-/** backup.json from a zip backup, trying each password for an encrypted one. Throws PostError when none fits. */
+/** backup.json from a format-1 zip, trying each password for an encrypted one. Throws PostError when none fits. */
 export async function unzipBackup(data: Buffer, password?: string | string[]): Promise<string> {
   const passwords = (Array.isArray(password) ? password : password ? [password] : []).filter(Boolean);
   const reader = new ZipReader(new Uint8ArrayReader(new Uint8Array(data)));
@@ -265,11 +233,11 @@ export async function unzipBackup(data: Buffer, password?: string | string[]): P
   }
 }
 
-/** An unencrypted copy of a stored backup, for the owner to download and open with any zip tool. */
+/** An unencrypted copy of a stored format-1 backup, for the owner to download and open with any zip tool. */
 export async function plainCopyOfStoredBackup(name: string): Promise<Buffer> {
   const c = await readBackupConfig();
   const bytes = await readStoredBackup(name);
-  if (isLegacyBackup(name)) {
+  if (isLegacyGzip(name)) {
     const passphrase = backupPasswords(c)[1];
     if (!passphrase) throw new PostError("This backup is from before the zip format and needs its old passphrase, which this site no longer has.");
     return zipBackup(gunzipSync(await decryptWithPassphrase(bytes, passphrase)).toString("utf8"), name);
@@ -283,118 +251,11 @@ export async function plainCopyOfStoredBackup(name: string): Promise<Buffer> {
   return zipBackup(await unzipBackup(bytes, backupPasswords(c)), created);
 }
 
-/** A backup of the site now: encrypted as configured, or unencrypted (`plain`) for a download. */
-export async function buildBackup(opts: { plain?: boolean } = {}): Promise<{ filename: string; data: Buffer; encrypted: boolean }> {
-  const c = await readBackupConfig();
-  const db = await getDb();
-  const tables: Record<string, unknown[]> = {};
-  for (const t of TABLES) tables[t.name] = rowsOf(await db.execute(sql.raw(`select * from "${t.name}"`)));
-  // Only the public site settings: storage/email/backup credentials are excluded on purpose.
-  const [site] = await db.select().from(schema.setting).where(eq(schema.setting.key, "site"));
-  const createdAt = new Date().toISOString();
-  const payload = {
-    format: "jithendar-backup",
-    version: 1,
-    createdAt,
-    appVersion: process.env.GIT_SHA ?? "dev",
-    note: "Excludes password hashes, sessions, API-key hashes and stored credentials. Media bytes live in R2; this holds their metadata.",
-    settings: site?.value ?? null,
-    tables,
-  };
-  const password = c.encrypt && !opts.plain ? serverBackupPassword() : undefined;
-  const data = await zipBackup(JSON.stringify(payload), createdAt, password);
-  const stamp = createdAt.replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-  return { filename: `${PREFIX}${stamp}.zip`, data, encrypted: Boolean(password) };
-}
-
-/** `runId`: the run row the scheduler already created when it claimed this run (claimScheduledRun). */
-export function runBackup(trigger: "manual" | "scheduled", actor?: Actor, runId?: string) {
-  return withSpan("backup.run", { "backup.trigger": trigger }, () => runBackupNow(trigger, actor, runId));
-}
-
-async function runBackupNow(trigger: "manual" | "scheduled", actor?: Actor, runId?: string) {
-  const db = await getDb();
-  const [run] = runId ? [{ id: runId }] : await db.insert(schema.backupRun).values({ trigger, status: "running", triggeredBy: actor?.label ?? "scheduler" }).returning({ id: schema.backupRun.id });
-  const results: { destination: string; ok: boolean; detail: string }[] = [];
-  try {
-    const c = await readBackupConfig();
-    const dests = await targets(c);
-    if (dests.length === 0) throw new PostError("Turn on the backup destination first.");
-    const { filename, data } = await buildBackup();
-    for (const d of dests) {
-      try {
-        await d.put(filename, data);
-        const pruned = await d.prune(c.retention).catch(() => 0);
-        results.push({ destination: d.name, ok: true, detail: pruned ? `uploaded; removed ${pruned} old backup(s)` : "uploaded" });
-      } catch (e) {
-        results.push({ destination: d.name, ok: false, detail: (e as Error).message.slice(0, 300) });
-      }
-    }
-    const status = results.every((r) => r.ok) ? "success" : results.some((r) => r.ok) ? "partial" : "failed";
-    await db.update(schema.backupRun).set({ status, filename, sizeBytes: data.length, results, finishedAt: new Date() }).where(eq(schema.backupRun.id, run!.id));
-    log.info("backup finished", { trigger, status, sizeBytes: data.length, results });
-    if (actor) await audit(actor, "backup.run", filename, { status });
-    return { status, results };
-  } catch (error) {
-    const detail = error instanceof PostError ? error.message : "Unexpected error (see logs).";
-    if (!(error instanceof PostError)) log.error("backup failed", { err: error, trigger });
-    await db.update(schema.backupRun).set({ status: "failed", results: [{ destination: "-", ok: false, detail }], finishedAt: new Date() }).where(eq(schema.backupRun.id, run!.id));
-    return { status: "failed", results: [{ destination: "-", ok: false, detail }] };
-  }
-}
-
-export async function recentRuns(limit = 20) {
-  const db = await getDb();
-  return db.select().from(schema.backupRun).orderBy(desc(schema.backupRun.startedAt)).limit(limit);
-}
-
-/**
- * Claim the next scheduled backup for this replica: the run's row, or null when a run started within `intervalMs`
- * (this replica's or another's). The check and the insert happen in one short transaction under a
- * transaction-scoped advisory lock, so two replicas ticking together cannot both claim one, and the lock is released
- * with the transaction on the connection that took it. The backup itself runs afterwards, outside any transaction.
- */
-export async function claimScheduledRun(intervalMs: number, now = new Date()): Promise<string | null> {
-  const db = await getDb();
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_ID})`);
-    const [last] = await tx.select({ startedAt: schema.backupRun.startedAt }).from(schema.backupRun).orderBy(desc(schema.backupRun.startedAt)).limit(1);
-    if (last && now.getTime() - last.startedAt.getTime() < intervalMs) return null;
-    const [run] = await tx.insert(schema.backupRun).values({ trigger: "scheduled", status: "running", triggeredBy: "scheduler", startedAt: now }).returning({ id: schema.backupRun.id });
-    return run!.id;
-  });
-}
-
-/** In-app scheduler: one replica (claimScheduledRun) runs each due backup. Checked every 15 minutes. */
-export function startBackupScheduler() {
-  const g = globalThis as unknown as { __backupTimer?: NodeJS.Timeout };
-  if (g.__backupTimer) return;
-  const tick = async () => {
-    try {
-      const c = await readBackupConfig();
-      if (c.schedule === "off") return;
-      const now = new Date();
-      if (now.getUTCHours() < c.hourUtc) return;
-      const [last] = await recentRuns(1);
-      const interval = c.schedule === "daily" ? 20 * 3600_000 : 6.5 * 86_400_000;
-      if (last && now.getTime() - last.startedAt.getTime() < interval) return;
-      const runId = await claimScheduledRun(interval, now);
-      if (runId) await runBackup("scheduled", undefined, runId);
-    } catch (error) {
-      log.warn("backup scheduler tick failed", { err: error });
-    }
-  };
-  g.__backupTimer = setInterval(() => void tick(), 15 * 60_000);
-  g.__backupTimer.unref?.();
-}
-
-// --- Restore -------------------------------------------------------------------------------------
-
 /** Restore order (parents first); deletion runs in reverse. `user` is merged, never replaced. */
 const RESTORE_ORDER = ["category", "author_profile", "post", "page", "media", "comment", "comment_like", "comment_report", "contact_message", "redirect", "site_config"] as const;
 /**
  * Tables whose rows are updated in place (matched on this key column) instead of deleted and inserted again. Tables
- * that are not in a backup hang off them:
+ * that are not in a format-1 backup hang off them:
  * - `post`: with ON DELETE CASCADE seo_drafts, seo_content_audits, seo_article_optimizations,
  *   seo_internal_link_suggestions, seo_ml_related_articles and seo_promo_opportunities; with ON DELETE SET NULL
  *   seo_recommendations, seo_editorial_calendar, seo_url_map and seo_search_submissions;
@@ -405,12 +266,12 @@ const RESTORE_ORDER = ["category", "author_profile", "post", "page", "media", "c
 const KEEP_ROWS: Record<string, string> = { post: "id", category: "slug" };
 /** Columns that point at a user, per table (remapped when an account was recreated with a new id). */
 const USER_REFS: Record<string, string[]> = { author_profile: ["user_id"], post: ["author_id"], comment: ["user_id"], comment_like: ["user_id"], comment_report: ["user_id"], media: ["uploaded_by"] };
-const RESTORE_LOCK_ID = 7_250_033;
+export const RESTORE_LOCK_ID = 7_250_033;
 
 type Row = Record<string, unknown>;
 type BackupPayload = { format: string; version: number; createdAt: string; tables: Record<string, Row[]> };
 
-/** The backup's JSON (from a zip's backup.json, or a legacy file's gunzipped bytes). */
+/** A format-1 backup's JSON (from a zip's backup.json, or a legacy file's gunzipped bytes). */
 export function parseBackup(json: string): BackupPayload {
   const payload = JSON.parse(json) as Partial<BackupPayload>;
   if (payload.format !== "jithendar-backup" || payload.version !== 1 || !payload.tables || typeof payload.tables !== "object") throw new PostError("This is not a Jithendar.com backup this version can restore.");
@@ -418,20 +279,19 @@ export function parseBackup(json: string): BackupPayload {
 }
 
 /** `rolesNotRestored`: recreated accounts that were staff (admin, author, demo) in the backup and are readers now. */
-export type RestoreResult = { safetyBackup: string; restored: Record<string, number>; usersAdded: number; rolesNotRestored: number };
+export type LegacyRestoreResult = { safetyBackup: string; restored: Record<string, number>; usersAdded: number; rolesNotRestored: number };
 
 /**
- * Replace content and settings with a stored backup, in one transaction (all or nothing). Before anything
- * changes, the current state is saved to R2 as a new backup, so a restore can itself be undone.
- * Replaced: posts, pages, categories, author profiles, comments (likes, reports), messages, media records,
- * redirects, Appearance & settings. A post that is in the backup and still exists is updated in place (KEEP_ROWS), so
- * what hangs off it outside the backup (SEO drafts, audits, optimisations, link suggestions…) stays; posts the backup
- * does not have are deleted. Accounts are merged: missing ones are recreated (without a password: they use "Forgot
- * password" or social sign-in) as readers, whatever role the backup gives them; existing ones and all sign-in
- * methods, sessions, API keys and stored credentials are left alone. Media files themselves stay in R2 and are not
- * touched.
+ * Replace content and settings with a stored format-1 backup, in one transaction (all or nothing). Before anything
+ * changes, `safety` saves the current state as a new backup (a full database backup since D-108), so a restore can
+ * itself be undone. Replaced: posts, pages, categories, author profiles, comments (likes, reports), messages, media
+ * records, redirects, Appearance & settings. A post that is in the backup and still exists is updated in place
+ * (KEEP_ROWS), so what hangs off it outside the backup (SEO drafts, audits, optimisations, link suggestions…) stays;
+ * posts the backup does not have are deleted. Accounts are merged: missing ones are recreated (without a password: they
+ * use "Forgot password" or social sign-in) as readers, whatever role the backup gives them; existing ones and all
+ * sign-in methods, sessions, API keys and stored credentials are left alone. Media files are not touched.
  */
-export async function restoreStoredBackup(actor: Actor, name: string): Promise<RestoreResult> {
+export async function restoreLegacyBackup(actor: Actor, name: string, safety: () => Promise<string>): Promise<LegacyRestoreResult> {
   admin(actor);
   const c = await readBackupConfig();
   if (!c.r2) throw new PostError("Backups are not configured.");
@@ -439,7 +299,7 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
   const bytes = await readStoredBackup(name);
   let payload: BackupPayload;
   try {
-    if (isLegacyBackup(name)) {
+    if (isLegacyGzip(name)) {
       // Before the zip format: always gzip + AES-256-GCM with the old passphrase.
       const passphrase = passwords[1];
       if (!passphrase) throw new PostError("This backup is from before the zip format and needs its old passphrase, which this site no longer has.");
@@ -453,8 +313,7 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
   }
 
   // Safety net first: if this fails, nothing is restored.
-  const safety = await buildBackup();
-  await (await r2Target(c.r2)).put(safety.filename, safety.data);
+  const safetyBackup = await safety();
 
   const db = await getDb();
   const restored: Record<string, number> = {};
@@ -534,8 +393,8 @@ export async function restoreStoredBackup(actor: Actor, name: string): Promise<R
   broadcastInvalidate("categories");
   broadcastInvalidate("settings");
   // Who lost a staff role, so an admin can give it back on purpose (at most 50 named; the count is exact).
-  const detail = { safetyBackup: safety.filename, restored, usersAdded, ...(rolesNotRestored.length ? { rolesNotRestored: rolesNotRestored.slice(0, 50), rolesNotRestoredCount: rolesNotRestored.length } : {}) };
+  const detail = { safetyBackup, restored, usersAdded, ...(rolesNotRestored.length ? { rolesNotRestored: rolesNotRestored.slice(0, 50), rolesNotRestoredCount: rolesNotRestored.length } : {}) };
   await audit(actor, "backup.restore", name, detail, { severity: "critical" });
-  log.warn("backup restored", { name, safetyBackup: safety.filename, restored, usersAdded, rolesNotRestored: rolesNotRestored.length });
-  return { safetyBackup: safety.filename, restored, usersAdded, rolesNotRestored: rolesNotRestored.length };
+  log.warn("backup restored", { name, safetyBackup, restored, usersAdded, rolesNotRestored: rolesNotRestored.length });
+  return { safetyBackup, restored, usersAdded, rolesNotRestored: rolesNotRestored.length };
 }

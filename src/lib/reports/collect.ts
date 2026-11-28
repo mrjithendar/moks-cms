@@ -669,7 +669,7 @@ export const operations: Builder = async (ctx) => {
   const syncs = await q(ctx, sql`select job_type as type, count(*)::int as n, count(*) filter (where status = 'succeeded')::int as ok, max(finished_at) filter (where status = 'succeeded')::text as last_ok from seo_sync_jobs where ${inRange("started_at", ctx.cur)} group by 1 order by 1`).catch(() => null);
   p.rows.sync_jobs = syncs?.reduce((n, s) => n + int(s.n), 0) ?? null;
   if (syncs?.length) p.tables.push(table(ctx, "Data syncs", [{ key: "type", label: "Sync" }, { key: "n", label: "Runs", format: "int" }, { key: "ok", label: "Succeeded", format: "int" }, { key: "last_ok", label: "Last success" }], syncs.map((s) => ({ type: String(s.type), n: int(s.n), ok: int(s.ok), last_ok: s.last_ok ? String(s.last_ok).slice(0, 16) : "–" }))));
-  const backups = await q(ctx, sql`select status, count(*)::int as n, max(started_at)::text as last from backup_run where ${inRange("started_at", ctx.cur)} group by 1`).catch(() => null);
+  const backups = await q(ctx, sql`select status, count(*)::int as n, max(started_at)::text as last from backup_run where operation = 'backup' and ${inRange("started_at", ctx.cur)} group by 1`).catch(() => null);
   p.rows.backups = backups?.reduce((n, b) => n + int(b.n), 0) ?? null;
   if (backups) {
     const ok = backups.filter((b) => ["succeeded", "success", "done", "completed"].includes(String(b.status))).reduce((n, b) => n + int(b.n), 0);

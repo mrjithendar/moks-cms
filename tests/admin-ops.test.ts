@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { schema, setDbForTests, type Db } from "@/db";
-import { buildBackup, parseBackup, readBackupConfig, saveGeneral, unzipBackup } from "@/lib/backups";
+import { parseBackup, readBackupConfig, saveGeneral, unzipBackup } from "@/lib/backups";
+import { legacyBackup as buildBackup } from "./legacy-backup";
 import { browseTable, runMaintenance, tableStats } from "@/lib/db-admin";
 import type { Actor } from "@/lib/posts";
 import { derivedSecret, seal, unseal, type Sealed } from "@/lib/secrets";
@@ -62,7 +63,7 @@ describe("database admin", () => {
   });
 });
 
-describe("backups", () => {
+describe("backup settings, and the format-1 zip (content only) still read and restored", () => {
   it("only admins configure backups; encrypting needs no passphrase, and none is stored", async () => {
     await expect(saveGeneral(author, { schedule: "daily", hourUtc: "3", retention: "7", encrypt: "on" })).rejects.toThrow();
     await saveGeneral(admin, { schedule: "daily", hourUtc: "3", retention: "7", encrypt: "on", passphrase: "ignored, not stored" });

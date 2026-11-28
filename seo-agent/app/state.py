@@ -96,6 +96,13 @@ class RagReindexInput(_In):
     pass  # every post, every run: rag-api skips the ones it already holds in the same version
 
 
+class BackupInput(_In):
+    """backup_flow (D-108): what to back up, and when to email the report (to the SEO report recipients, if email is set up)."""
+
+    type: Literal["full", "database"] = "full"
+    notify: Literal["always", "failures", "never"] = "always"
+
+
 class MlInput(_In):
     # empty = every model; else a subset of decay, query_clusters, intent, priority, related, rag_eval
     models: list[Literal["decay", "query_clusters", "intent", "priority", "related", "rag_eval"]] = Field(default_factory=list, max_length=6)
@@ -219,6 +226,15 @@ class SeoIntelSyncState(RunState):
 class RagReindexState(RunState):
     """rag_reindex_flow (D-107): the plan's counts, then what was done so far (kept when the run stops part-way)."""
 
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+class BackupState(RunState):
+    """backup_flow (D-108): the web app's backup it queued (backup_id) and the report of how it went."""
+
+    type: str = "full"
+    notify: str = "always"
+    backup_id: str | None = None
     result: dict[str, Any] = Field(default_factory=dict)
 
 

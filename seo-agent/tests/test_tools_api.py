@@ -271,8 +271,8 @@ def test_the_default_schedules_name_flows_a_schedule_may_start() -> None:
     rows = re.findall(r"\('([a-z0-9-]+)', '([a-z0-9_]+_flow)', '(?:[^']|'')*', '([^']+)', '(\{[^']*\})'\)", sql)
     assert len(rows) == 15, rows
     # custom_flow (crew-jobs plan PR 6) and seo_intel_sync_flow (moks-rag, 2026-11-26) are scheduled by an admin's own
-    # schedule rows, never by a built-in one; so is rag_reindex_flow (D-107).
-    assert {flow for _, flow, _, _ in rows} == CRON_FLOWS - {"custom_flow", "seo_intel_sync_flow", "rag_reindex_flow"}
+    # schedule rows, never by a built-in one; so are rag_reindex_flow (D-107) and backup_flow (D-108: the site's crewconfig).
+    assert {flow for _, flow, _, _ in rows} == CRON_FLOWS - {"custom_flow", "seo_intel_sync_flow", "rag_reindex_flow", "backup_flow"}
     for _name, flow, cron, inputs in rows:
         Cron(cron, "Etc/UTC")
         SPECS[flow].input_model.model_validate(json.loads(inputs))
