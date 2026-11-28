@@ -3,10 +3,11 @@ import type { z } from "zod";
 import type { Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { log } from "../log";
-import { agentGate, type LlmGate } from "./llm-gate";
+import { agentGate, OPEN_GATE, type LlmGate } from "./llm-gate";
 import { recordSeoLlm } from "../metrics";
 import { anthropicClient, mapAnthropicError, messageParams, resultOf } from "../practice/ai/anthropic";
-import { callModel, ProviderError, type ModelCall, type ModelResult } from "../practice/ai/providers";
+import { GatewayBudgetError, gatewayModel } from "../llm-gateway";
+import { callModel, ProviderError, type ModelCall, type ModelResult, type ModelSettings } from "../practice/ai/providers";
 import type { ClaudeConfig } from "./settings";
 
 /**
@@ -51,14 +52,27 @@ export function estimateCostUsd(model: string, inputChars: number, maxTokens: nu
   return costUsd(model, { inputTokens: Math.ceil(inputChars / 3.5), outputTokens: maxTokens }, mode);
 }
 
-export type UsageRow = TokenUsage & { provider?: string; model: string; purpose: string; promptVersion: string; mode: "sync" | "batch"; requestId?: string | null; latencyMs?: number | null; outcome: "ok" | "invalid" | "error" | "refusal"; errorCode?: string | null; draftId?: string | null };
+export type UsageRow = TokenUsage & {
+  provider?: string;
+  model: string;
+  purpose: string;
+  promptVersion: string;
+  mode: "sync" | "batch";
+  requestId?: string | null;
+  latencyMs?: number | null;
+  outcome: "ok" | "invalid" | "error" | "refusal";
+  errorCode?: string | null;
+  draftId?: string | null;
+  /** What LiteLLM charged (D-109): the cost its budgets count. Absent: priced here. */
+  costUsd?: number | null;
+};
 
 export async function logUsage(db: Db, u: UsageRow): Promise<number> {
-  const cost = costUsd(u.model, u, u.mode);
+  const cost = u.costUsd != null && Number.isFinite(u.costUsd) ? Math.max(0, u.costUsd) : costUsd(u.model, u, u.mode);
   await db.execute(sql`
     insert into seo_llm_usage (provider, model, purpose, prompt_version, mode, request_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_ms, outcome, error_code, draft_id)
     values (${u.provider ?? "anthropic"}, ${u.model}, ${u.purpose}, ${u.promptVersion}, ${u.mode}, ${u.requestId ?? null}, ${u.inputTokens}, ${u.outputTokens}, ${u.cacheReadTokens ?? 0}, ${u.cacheWriteTokens ?? 0}, ${cost}, ${u.latencyMs ?? null}, ${u.outcome}, ${u.errorCode ?? null}, ${u.draftId ?? null})`);
-  recordSeoLlm("anthropic", u.outcome === "ok" ? "ok" : u.outcome === "invalid" ? "invalid" : "error", u.errorCode ?? undefined);
+  recordSeoLlm(u.provider ?? "anthropic", u.outcome === "ok" ? "ok" : u.outcome === "invalid" ? "invalid" : "error", u.errorCode ?? undefined);
   return cost;
 }
 
@@ -139,11 +153,18 @@ export function parseJsonText(text: string): unknown {
  * calling when the one LLM budget (llm-gate.ts) has no room for the call's upper bound.
  */
 export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts<T>): Promise<ClaudeJsonResult<T>> {
-  if (!cfg.apiKey) return { ok: false, reason: "not_configured", detail: "ANTHROPIC_API_KEY is not set.", attempts: 0, costUsd: 0 };
+  // LiteLLM as the gateway (D-109): its alias, the SEO key, and its budgets (no hold against the agent's: LiteLLM refuses).
+  const gw = cfg.gateway ?? null;
+  if (!gw && !cfg.apiKey) return { ok: false, reason: "not_configured", detail: "ANTHROPIC_API_KEY is not set.", attempts: 0, costUsd: 0 };
   let feedback = "";
   let spent = 0;
   const requestIds: string[] = [];
-  const gate = o.gate ?? agentGate();
+  const gate = o.gate ?? (gw ? OPEN_GATE : agentGate());
+  const timeoutMs = o.call.timeoutMs ?? 120_000;
+  const model: ModelSettings = gw
+    ? { provider: "litellm", model: gatewayModel(gw, o.model), baseUrl: gw.baseUrl, enabled: true, region: "", apiKey: null, timeoutMs, maxOutputTokens: o.call.maxTokens, inputUsdPerMTok: 0, outputUsdPerMTok: 0 }
+    : { provider: "anthropic", model: o.model, enabled: true, baseUrl: "", region: "", apiKey: null, timeoutMs, maxOutputTokens: o.call.maxTokens, inputUsdPerMTok: 0, outputUsdPerMTok: 0 };
+  const provider = gw ? "litellm" : "anthropic";
   for (let attempt = 1; attempt <= 2; attempt++) {
     const user = feedback ? `${o.call.user}\n\n<feedback>Your previous answer was rejected by the validator:\n${feedback}\nAnswer again with the complete JSON object, fixing every problem.</feedback>` : o.call.user;
     const chars = user.length + o.call.system.length + (o.call.cachedSystem ?? []).join("").length;
@@ -155,11 +176,16 @@ export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts
     const started = performance.now();
     let res: ModelResult;
     try {
-      res = await callModel({ provider: "anthropic", model: o.model, enabled: true, baseUrl: "", region: "", apiKey: null, timeoutMs: o.call.timeoutMs ?? 120_000, maxOutputTokens: o.call.maxTokens, inputUsdPerMTok: 0, outputUsdPerMTok: 0 }, cfg.apiKey, { ...o.call, user, signal: AbortSignal.timeout(o.call.timeoutMs ?? 120_000) }, o.fetchImpl);
+      res = await callModel(model, gw ? gw.seoKey : cfg.apiKey, { ...o.call, user, signal: AbortSignal.timeout(timeoutMs) }, o.fetchImpl);
     } catch (e) {
+      if (e instanceof GatewayBudgetError) {
+        await gate.settle(held.id);
+        log.warn("seo llm call refused by the LiteLLM budget", { operation: "seo_llm", outcome: "budget", scope: e.scope, model: model.model });
+        return { ok: false, reason: "budget", detail: e.message, attempts: attempt, costUsd: spent };
+      }
       const err = e instanceof ProviderError ? e : mapAnthropicError(e);
       const refusal = /declined/.test(err.message);
-      await logUsage(db, { model: o.model, purpose: o.purpose, promptVersion: o.promptVersion, mode: "sync", inputTokens: 0, outputTokens: 0, latencyMs: Math.round(performance.now() - started), outcome: refusal ? "refusal" : "error", errorCode: err.code, draftId: o.draftId });
+      await logUsage(db, { provider, model: model.model, purpose: o.purpose, promptVersion: o.promptVersion, mode: "sync", inputTokens: 0, outputTokens: 0, latencyMs: Math.round(performance.now() - started), outcome: refusal ? "refusal" : "error", errorCode: err.code, draftId: o.draftId });
       await gate.settle(held.id);
       log.warn("seo claude call failed", { operation: "seo_llm", outcome: "error", errorCode: err.code, model: o.model, attempt });
       if (!err.retryable || attempt === 2) return { ok: false, reason: refusal ? "refusal" : "error", detail: err.message, attempts: attempt, costUsd: spent };
@@ -168,7 +194,7 @@ export async function claudeJson<T>(db: Db, cfg: ClaudeConfig, o: ClaudeJsonOpts
     if (res.requestId) requestIds.push(res.requestId);
     const parsed = o.schema.safeParse(parseJsonText(res.text));
     const issues = parsed.success ? (o.check?.(parsed.data) ?? []) : parsed.error.issues.slice(0, 15).map((i) => `${i.path.join(".") || "root"}: ${i.message}`);
-    spent += await logUsage(db, { model: res.model ?? o.model, purpose: o.purpose, promptVersion: o.promptVersion, mode: "sync", requestId: res.requestId, inputTokens: res.inputTokens, outputTokens: res.outputTokens, cacheReadTokens: res.cacheReadTokens, cacheWriteTokens: res.cacheWriteTokens, latencyMs: Math.round(performance.now() - started), outcome: issues.length ? "invalid" : "ok", draftId: o.draftId });
+    spent += await logUsage(db, { provider, costUsd: res.costUsd, model: res.model ?? model.model, purpose: o.purpose, promptVersion: o.promptVersion, mode: "sync", requestId: res.requestId, inputTokens: res.inputTokens, outputTokens: res.outputTokens, cacheReadTokens: res.cacheReadTokens, cacheWriteTokens: res.cacheWriteTokens, latencyMs: Math.round(performance.now() - started), outcome: issues.length ? "invalid" : "ok", draftId: o.draftId });
     await gate.settle(held.id);
     log.info("seo claude call", { operation: "seo_llm", outcome: issues.length ? "invalid" : "ok", model: o.model, attempt, inputTokens: res.inputTokens, outputTokens: res.outputTokens, cacheReadTokens: res.cacheReadTokens, promptVersion: o.promptVersion });
     if (parsed.success && !issues.length) return { ok: true, value: parsed.data, attempts: attempt, requestIds, costUsd: spent };

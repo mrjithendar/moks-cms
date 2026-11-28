@@ -96,7 +96,11 @@ provider's own spend limit stops spending.
 
 ## LLM adapters
 
-`app/llm_adapters/`: thin `httpx` clients for providers other than Anthropic (no LiteLLM, no vendor SDKs). An adapter
+**LiteLLM as the gateway** (D-109, `app/llm_gateway.py`, moks-cms docs/LLM_GATEWAY.md): with `LITELLM_BASE_URL` and
+`LITELLM_API_KEY` set, every model call goes to LiteLLM's Chat Completions API (aliases `moks-cms-default` /
+`moks-cms-fast`, Ask the Blog with `LITELLM_ASK_API_KEY`), LiteLLM's team and key budgets refuse calls over them
+(BudgetExceeded, a flow pauses), and the guard only books, at LiteLLM's charge. `app/llm_adapters/`: thin `httpx`
+clients for providers other than Anthropic (no vendor SDKs). An adapter
 knows one API shape and nothing about the budget, prices or usage rows; the caller books what it returns.
 
 - `openai_compat.py`: Chat Completions for OpenAI and every compatible server (`Authorization: Bearer`, Azure's

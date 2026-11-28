@@ -130,8 +130,12 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
     <Card className="mb-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id="llm-budget" className="scroll-mt-24 text-lg font-semibold text-fg">LLM budget</h2>
-          <p className="mt-1 text-sm text-fg-muted">One budget for every provider, model and purpose together: drafts, content flows and other flows, AI visibility, Ask the Blog and this site&apos;s own calls. Kept and enforced by the SEO agent.</p>
+          <h2 id="llm-budget" className="scroll-mt-24 text-lg font-semibold text-fg">{view?.gateway ? "Budget for calls outside LiteLLM" : "LLM budget"}</h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            {view?.gateway
+              ? "LiteLLM enforces the budgets of every call that goes through it (above). This budget covers what cannot: AI visibility, which asks each assistant itself. Kept and enforced by the SEO agent."
+              : "One budget for every provider, model and purpose together: drafts, content flows and other flows, AI visibility, Ask the Blog and this site's own calls. Kept and enforced by the SEO agent."}
+          </p>
         </div>
         <nav aria-label="Budget period" className="flex shrink-0 rounded-lg border border-line p-0.5 text-sm">
           {(["day", "month"] as const).map((s) => (
@@ -208,7 +212,11 @@ export function LlmBudgetCard({ load, basePath }: { load: LlmBudgetLoad; basePat
             <h3 className="font-semibold text-fg">Limits that still apply on their own</h3>
             <ul className="mt-1 list-disc space-y-1 pl-5">
               <li>
-                Ask the Blog public usage limit: {spentOf(view.ask_daily.spent_usd, view.ask_daily.limit_usd)} today. It keeps readers from using up the budget.{" "}
+                {view.gateway ? (
+                  <>Ask the Blog: {spentOf(view.ask_daily.spent_usd, null)} today, limited by its own key&apos;s budget in LiteLLM (above).</>
+                ) : (
+                  <>Ask the Blog public usage limit: {spentOf(view.ask_daily.spent_usd, view.ask_daily.limit_usd)} today. It keeps readers from using up the budget.</>
+                )}{" "}
                 <Link className="underline" href="/admin/settings/assistants?section=ask-the-blog">Ask the Blog</Link>
               </li>
               <li>

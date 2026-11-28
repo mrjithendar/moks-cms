@@ -2,6 +2,7 @@ import "server-only";
 import type { PracticeSettings } from "../settings";
 import { anthropicCall } from "./anthropic";
 import { traceAwsClient } from "../../trace";
+import { budgetRefusal, gatewayErrorText } from "../../llm-gateway";
 
 /**
  * Model providers for the tutor. Each takes a system prompt, a user prompt and a JSON schema, and returns raw
@@ -13,8 +14,12 @@ import { traceAwsClient } from "../../trace";
  * - bedrock: Amazon Bedrock Converse API with the pod's AWS credentials (env or IRSA); JSON requested in the prompt
  * - anthropic: Claude Messages API through the official SDK (@anthropic-ai/sdk), structured output via
  *   output_config.format (JSON schema), prompt caching for the stable system blocks (src/lib/practice/ai/anthropic.ts)
+ * - litellm: LiteLLM's Chat Completions API when it is the gateway (D-109, lib/llm-gateway.ts): `model` is an alias,
+ *   `baseUrl` LiteLLM's …/v1, the key the caller's virtual key. Cached system blocks keep their cache_control, the
+ *   schema goes as response_format json_schema, and the result carries what LiteLLM charged (costUsd). A call over a
+ *   LiteLLM budget throws GatewayBudgetError.
  */
-export type ModelProvider = PracticeSettings["ai"]["provider"] | "anthropic";
+export type ModelProvider = PracticeSettings["ai"]["provider"] | "anthropic" | "litellm";
 export type ModelSettings = Omit<PracticeSettings["ai"], "provider"> & { provider: ModelProvider };
 export type ModelCall = {
   system: string;
@@ -27,7 +32,18 @@ export type ModelCall = {
   /** Anthropic only: output_config.effort. */
   effort?: "low" | "medium" | "high";
 };
-export type ModelResult = { text: string; inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheWriteTokens?: number; requestId?: string | null; model?: string; stopReason?: string | null };
+export type ModelResult = {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  requestId?: string | null;
+  model?: string;
+  stopReason?: string | null;
+  /** LiteLLM only: what it charged for the call (x-litellm-response-cost), in USD. */
+  costUsd?: number | null;
+};
 
 export class ProviderError extends Error {
   constructor(
@@ -62,7 +78,60 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
   }
 }
 
+/** LiteLLM's Chat Completions API (D-109): see the list above. */
+async function litellmCall(settings: ModelSettings, apiKey: string | null, call: ModelCall, fetchImpl: typeof fetch): Promise<ModelResult> {
+  const blocks: Record<string, unknown>[] = (call.cachedSystem ?? []).filter(Boolean).map((text) => ({ type: "text", text }));
+  if (blocks.length) blocks[blocks.length - 1]!.cache_control = { type: "ephemeral" };
+  if (call.system) blocks.push({ type: "text", text: call.system });
+  const body = {
+    model: settings.model,
+    messages: [...(blocks.length ? [{ role: "system", content: blocks }] : []), { role: "user", content: call.user }],
+    max_tokens: call.maxTokens,
+    response_format: { type: "json_schema", json_schema: { name: "answer", schema: call.schema, strict: false } },
+  };
+  let res: Response;
+  try {
+    res = await fetchImpl(`${settings.baseUrl.replace(/\/+$/, "")}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey ?? ""}` }, body: JSON.stringify(body), signal: call.signal });
+  } catch (e) {
+    if ((e as Error).name === "TimeoutError" || call.signal.aborted) throw new ProviderError("LiteLLM timed out", "timeout", true);
+    throw new ProviderError("LiteLLM unreachable", "unavailable", true);
+  }
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    data = null;
+  }
+  if (!res.ok) {
+    const refusal = budgetRefusal(res.status, data, "this caller's key");
+    if (refusal) throw refusal;
+    const base = fromStatus(res.status, "LiteLLM");
+    throw new ProviderError(gatewayErrorText(res.status, data), base.code, base.retryable);
+  }
+  const choice = (data?.choices as { message?: { content?: string }; finish_reason?: string }[] | undefined)?.[0];
+  const usage = (data?.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+  const read = usage.prompt_tokens_details?.cached_tokens ?? usage.cache_read_input_tokens ?? 0;
+  const write = usage.cache_creation_input_tokens ?? 0;
+  const cost = Number(res.headers.get("x-litellm-response-cost"));
+  const target = res.headers.get("x-litellm-model-name");
+  const finish = choice?.finish_reason ?? null;
+  if (finish === "content_filter") throw new ProviderError("The model declined to answer.", "bad_response", false);
+  if (!choice?.message?.content) throw new ProviderError("Empty answer", "bad_response", false);
+  return {
+    text: choice.message.content,
+    inputTokens: Math.max(0, (usage.prompt_tokens ?? 0) - read - write),
+    outputTokens: usage.completion_tokens ?? 0,
+    cacheReadTokens: read,
+    cacheWriteTokens: write,
+    requestId: res.headers.get("x-litellm-call-id") ?? (typeof data?.id === "string" ? data.id : null),
+    model: target ? (target.split("/").at(-1) ?? target) : settings.model,
+    stopReason: finish === "length" ? "max_tokens" : finish === "stop" ? "end_turn" : finish,
+    costUsd: Number.isFinite(cost) && res.headers.has("x-litellm-response-cost") ? cost : null,
+  };
+}
+
 export async function callModel(settings: ModelSettings, apiKey: string | null, call: ModelCall, fetchImpl: typeof fetch = fetch): Promise<ModelResult> {
+  if (settings.provider === "litellm") return litellmCall(settings, apiKey, call, fetchImpl);
   if (settings.provider === "anthropic") return anthropicCall(settings.model, apiKey, call, fetchImpl);
   if (settings.provider === "openai") {
     const base = settings.baseUrl || "https://api.openai.com/v1";

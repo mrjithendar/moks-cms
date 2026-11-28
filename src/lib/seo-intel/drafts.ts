@@ -324,6 +324,9 @@ export async function weeklyBatch(deps: { fetchImpl?: typeof fetch; now?: Date; 
   const s = await getSeoSettings();
   const cfg = claudeConfig(s);
   if (!s.drafts.enabled) return { submitted: 0, batchId: null, skipped: "disabled" };
+  // Message Batches are Anthropic's own API: with LiteLLM as the gateway (D-109) the weekly drafts are the agent's
+  // weekly_recommendations_flow (through LiteLLM), never a batch around it.
+  if (cfg.gateway) return { submitted: 0, batchId: null, skipped: "gateway" };
   if (!cfg.apiKey) return { submitted: 0, batchId: null, skipped: "not_configured" };
   const candidates = rowsOf<{ article_id: string }>(
     await db.execute(sql`

@@ -10,7 +10,8 @@ import { getProblemRecord } from "../catalog";
 import { PracticeError } from "../errors";
 import { recordEvent } from "../progress";
 import { aiConfigured, aiKey, getPracticeSettings, type PracticeSettings } from "../settings";
-import { callModel, ProviderError } from "./providers";
+import { GatewayBudgetError, llmGateway } from "../../llm-gateway";
+import { callModel, ProviderError, type ModelSettings } from "./providers";
 
 /**
  * Optional AI tutor. Rules:
@@ -148,7 +149,9 @@ export async function askTutor(userId: string, raw: unknown, fetchImpl: typeof f
   if (!parsed.success) throw new PracticeError(parsed.error.issues[0]?.message ?? "Invalid request.", 400, "invalid");
   const input = parsed.data;
   const settings = await getPracticeSettings();
-  const ai = settings.ai;
+  // LiteLLM as the gateway (D-109): its alias and the tutor's own virtual key, whose budget LiteLLM enforces.
+  const gw = llmGateway();
+  const ai: ModelSettings = gw ? { ...settings.ai, provider: "litellm", model: gw.modelPractice, baseUrl: gw.baseUrl } : settings.ai;
   if (!aiConfigured(settings)) throw new PracticeError("The AI tutor is not enabled.", 503, "ai_disabled");
   const requestId = randomUUID();
   const base = { userId, feature: input.feature, provider: ai.provider, model: ai.model, promptVersion: PROMPT_VERSION, requestId };
@@ -163,7 +166,7 @@ export async function askTutor(userId: string, raw: unknown, fetchImpl: typeof f
     await record({ ...base, status: "quota", errorCode: "user_daily" });
     throw new PracticeError(`You've used today's ${settings.quotas.aiRequestsPerDay} AI requests. Practice continues without them.`, 429, "ai_quota");
   }
-  if ((usage?.spend ?? 0) >= settings.quotas.aiDailyBudgetUsd * 1_000_000) {
+  if (!gw && (usage?.spend ?? 0) >= settings.quotas.aiDailyBudgetUsd * 1_000_000) {
     await record({ ...base, status: "quota", errorCode: "global_budget" });
     throw new PracticeError("The AI tutor has reached today's budget. Try again tomorrow.", 503, "ai_budget");
   }
@@ -175,7 +178,7 @@ export async function askTutor(userId: string, raw: unknown, fetchImpl: typeof f
   for (;;) {
     attempt++;
     try {
-      const result = await callModel(ai, aiKey(settings), { system: SYSTEM, user: ctx.user, schema: ANSWER_SCHEMA, maxTokens: ai.maxOutputTokens, signal: AbortSignal.timeout(ai.timeoutMs) }, fetchImpl);
+      const result = await callModel(ai, gw ? gw.practiceKey : aiKey(settings), { system: SYSTEM, user: ctx.user, schema: ANSWER_SCHEMA, maxTokens: ai.maxOutputTokens, signal: AbortSignal.timeout(ai.timeoutMs) }, fetchImpl);
       let answer: z.infer<typeof answerShape>;
       try {
         answer = answerShape.parse(JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g, "")));
@@ -183,10 +186,15 @@ export async function askTutor(userId: string, raw: unknown, fetchImpl: typeof f
         answer = { summary: result.text.slice(0, 2000), points: [], next_step: "", code: "" };
       }
       const grounded = ground(answer, ctx);
-      await record({ ...base, problemId: ctx.problemId, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costMicroUsd: costMicroUsd(ai, result.inputTokens, result.outputTokens), latencyMs: Date.now() - started, status: "ok" });
+      await record({ ...base, problemId: ctx.problemId, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costMicroUsd: result.costUsd != null ? Math.round(result.costUsd * 1_000_000) : costMicroUsd(settings.ai, result.inputTokens, result.outputTokens), latencyMs: Date.now() - started, status: "ok" });
       await recordEvent(db, { userId, type: "ai_assistance", problemId: ctx.problemId, detail: { feature: input.feature, requestId } });
       return { ...grounded.answer, grounding: grounded.grounding, facts: ctx.facts, requestId };
     } catch (error) {
+      if (error instanceof GatewayBudgetError) {
+        await record({ ...base, problemId: ctx.problemId, latencyMs: Date.now() - started, status: "quota", errorCode: "litellm_budget" });
+        log.warn("practice tutor refused by the LiteLLM budget", { requestId, scope: error.scope });
+        throw new PracticeError("The AI tutor has reached its budget. Try again later.", 503, "ai_budget");
+      }
       const pe = error instanceof ProviderError ? error : new ProviderError((error as Error).message, "unavailable", false);
       if (pe.retryable && attempt < 2 && Date.now() - started < ai.timeoutMs) {
         await new Promise((r) => setTimeout(r, 800));

@@ -8,7 +8,7 @@ import { dataBlock, safeQueries } from "./llm";
 import { mlDecision, mlIntents, mlQueryClusters } from "./ml";
 import { sendSeoAlert } from "./notify";
 import { expectedCtr as fallbackCtr } from "./queries";
-import { claudeConfig, getSeoSettings, type SeoSettings } from "./settings";
+import { claudeConfig, claudeReady, getSeoSettings, type SeoSettings } from "./settings";
 import { addDays } from "./sqlutil";
 
 /**
@@ -428,7 +428,7 @@ export async function refreshKeywords(deps: { fetchImpl?: typeof fetch; now?: Da
     const chunk = todo.slice(i, i + batch);
     const safe = safeQueries(chunk);
     let llm: Map<string, Intent> | null = null;
-    if (s.keywords.classifyWithLlm && cfg.apiKey && safe.length) {
+    if (s.keywords.classifyWithLlm && claudeReady(cfg) && safe.length) {
       const res = await claudeJson(db, cfg, {
         model: cfg.classifyModel,
         purpose: "intent",

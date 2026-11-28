@@ -283,6 +283,20 @@ export type AgentLlmBudgetView = {
   ask_daily: { limit_usd: number; spent_usd: number };
   /** Limits per model and per provider from before the one budget. Shown read-only: nothing enforces them. */
   legacy_limits: { models: Record<string, AgentLlmBudget>; providers: Record<string, AgentLlmBudget> };
+  /** LiteLLM when it is the agent's gateway (D-109): its view of the agent's keys and their team. The budget above then covers only calls outside LiteLLM. */
+  gateway?: AgentGatewayStatus;
+};
+
+export type AgentGatewayKey = { caller: "agent" | "ask"; alias: string | null; spend_usd: number | null; max_budget_usd: number | null; budget_duration: string | null; budget_reset_at: string | null; models: string[]; tpm_limit: number | null; rpm_limit: number | null };
+export type AgentGatewayStatus = {
+  gateway: "litellm";
+  base_url: string;
+  aliases: { default: string; fast: string };
+  keys: AgentGatewayKey[];
+  team: { alias: string | null; spend_usd: number | null; max_budget_usd: number | null; budget_duration: string | null; budget_reset_at: string | null; models: string[] } | null;
+  models: { name: string | null; target: string | null; input_usd_per_mtok: number | null; output_usd_per_mtok: number | null }[];
+  errors: string[];
+  budget_note?: string;
 };
 
 export const getLlmBudget = (scope: AgentLlmScope, deps?: AgentDeps) => call<AgentLlmBudgetView>("GET", `/llm-budget?scope=${scope}`, undefined, deps, 8_000);

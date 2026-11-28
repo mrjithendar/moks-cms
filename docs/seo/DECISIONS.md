@@ -1192,3 +1192,29 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
   without the SEO agent. No built-in CrewAI schedule row: when a site backs up is its own choice.
 - Resolves docs/SETTINGS.md problem 7 and decision D8. Guide: docs/BACKUPS.md. Migration 0044 (`backup_run`:
   operation, type, progress, detail, sha256, error, cancel, attempts; statuses pending/running/completed/failed/cancelled).
+
+## D-109 LiteLLM is the LLM gateway: models by alias, budgets in LiteLLM (owner decision 2026-11-28)
+
+- **Owner's choices** (asked 2026-11-28): every text call goes through LiteLLM; budgets only in LiteLLM; a team plus
+  one key per caller; models chosen by aliases in LiteLLM.
+- **What.** With `LITELLM_BASE_URL` and `LITELLM_API_KEY` set:
+  - the SEO agent's model client becomes `GatewayLlm` (`seo-agent/app/llm_gateway.py`, LiteLLM's Chat Completions API);
+  - the web app's drafts, keyword intents, SEO enrichment and Practice tutor use the `litellm` provider
+    (`src/lib/practice/ai/providers.ts`, `src/lib/llm-gateway.ts`).
+- **Keys:** agent, Ask the Blog, web, Practice, in team `jithendar.com`.
+- **Aliases:** `moks-cms-default` and `moks-cms-fast`. A Claude id from the site's settings is asked by its tier.
+- **Not through it:** AI visibility (it measures each assistant), images, video, embeddings. Anthropic Message Batches
+  are skipped (the agent's weekly flow drafts).
+- **Budgets.** LiteLLM's team and key budgets refuse a call over them (HTTP 422 `budget_exceeded` → BudgetExceeded /
+  GatewayBudgetError: a flow pauses as before).
+  - The agent's guard books every call at LiteLLM's charge, but checks none of the calls that go through LiteLLM.
+  - The site's budget remains only for calls outside LiteLLM (AI visibility holds, counted on non-LiteLLM spend), so
+    those are not left without a limit.
+  - Ask the Blog's own cap and the tutor's USD budget are not used (their keys' budgets replace them). Request-count
+    quotas stay.
+- **Why chat completions, not LiteLLM's Anthropic passthrough:** the aliases can point at any provider, and the OpenAI
+  shape is the one LiteLLM translates for all of them. Checked against LiteLLM 1.111 with a local proxy, a database
+  and a fake upstream: cost headers, the 422 body, key and team info readable with the key itself, stream usage
+  without a cost header, and cache_control and images passed through.
+- Off by default: a moks-cms site without these settings is unchanged. Guide: docs/LLM_GATEWAY.md.
+

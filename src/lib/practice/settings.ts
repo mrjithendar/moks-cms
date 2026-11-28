@@ -7,6 +7,7 @@ import { broadcastInvalidate, onInvalidate } from "../cache-bus";
 import type { Actor } from "../posts";
 import { seal, unseal, type Sealed } from "../secrets";
 import { PracticeError } from "./errors";
+import { llmGateway } from "../llm-gateway";
 
 /**
  * Admin → Python practice → Settings, stored in the `setting` table (key "practice").
@@ -97,7 +98,9 @@ export function aiKey(settings: PracticeSettings): string | null {
   return env?.trim() || null;
 }
 
+/** On, and able to call a model: through LiteLLM when it is the gateway (D-109: no provider or key here), else the provider set here. */
 export function aiConfigured(settings: PracticeSettings): boolean {
+  if (llmGateway()) return settings.ai.enabled;
   return settings.ai.enabled && Boolean(settings.ai.model) && (settings.ai.provider === "bedrock" || Boolean(aiKey(settings)));
 }
 

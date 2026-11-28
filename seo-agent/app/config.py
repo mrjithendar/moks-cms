@@ -108,6 +108,15 @@ class Settings:
     callback_token: str = ""
     callback_url: str = "http://jithendar-com-internal.jithendar:9465"
     anthropic_api_key: str = ""
+    # LLM gateway (D-109, app/llm_gateway.py): LiteLLM's OpenAI-compatible API (…/v1). With a URL and a key every model
+    # call goes there instead of to Anthropic: LiteLLM picks the provider and model behind each alias and holds the
+    # budgets (its team and virtual keys); ANTHROPIC_API_KEY is then not used. Ask the Blog has its own key (and so its
+    # own budget in LiteLLM); without one it uses the agent's key.
+    litellm_base_url: str = ""
+    litellm_api_key: str = field(default="", repr=False)
+    litellm_ask_api_key: str = field(default="", repr=False)
+    litellm_model_default: str = "moks-cms-default"
+    litellm_model_fast: str = "moks-cms-fast"
     draft_model: str = "claude-sonnet-5-5"
     classify_model: str = "claude-haiku-5-5"
     ask_daily_budget_usd: float = 1.0
@@ -265,6 +274,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         callback_token=env.get("SEO_AGENT_CALLBACK_TOKEN", ""),
         callback_url=env.get("SEO_AGENT_CALLBACK_URL", Settings.callback_url).rstrip("/"),
         anthropic_api_key=env.get("ANTHROPIC_API_KEY", ""),
+        litellm_base_url=env.get("LITELLM_BASE_URL", "").strip().rstrip("/"),
+        litellm_api_key=env.get("LITELLM_API_KEY", "").strip(),
+        litellm_ask_api_key=env.get("LITELLM_ASK_API_KEY", "").strip(),
+        litellm_model_default=env.get("LITELLM_MODEL_DEFAULT", "").strip() or Settings.litellm_model_default,
+        litellm_model_fast=env.get("LITELLM_MODEL_FAST", "").strip() or Settings.litellm_model_fast,
         draft_model=env.get("SEO_DRAFT_MODEL", "").strip() or Settings.draft_model,
         classify_model=env.get("SEO_CLASSIFY_MODEL", "").strip() or Settings.classify_model,
         ask_daily_budget_usd=_float("ASK_BLOG_DAILY_BUDGET_USD", Settings.ask_daily_budget_usd, env),

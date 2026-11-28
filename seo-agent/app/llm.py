@@ -72,12 +72,18 @@ class Usage:
     cache_write_tokens: int = 0
     request_id: str | None = None
     latency_ms: int | None = None
+    # seo_llm_usage.provider: "anthropic" for the SDK, "litellm" for calls through the gateway (app/llm_gateway.py).
+    provider: str = "anthropic"
+    # The cost the gateway charged for this call (LiteLLM's own prices, the ones its budgets count). None: priced here.
+    cost_override: float | None = None
 
     @property
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_write_tokens
 
     def cost_usd(self, mode: str = "sync") -> float:
+        if self.cost_override is not None:
+            return max(0.0, self.cost_override)
         p = price_of(self.model)
         raw = (
             self.input_tokens * p["input"]
@@ -120,7 +126,7 @@ class Truncated(InvalidOutput):
 class SpendStore(Protocol):
     async def month_spend(self, now: datetime) -> float: ...
     async def day_spend(self, now: datetime, purpose_prefix: str) -> float: ...
-    async def llm_spend(self, since: datetime, *, model: str | None = None, provider: str | None = None) -> float: ...
+    async def llm_spend(self, since: datetime, *, model: str | None = None, provider: str | None = None, exclude_provider: str | None = None) -> float: ...
     async def llm_spend_by_model(self, month_start: datetime, day_start: datetime) -> list[dict[str, Any]]: ...
     async def llm_spend_breakdown(self, since: datetime) -> list[dict[str, Any]]: ...
     async def record(self, row: dict[str, Any]) -> None: ...
@@ -151,14 +157,15 @@ class PgSpendStore:
             )
             return float((await cur.fetchone())["s"])
 
-    async def llm_spend(self, since: datetime, *, model: str | None = None, provider: str | None = None) -> float:
-        """Every purpose since `since`, for one model or one provider (app/llm_budgets.py), plus legacy batches still in
-        flight at their estimate (they are Anthropic batches)."""
+    async def llm_spend(self, since: datetime, *, model: str | None = None, provider: str | None = None, exclude_provider: str | None = None) -> float:
+        """Every purpose since `since`, for one model or one provider (app/llm_budgets.py), or every provider but one
+        (the calls outside LiteLLM in gateway mode), plus legacy batches still in flight at their estimate (they are
+        Anthropic batches)."""
         async with self.pool.connection() as c:
             cur = await c.execute(
                 "select coalesce(sum(cost_usd), 0)::float8 as s from seo_llm_usage where at >= %s"
-                " and (%s::text is null or model = %s) and (%s::text is null or provider = %s)",
-                (since, model, model, provider, provider),
+                " and (%s::text is null or model = %s) and (%s::text is null or provider = %s) and (%s::text is null or provider <> %s)",
+                (since, model, model, provider, provider, exclude_provider, exclude_provider),
             )
             spent = float((await cur.fetchone())["s"])
             cur = await c.execute(
@@ -229,11 +236,11 @@ class PgSpendStore:
             await c.execute(
                 f"""insert into seo_llm_usage (provider, model, purpose, prompt_version, mode, request_id, input_tokens,
                      output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_ms, outcome, error_code, draft_id{extra_cols})
-                   values ('anthropic', %(model)s, %(purpose)s, %(prompt_version)s, 'sync', %(request_id)s, %(input_tokens)s,
+                   values (%(provider)s, %(model)s, %(purpose)s, %(prompt_version)s, 'sync', %(request_id)s, %(input_tokens)s,
                      %(output_tokens)s, %(cache_read_tokens)s, %(cache_write_tokens)s, %(cost_usd)s, %(latency_ms)s,
                      %(outcome)s, %(error_code)s,
                      (select id from seo_drafts where id::text = %(draft_id)s){extra_vals})""",  # noqa: S608 - constant column lists
-                {**row, "draft_id": draft_id, "run_id": row.get("run_id"), "agent": row.get("agent")},
+                {**row, "provider": row.get("provider") or PROVIDER, "draft_id": draft_id, "run_id": row.get("run_id"), "agent": row.get("agent")},
             )
 
 
@@ -248,10 +255,17 @@ class MemorySpendStore:
     async def day_spend(self, now: datetime, purpose_prefix: str) -> float:
         return sum(r["cost_usd"] for r in self.rows if r["purpose"].startswith(purpose_prefix))
 
-    async def llm_spend(self, since: datetime, *, model: str | None = None, provider: str | None = None) -> float:
-        """Rows without an `at` count as now. Every row here is an Anthropic call. `preexisting_usd` (spend from before
-        the test began) counts in the total of every period, not for one model."""
-        rows = [r for r in self.rows if r.get("at", since) >= since and (model is None or r["model"] == model) and provider in (None, "anthropic")]
+    async def llm_spend(self, since: datetime, *, model: str | None = None, provider: str | None = None, exclude_provider: str | None = None) -> float:
+        """Rows without an `at` count as now. A row without a provider is an Anthropic call. `preexisting_usd` (spend from
+        before the test began) counts in the total of every period, not for one model."""
+        rows = [
+            r
+            for r in self.rows
+            if r.get("at", since) >= since
+            and (model is None or r["model"] == model)
+            and provider in (None, r.get("provider") or "anthropic")
+            and (exclude_provider is None or (r.get("provider") or "anthropic") != exclude_provider)
+        ]
         return sum(r["cost_usd"] for r in rows) + (self.preexisting_usd if model is None and provider in (None, "anthropic") else 0.0)
 
     async def llm_spend_by_model(self, month_start: datetime, day_start: datetime) -> list[dict[str, Any]]:
@@ -291,7 +305,8 @@ class Reservation:
     released: bool = False
 
 
-PROVIDER = "anthropic"  # every call this service makes is a Claude call (seo_llm_usage.provider)
+PROVIDER = "anthropic"  # a call through the Anthropic SDK (seo_llm_usage.provider)
+GATEWAY_PROVIDER = "litellm"  # a call through LiteLLM (D-109, app/llm_gateway.py)
 HOLD_SECONDS = 900.0  # a hold taken over the API (POST /llm-budget/reserve) that is never settled lapses after this
 MAX_HOLDS = 500
 
@@ -318,6 +333,12 @@ class BudgetGuard:
 
     `monthly_usd` is a fixed monthly budget for when no budget store is given (tests, the in-memory mode). In the
     service the budget comes from `budget` (the admin's saved limits) and `monthly_usd` is None.
+
+    `gateway`: every call of this service goes through LiteLLM (D-109, app/llm_gateway.py), which holds their budgets
+    (its team and virtual keys) and refuses a call over them. The guard then checks none of its own calls (no budget,
+    no Ask cap): it still books every one (usage rows, metrics). The admin's budget is kept for the calls that cannot
+    go through LiteLLM (AI visibility asks each assistant itself): their holds are checked against the spend booked
+    outside LiteLLM.
     """
 
     def __init__(
@@ -327,7 +348,9 @@ class BudgetGuard:
         ask_daily_usd: float = 0.0,
         clock: Callable[[], datetime] | None = None,
         budget: BudgetSource | None = None,
+        gateway: bool = False,
     ):
+        self.gateway = gateway
         self.store = store
         self.ask_daily_usd = ask_daily_usd
         self.clock = clock or (lambda: datetime.now(UTC))
@@ -339,11 +362,13 @@ class BudgetGuard:
 
     async def _check_budget(self, budget: Budget, est: float, now: datetime) -> None:
         """The one budget, across every provider, model and purpose: spend this UTC day or month, plus the calls in
-        flight here, plus this call's upper bound. Under the lock."""
+        flight here, plus this call's upper bound. Under the lock. In gateway mode it covers only the calls outside
+        LiteLLM (their spend; the calls in flight count whole, which only errs on the safe side)."""
         for unit, max_usd in (("day", budget.daily_usd), ("month", budget.monthly_usd)):
             if max_usd is None:
                 continue
-            used = await self.store.llm_spend(period_start(unit, now)) + self.pending["total"]
+            outside = {"exclude_provider": GATEWAY_PROVIDER} if self.gateway else {}
+            used = await self.store.llm_spend(period_start(unit, now), **outside) + self.pending["total"]
             if used + est > max_usd or (used > 0 and used >= max_usd):
                 word = "daily" if unit == "day" else "monthly"
                 metrics.BUDGET_BLOCKED.labels(scope=f"llm_{word}").inc()
@@ -351,18 +376,21 @@ class BudgetGuard:
                 reset = period_end(unit, now).strftime("%Y-%m-%d %H:%M UTC")
                 raise BudgetExceeded(
                     f"llm_{word}",
-                    f"The {word} LLM budget is reached: ${used:.2f} of ${max_usd:.2f} used {'today' if unit == 'day' else 'this month'}{more}."
+                    ("Calls outside LiteLLM (AI visibility): " if self.gateway else "") + f"The {word} LLM budget is reached: ${used:.2f} of ${max_usd:.2f} used {'today' if unit == 'day' else 'this month'}{more}."
                     f" It resets {reset}; change it in Admin → Settings → AI & models → LLM providers & budget.",
                 )
 
-    async def _admit_usd(self, est: float, purpose: str, hold: bool) -> Reservation:
-        budget = await self.budget.budget()
+    async def _admit_usd(self, est: float, purpose: str, hold: bool, external: bool = False) -> Reservation:
+        """`external`: a hold for a call this service does not make (POST /llm-budget/reserve). In gateway mode only
+        those are checked: everything else goes through LiteLLM, which holds its own budgets."""
         scope = "ask_daily" if purpose.startswith("ask") else None
+        budget = await self.budget.budget() if (external or not self.gateway) else None
         async with self._lock:
             now = self.clock()
             self._lapse()
-            await self._check_budget(budget, est, now)
-            if scope == "ask_daily":
+            if budget is not None:
+                await self._check_budget(budget, est, now)
+            if scope == "ask_daily" and not self.gateway:
                 day = await self.store.day_spend(now, "ask")
                 if day + self.pending["ask_daily"] + est > self.ask_daily_usd:
                     metrics.BUDGET_BLOCKED.labels(scope="ask_daily").inc()
@@ -415,7 +443,7 @@ class BudgetGuard:
             self._lapse()
             if len(self.holds) >= MAX_HOLDS:
                 raise BudgetExceeded("llm_holds", "too many LLM calls are being held at once; try again shortly")
-        r = await self._admit_usd(max_usd, purpose, hold=True)
+        r = await self._admit_usd(max_usd, purpose, hold=True, external=True)
         key = uuid.uuid4().hex
         self.holds[key] = (r, self.monotonic() + HOLD_SECONDS)
         return key
@@ -457,6 +485,7 @@ class BudgetGuard:
         try:
             await self.store.record(
                 {
+                    "provider": usage.provider,
                     "model": usage.model,
                     "purpose": purpose,
                     "prompt_version": prompt_version,
@@ -594,6 +623,33 @@ def _attribution(spec: CallSpec) -> dict[str, str | None]:
     return {"run_id": getattr(spec, "run_id", None), "agent": getattr(spec, "agent", None)}
 
 
+async def book_call(guard: BudgetGuard, spec: CallSpec, usage: Usage, r: Reservation | None, started_ns: int, outcome: str = "ok", error_code: str | None = None) -> float:
+    """Book one model call exactly once: a seo_llm_usage row (BudgetGuard.record), Prometheus, and one `llm.call` span.
+    Shared by the Anthropic client and the LiteLLM gateway client (app/llm_gateway.py)."""
+    attrs = _attribution(spec)
+    cost = await guard.record(usage, spec.purpose, spec.prompt_version, outcome, error_code, spec.draft_id, reservation=r, run_id=attrs["run_id"], agent=attrs["agent"])
+    tracing.emit_span(
+        "llm.call",
+        start_ns=started_ns,
+        attrs={
+            "llm.model": usage.model,
+            "llm.requested_model": spec.model,
+            "llm.purpose": spec.purpose,
+            "llm.prompt_version": spec.prompt_version,
+            "llm.input_tokens": usage.input_tokens,
+            "llm.output_tokens": usage.output_tokens,
+            "llm.cache_read_tokens": usage.cache_read_tokens,
+            "llm.cache_write_tokens": usage.cache_write_tokens,
+            "llm.cost_usd": round(cost, 6),
+            "llm.outcome": outcome,
+            **({"llm.error_code": error_code} if error_code else {}),
+            **{f"llm.{k}": v for k, v in attrs.items() if v},
+        },
+        error=None if outcome == "ok" else outcome,
+    )
+    return cost
+
+
 class AnthropicLlm:
     """The official Anthropic SDK (AsyncAnthropic) behind the budget guard. No LangChain (D-54).
 
@@ -632,28 +688,7 @@ class AnthropicLlm:
         return self.client.beta.messages if spec.model in FALLBACK_MODELS else self.client.messages
 
     async def _book(self, spec: CallSpec, usage: Usage, r: Reservation, started_ns: int, outcome: str = "ok", error_code: str | None = None) -> float:
-        attrs = _attribution(spec)
-        cost = await self.guard.record(usage, spec.purpose, spec.prompt_version, outcome, error_code, spec.draft_id, reservation=r, run_id=attrs["run_id"], agent=attrs["agent"])
-        tracing.emit_span(
-            "llm.call",
-            start_ns=started_ns,
-            attrs={
-                "llm.model": usage.model,
-                "llm.requested_model": spec.model,
-                "llm.purpose": spec.purpose,
-                "llm.prompt_version": spec.prompt_version,
-                "llm.input_tokens": usage.input_tokens,
-                "llm.output_tokens": usage.output_tokens,
-                "llm.cache_read_tokens": usage.cache_read_tokens,
-                "llm.cache_write_tokens": usage.cache_write_tokens,
-                "llm.cost_usd": round(cost, 6),
-                "llm.outcome": outcome,
-                **({"llm.error_code": error_code} if error_code else {}),
-                **{f"llm.{k}": v for k, v in attrs.items() if v},
-            },
-            error=None if outcome == "ok" else outcome,
-        )
-        return cost
+        return await book_call(self.guard, spec, usage, r, started_ns, outcome, error_code)
 
     async def _check(self, msg: Any, spec: CallSpec, usage: Usage, r: Reservation, started_ns: int) -> None:
         stop = getattr(msg, "stop_reason", None)
