@@ -76,6 +76,7 @@ from .index import MemoryRetriever, PgVectorIndex
 from .llm import AnthropicLlm, BudgetExceeded, BudgetGuard, MemorySpendStore, PgSpendStore
 from .llm_budgets import REPLACED, BudgetIn, MemoryBudget, PgBudget, legacy_overview
 from .llm_budgets import overview as llm_overview
+from .llm_gateway import Gateway, GatewayLlm, gateway_status
 from .llm_providers import Invalid as ProviderInvalid
 from .llm_providers import MemoryProviderStore, PgProviderStore, ProviderIn, check_catalog, enabled_models, save_provider
 from .llm_providers import overview as providers_overview
@@ -101,6 +102,10 @@ from .tracing import setup_tracing
 from .webapp import HttpWebApp
 
 log = logging.getLogger("seo_agent")
+GATEWAY_BUDGETS = (
+    "Calls through LiteLLM (every flow, crew, Ask the Blog, the web app's drafts, enrichment and the Practice tutor) are limited by LiteLLM: "
+    "the jithendar.com team and each caller's virtual key, at https://jithendar.com/llm/ui. The budget here applies only to calls outside LiteLLM (AI visibility)."
+)
 VERSION = os.environ.get("GIT_SHA", "dev")
 
 
@@ -178,6 +183,7 @@ class Container:
     budgets: Any = field(default_factory=MemoryBudget)  # the one LLM budget (app/llm_budgets.py)
     admin_settings: Any = field(default_factory=MemorySettingsStore)  # values saved from the admin (app/admin_settings)
     providers: Any = field(default_factory=MemoryProviderStore)  # LLM providers and models (app/llm_providers)
+    gateway: Any = None  # LiteLLM (app/llm_gateway.py Gateway) when every model call goes through it (D-109)
 
     async def reindex(self, article_ids: list[str] | None = None, full: bool = False, force: bool = False) -> dict[str, int]:
         async with self.reindex_lock:
@@ -251,10 +257,16 @@ async def build_container(settings: Settings) -> Container:
         settings_note = f"admin settings table not available: {type(e).__name__}"
         log.warning("admin settings not loaded", extra={"event": "admin_settings_load_failed"})
     budgets = PgBudget(pool)
-    guard = BudgetGuard(PgSpendStore(pool), None, settings.ask_daily_budget_usd, budget=budgets)
+    # LiteLLM (D-109) when LITELLM_BASE_URL and LITELLM_API_KEY are set: it picks the models and holds the budgets, so
+    # the guard only books. Otherwise Claude directly, under the admin's budget.
+    gateway = Gateway.from_settings(settings)
+    guard = BudgetGuard(PgSpendStore(pool), None, settings.ask_daily_budget_usd, budget=budgets, gateway=gateway is not None)
     web = HttpWebApp(settings.callback_url, settings.callback_token)
     history = RunHistory(PgHistorySink(pool), web.run_history_settings)
-    llm = RecordingLlm(AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s), history)
+    model: Any = GatewayLlm(gateway, guard) if gateway else AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s)
+    llm = RecordingLlm(model, history)
+    if gateway:
+        log.info("llm gateway: litellm", extra={"event": "llm_gateway", "base_url": gateway.base_url, "ask_key": bool(gateway.ask_api_key), "default_alias": gateway.model_default, "fast_alias": gateway.model_fast})
     # The reranker's gate holds the shared Settings object, so its switch and limits apply live (app/reranker.py).
     reranker = RerankGate(settings)
     index = PgVectorIndex(pool, make_embeddings(settings), reranker=reranker)
@@ -280,12 +292,12 @@ async def build_container(settings: Settings) -> Container:
     deps.runner = runner
     # The admin's Ask the Blog settings (web app → `setting` row "ask_blog") apply on top of the environment's switch.
     ask = AskService(AskPipeline(deps), index, PgAskLog(pool), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=PgAskRuntime(pool), guard=guard)
-    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=index, guard=guard, pool=pool, sync_pool=sync_pool, reasons=reasons, history=history, schedules=PgScheduleStore(pool), budgets=budgets, admin_settings=admin_settings, providers=PgProviderStore(pool))
+    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=index, guard=guard, pool=pool, sync_pool=sync_pool, reasons=reasons, history=history, schedules=PgScheduleStore(pool), budgets=budgets, admin_settings=admin_settings, providers=PgProviderStore(pool), gateway=gateway)
     deps.reindex = c.reindex
     return c
 
 
-def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any = None, verify_delays: tuple[float, ...] = (0, 0, 0), history: bool = False, **crews: Any) -> Container:
+def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any = None, verify_delays: tuple[float, ...] = (0, 0, 0), history: bool = False, gateway: Any = None, **crews: Any) -> Container:
     """Everything in memory (tests): fake LLM and web app, in-memory runs/locks/persistence. `history=True` records
     the run history in a MemoryHistorySink (container.history.sink) and wraps the model with RecordingLlm."""
     retriever = retriever or MemoryRetriever()
@@ -309,7 +321,8 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
     ask = AskService(AskPipeline(deps), retriever, MemoryAskLog(), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=StaticAskRuntime(), guard=guard)
     budgets = guard.budget if isinstance(guard.budget, MemoryBudget) else MemoryBudget()
     guard.budget = budgets
-    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=retriever, guard=guard, ready=True, history=run_history, budgets=budgets)
+    gw = gateway if gateway is not None else getattr(getattr(llm, "_inner", llm), "gw", None)
+    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=retriever, guard=guard, ready=True, history=run_history, budgets=budgets, gateway=gw)
     deps.reindex = c.reindex
     return c
 
@@ -733,6 +746,12 @@ def create_app(container: Container | None = None) -> FastAPI:
         now = c.guard.clock()
         out["ask_daily"] = {"limit_usd": c.guard.ask_daily_usd, "spent_usd": round(await c.guard.store.day_spend(now, "ask"), 6)}
         out["legacy_limits"] = await c.budgets.legacy()
+        if c.gateway is not None:
+            # D-109: LiteLLM holds the budgets; the admin's own limits are not used while it does.
+            model = getattr(c.deps.llm, "_inner", c.deps.llm)
+            out["gateway"] = await gateway_status(c.gateway, model.client if isinstance(model, GatewayLlm) else None)
+            out["gateway"]["budget_note"] = GATEWAY_BUDGETS
+            out["ask_daily"]["limit_usd"] = None
         return out
 
     @app.put("/llm-budget", dependencies=[Depends(auth)])

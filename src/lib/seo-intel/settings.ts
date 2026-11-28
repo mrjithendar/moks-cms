@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { seal, unseal, type Sealed } from "../secrets";
+import { llmGateway } from "../llm-gateway";
 
 /**
  * Settings of the SEO intelligence platform: one JSON document in the `setting` table (key "seo"), validated
@@ -441,6 +442,8 @@ export function seoLlmKey(s: SeoSettings, env: Record<string, string | undefined
 }
 
 export function llmConfigured(s: SeoSettings): boolean {
+  // LiteLLM as the gateway (D-109): the switch is enough, LiteLLM has the model and the key.
+  if (llmGateway()) return s.llm.enabled;
   if (!s.llm.enabled || !s.llm.model) return false;
   if (s.llm.provider === "bedrock") return true;
   // Ollama and other local OpenAI-compatible servers need no key.
@@ -452,7 +455,16 @@ export function llmConfigured(s: SeoSettings): boolean {
 
 export const DEFAULT_DRAFT_MODEL = "claude-sonnet-5-5";
 export const DEFAULT_CLASSIFY_MODEL = "claude-haiku-5-5";
-export type ClaudeConfig = { apiKey: string | null; draftModel: string; classifyModel: string };
+export type ClaudeConfig = {
+  apiKey: string | null;
+  draftModel: string;
+  classifyModel: string;
+  /** LiteLLM when it is the gateway (D-109): the calls go there with the SEO key, the models become its aliases. */
+  gateway?: ReturnType<typeof llmGateway>;
+};
+
+/** Whether drafts and keyword intents can call a model: through LiteLLM, or with ANTHROPIC_API_KEY. */
+export const claudeReady = (cfg: ClaudeConfig) => Boolean(cfg.gateway || cfg.apiKey);
 
 /** Models and key for Claude drafting. There is no limit here: the one LLM budget lives in the seo-agent (llm-gate.ts). */
 export function claudeConfig(s: SeoSettings, env: Record<string, string | undefined> = process.env): ClaudeConfig {
@@ -460,6 +472,7 @@ export function claudeConfig(s: SeoSettings, env: Record<string, string | undefi
     apiKey: env.ANTHROPIC_API_KEY?.trim() || null,
     draftModel: s.drafts.draftModel || env.SEO_DRAFT_MODEL?.trim() || DEFAULT_DRAFT_MODEL,
     classifyModel: s.drafts.classifyModel || env.SEO_CLASSIFY_MODEL?.trim() || DEFAULT_CLASSIFY_MODEL,
+    gateway: llmGateway(env),
   };
 }
 

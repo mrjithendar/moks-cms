@@ -5,7 +5,7 @@ import { readServiceAccount } from "./google/auth";
 import { contentOverview } from "./content";
 import { linkGraph, loadLinkCorpus } from "./internal-links";
 import type { Filters, Period, SourceStatus } from "./queries";
-import { claudeConfig, getSeoSettings, submissionEnabled } from "./settings";
+import { claudeConfig, claudeReady, getSeoSettings, submissionEnabled } from "./settings";
 import { addDays } from "./sqlutil";
 
 /**
@@ -100,7 +100,7 @@ export async function onboarding(db: Db, gsc: SourceStatus): Promise<Step[]> {
     { key: "gsc", label: "Set the Search Console property", done: Boolean(s.google.gscProperty), href: "/admin/settings/seo?section=data", hint: "sc-domain:jithendar.com or the URL-prefix property." },
     { key: "sync", label: "Run the first sync", done: gsc.state === "ok" || gsc.state === "stale", href: "/admin/sync", hint: gsc.state === "never_synced" ? "Configured but not synced yet: start a backfill." : gsc.message },
     { key: "ga4", label: "Set the GA4 property (optional)", done: Boolean(s.google.ga4PropertyId), href: "/admin/settings/seo?section=data", hint: "Numeric property id, not the G- measurement id." },
-    { key: "claude", label: "Add the Anthropic API key", done: Boolean(claudeConfig(s).apiKey), href: "/admin/settings/ai?section=ai", hint: "ANTHROPIC_API_KEY secret. Without it nothing is drafted. Spending is limited by the LLM budget (Settings → LLM providers & budget)." },
+    { key: "claude", label: "Connect a model (Anthropic API key or LiteLLM)", done: claudeReady(claudeConfig(s)), href: "/admin/settings/ai?section=ai", hint: "ANTHROPIC_API_KEY secret, or LiteLLM as the gateway (LITELLM_BASE_URL + LITELLM_API_KEY). Without one nothing is drafted. Spending is limited by the LLM budget, or by LiteLLM's budgets when it is the gateway." },
     { key: "digest", label: "Choose who gets the review digest", done: s.drafts.digest.recipients.length > 0, href: "/admin/settings/ai?section=ai", hint: "Settings → Drafts → digest recipients." },
     { key: "submit", label: "Search-engine submission", done: submissionEnabled(), href: "/admin/settings/seo?section=content", hint: "On in production by default; SEO_SUBMISSION_ENABLED=false turns it off." },
     { key: "draft", label: "First draft generated", done: Number(dr?.n ?? 0) > 0, href: "/admin/review", hint: "Approve a recommendation for drafting, or wait for the weekly run." },

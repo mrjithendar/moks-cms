@@ -5,6 +5,7 @@ import type { Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { log } from "../log";
 import { recordSeoLlm } from "../metrics";
+import { GatewayBudgetError, llmGateway } from "../llm-gateway";
 import { callModel, ProviderError, type ModelSettings } from "../practice/ai/providers";
 import { llmConfigured, seoLlmKey, type SeoSettings } from "./settings";
 
@@ -50,8 +51,11 @@ export function dataBlock(name: string, content: unknown): string {
   return `<data name="${name.replace(/[^a-z0-9_-]/gi, "")}">\n${text.replace(/<\/?data\b/gi, "‹data")}\n</data>`;
 }
 
+/** The model call's settings: LiteLLM's fast alias when it is the gateway (D-109), else the provider set in SEO settings. */
 function aiSettings(s: SeoSettings): ModelSettings {
-  return { enabled: true, provider: s.llm.provider, model: s.llm.model, baseUrl: s.llm.baseUrl, region: s.llm.region, apiKey: null, timeoutMs: s.llm.timeoutMs, maxOutputTokens: s.llm.maxOutputTokens, inputUsdPerMTok: 0, outputUsdPerMTok: 0 };
+  const base: ModelSettings = { enabled: true, provider: s.llm.provider, model: s.llm.model, baseUrl: s.llm.baseUrl, region: s.llm.region, apiKey: null, timeoutMs: s.llm.timeoutMs, maxOutputTokens: s.llm.maxOutputTokens, inputUsdPerMTok: 0, outputUsdPerMTok: 0 };
+  const gw = llmGateway();
+  return gw ? { ...base, provider: "litellm", model: gw.modelFast, baseUrl: gw.baseUrl } : base;
 }
 
 export async function llmJson<T>(
@@ -61,24 +65,26 @@ export async function llmJson<T>(
   deps: LlmDeps = {},
 ): Promise<LlmResult<T>> {
   if (!llmConfigured(s)) return { ok: false, reason: "disabled" };
+  const ai = aiSettings(s);
+  const gw = llmGateway();
   const user = `${opts.task}\n\n${opts.blocks.map((b) => dataBlock(b.name, b.content)).join("\n\n")}`;
-  const inputHash = createHash("sha256").update(JSON.stringify([s.llm.provider, s.llm.model, SYSTEM_RULES, user, opts.jsonSchema])).digest("hex");
+  const inputHash = createHash("sha256").update(JSON.stringify([ai.provider, ai.model, SYSTEM_RULES, user, opts.jsonSchema])).digest("hex");
   const [hit] = rowsOf<{ output: unknown }>(await db.execute(sql`select output from seo_llm_cache where input_hash = ${inputHash} and prompt_version = ${opts.promptVersion}`));
   if (hit) {
     const parsed = opts.schema.safeParse(hit.output);
     if (parsed.success) {
-      recordSeoLlm(s.llm.provider, "cached");
+      recordSeoLlm(ai.provider, "cached");
       return { ok: true, value: parsed.data, cached: true, promptVersion: opts.promptVersion };
     }
   }
   const [today] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_llm_cache where created_at > now() - interval '1 day'`));
   if (Number(today?.n ?? 0) >= s.llm.dailyRequestLimit) return { ok: false, reason: "limit" };
 
-  const key = seoLlmKey(s);
+  const key = gw ? gw.seoKey : seoLlmKey(s);
   for (let attempt = 0; attempt < 2; attempt++) {
     const started = performance.now();
     try {
-      const res = await callModel(aiSettings(s), key, { system: SYSTEM_RULES, user: attempt ? `${user}\n\nYour previous answer was not valid JSON for the schema. Answer again with only the JSON object.` : user, schema: opts.jsonSchema, maxTokens: s.llm.maxOutputTokens, signal: AbortSignal.timeout(s.llm.timeoutMs) }, deps.fetchImpl);
+      const res = await callModel(ai, key, { system: SYSTEM_RULES, user: attempt ? `${user}\n\nYour previous answer was not valid JSON for the schema. Answer again with only the JSON object.` : user, schema: opts.jsonSchema, maxTokens: s.llm.maxOutputTokens, signal: AbortSignal.timeout(s.llm.timeoutMs) }, deps.fetchImpl);
       let json: unknown;
       try {
         json = JSON.parse(res.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ""));
@@ -86,21 +92,26 @@ export async function llmJson<T>(
         json = undefined;
       }
       const parsed = opts.schema.safeParse(json);
-      log.info("seo llm call", { operation: "seo_llm", outcome: parsed.success ? "ok" : "invalid", durationMs: Math.round(performance.now() - started), provider: s.llm.provider, model: s.llm.model, inputTokens: res.inputTokens, outputTokens: res.outputTokens, promptVersion: opts.promptVersion, attempt });
+      log.info("seo llm call", { operation: "seo_llm", outcome: parsed.success ? "ok" : "invalid", durationMs: Math.round(performance.now() - started), provider: ai.provider, model: res.model ?? ai.model, inputTokens: res.inputTokens, outputTokens: res.outputTokens, promptVersion: opts.promptVersion, attempt });
       if (!parsed.success) {
-        recordSeoLlm(s.llm.provider, "invalid", "schema");
+        recordSeoLlm(ai.provider, "invalid", "schema");
         continue;
       }
-      recordSeoLlm(s.llm.provider, "ok");
+      recordSeoLlm(ai.provider, "ok");
       await db.execute(sql`
         insert into seo_llm_cache (input_hash, prompt_version, provider, model, output, input_tokens, output_tokens)
-        values (${inputHash}, ${opts.promptVersion}, ${s.llm.provider}, ${s.llm.model}, ${JSON.stringify(parsed.data)}::jsonb, ${res.inputTokens}, ${res.outputTokens})
+        values (${inputHash}, ${opts.promptVersion}, ${ai.provider}, ${ai.model}, ${JSON.stringify(parsed.data)}::jsonb, ${res.inputTokens}, ${res.outputTokens})
         on conflict (input_hash, prompt_version) do update set output = excluded.output, created_at = now()`);
       return { ok: true, value: parsed.data, cached: false, promptVersion: opts.promptVersion };
     } catch (e) {
+      if (e instanceof GatewayBudgetError) {
+        recordSeoLlm(ai.provider, "error", "budget");
+        log.warn("seo llm call refused by the LiteLLM budget", { operation: "seo_llm", outcome: "budget", scope: e.scope });
+        return { ok: false, reason: "limit", detail: e.message };
+      }
       const code = e instanceof ProviderError ? e.code : "unknown";
-      recordSeoLlm(s.llm.provider, "error", code);
-      log.warn("seo llm call failed", { operation: "seo_llm", outcome: "error", errorCode: code, provider: s.llm.provider, attempt });
+      recordSeoLlm(ai.provider, "error", code);
+      log.warn("seo llm call failed", { operation: "seo_llm", outcome: "error", errorCode: code, provider: ai.provider, attempt });
       if (!(e instanceof ProviderError) || !e.retryable) return { ok: false, reason: "error", detail: code };
     }
   }
