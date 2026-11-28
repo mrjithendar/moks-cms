@@ -27,7 +27,6 @@ create table seo_llm_usage (id uuid primary key default gen_random_uuid(), at ti
   purpose text not null, prompt_version text not null, mode text not null default 'sync', request_id text, input_tokens int not null default 0,
   output_tokens int not null default 0, cache_read_tokens int not null default 0, cache_write_tokens int not null default 0,
   cost_usd double precision not null default 0, latency_ms int, outcome text not null, error_code text, draft_id uuid references seo_drafts(id) on delete set null);
-create table seo_llm_batches (id text primary key, status text not null default 'in_progress', estimated_cost_usd double precision not null default 0);
 create table seo_flow_runs (run_id uuid primary key, flow_name text not null, target_id text not null, draft_id uuid,
   status text not null check (status in ('queued','running','succeeded','failed','cancelled','paused_budget')), current_step text, state_json jsonb,
   inputs jsonb not null default '{}', outputs jsonb, error text, tokens integer not null default 0, cost_usd double precision not null default 0,
