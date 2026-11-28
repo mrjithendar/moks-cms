@@ -14,7 +14,6 @@ import {
   idOf,
   IMPORTABLE,
   KINDS,
-  providerSchema,
   ref,
   scheduleSchema,
   skillSchema,
@@ -33,7 +32,7 @@ import {
  *   README.md                     what is here and how it is used (generated)
  *   categories/categories.yaml    crews/<key>.yaml              agents/<crew>/<agent>.md     tasks/<crew>/<task>.md
  *   flows/<key>.yaml              skills/<name>/SKILL.md         schedules/schedules.yaml     sources/sources.yaml
- *   tools/tools.yaml (read-only)  prompts/guardrails.yaml (read-only)  providers/providers.yaml (read-only)
+ *   tools/tools.yaml (read-only)  prompts/guardrails.yaml (read-only)
  *   schemas/<kind>.schema.json    JSON Schema of every file kind, for editors and the repository's own check
  *
  * Agents, tasks and skills are Markdown with YAML front matter: the long text (an agent's backstory, a task's
@@ -53,7 +52,6 @@ const COLLECTIONS: Partial<Record<Kind, string>> = {
   sources: "sources/sources.yaml",
   tools: "tools/tools.yaml",
   guardrails: "prompts/guardrails.yaml",
-  providers: "providers/providers.yaml",
 };
 const BY_COLLECTION = new Map(Object.entries(COLLECTIONS).map(([k, p]) => [p, k as Kind]));
 
@@ -94,7 +92,6 @@ const HEADER: Partial<Record<Kind, string>> = {
   sources: "Content sources the content flows read, matched by URL on import.",
   tools: "Read-only: the tools an agent can be given, defined in code by the SEO agent. An import only checks agents' tools against this list.",
   guardrails: "Read-only: rules the SEO agent's code puts into every crew agent's system prompt. Nothing in a bundle can change them.",
-  providers: "Read-only: the model providers and models the SEO agent knows. Keys are never here: they stay in Settings → LLM providers or the deployment's Secrets.",
 };
 
 function crewHeader(c: CrewConfig["crews"][number]): string {
@@ -121,7 +118,7 @@ function itemFiles(config: CrewConfig): Files {
   const out: Files = {};
   for (const [kind, path] of Object.entries(COLLECTIONS) as [Kind, string][]) {
     const list = config[kind] as unknown[];
-    if (!list.length && (kind === "providers" || kind === "sources")) continue;
+    if (!list.length && kind === "sources") continue;
     out[path] = `# ${HEADER[kind]}\n${toYaml({ [kind]: list })}`;
   }
   for (const c of config.crews) out[pathOf("crews", c)] = crewHeader(c) + toYaml(omit(c));
@@ -202,7 +199,7 @@ function readme(config: CrewConfig, meta: ManifestMeta, counts: Record<string, n
     "# CrewAI configuration",
     "",
     `The CrewAI setup of ${meta.source} as files: every crew with its agents and tasks, every flow, skill, schedule and`,
-    "content source, and, read-only, the tools, prompt guardrails and model providers they run with. This folder is the",
+    "content source, and, read-only, the tools and prompt guardrails they run with. This folder is the",
     "source the site's configuration is restored from after a deployment, and every change to it is a reviewed commit.",
     "",
     "Written by the CMS (AI & SEO → Configuration → Export, or Write to repository). Edit the files here or in the admin's",
@@ -257,7 +254,6 @@ export function jsonSchemas(): Files {
     "schemas/sources.schema.json": doc("sources", list("sources", sourceSchema), COLLECTIONS.sources!),
     "schemas/tools.schema.json": doc("tools", list("tools", toolSchema), COLLECTIONS.tools!),
     "schemas/guardrails.schema.json": doc("guardrails", list("guardrails", guardrailSchema), COLLECTIONS.guardrails!),
-    "schemas/providers.schema.json": doc("providers", list("providers", providerSchema), COLLECTIONS.providers!),
   };
 }
 

@@ -149,12 +149,12 @@ async def test_an_agent_sweeps_only_the_runs_whose_lock_nobody_holds(pool) -> No
     gone, any agent's sweep fails it (app/runs.py FlowRunner.recover)."""
     from app.flows import SPECS
     from app.flows.base import Deps
-    from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+    from app.llm import FakeLlm, MemorySpendStore, UsageLedger
     from app.runs import FlowRunner, PgAdvisoryLocks, PgRunStore
     from tests.conftest import FakeWebApp, settings
 
     store = PgRunStore(pool)
-    deps = Deps(settings=settings(), llm=FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1)), web=FakeWebApp(), retriever=None, store=store)
+    deps = Deps(settings=settings(), llm=FakeLlm(UsageLedger(MemorySpendStore())), web=FakeWebApp(), retriever=None, store=store)
     locks = PgAdvisoryLocks(_url())
     sweeper = FlowRunner(SPECS, store, locks, lambda: None, deps)  # type: ignore[arg-type, return-value]
     rid, target = str(uuid.uuid4()), f"site-{uuid.uuid4()}"
@@ -172,7 +172,7 @@ async def test_a_flow_runs_on_postgres_end_to_end(pool) -> None:
 
     from app.flows import SPECS, check_kickoff
     from app.flows.base import Deps
-    from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+    from app.llm import FakeLlm, MemorySpendStore, UsageLedger
     from app.runs import FlowRunner, PgAdvisoryLocks, PgFlowPersistence, PgRunStore
     from tests.conftest import FakeWebApp, settings
 
@@ -180,7 +180,7 @@ async def test_a_flow_runs_on_postgres_end_to_end(pool) -> None:
     try:
         web = FakeWebApp()
         store = PgRunStore(pool)
-        deps = Deps(settings=settings(), llm=FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1)), web=web, retriever=None, store=store)
+        deps = Deps(settings=settings(), llm=FakeLlm(UsageLedger(MemorySpendStore())), web=web, retriever=None, store=store)
         runner = FlowRunner(SPECS, store, PgAdvisoryLocks(_url()), lambda: PgFlowPersistence().bind(sync), deps, policy=check_kickoff)
         r = await runner.kickoff("tech_audit_flow", {}, triggered_by="cron")
         done = await runner.wait(r["run_id"], 30)

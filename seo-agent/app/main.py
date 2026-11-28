@@ -15,17 +15,7 @@ Every endpoint except /healthz, /readyz and /metrics needs `Authorization: Beare
     POST /flows/runs/{run_id}/cancel
     POST /review/{draft_id}/decision    {approve|reject|regenerate, approval_id, accepted_change_ids, edits, feedback}
     POST /ask                           public RAG, proxied by the web app (rate-limited there)
-    GET  /budget
-    GET  /llm-budget?scope=day|month    the one LLM budget: spent, limit, remaining, forecast, spend by provider, model, purpose
-    PUT  /llm-budget                    {daily_usd, monthly_usd, actor} → the budget, or 422 (app/llm_budgets.py)
-    POST /llm-budget/reserve            {max_usd, purpose} → {id}: hold a call's upper bound against the budget, or 402
-    POST /llm-budget/settle             {id} → let go of a hold (the caller has recorded its usage row)
-    GET  /llm-budgets                   before the one budget: spend by model and provider, no limits (older web app)
-    PUT  /llm-budgets                   409: replaced by /llm-budget
-    GET  /llm-providers                 provider kinds, saved providers and their models; a key is never returned
-    PUT  /llm-providers                 one provider (+ its models), validated, all or nothing (app/llm_providers)
-    POST /llm-providers/{id}/discover   "Fetch models": the provider's own model list; nothing is saved or switched on
-    GET  /llm-models                    models that are switched on, of providers that are on (for pickers)
+    GET  /llm-status                    LiteLLM (the only model gateway, D-110): configured, reachable, aliases, keys' and team's spend and budgets
     GET  /admin-settings                settings an admin may change: schema, effective values, source, restart pending
     PUT  /admin-settings/{group}        {values, actor} → one group, validated, all or nothing (app/admin_settings)
     GET  /healthz /readyz /metrics
@@ -38,7 +28,6 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
-import math
 import os
 import re
 from collections.abc import AsyncIterator, Callable
@@ -49,7 +38,7 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from prometheus_client import generate_latest
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import metrics, seo_intel, site_context
 from .admin_settings import MemorySettingsStore, PgSettingsStore, SettingsInvalid, UnknownGroup
@@ -73,15 +62,8 @@ from .flows import catalogue as flow_catalogue
 from .flows.base import Deps
 from .flows.switches import FlowSwitches
 from .index import MemoryRetriever, PgVectorIndex
-from .llm import AnthropicLlm, BudgetExceeded, BudgetGuard, MemorySpendStore, PgSpendStore
-from .llm_budgets import REPLACED, BudgetIn, MemoryBudget, PgBudget, legacy_overview
-from .llm_budgets import overview as llm_overview
-from .llm_gateway import Gateway, GatewayLlm, gateway_status
-from .llm_providers import Invalid as ProviderInvalid
-from .llm_providers import MemoryProviderStore, PgProviderStore, ProviderIn, check_catalog, enabled_models, save_provider
-from .llm_providers import overview as providers_overview
-from .llm_providers.discover import CannotDiscover
-from .llm_providers.discover import discover as discover_models
+from .llm import MemorySpendStore, PgSpendStore, UsageLedger
+from .llm_gateway import Gateway, GatewayLlm, gateway_status, list_aliases
 from .logs import configure_logging
 from .moks_rag import RagClient, RagError, RagWriteRefused
 from .news.store import MemoryNewsStore, PgNewsStore
@@ -102,10 +84,7 @@ from .tracing import setup_tracing
 from .webapp import HttpWebApp
 
 log = logging.getLogger("seo_agent")
-GATEWAY_BUDGETS = (
-    "Calls through LiteLLM (every flow, crew, Ask the Blog, the web app's drafts, enrichment and the Practice tutor) are limited by LiteLLM: "
-    "the jithendar.com team and each caller's virtual key, at https://jithendar.com/llm/ui. The budget here applies only to calls outside LiteLLM (AI visibility)."
-)
+ALIAS_REFRESH_SECONDS = 600  # how often the crew editor's alias list is read again from LiteLLM
 VERSION = os.environ.get("GIT_SHA", "dev")
 
 
@@ -170,7 +149,7 @@ class Container:
     store: Any
     ask: AskService
     index: Any
-    guard: BudgetGuard
+    ledger: UsageLedger
     pool: Any = None
     sync_pool: Any = None
     ready: bool = False
@@ -180,10 +159,8 @@ class Container:
     history: RunHistory | None = None  # steps, log lines and model calls of every flow run (app/run_history.py)
     schedules: Any = field(default_factory=MemoryScheduleStore)  # seo_flow_schedules (app/schedules.py)
     clock: Callable[[], Any] | None = None  # tests: the dispatcher's "now"
-    budgets: Any = field(default_factory=MemoryBudget)  # the one LLM budget (app/llm_budgets.py)
     admin_settings: Any = field(default_factory=MemorySettingsStore)  # values saved from the admin (app/admin_settings)
-    providers: Any = field(default_factory=MemoryProviderStore)  # LLM providers and models (app/llm_providers)
-    gateway: Any = None  # LiteLLM (app/llm_gateway.py Gateway) when every model call goes through it (D-109)
+    gateway: Gateway = field(default_factory=Gateway)  # LiteLLM, the only model gateway (app/llm_gateway.py, D-110)
 
     async def reindex(self, article_ids: list[str] | None = None, full: bool = False, force: bool = False) -> dict[str, int]:
         async with self.reindex_lock:
@@ -256,17 +233,18 @@ async def build_container(settings: Settings) -> Container:
     except Exception as e:  # the role cannot create the table, or the database is down: the deployment's values
         settings_note = f"admin settings table not available: {type(e).__name__}"
         log.warning("admin settings not loaded", extra={"event": "admin_settings_load_failed"})
-    budgets = PgBudget(pool)
-    # LiteLLM (D-109) when LITELLM_BASE_URL and LITELLM_API_KEY are set: it picks the models and holds the budgets, so
-    # the guard only books. Otherwise Claude directly, under the admin's budget.
+    # LiteLLM is the only way to a model (D-110): it picks the provider and model behind each alias and holds the
+    # budgets; the ledger only records each call. Without LITELLM_BASE_URL and LITELLM_API_KEY every model call fails.
     gateway = Gateway.from_settings(settings)
-    guard = BudgetGuard(PgSpendStore(pool), None, settings.ask_daily_budget_usd, budget=budgets, gateway=gateway is not None)
+    ledger = UsageLedger(PgSpendStore(pool))
     web = HttpWebApp(settings.callback_url, settings.callback_token)
     history = RunHistory(PgHistorySink(pool), web.run_history_settings)
-    model: Any = GatewayLlm(gateway, guard) if gateway else AnthropicLlm(settings.anthropic_api_key, guard, timeout_s=settings.llm_timeout_s)
-    llm = RecordingLlm(model, history)
-    if gateway:
+    llm = RecordingLlm(GatewayLlm(gateway, ledger), history)
+    crew_config.remember_aliases(own=(gateway.model_default, gateway.model_fast))
+    if gateway.configured:
         log.info("llm gateway: litellm", extra={"event": "llm_gateway", "base_url": gateway.base_url, "ask_key": bool(gateway.ask_api_key), "default_alias": gateway.model_default, "fast_alias": gateway.model_fast})
+    else:
+        log.warning("llm gateway: LiteLLM is not configured; every model call will fail", extra={"event": "llm_gateway_not_configured"})
     # The reranker's gate holds the shared Settings object, so its switch and limits apply live (app/reranker.py).
     reranker = RerankGate(settings)
     index = PgVectorIndex(pool, make_embeddings(settings), reranker=reranker)
@@ -291,8 +269,8 @@ async def build_container(settings: Settings) -> Container:
     runner.switches = FlowSwitches(web)
     deps.runner = runner
     # The admin's Ask the Blog settings (web app → `setting` row "ask_blog") apply on top of the environment's switch.
-    ask = AskService(AskPipeline(deps), index, PgAskLog(pool), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=PgAskRuntime(pool), guard=guard)
-    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=index, guard=guard, pool=pool, sync_pool=sync_pool, reasons=reasons, history=history, schedules=PgScheduleStore(pool), budgets=budgets, admin_settings=admin_settings, providers=PgProviderStore(pool), gateway=gateway)
+    ask = AskService(AskPipeline(deps), index, PgAskLog(pool), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=PgAskRuntime(pool))
+    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=index, ledger=ledger, pool=pool, sync_pool=sync_pool, reasons=reasons, history=history, schedules=PgScheduleStore(pool), admin_settings=admin_settings, gateway=gateway)
     deps.reindex = c.reindex
     return c
 
@@ -317,12 +295,10 @@ def memory_container(settings: Settings, *, llm: Any, web: Any, retriever: Any =
     runner = FlowRunner(SPECS, store, MemoryLocks(), lambda: MemoryFlowPersistence().bind(store), deps, timeout_s=settings.flow_timeout_s, policy=check_kickoff)
     runner.switches = FlowSwitches(web)
     deps.runner = runner
-    guard = getattr(llm, "guard", BudgetGuard(MemorySpendStore(), None, settings.ask_daily_budget_usd))
-    ask = AskService(AskPipeline(deps), retriever, MemoryAskLog(), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=StaticAskRuntime(), guard=guard)
-    budgets = guard.budget if isinstance(guard.budget, MemoryBudget) else MemoryBudget()
-    guard.budget = budgets
-    gw = gateway if gateway is not None else getattr(getattr(llm, "_inner", llm), "gw", None)
-    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=retriever, guard=guard, ready=True, history=run_history, budgets=budgets, gateway=gw)
+    ledger = getattr(llm, "ledger", None) or UsageLedger(MemorySpendStore())
+    ask = AskService(AskPipeline(deps), retriever, MemoryAskLog(), settings.ask_enabled, settings.ask_cache_ttl_s, runtime=StaticAskRuntime())
+    gw = gateway if gateway is not None else (getattr(getattr(llm, "_inner", llm), "gw", None) or Gateway.from_settings(settings))
+    c = Container(settings=settings, deps=deps, runner=runner, store=store, ask=ask, index=retriever, ledger=ledger, ready=True, history=run_history, gateway=gw)
     deps.reindex = c.reindex
     return c
 
@@ -381,13 +357,6 @@ async def _ml_gauges(conn: Any) -> None:
 async def _gauges(c: Container) -> None:
     while True:
         try:
-            st = await c.guard.status()
-            # The one LLM budget: the month's share when a monthly limit is set, else the day's, else 0 (no limit).
-            ratios = [st[f"{u}_spend_usd"] / lim for u, lim in (("month", st["monthly_budget_usd"]), ("day", st["daily_budget_usd"])) if lim]
-            metrics.BUDGET_RATIO.set(ratios[0] if ratios else 0.0)
-            ask_budget = getattr(c.guard, "ask_daily_usd", c.settings.ask_daily_budget_usd)  # the admin's budget once a question has applied it
-            if ask_budget > 0:
-                metrics.ASK_BUDGET_RATIO.set(st["ask_day_spend_usd"] / ask_budget)
             if c.pool is not None:
                 async with c.pool.connection() as conn:
                     cur = await conn.execute("select count(*)::int as n from seo_drafts where status = 'ready_for_review'")
@@ -416,21 +385,22 @@ async def _settings_refresh(c: Container) -> None:
             pass
 
 
+async def _alias_refresh(c: Container) -> None:
+    """The aliases LiteLLM lists for the agent's key, for the crew editor's model choices (crews/config.py models())."""
+    while True:
+        try:
+            listed = await list_aliases(c.gateway)
+            if listed is not None:
+                crew_config.remember_aliases(listed=listed)
+        except Exception:  # noqa: S110 - the list is a convenience; the last one (or the service's own aliases) stays
+            pass
+        await asyncio.sleep(ALIAS_REFRESH_SECONDS)
+
+
 async def startup(c: Container) -> None:
     mode = getattr(getattr(c.index, "config", None), "mode", "vector")
     for m in metrics.RAG_MODES:
         metrics.RAG_RETRIEVAL_MODE.labels(mode=m).set(1 if m == mode else 0)
-    check_catalog()
-    try:
-        await c.providers.ensure_schema()
-    except Exception as e:  # the role cannot create it, or the database is down: providers cannot be saved until it can
-        c.reasons.append(f"LLM providers tables not available: {type(e).__name__}")
-        log.warning("llm providers schema failed", extra={"event": "llm_providers_schema_failed"})
-    try:
-        await c.budgets.ensure_schema()
-    except Exception as e:  # the role cannot create it, or the database is down: no LLM budgets until it can
-        c.reasons.append(f"LLM budgets table not available: {type(e).__name__}")
-        log.warning("llm budgets schema failed", extra={"event": "llm_budgets_schema_failed"})
     rag_docs = c.deps.extra.get("rag_docs")
     if c.deps.extra.get("rag") is not None and rag_docs is not None:
         try:
@@ -446,6 +416,8 @@ async def startup(c: Container) -> None:
     c.ready = True
     c.bg.append(asyncio.create_task(_gauges(c)))
     c.bg.append(asyncio.create_task(_settings_refresh(c)))
+    if c.gateway.configured and c.pool is not None:  # the service, not the tests: the crew editor's alias list
+        c.bg.append(asyncio.create_task(_alias_refresh(c)))
     # Several agents (one per site pod, D-105): stop this process's runs another agent ended, sweep the orphans of
     # agents that are gone (app/runs.py).
     c.bg.append(asyncio.create_task(c.runner.maintain_forever()))
@@ -733,116 +705,13 @@ def create_app(container: Container | None = None) -> FastAPI:
         report = await site_context.cannibalization(rag, keyword=body.keyword, topic=body.topic, site_url=st.site_url, exclude=body.exclude, embed=c.deps.extra.get("ml_embed"), min_similarity=st.rag_cannibalization_min_similarity)
         return report.out()
 
-    @app.get("/budget", dependencies=[Depends(auth)])
-    async def budget(request: Request) -> dict[str, Any]:
-        return await ctr(request).guard.status()
-
-    @app.get("/llm-budget", dependencies=[Depends(auth)])
-    async def llm_budget(request: Request, scope: str = "month") -> Any:
-        if scope not in ("day", "month"):
-            return JSONResponse({"error": "scope is day or month"}, status_code=422)
+    @app.get("/llm-status", dependencies=[Depends(auth)])
+    async def llm_status(request: Request) -> dict[str, Any]:
+        """LiteLLM, the only model gateway (D-110): configured, reachable with the agent's key, the aliases this service
+        asks for and LiteLLM's view of its keys and their team (spend, budget, reset). Read only; never a key."""
         c = ctr(request)
-        out = await llm_overview(await c.budgets.budget(), c.guard.store, c.guard.clock(), scope, c.guard.pending["total"])  # type: ignore[arg-type]
-        now = c.guard.clock()
-        out["ask_daily"] = {"limit_usd": c.guard.ask_daily_usd, "spent_usd": round(await c.guard.store.day_spend(now, "ask"), 6)}
-        out["legacy_limits"] = await c.budgets.legacy()
-        if c.gateway is not None:
-            # D-109: LiteLLM holds the budgets; the admin's own limits are not used while it does.
-            model = getattr(c.deps.llm, "_inner", c.deps.llm)
-            out["gateway"] = await gateway_status(c.gateway, model.client if isinstance(model, GatewayLlm) else None)
-            out["gateway"]["budget_note"] = GATEWAY_BUDGETS
-            out["ask_daily"]["limit_usd"] = None
-        return out
-
-    @app.put("/llm-budget", dependencies=[Depends(auth)])
-    async def save_llm_budget(request: Request) -> Any:
-        try:
-            body = BudgetIn.model_validate(await request.json())
-        except ValidationError as e:
-            issues = [f"{'.'.join(str(p) for p in err['loc']) or 'body'}: {err['msg']}" for err in e.errors()][:30]
-            return JSONResponse({"error": "the LLM budget is not valid", "issues": issues}, status_code=422)
-        except ValueError:
-            return JSONResponse({"error": "send a JSON object"}, status_code=422)
-        c = ctr(request)
-        saved = await c.budgets.save(body.budget(), body.actor)
-        log.info("llm budget saved", extra={"event": "llm_budget_saved", "daily_usd": saved.daily_usd, "monthly_usd": saved.monthly_usd})
-        return {"budget": saved.out()}
-
-    @app.post("/llm-budget/reserve", dependencies=[Depends(auth)])
-    async def reserve_llm_budget(request: Request) -> Any:
-        """For LLM calls made outside this service (the web app's own): check the one budget and hold the call's
-        upper bound until it is settled. 402 with the reason when it does not fit; the caller then does not call."""
-        try:
-            body = await request.json()
-        except ValueError:
-            body = None
-        asked = body if isinstance(body, dict) else {}
-        max_usd, purpose = asked.get("max_usd"), asked.get("purpose")
-        if isinstance(max_usd, bool) or not isinstance(max_usd, (int, float)) or not math.isfinite(max_usd) or not 0 <= max_usd <= 1000:
-            return JSONResponse({"error": "max_usd is the call's upper bound in USD (0 to 1000)"}, status_code=422)
-        if not isinstance(purpose, str) or not re.fullmatch(r"[a-z][a-z0-9_.\-]{1,60}", purpose):
-            return JSONResponse({"error": "purpose names what the call is for (lower-case, e.g. ai_visibility)"}, status_code=422)
-        try:
-            return {"id": await ctr(request).guard.hold(float(max_usd), purpose)}
-        except BudgetExceeded as e:
-            return JSONResponse({"error": e.detail, "scope": e.scope}, status_code=402)
-
-    @app.post("/llm-budget/settle", dependencies=[Depends(auth)])
-    async def settle_llm_budget(request: Request) -> Any:
-        try:
-            body = await request.json()
-        except ValueError:
-            body = None
-        key = body.get("id") if isinstance(body, dict) else None
-        if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{32}", key):
-            return JSONResponse({"error": "id is the hold's id from /llm-budget/reserve"}, status_code=422)
-        return {"released": ctr(request).guard.settle(key)}
-
-    @app.get("/llm-budgets", dependencies=[Depends(auth)])
-    async def llm_budgets(request: Request) -> dict[str, Any]:
-        c = ctr(request)
-        return await legacy_overview(c.guard.store, c.guard.clock())
-
-    @app.put("/llm-budgets", dependencies=[Depends(auth)])
-    async def save_llm_budgets() -> Any:
-        return JSONResponse({"error": REPLACED}, status_code=409)
-
-    @app.get("/llm-providers", dependencies=[Depends(auth)])
-    async def llm_providers(request: Request) -> dict[str, Any]:
-        return await providers_overview(ctr(request).providers)
-
-    @app.put("/llm-providers", dependencies=[Depends(auth)])
-    async def save_llm_provider(request: Request) -> Any:
-        """One provider and, when `models` is sent, all of its models. The key is write-only: it is sealed, never
-        logged and never returned."""
-        try:
-            body = ProviderIn.model_validate(await request.json())
-        except ValidationError as e:
-            # Messages only, never the input: a rejected body may hold a key.
-            issues = [f"{'.'.join(str(p) for p in err['loc']) or 'body'}: {err['msg']}" for err in e.errors(include_input=False)][:30]
-            return JSONResponse({"error": "the provider is not valid", "issues": issues}, status_code=422)
-        except ValueError:
-            return JSONResponse({"error": "send a JSON object"}, status_code=422)
-        c = ctr(request)
-        try:
-            changed = await save_provider(c.providers, body)
-        except ProviderInvalid as e:
-            return JSONResponse({"error": "the provider is not valid", "issues": e.issues[:30]}, status_code=422)
-        log.info("llm provider saved", extra={"event": "llm_provider_saved", "provider": changed["id"], "enabled": changed["enabled"], "key_changed": changed["key_changed"], "models": changed["models"]})
-        return {"saved": changed, **(await providers_overview(c.providers))}
-
-    @app.post("/llm-providers/{provider_id}/discover", dependencies=[Depends(auth)])
-    async def discover_llm_models(provider_id: str, request: Request) -> Any:
-        try:
-            return await discover_models(ctr(request).providers, provider_id)
-        except LookupError:
-            return JSONResponse({"error": "no such provider"}, status_code=404)
-        except CannotDiscover as e:
-            return JSONResponse({"error": str(e)}, status_code=e.status)
-
-    @app.get("/llm-models", dependencies=[Depends(auth)])
-    async def llm_models(request: Request) -> dict[str, Any]:
-        return {"models": await enabled_models(ctr(request).providers)}
+        model = getattr(c.deps.llm, "_inner", c.deps.llm)
+        return await gateway_status(c.gateway, model.client if isinstance(model, GatewayLlm) else None)
 
     @app.get("/admin-settings", dependencies=[Depends(auth)])
     async def admin_settings(request: Request) -> dict[str, Any]:

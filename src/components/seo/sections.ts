@@ -39,7 +39,7 @@ export const SEO_GROUPS: { label: string; items: Section[] }[] = [
       { href: "/admin/settings", label: "Settings", icon: "cog", hint: "Every setting of the site, by category, with a search" },
       { href: "/admin/sync", label: "Data sync", icon: "sync", hint: "Jobs, errors, correlation ids" },
       { href: "/admin/models", label: "ML models", icon: "chart", hint: "Model versions, metrics vs the rules, overrides, labelling" },
-      { href: "/admin/settings/ai?section=llm", label: "AI & models settings", icon: "cog", hint: "LLM providers & budget, AI and drafts, ML and retrieval" },
+      { href: "/admin/settings/ai?section=llm", label: "AI & models settings", icon: "cog", hint: "LiteLLM (the LLM gateway), AI and drafts, ML and retrieval" },
       { href: "/admin/settings/seo", label: "Search & SEO settings", icon: "cog", hint: "Data sources, schedules, scoring, content and links, crawler, reports" },
       { href: "/admin/settings/assistants?section=mcp", label: "MCP", icon: "plug", hint: "MCP servers and the AI assistants connected to the SEO tools" },
     ],

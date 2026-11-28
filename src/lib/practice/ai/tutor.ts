@@ -9,14 +9,14 @@ import { hit } from "../../rate-limit";
 import { getProblemRecord } from "../catalog";
 import { PracticeError } from "../errors";
 import { recordEvent } from "../progress";
-import { aiConfigured, aiKey, getPracticeSettings, type PracticeSettings } from "../settings";
-import { GatewayBudgetError, llmGateway } from "../../llm-gateway";
-import { callModel, ProviderError, type ModelSettings } from "./providers";
+import { aiConfigured, getPracticeSettings } from "../settings";
+import { chat, LlmError, llmConfig, parseJson } from "../../llm/client";
 
 /**
  * Optional AI tutor. Rules:
  * - Progressive help: explanations and nudges, never a full solution unless the user already revealed it.
- * - Only public information goes to the provider: the statement, the user's own code, public test results.
+ * - Calls go through LiteLLM (lib/llm/client.ts) with the tutor's own key and alias; LiteLLM enforces its budget.
+ * - Only public information goes to the model: the statement, the user's own code, public test results.
  *   Never hidden tests, expected outputs of hidden tests, stdout of hidden tests, names, emails or user ids.
  * - The deterministic grader is the source of truth. Claims of correctness that contradict it are flagged.
  * - Failures (timeouts, quotas, provider outages) return a clear error; practice itself is unaffected.
@@ -140,74 +140,53 @@ async function record(row: Omit<typeof schema.practiceAiUsage.$inferInsert, "id"
   await db.insert(schema.practiceAiUsage).values(row);
 }
 
-export function costMicroUsd(ai: PracticeSettings["ai"], input: number, output: number): number {
-  return Math.round(input * ai.inputUsdPerMTok + output * ai.outputUsdPerMTok);
-}
-
 export async function askTutor(userId: string, raw: unknown, fetchImpl: typeof fetch = fetch): Promise<TutorAnswer> {
   const parsed = tutorInput.safeParse(raw);
   if (!parsed.success) throw new PracticeError(parsed.error.issues[0]?.message ?? "Invalid request.", 400, "invalid");
   const input = parsed.data;
   const settings = await getPracticeSettings();
-  // LiteLLM as the gateway (D-109): its alias and the tutor's own virtual key, whose budget LiteLLM enforces.
-  const gw = llmGateway();
-  const ai: ModelSettings = gw ? { ...settings.ai, provider: "litellm", model: gw.modelPractice, baseUrl: gw.baseUrl } : settings.ai;
-  if (!aiConfigured(settings)) throw new PracticeError("The AI tutor is not enabled.", 503, "ai_disabled");
+  const llm = llmConfig();
+  if (!llm || !aiConfigured(settings)) throw new PracticeError("The AI tutor is not enabled.", 503, "ai_disabled");
+  const ai = settings.ai;
   const requestId = randomUUID();
-  const base = { userId, feature: input.feature, provider: ai.provider, model: ai.model, promptVersion: PROMPT_VERSION, requestId };
+  const base = { userId, feature: input.feature, provider: "litellm", model: llm.modelPractice, promptVersion: PROMPT_VERSION, requestId };
 
   const db = await getDb();
   const dayStart = new Date(Date.now() - 86_400_000);
-  const [usage] = rowsOf<{ mine: number; spend: number }>(
-    await db.execute(sql`select count(*) filter (where user_id = ${userId} and status in ('ok', 'error'))::int as mine,
-      coalesce(sum(cost_micro_usd), 0)::float as spend from practice_ai_usage where created_at > ${dayStart.toISOString()}`),
+  const [usage] = rowsOf<{ mine: number }>(
+    await db.execute(sql`select count(*) filter (where user_id = ${userId} and status in ('ok', 'error'))::int as mine from practice_ai_usage where created_at > ${dayStart.toISOString()}`),
   );
   if ((usage?.mine ?? 0) >= settings.quotas.aiRequestsPerDay) {
     await record({ ...base, status: "quota", errorCode: "user_daily" });
     throw new PracticeError(`You've used today's ${settings.quotas.aiRequestsPerDay} AI requests. Practice continues without them.`, 429, "ai_quota");
   }
-  if (!gw && (usage?.spend ?? 0) >= settings.quotas.aiDailyBudgetUsd * 1_000_000) {
-    await record({ ...base, status: "quota", errorCode: "global_budget" });
-    throw new PracticeError("The AI tutor has reached today's budget. Try again tomorrow.", 503, "ai_budget");
-  }
   if (!(await hit(`practice:ai:${userId}`, 6, 60))) throw new PracticeError("Too many AI requests in a minute.", 429, "rate_limited", 30);
 
   const ctx = await buildContext(userId, input);
   const started = Date.now();
-  let attempt = 0;
-  for (;;) {
-    attempt++;
-    try {
-      const result = await callModel(ai, gw ? gw.practiceKey : aiKey(settings), { system: SYSTEM, user: ctx.user, schema: ANSWER_SCHEMA, maxTokens: ai.maxOutputTokens, signal: AbortSignal.timeout(ai.timeoutMs) }, fetchImpl);
-      let answer: z.infer<typeof answerShape>;
-      try {
-        answer = answerShape.parse(JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g, "")));
-      } catch {
-        answer = { summary: result.text.slice(0, 2000), points: [], next_step: "", code: "" };
-      }
-      const grounded = ground(answer, ctx);
-      await record({ ...base, problemId: ctx.problemId, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costMicroUsd: result.costUsd != null ? Math.round(result.costUsd * 1_000_000) : costMicroUsd(settings.ai, result.inputTokens, result.outputTokens), latencyMs: Date.now() - started, status: "ok" });
-      await recordEvent(db, { userId, type: "ai_assistance", problemId: ctx.problemId, detail: { feature: input.feature, requestId } });
-      return { ...grounded.answer, grounding: grounded.grounding, facts: ctx.facts, requestId };
-    } catch (error) {
-      if (error instanceof GatewayBudgetError) {
-        await record({ ...base, problemId: ctx.problemId, latencyMs: Date.now() - started, status: "quota", errorCode: "litellm_budget" });
-        log.warn("practice tutor refused by the LiteLLM budget", { requestId, scope: error.scope });
-        throw new PracticeError("The AI tutor has reached its budget. Try again later.", 503, "ai_budget");
-      }
-      const pe = error instanceof ProviderError ? error : new ProviderError((error as Error).message, "unavailable", false);
-      if (pe.retryable && attempt < 2 && Date.now() - started < ai.timeoutMs) {
-        await new Promise((r) => setTimeout(r, 800));
-        continue;
-      }
-      await record({ ...base, problemId: ctx.problemId, latencyMs: Date.now() - started, status: "error", errorCode: pe.code });
-      log.warn("practice tutor failed", { requestId, code: pe.code, provider: ai.provider });
-      throw new PracticeError(
-        pe.code === "timeout" ? "The AI tutor took too long. Try again." : pe.code === "rate_limited" ? "The AI provider is busy. Try again in a minute." : "The AI tutor is unavailable right now.",
-        503,
-        `ai_${pe.code}`,
-      );
+  try {
+    // One retry for a lost connection, a 429 or a 5xx (the client's), inside the tutor's own timeout.
+    const result = await chat({ caller: "practice", model: llm.modelPractice, system: SYSTEM, user: ctx.user, schema: { name: "tutor_answer", schema: ANSWER_SCHEMA }, maxTokens: ai.maxOutputTokens, timeoutMs: ai.timeoutMs, retries: 1, tags: ["moks-cms", "purpose:practice_tutor"] }, { config: llm, fetchImpl });
+    const parsedAnswer = answerShape.safeParse(parseJson(result.text));
+    const answer = parsedAnswer.success ? parsedAnswer.data : { summary: result.text.slice(0, 2000), points: [], next_step: "", code: "" };
+    const grounded = ground(answer, ctx);
+    await record({ ...base, model: result.model, problemId: ctx.problemId, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, costMicroUsd: result.costUsd != null ? Math.round(result.costUsd * 1_000_000) : 0, latencyMs: Date.now() - started, status: "ok" });
+    await recordEvent(db, { userId, type: "ai_assistance", problemId: ctx.problemId, detail: { feature: input.feature, requestId } });
+    return { ...grounded.answer, grounding: grounded.grounding, facts: ctx.facts, requestId };
+  } catch (error) {
+    const e = error instanceof LlmError ? error : new LlmError((error as Error)?.message ?? "tutor call failed", "unavailable", false);
+    if (e.code === "budget") {
+      await record({ ...base, problemId: ctx.problemId, latencyMs: Date.now() - started, status: "quota", errorCode: "litellm_budget" });
+      log.warn("practice tutor refused by the LiteLLM budget", { requestId, scope: e.scope });
+      throw new PracticeError("The AI tutor has reached its budget. Try again later.", 503, "ai_budget");
     }
+    await record({ ...base, problemId: ctx.problemId, latencyMs: Date.now() - started, status: "error", errorCode: e.code });
+    log.warn("practice tutor failed", { requestId, code: e.code });
+    throw new PracticeError(
+      e.code === "timeout" ? "The AI tutor took too long. Try again." : e.code === "rate_limited" ? "The AI service is busy. Try again in a minute." : "The AI tutor is unavailable right now.",
+      503,
+      `ai_${e.code}`,
+    );
   }
 }
 

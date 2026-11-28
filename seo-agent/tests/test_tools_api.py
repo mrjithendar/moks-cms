@@ -143,7 +143,7 @@ async def test_every_endpoint_but_health_needs_the_token(llm, web) -> None:
     async with client(c) as h:
         assert (await h.get("/healthz")).status_code == 200
         assert (await h.get("/metrics")).status_code == 200
-        for method, path in [("POST", "/flows/gsc_sync_flow/kickoff"), ("GET", "/flows/runs"), ("GET", "/flows/runs/x"), ("POST", "/flows/runs/x/cancel"), ("POST", f"/review/{DRAFT}/decision"), ("POST", "/ask"), ("GET", "/budget")]:
+        for method, path in [("POST", "/flows/gsc_sync_flow/kickoff"), ("GET", "/flows/runs"), ("GET", "/flows/runs/x"), ("POST", "/flows/runs/x/cancel"), ("POST", f"/review/{DRAFT}/decision"), ("POST", "/ask"), ("GET", "/llm-status")]:
             assert (await h.request(method, path, json={})).status_code == 401, path
             assert (await h.request(method, path, json={}, headers={"Authorization": "Bearer wrong"})).status_code == 401, path
 

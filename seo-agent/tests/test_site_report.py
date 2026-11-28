@@ -91,15 +91,13 @@ def test_a_summary_with_an_invented_number_is_dropped_not_the_report() -> None:
 
 
 def test_the_analysis_schema_survives_strict_structured_output() -> None:
-    from anthropic.lib._parse._transform import transform_schema
-
     def empty(node: Any) -> int:
         if isinstance(node, dict):
-            own = node.get("type") == "object" and node.get("properties") == {} and node.get("additionalProperties") is False
+            own = node.get("type") == "object" and not node.get("properties")  # a strict schema could only answer {}
             return int(own) + sum(empty(v) for v in node.values())
         return sum(empty(v) for v in node) if isinstance(node, list) else 0
 
-    assert empty(transform_schema(SiteAnalysis)) == 0  # a free-form object would only ever come back as {}
+    assert empty(SiteAnalysis.model_json_schema()) == 0  # a free-form object would only ever come back as {}
 
 
 def test_the_report_crew_has_an_analyst_task_with_a_code_owned_output() -> None:

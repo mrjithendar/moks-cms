@@ -4,7 +4,7 @@ import { schema, type Db } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { freshDb } from "./db-helpers";
 import { settingsInput } from "./seo-fixtures";
-import { fakeAnthropic } from "./seo-v2-fixtures";
+import { fakeLiteLlm, LITELLM_ENV, LITELLM_PATH, noLiteLlm, useLiteLlm } from "./seo-v2-fixtures";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
@@ -88,7 +88,7 @@ describe("keyword views (SQL over seeded Search Console rows)", () => {
     db = await freshDb();
     await saveSeoSettings(settingsInput(), "admin");
     process.env.SITE_URL = "https://jithendar.com";
-    delete process.env.ANTHROPIC_API_KEY;
+    noLiteLlm();
     // Curve data: lots of impressions at positions 1–3 with healthy CTR.
     await seed("brand anchor jithendar", "/", { days: [0, 89], impressions: 100, clicks: 30, position: 1 });
     await seed("curve two", "/blog/a", { days: [0, 89], impressions: 100, clicks: 15, position: 2 });
@@ -163,24 +163,24 @@ describe("keyword views (SQL over seeded Search Console rows)", () => {
     expect(istio.fix.action).toBe("consolidate");
   });
 
-  it("refresh: clusters + rules intents without a key; Haiku intents with one (cached, logged, no fallbacks)", async () => {
+  it("refresh: clusters + rules intents without LiteLLM; LiteLLM's fast alias with it (cached, logged)", async () => {
     const r1 = await K.refreshKeywords();
     expect(r1.clustered).toBeGreaterThan(0);
     expect(r1.byLlm).toBe(0);
     const [it1] = rowsOf<{ intent: string; source: string }>(await db.execute(sql`select intent, source from seo_query_intents where query = 'argo cd vs flux'`));
     expect(it1).toEqual({ intent: "comparison", source: "rules" });
-    // With a key: only new queries are classified, by Claude Haiku.
+    // With LiteLLM: only new queries are classified, by its fast alias.
     await db.execute(sql`delete from seo_query_intents where query in ('helm values schema', 'karpenter consolidation')`);
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test-not-real";
-    const api = fakeAnthropic({ answers: [JSON.stringify({ items: [{ query: "helm values schema", intent: "informational" }, { query: "karpenter consolidation", intent: "commercial" }] })] });
+    useLiteLlm();
+    const api = fakeLiteLlm({ answers: [JSON.stringify({ items: [{ query: "helm values schema", intent: "informational" }, { query: "karpenter consolidation", intent: "commercial" }] })] });
     const r2 = await K.refreshKeywords({ fetchImpl: api.fetchImpl });
     expect(r2.byLlm).toBe(2);
-    const req = api.calls.find((c) => c.path === "/v1/messages")!;
-    expect(req.body!.model).toBe("claude-haiku-5-5");
-    expect(req.body!.fallbacks).toBeUndefined();
+    const req = api.calls.find((c) => c.path === LITELLM_PATH)!;
+    expect(req.body!.model).toBe("moks-cms-fast");
+    expect(req.headers.get("authorization")).toBe(`Bearer ${LITELLM_ENV.LITELLM_API_KEY}`);
     expect(JSON.stringify(req.body!.messages)).toContain('<data name=\\"queries\\">');
     const [it2] = rowsOf<{ intent: string; source: string; model: string }>(await db.execute(sql`select intent, source, model from seo_query_intents where query = 'karpenter consolidation'`));
-    expect(it2).toEqual({ intent: "commercial", source: "llm", model: "claude-haiku-5-5" });
+    expect(it2).toEqual({ intent: "commercial", source: "llm", model: "moks-cms-fast" });
     expect(rowsOf(await db.execute(sql`select 1 from seo_llm_usage where purpose = 'intent'`))).toHaveLength(1);
     // content gaps need clusters: the rising query sits at position 12–15 with enough impressions? (gap threshold from settings)
     const gaps = await K.contentGaps(p({ view: "gaps" }));

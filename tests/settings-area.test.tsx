@@ -100,7 +100,8 @@ describe("where every setting lives (lib/settings-areas.ts)", () => {
   it("hides the SEO agent's sections, and a category with nothing else, while the agent is not set up", () => {
     const without = visibleCategories({ seoAgent: false });
     expect(without.map((c) => c.id)).not.toContain("assistants");
-    expect(without.find((c) => c.id === "ai")!.sections.map((s) => s.id)).toEqual(["gemini", "image-limits", "video-generation"]);
+    // LiteLLM's section is the web app's own (D-110): shown with or without the agent.
+    expect(without.find((c) => c.id === "ai")!.sections.map((s) => s.id)).toEqual(["llm", "gemini", "image-limits", "video-generation"]);
     expect(without.find((c) => c.id === "agent")!.sections.map((s) => s.id)).toEqual(["seo-agent"]); // where it is set up
     expect(without.find((c) => c.id === "seo")!.sections.map((s) => s.id)).toEqual(["verification", "search-console"]);
     expect(visibleCategories({ seoAgent: true }).map((c) => c.id)).toEqual(SETTINGS_CATEGORIES.map((c) => c.id));
@@ -183,7 +184,7 @@ describe("the Settings pages", () => {
     expect(html).toContain(`href="${settingsHref("seo-agent")}"`);
     expect(html).not.toContain("Admin server");
     const ai = await page("ai");
-    expect(ai).toMatch(/aria-current="page"[^>]*><span[^>]*>Image generation</); // the first section it can show
+    expect(ai).toMatch(/aria-current="page"[^>]*><span[^>]*>LiteLLM</); // the first section it can show
     expect(ai).not.toContain("LLM providers &amp; budget");
   });
 
@@ -215,7 +216,7 @@ describe("old addresses", () => {
       ["/admin/storage", "@/app/admin/storage/page", {}, "/admin/settings/storage?section=media-storage"],
       ["/admin/email", "@/app/admin/email/page", { section: "provider" }, "/admin/settings/email?section=email"],
       ["/admin/invoices/settings", "@/app/admin/invoices/settings/page", {}, "/admin/settings/payments?section=invoices"],
-      ["/admin/automation", "@/app/admin/(growth)/automation/page", { section: "llm-budget", scope: "day" }, "/admin/settings/ai?section=llm&scope=day#llm-budget"],
+      ["/admin/automation", "@/app/admin/(growth)/automation/page", { section: "llm-budget", scope: "day" }, "/admin/settings/ai?section=llm&scope=day"], // D-110: the budget card is gone, so no anchor
     ];
     for (const [old, mod, query, to] of pages) {
       redirects.length = 0;

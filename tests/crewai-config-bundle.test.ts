@@ -91,7 +91,6 @@ function reply(p: string, body: Record<string, unknown>): { status: number; json
   if (p === "/config-catalogue") return { status: 200, json: CATALOGUE };
   if (p === "/crews") return { status: 200, json: { items: CATALOGUE.crews } };
   if (p === "/flows") return { status: 200, json: { items: CATALOGUE.flows } };
-  if (p === "/llm-providers") return { status: 200, json: { kinds: [{ id: "anthropic", env_key: "ANTHROPIC_API_KEY" }], providers: [{ id: "anthropic", kind: "anthropic", kind_label: "Anthropic", name: "Anthropic", enabled: true, base_url: "https://api.anthropic.com", region: "", deployment: "", api_version: "", key: "env", saved: false, issues: [], models: [{ provider_id: "anthropic", model_id: "claude-sonnet-5-5", label: "Sonnet", enabled: true, free: false, price_state: "built-in", prices: {}, builtin_prices: null, context_window: 200000, max_output: 64000, capabilities: {} }] }], can_store_keys: true, key_env: "SEO_AGENT_SECRETS_KEY" } };
   const crew = /^\/crews\/([a-z_]+)\/validate$/.exec(p);
   if (crew) {
     const def = CATALOGUE.crews.find((c) => c.crew === crew[1]);
@@ -158,7 +157,7 @@ describe("export", () => {
     expect(c.skills.map((s) => s.name).sort()).toEqual(skills.DEFAULT_SKILLS.map((s) => s.name).sort());
     expect(c.schedules).toHaveLength((await schedules.listSchedules()).length);
     expect(c.categories.length).toBeGreaterThan(0);
-    expect(c.providers[0]).toMatchObject({ id: "anthropic", key: "env", key_ref: "environment variable ANTHROPIC_API_KEY" });
+    expect(c).not.toHaveProperty("providers"); // D-110: providers are LiteLLM's, never in a bundle
     expect(rt.report.complete).toBe(true);
     // A code crew's task carries its read-only contract; its agents the code's limits.
     const write = c.tasks.find((t) => t.crew === "editorial" && t.key === "write")!;

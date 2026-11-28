@@ -1,32 +1,34 @@
 # News desk costs
 
-**Estimates.** The crews ran only against a deterministic test model in this work; no live Claude call was made, so the
+**Estimates.** The crews ran only against a deterministic test model in this work; no live model call was made, so the
 token counts below are estimated from the prompt sizes, not measured. Replace them with real numbers from the run detail
-(`news_runs.tokens`, `cost_usd`) after the first week. Prices: the platform's price table (`app/llm.py`, first-party list
-prices as of 2026-10): Sonnet 5.5 $2 / $10 per million input/output tokens, Haiku 5.5 $0.10 / $0.50.
+(`news_runs.tokens`, `cost_usd`) after the first week. Every call goes through LiteLLM (D-110, [LLM_GATEWAY.md](../LLM_GATEWAY.md)),
+and the cost booked to a run is what LiteLLM charged; moks-cms keeps no price table. The figures assume the aliases point
+at Claude, at the list prices of 2026-10: `moks-cms-default` at Sonnet 5.5 ($2 / $10 per million input/output tokens),
+`moks-cms-fast` at Haiku 5.5 ($0.10 / $0.50). What an alias points at is set in LiteLLM's Admin UI.
 
 ## Per draft (single story, default settings)
 
-| Step | Model | Input tokens | Output tokens | Cost |
+| Step | Alias | Input tokens | Output tokens | Cost |
 |---|---|---|---|---|
-| Researcher (2–3 calls incl. tool results; up to 12 items × 3,000 chars + one primary source) | Sonnet | ~30,000 | ~2,000 | $0.080 |
-| Analyst | Sonnet | ~8,000 | ~1,000 | $0.026 |
-| Writer | Sonnet | ~10,000 | ~2,000 | $0.040 |
-| Fact-checker | Sonnet | ~10,000 | ~2,000 | $0.040 |
-| SEO editor | Sonnet | ~12,000 | ~2,500 | $0.049 |
-| Art director | Sonnet | ~4,000 | ~300 | $0.011 |
-| Vision: safety per variant + alt text on the final image | Haiku | ~4,000 each | ~200 | ~$0.001 |
-| **Crew total** | | **~75,000** | **~10,000** | **≈ $0.25** |
+| Researcher (2–3 calls incl. tool results; up to 12 items × 3,000 chars + one primary source) | `moks-cms-default` | ~30,000 | ~2,000 | $0.080 |
+| Analyst | `moks-cms-default` | ~8,000 | ~1,000 | $0.026 |
+| Writer | `moks-cms-default` | ~10,000 | ~2,000 | $0.040 |
+| Fact-checker | `moks-cms-default` | ~10,000 | ~2,000 | $0.040 |
+| SEO editor | `moks-cms-default` | ~12,000 | ~2,500 | $0.049 |
+| Art director | `moks-cms-default` | ~4,000 | ~300 | $0.011 |
+| Vision: safety per variant + alt text on the final image | the vision model (empty: `moks-cms-default`) | ~4,000 each | ~200 | ~$0.01 each (~$0.001 on a Haiku-priced alias) |
+| **Crew total** | | **~75,000** | **~10,000** | **≈ $0.25** (+ ≈ $0.03 for the vision checks on `moks-cms-default`) |
 
 Cached system blocks (the rules + each agent's prompt) bring the input part down somewhat after the first call in a
 5-minute window. A per-draft token cap (`max_tokens_per_draft`, default 120,000) bounds the worst case at ≈ $0.35.
 
 Covers: template $0. Gemini or OpenAI: 2 variants × the configured price (default estimate $0.04) = $0.08 + the vision checks.
 
-Classification fallback (Haiku, 20 stories per call): < $0.001 per story. It runs during ingest and counts against the
-**global** news caps (booked to the job or ingest run that ingested); over the cap the model's low-confidence guess is
-kept (`model_low_conf`). Bootstrap (one-off, up to 1,000 items):
-≈ $0.10–0.30. Style review (weekly, Sonnet, ≤ 12 diffs): ≈ $0.05–0.10. Training: CPU only, free.
+Classification fallback (the fast model, empty: `moks-cms-fast`; 20 stories per call): < $0.001 per story. It runs
+during ingest and its cost is booked to the job or ingest run that ingested; when LiteLLM refuses the call (a budget is
+used up) the model's low-confidence guess is kept (`model_low_conf`). Bootstrap (one-off, up to 1,000 items):
+≈ $0.10–0.30. Style review (weekly, `moks-cms-default`, ≤ 12 diffs): ≈ $0.05–0.10. Training: CPU only, free.
 
 ## Per approved article
 
@@ -43,22 +45,25 @@ The analytics page shows the real figure ("cost per approved article", including
 ## Per day and month at the defaults
 
 One content flow, daily, `max_articles_per_run` 3: ≈ 3 × $0.25 ≈ **$0.75/day**, ≈ $23/month if it found 3 stories every day.
-The defaults then stop it earlier, by design:
+
+**LLM spend has no news cap** (D-110). Every news call goes through LiteLLM with the SEO agent's key, so the agent key's
+budget and the team's budget in LiteLLM limit it, together with everything else the agent does
+([LLM_GATEWAY.md](../LLM_GATEWAY.md)). When LiteLLM refuses a call (HTTP 422 `budget_exceeded`), the run ends as
+**paused (budget)**. The run detail and the analytics page still show the LLM spend per run, day and month, without a
+cap. The content flows' former `llm_daily_usd` / `llm_monthly_usd` caps are gone (migration 0045 removed them from
+saved rows).
+
+What the news desk still limits itself:
 
 | Cap | Default | Effect |
 |---|---|---|
-| content flow LLM per day | $1.00 | ≈ 4 drafts/day |
-| content flow LLM per month | $15.00 | ≈ 60 drafts/month (≈ 20 days at 3/day) |
 | content flow images per day / month | $0.50 / $5.00 | only matters with a paid provider |
-| global LLM per day / month | $2.00 / $20.00 | all content flows together |
-| global images per day / month | $1.00 / $10.00 | |
+| global images per day / month | $1.00 / $10.00 | all content flows together |
 | global drafts per day | 10 | |
+| tokens per draft (`max_tokens_per_draft`) | 120,000 | ends the crew early, marked incomplete |
 
-When a cap is reached, the run ends as **paused (budget)** with the cap named; nothing is sent first (every call is
-checked against an upper-bound estimate). The estimate is *reserved* before the call: booked on the run's row under a
-lock and then verified against the caps, so parallel drafts cannot all pass the same check and overspend together; the
-reservation is released when the call ends and the actual cost booked. News spend never counts against the SEO admin
-budget (N-07).
+Images are not LiteLLM calls. When an image cap would be crossed, nothing is sent, and the run ends as **paused
+(budget)** with the cap named.
 
-Levers: fewer articles per run/day, Haiku for the researcher/analyst (content flow → Writing → models per agent), fewer items per
-story, a lower token cap, template covers.
+Levers: fewer articles per run/day, a cheaper alias (e.g. `moks-cms-fast`) for the researcher/analyst (content flow →
+Writing → models per agent), fewer items per story, a lower token cap, template covers.

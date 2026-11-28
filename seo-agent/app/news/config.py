@@ -12,7 +12,9 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ..config import ALIAS_RE
 
 Mode = Literal["single_stories", "daily_digest", "both"]
 FEATURES = ("credibility", "source_count", "burst", "recency", "topic_match", "audience", "novelty", "severity", "keyword_overlap")
@@ -30,12 +32,20 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 
 
 class Budget(BaseModel):
+    """A content flow's image caps and token limit. LLM spend has no cap here: LiteLLM holds the budgets (D-110)."""
+
     model_config = ConfigDict(extra="forbid")
-    llm_daily_usd: float = Field(default=1.0, ge=0, le=100)
-    llm_monthly_usd: float = Field(default=15.0, ge=0, le=1000)
     image_daily_usd: float = Field(default=0.5, ge=0, le=100)
     image_monthly_usd: float = Field(default=5.0, ge=0, le=1000)
     max_tokens_per_draft: int = Field(default=120_000, ge=10_000, le=400_000)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_llm_caps(cls, v: Any) -> Any:
+        """Rows saved before D-110 carry llm_daily_usd / llm_monthly_usd: nothing reads them, so they are dropped."""
+        if isinstance(v, dict):
+            return {k: x for k, x in v.items() if k not in ("llm_daily_usd", "llm_monthly_usd")}
+        return v
 
 
 class Diversity(BaseModel):
@@ -112,7 +122,7 @@ class JobConfig(BaseModel):
         import re
 
         for k, m in v.items():
-            if k not in ("researcher", "analyst", "writer", "fact_checker", "seo_editor", "art_director") or not re.fullmatch(r"claude-[a-z0-9-]{3,40}", m):
+            if k not in ("researcher", "analyst", "writer", "fact_checker", "seo_editor", "art_director") or not re.fullmatch(ALIAS_RE, m):
                 raise ValueError(f"invalid model override {k}={m}")
         return v
 
@@ -195,15 +205,15 @@ class NewsSettings(BaseModel):
     env_forced_off: bool = False  # NEWS_DESK_ENABLED is false in the deployment: off, whatever the admin switch says
     desk_enabled: bool | None = None  # the admin's switch (row key "enabled"); None until it is first saved
     paused: bool = False  # the earlier pause box; still honoured when a row has it
-    llm_daily_usd: float = 2.0
-    llm_monthly_usd: float = 20.0
     image_daily_usd: float = 1.0
     image_monthly_usd: float = 10.0
     max_drafts_per_day: int = 10
     image_provider: Literal["template", "gemini", "openai"] = "template"
-    writer_model: str = "claude-sonnet-5-5"
-    fast_model: str = "claude-haiku-5-5"
-    vision_model: str = "claude-haiku-5-5"
+    # LiteLLM aliases (D-110). Empty: the service's own, LITELLM_MODEL for the writer and the vision check (it needs a
+    # model that reads images), LITELLM_MODEL_FAST for the fast calls. Which provider and model answer is set in LiteLLM.
+    writer_model: str = ""
+    fast_model: str = ""
+    vision_model: str = ""
     classifier_threshold: float = 0.55
     # Probability recorded for a topic Claude assigned (it returns labels, not probabilities). It feeds topic_match, so
     # keep it near classifier_threshold: high enough to pass, not so high that Claude's picks outrank the model's.

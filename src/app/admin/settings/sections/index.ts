@@ -5,6 +5,7 @@ import { EmailProviderSection, EmailTestSection } from "./email";
 import GeminiSection from "./gemini";
 import { AppearanceSection, SiteSection } from "./general";
 import IndexNowSection from "./indexnow";
+import LiteLlmSection from "./litellm";
 import InvoicesSection from "./invoices";
 import PracticeSection from "./practice";
 import PromotionSection from "./promotion";
@@ -47,6 +48,7 @@ export const SECTION_RENDERS: Record<string, SectionImpl> = {
   invoices: { render: InvoicesSection },
   calcom: { render: CalcomSection },
 
+  llm: { render: LiteLlmSection },
   gemini: { render: GeminiSection },
   "image-limits": { render: runtimeSection("image-limits") },
   "video-generation": { render: runtimeSection("video-generation") },

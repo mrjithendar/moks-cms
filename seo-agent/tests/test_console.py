@@ -220,16 +220,21 @@ def test_overlay_validation_names_every_problem() -> None:
         crew_config.validate(
             crew_config.registry()["editorial"],
             {
-                "agents": {"writer": {"tools": ["read_article", "gsc_queries_for_page"], "model": "claude-unknown-1"}, "ghost": {"role": "x"}},
+                "agents": {"writer": {"tools": ["read_article", "gsc_queries_for_page"], "model": "moks-cms-quality"}, "ghost": {"role": "x"}},
                 "tasks": {"review": {"expected_output": "anything"}, "write": {"instructions": "Write about {topic} for {kind}."}, "nope": {"instructions": "x"}},
             },
         )
     text = "\n".join(e.value.issues)
-    for part in ("agents.writer.tools: not allowed for this crew: gsc_queries_for_page", "agents.writer.model: unknown model claude-unknown-1", "agents.ghost:", "tasks.review.expected_output: fixed by the code", "tasks.write.instructions: unknown placeholder {kind}, {topic}", "tasks.nope:"):
+    for part in ("agents.writer.tools: not allowed for this crew: gsc_queries_for_page", "agents.ghost:", "tasks.review.expected_output: fixed by the code", "tasks.write.instructions: unknown placeholder {kind}, {topic}", "tasks.nope:"):
         assert part in text, part
     with pytest.raises(crew_config.OverlayError) as e2:
         crew_config.validate(report(), {"agents": {"analyst": {"max_tokens": 10, "surprise": 1}}})
     assert any("max_tokens" in i for i in e2.value.issues) and any("surprise" in i for i in e2.value.issues)
+    # A model is any LiteLLM alias name (LiteLLM refuses one the key may not use); anything else is refused here.
+    assert crew_config.validate(report(), {"agents": {"analyst": {"model": "moks-cms-quality"}}}).agents["analyst"].model == "moks-cms-quality"
+    with pytest.raises(crew_config.OverlayError) as e3:
+        crew_config.validate(report(), {"agents": {"analyst": {"model": "not an alias!"}}})
+    assert any("agents.analyst.model" in i for i in e3.value.issues)
 
 
 def test_normalize_keeps_only_what_differs_from_the_code() -> None:
@@ -281,7 +286,7 @@ def test_crew_endpoints(web: FakeWebApp, llm: FakeLlm) -> None:
         assert set(items) == set(crew_config.CREW_IDS)
         ed = items["editorial"]
         assert [t["key"] for t in ed["tasks"]] == ["research", "write", "revise", "review", "seo"]
-        assert ed["replay_flows"] == ["new_article_flow"] and "fetch_allowlisted_docs" in ed["tools"] and "claude-haiku-5-5" in ed["models"]
+        assert (ed["replay_flows"] == ["new_article_flow"] and "fetch_allowlisted_docs" in ed["tools"] and {"moks-cms-default", "moks-cms-fast"} <= set(ed["models"]) and not [m for m in ed["models"] if m.startswith("claude-")])
         assert next(t for t in ed["tasks"] if t["key"] == "review")["output_editable"] is False
         ok = client.post("/crews/report/validate", json={"config": {"agents": {"analyst": {"backstory": "Short."}}}}, headers=AUTH)
         assert ok.status_code == 200 and ok.json()["config"] == {"agents": {"analyst": {"backstory": "Short."}}} and ok.json()["default_hash"] == items["report"]["default_hash"]

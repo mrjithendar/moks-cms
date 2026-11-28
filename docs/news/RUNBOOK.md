@@ -35,7 +35,7 @@
 | `news_model_macro_f1`, `news_model_holdout_auc` | model: the same numbers under correct names (classifier, ranker) |
 | `news_model_score_psi` | model: score drift of the serving model vs its training rows (> 0.25: drift; docs/news/ML.md "Monitoring") |
 | `news_topic_assignments_total` | method (model, model_low_conf, claude, rules) |
-| `news_budget_used_ratio` | scope (global/job × llm/image × day/month) |
+| `news_budget_used_ratio` | scope (global/job × image × day/month; LLM spend has no news cap since D-110, so no ratio) |
 | `news_job_consecutive_failures`, `news_job_last_draft_timestamp_seconds` | news_job (DB-computed) |
 | `news_source_failing_seconds`, `news_quality_failure_ratio_7d` | — (DB-computed) |
 
@@ -45,7 +45,8 @@
 
 ### job-failing
 Two failed runs in a row. Open the last run: a failed step shows its error. Common: the web callback unreachable (the
-web pods or their callback listener down), Anthropic errors (status page), a bad content flow config after an edit (roll back the
+web pods or their callback listener down), LiteLLM errors (the run's error names LiteLLM's code: an alias the key may not
+use, LiteLLM unreachable, or the provider behind the alias failing; [LLM_GATEWAY.md](../LLM_GATEWAY.md) "Troubleshooting"), a bad content flow config after an edit (roll back the
 version). Retry with *Retry failed drafts* or *Rerun flow*.
 
 ### source-failing
@@ -60,8 +61,11 @@ researcher is not capturing numbers (check the fact sheet) or the writer adds co
 `value`: the structure template lacks analysis sections.
 
 ### budget
-80 % or 100 % of a cap. Runs pause with "paused (budget)". Raise the content flow's or the global cap (Settings) or wait for the
-period to reset; check the run detail for an unusually expensive run (token cap per draft).
+80 % or 100 % of an image cap. Runs pause with "paused (budget)". Raise the content flow's or the global image cap
+(Settings) or wait for the period to reset; check the run detail for an unusually expensive run (token cap per draft).
+A run can also pause because LiteLLM refused an LLM call for its budget (the agent key's or the team's, D-110): the run
+error says so, and that alert does not fire. Raise the budget in LiteLLM or wait for its reset
+([LLM_GATEWAY.md](../LLM_GATEWAY.md)).
 
 ### no-drafts
 A content flow produced nothing for review in 3 days. Open its last runs: every candidate has a reason (threshold too high,

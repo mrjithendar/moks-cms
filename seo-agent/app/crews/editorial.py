@@ -506,7 +506,7 @@ class EditorialCrew:
         FALLBACK_MAX_TOKENS out), writes the title and meta description; the outline is the body's H2s and the
         sources are the pages retrieved during the run. The draft stays incomplete: no internal links were suggested
         and no SEO editor checked it. Any error (budget, invalid answer) keeps the draft as it was."""
-        model = (brief.get("models") or {}).get("seo_editor") or self.settings.crew_models.get("editorial.seo_editor") or self.settings.draft_model
+        model = (brief.get("models") or {}).get("seo_editor") or self.settings.crew_models.get("editorial.seo_editor") or self.settings.llm_model
         facts = {k: brief.get(k) for k in ("title", "gap", "audience", "intent", "supportingQueries")}
         user = f"{FALLBACK_TASK}\n\n{data_block('brief', facts)}\n\n{data_block('article_headings', h2_outline(draft.body_mdx))}\n\n{data_block('article_opening', draft.body_mdx[:FALLBACK_BODY_CHARS])}"
         spec = CallSpec(model=model, purpose="crew", prompt_version=f"{PROMPT_VERSION}-meta", cached_system=[UNTRUSTED], user=user, max_tokens=FALLBACK_MAX_TOKENS, draft_id=draft_id, run_id=CURRENT_RUN_ID.get(), agent="seo_editor")

@@ -174,7 +174,7 @@ class OptimizeArticleFlow(SeoFlow[OptimizeState]):
                 "summary": (s.change_set or {}).get("summary") or "Internal link suggestions.",
                 "recommendationIds": s.plan.get("recommendation_ids", []),
                 "categories": s.plan.get("categories", []),
-                "model": self.deps.settings.draft_model if s.change_set else None,
+                "model": self.deps.settings.llm_model if s.change_set else None,
                 "promptVersion": PROMPT_VERSION + (f"+v{ran['version']}" if ran.get("source") == "version" and ran.get("version") else ""),
                 "threadId": s.draft_id,
                 "runId": s.id,

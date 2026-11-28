@@ -46,70 +46,58 @@ A flow run executes in the agent that started it; the run's Postgres advisory lo
 nobody holds (or that are older than the flow wall-clock limit plus 5 minutes), never rows younger than 30 seconds,
 and stops within 5 seconds a run of its own that another agent cancelled or swept, keeping the status that agent wrote.
 The schedule dispatcher already claims each time slot in the database, so a second agent starts nothing twice. The site
-talks to its own pod's agent (`SEO_AGENT_URL=http://127.0.0.1:8080`), so the LLM budget holds it takes are settled by
-the same process. Budget reservations are per agent: with N pods, calls that start at the same moment in different pods
-can go over the budget by at most N-1 calls' estimates (`app/llm.py` BudgetGuard).
+talks to its own pod's agent (`SEO_AGENT_URL=http://127.0.0.1:8080`). LLM budgets are LiteLLM's (below), shared by
+every pod's agent through the same keys, so the number of pods does not change what a budget allows.
 
-## The LLM budget
+## Models and budgets: LiteLLM only
 
-One budget for everything (`app/llm_budgets.py`): an optional daily limit and an optional monthly limit in USD, by UTC
-day and month. It counts every provider, model and purpose together (drafts, crews, the news desk, Ask the Blog, and
-the web app's own calls). An empty limit is no limit, and **nothing is preset**: until a budget is saved, only the
-provider's own spend limit stops spending.
+Every chat model call goes to LiteLLM (D-109, D-110; `app/llm_gateway.py`, moks-cms docs/LLM_GATEWAY.md): its
+OpenAI-compatible Chat Completions API, with a virtual key. LiteLLM holds the provider keys, decides which provider and
+model answer behind each alias, and enforces the budgets. This service has no provider SDK, no provider or model list,
+no price table and no budget of its own.
 
-- `GET /llm-budget?scope=day|month`: spent, limit, remaining, calls in flight, a month-end forecast, and the period's
-  spend by provider, by model and by purpose (for reading; they limit nothing). `PUT /llm-budget`
-  `{daily_usd, monthly_usd, actor}` saves it.
-- `BudgetGuard` checks it before every call and holds the call's upper-bound estimate while it runs, so concurrent
-  calls cannot overspend together.
-- The web app's own LLM calls use `POST /llm-budget/reserve` `{max_usd, purpose}` (402 when it does not fit) and
-  `POST /llm-budget/settle` `{id}`. A hold that is never settled lapses after 15 minutes.
-- Still apart: Ask the Blog's own daily limit (`ASK_BLOG_DAILY_BUDGET_USD`, a guard against readers running up spend)
-  and, until the news desk moves over, the news desk's own caps.
-- Gone: `SEO_LLM_MONTHLY_BUDGET_USD` (ignored if still set) and the limits per model and per provider. Their rows in
-  `seo_agent_llm_budgets` are left in place and shown read-only as `legacy_limits`; `GET /llm-budgets` still answers
-  an older web app with spend and no limits, and `PUT /llm-budgets` answers 409.
+| Variable | What |
+|---|---|
+| `LITELLM_BASE_URL` | LiteLLM's API, `…/v1` (jithendar.com: `http://litellm.rag.svc.cluster.local:4000/v1`) |
+| `LITELLM_API_KEY` | The agent's virtual key (Secret `seo-agent-env`; moks-rag `scripts/issue-litellm-keys.sh`) |
+| `LITELLM_ASK_API_KEY` | Ask the Blog's own key, so readers have their own budget (optional: the agent's key when unset) |
+| `LITELLM_MODEL` | The default alias: drafting, crews, reports (default `moks-cms-default`) |
+| `LITELLM_MODEL_FAST` | The fast alias: classifying, Ask the Blog, the news desk's quick calls (default `moks-cms-fast`) |
+| `SEO_CREW_MODELS` | Optional per-agent aliases, `{"<crew>.<agent>": "<alias>"}`, e.g. `{"editorial.writer": "moks-cms-quality"}` |
+| `SEO_LLM_TIMEOUT_SECONDS` | Per-request timeout (30–900, default 120) |
 
-
-## LLM providers and models
-
-`app/llm_providers/`: which providers exist (`catalog.py`) and what an admin has set up (`store.py`, tables
-`seo_agent_llm_providers` and `seo_agent_llm_models`, created at start-up).
-
-- **Catalog.** Anthropic, OpenAI, Google Gemini, Azure OpenAI, AWS Bedrock, Mistral, xAI and "Custom
-  OpenAI-compatible". Each entry was checked against the provider's own docs and cites the page and the date. The
-  catalog holds no model list and no price. Named in the plan and not yet checked, so reachable only through
-  "Custom" for now: DeepSeek, Groq, Cohere, Perplexity, Together AI, Fireworks AI, OpenRouter, Ollama.
-- **Keys.** Sealed with `SEO_AGENT_SETTINGS_KEY` (AES-256-GCM). Write-only: a key is never returned, logged or sent
-  to the browser; the API says `saved`, `env`, `none` or `not_needed`. `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` in the
-  environment are used when no key is saved.
-- **Prices.** Never invented. A model cannot be switched on until its input and output prices (USD per million
-  tokens) are entered, unless it is a Claude model with a built-in price (`app/llm.py` `PRICES`) or it is marked free.
-- **API.** `GET /llm-providers`, `PUT /llm-providers` (one provider and, when `models` is sent, all of its models;
-  validated, all or nothing), `GET /llm-models` (models that are on, for pickers).
-- **Fetch models.** `POST /llm-providers/{id}/discover` asks the provider for its model list (Anthropic and the
-  OpenAI-compatible kinds) and marks which ones are already listed. Nothing is saved or switched on, and it costs
-  nothing. Gemini, Azure OpenAI and Bedrock models are added by hand for now.
-- **Not yet.** Nothing calls a provider from these tables: every job still calls Anthropic as before. The adapters,
-  "Fetch models", "Test", and the model for each job come in later changes; until then Anthropic cannot be switched
-  off here.
-
-## LLM adapters
-
-**LiteLLM as the gateway** (D-109, `app/llm_gateway.py`, moks-cms docs/LLM_GATEWAY.md): with `LITELLM_BASE_URL` and
-`LITELLM_API_KEY` set, every model call goes to LiteLLM's Chat Completions API (aliases `moks-cms-default` /
-`moks-cms-fast`, Ask the Blog with `LITELLM_ASK_API_KEY`), LiteLLM's team and key budgets refuse calls over them
-(BudgetExceeded, a flow pauses), and the guard only books, at LiteLLM's charge. `app/llm_adapters/`: thin `httpx`
-clients for providers other than Anthropic (no vendor SDKs). An adapter
-knows one API shape and nothing about the budget, prices or usage rows; the caller books what it returns.
-
-- `openai_compat.py`: Chat Completions for OpenAI and every compatible server (`Authorization: Bearer`, Azure's
-  `api-key` header, or no key for a local server). Structured answers use `response_format` `json_schema` where the
-  endpoint supports it, else JSON mode, else plain text; every answer is validated against the Pydantic model here
-  and gets one repair request before it is refused. Retries 408/409/429/5xx and connection errors twice. Errors
-  carry the provider's message and code, never the key or the prompt. `list_models()` reads `GET /models`.
-- Not yet: images, streaming, tools; and **nothing calls an adapter yet**. Wiring behind the budget guard, with the
-  admin's prices, is a later change.
+- **Not configured** (no URL or no key): the service starts and logs a warning, and every model call fails at once with
+  `LlmNotConfigured`. There is no fallback to a provider.
+- **Models are alias names**, passed to LiteLLM as they are: the two above, a crew agent's model (the crew editor,
+  `SEO_CREW_MODELS`), a content flow's writer/fast/vision model (setting row `news`; empty = the service's aliases) and
+  a writing profile's model. The crew editor offers the aliases LiteLLM lists for the agent's key (`GET /v1/models`,
+  refreshed every 10 minutes); saving accepts any alias name, and LiteLLM refuses one the key may not use
+  (HTTP 403 `key_model_access_denied`).
+- **Budgets** are LiteLLM's: the team `jithendar.com` and each key, with their reset periods and rate limits, set at
+  https://jithendar.com/llm/ui. A call over one gets HTTP 422 `budget_exceeded` → `BudgetExceeded`: a flow run ends as
+  `paused_budget`, Ask the Blog answers that it is resting, a crew stops where it was. Nothing is preset.
+- **Usage records.** Every call that reached a model writes one `seo_llm_usage` row (provider `litellm`, the model
+  LiteLLM says answered, tokens, and the cost LiteLLM reported in `x-litellm-response-cost`; a stream reports none, so
+  its row has cost 0). Flow runs add those costs up (`seo_flow_runs.cost_usd`). Nothing is priced or estimated here.
+- **`GET /llm-status`** (internal token): `{gateway, configured, base_url, aliases {default, fast}, healthy, checked_at,
+  keys [{caller, alias, spend_usd, max_budget_usd, budget_duration, budget_reset_at, models, tpm_limit, rpm_limit}],
+  team {alias, spend_usd, max_budget_usd, budget_duration, budget_reset_at, models} | null, models [{name, target}],
+  errors []}`. `healthy` is whether `GET /v1/models` answers 200 with the agent's key (null when not configured); the
+  keys and team are read with the keys themselves; LiteLLM writes spend in batches, so totals trail by up to a minute.
+  Never a key.
+- **Requests**: system text as content blocks with `cache_control` on the last (Anthropic prompt caching through
+  LiteLLM), images as data URLs, structured output as `response_format` `json_schema` validated here with one repair,
+  retries on timeouts, connection errors and 408/409/429/5xx (twice, with backoff). Errors carry LiteLLM's message and
+  code, never the key or the prompt.
+- **Not through LiteLLM**: embeddings (ONNX in the image, or Ollama/bge-m3: `EMBEDDINGS_PROVIDER`, `OLLAMA_URL`) and
+  the content flows' cover images (`app/news/images.py`: OpenAI's image API with `OPENAI_API_KEY`, or Gemini through
+  the web app's image generation; with their own image caps). Those are not chat model calls.
+- **Gone (D-110)**: `ANTHROPIC_API_KEY`, `SEO_DRAFT_MODEL`, `SEO_CLASSIFY_MODEL`, `LITELLM_MODEL_DEFAULT`,
+  `ASK_BLOG_DAILY_BUDGET_USD`, `SEO_LLM_MONTHLY_BUDGET_USD`, `SEO_LLM_PRICES_JSON`; the routes `/budget`,
+  `/llm-budget*`, `/llm-budgets`, `/llm-providers*`, `/llm-models`; the tables the agent created for them
+  (`seo_agent_llm_budget`, `seo_agent_llm_budgets`, `seo_agent_llm_providers`, `seo_agent_llm_models`), which it no
+  longer creates or reads; the content flows' LLM caps (`llm_daily_usd`, `llm_monthly_usd`, dropped when a row is
+  read); the metrics `seo_llm_budget_used_ratio`, `seo_ask_budget_used_ratio`, `seo_llm_budget_blocked_total`.
 
 ## Settings an admin can change
 
@@ -119,7 +107,7 @@ They live in `app/admin_settings/`:
 - **Precedence**: the admin's saved value, then the environment variable, then the default in `app/config.py`. With
   nothing saved, the agent behaves exactly as before.
 - **Storage**: the agent's own table `seo_agent_settings` (key = the environment-variable name), created at start-up
-  like `seo_agent_llm_budgets`. No moks-cms migration.
+  by the agent itself. No moks-cms migration.
 - **API** (internal token): `GET /admin-settings` returns every group with its fields, the effective value, where it
   comes from (`admin`, `deployment`, `default`) and whether a restart is pending. `PUT /admin-settings/{group}` takes
   `{"values": {"ENV_NAME": value}, "actor": "..."}`; a field that is not sent stays as it is, and `null`, `""` or `[]`
@@ -175,7 +163,7 @@ This service provides what that catalogue runs and shows:
   configuration bundle describes (moks-cms docs/seo/CREWCONFIG.md, crewconfig/ in the site repository), read from the
   registries: every crew with its code defaults, every flow with its input schema, every tool (what it tells the model,
   which crews and agents hold it, whether a spec crew may), the guardrail rules every system prompt carries, and the
-  priced models. No secrets. Tool descriptions are data (`TOOL_DESCRIPTIONS`, `NEWS_TOOL_DESCRIPTIONS`) so they can be
+  LiteLLM aliases an agent can be set to. No secrets. Tool descriptions are data (`TOOL_DESCRIPTIONS`, `NEWS_TOOL_DESCRIPTIONS`) so they can be
   listed without a run. `POST /crews/{crew}/validate` accepts a fixed task's expected output when it is unchanged, so a
   crew exported in full imports back as no change.
 - **Flow switches**: before every kickoff the runner asks the web app which flows are switched off
@@ -281,8 +269,8 @@ Off unless both the URL and the token are set; every feature below then says so 
   `X-Service-Name: moks-seo-agent` and an `X-Request-ID` that stays the same across retries. The token opens every
   collection of every service, so the client refuses, before sending, any write except to `seo_intel`, any query
   except of the two collections above, and it always names the collection on DELETE (rag-api's default is `all`).
-  Queries always send `include_answer: false`: rag-api's answer would be a Claude call through its own LiteLLM key,
-  outside this service's LLM budget. One JSON log line per request that says what happened (`moks-rag ingest
+  Queries always send `include_answer: false`: rag-api's answer would be a model call through rag-api's own LiteLLM
+  key, not this service's. One JSON log line per request that says what happened (`moks-rag ingest
   seo_intel keyword_cluster:x: 2 chunks, 0.5 s`, `event: moks_rag_request`; never the token or the text), metrics `seo_moks_rag_requests_total{op,outcome}` and `seo_moks_rag_request_seconds{op}`.
 - **seo_intel** (`app/seo_intel.py`): `keyword_cluster` (one per seo_ml query cluster, with 28 days of Search Console
   numbers per query) and `gsc_performance` (one per page) are rebuilt by **`seo_intel_sync_flow`**. It sends only new

@@ -14,7 +14,7 @@ Better Auth accounts, same Postgres, same admin). Code execution runs in a separ
 | Grading in the web app, execution in the sandbox | Expected outputs and hidden tests never enter untrusted code's environment |
 | Function-call problems with JSON inputs | Deterministic, reproducible grading; cloud/API problems use fakes in a prelude instead of real credentials |
 | Session deadlines stored server-side | Refreshing or reconnecting cannot extend a timed assessment |
-| New dependencies: `codemirror`, `@codemirror/*`, `@aws-sdk/client-bedrock-runtime` | Editor; Bedrock Converse with SigV4 (the AWS SDK is already used for S3/SES) |
+| New dependencies: `codemirror`, `@codemirror/*` | Editor. (`@aws-sdk/client-bedrock-runtime`, for the tutor's Bedrock provider, was removed with D-110: the tutor calls LiteLLM) |
 
 ## Routes
 
@@ -107,12 +107,14 @@ tests' fixture site keeps a copy).
 
 ## AI tutor
 
-Optional; off until configured in Admin → Python practice → Settings (provider OpenAI-compatible, Gemini or
-Bedrock; model id; key sealed with `SETTINGS_ENCRYPTION_KEY`, or `OPENAI_API_KEY` / `GEMINI_API_KEY`; Bedrock
-uses the pod's AWS credentials). Features: explain error, explain a failed test, review, complexity, suggest
-tests, concept questions, recommendations. Structured JSON output, prompt version
-`practice-tutor-v1-2026-11-02`, per-user daily quota, global daily budget, per-request id, token and cost
-records, one retry on 429/5xx/timeouts. Only public information is sent (statement, the user's own code,
+Optional; off until switched on in Admin → Settings → Practice (AI tutor) and LiteLLM is configured. Since D-110 the
+tutor has no provider, model, key or price of its own: it calls LiteLLM ([LLM_GATEWAY.md](LLM_GATEWAY.md)) with its own
+virtual key `LITELLM_PRACTICE_API_KEY` (the web app's `LITELLM_API_KEY` when unset) and the alias
+`LITELLM_MODEL_PRACTICE` (default: the fast alias, `moks-cms-fast`). Its money limit is that key's budget in LiteLLM;
+when it is used up the tutor says it reached its budget. Features: explain error, explain a failed test, review,
+complexity, suggest tests, concept questions, recommendations. Structured JSON output, prompt version
+`practice-tutor-v1-2026-11-02`, per-user daily request quota (`aiRequestsPerDay`, a fairness limit, not money),
+per-request id, token and cost records (the cost LiteLLM charged), one retry on 429/5xx/lost connections. Only public information is sent (statement, the user's own code,
 public test results). Answers claiming correctness that contradicts the grader are flagged; code that would
 implement the whole solution is withheld unless the user already revealed it. The tutor is disabled during
 assessments. Provider failures never block practice. **Requires manual configuration.**

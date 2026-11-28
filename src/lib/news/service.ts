@@ -6,7 +6,7 @@ import { audit } from "../audit";
 import type { Actor } from "../posts";
 import { seedCategories } from "../taxonomy-admin";
 import { cronError, nextRuns } from "./cron";
-import { imageProfileInput, jobConfigSchema, jobInput, MAX_NEWS_JOBS, newsSettingsSchema, sourceInput, writingProfileInput, type JobInput, type NewsSettings } from "./schema";
+import { imageProfileInput, jobConfigSchema, jobInput, MAX_NEWS_JOBS, newsSettingsSchema, sourceInput, withoutLlmCaps, writingProfileInput, type JobInput, type NewsSettings } from "./schema";
 
 /**
  * News desk admin service (docs/news/JOBS.md): jobs with immutable versions, profiles with versions, sources, topics,
@@ -70,7 +70,7 @@ export async function ensureNewsDefaults(db?: Db) {
 export async function getNewsSettings(db?: Db): Promise<NewsSettings> {
   const d = db ?? (await getDb());
   const [r] = rowsOf<{ value: unknown }>(await d.execute(sql`select value from setting where key = 'news'`));
-  const v = newsSettingsSchema.safeParse(asJson(r?.value, {}));
+  const v = newsSettingsSchema.safeParse(withoutLlmCaps(asJson(r?.value, {})));
   return v.success ? v.data : newsSettingsSchema.parse({});
 }
 

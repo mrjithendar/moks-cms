@@ -8,9 +8,8 @@ requires-python = ">=3.13,<3.14"
 # dependency on every re-lock (Dependabot included), so no date needs bumping.
 dependencies = [
   "crewai==1.15.40",
-  # Official SDKs, pinned directly (D-54): Claude through the Anthropic SDK behind CrewAI's BaseLLM; MCP servers through
-  # the official MCP SDK. crewai requires mcp<2, so 1.30.0 (the newest 1.x) rather than 2.3.0.
-  "anthropic==2.8.0",
+  # The official MCP SDK, pinned directly (D-54). crewai requires mcp<2, so 1.30.0 (the newest 1.x) rather than 2.3.0.
+  # No model provider SDK: every model call goes to LiteLLM over httpx (app/llm_gateway.py, D-110).
   "mcp==1.30.0",
   # Report PDFs (D-61): pure Python, no system libraries, CPU-only image stays slim.
   "reportlab==5.1.0",

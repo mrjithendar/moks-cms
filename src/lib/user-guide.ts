@@ -49,7 +49,7 @@ const guides: GuideEntry[] = [
     summary: "How the admin is organised and where to find things.",
     href: "/admin",
     keywords: ["overview", "navigation", "menu", "sidebar", "dashboard", "start", "help", "architecture", "filter", "pin", "favourite", "collapse", "icons"],
-    diagram: { name: "cms-architecture", alt: "Readers and staff reach the Moks CMS web app through the edge. The web app stores content in PostgreSQL, sessions in Redis and media in Cloudflare R2, and sends email. The SEO agent syncs Google data, drafts with Claude and writes drafts and metrics to PostgreSQL." },
+    diagram: { name: "cms-architecture", alt: "Readers and staff reach the Moks CMS web app through the edge. The web app stores content in PostgreSQL, sessions in Redis and media in Cloudflare R2, and sends email. The SEO agent syncs Google data, drafts through LiteLLM and writes drafts and metrics to PostgreSQL." },
     body: [
       "Moks CMS runs the whole publication from one admin: writing and publishing, search and audience data, AI drafting, comments and enquiries, site design and operations.",
       "The menu on the left is arranged like WordPress's: Dashboard; then the content menus Posts, Media, Pages and Comments; then AI & SEO, Billing and Practice (like plugin menus); then Appearance, Users, Tools and Settings. A line separates the three parts. Every entry opens a submenu with its pages. On a computer or tablet, point at an entry (or click it) and its pages open in a panel beside the menu. On a phone, an entry opens in place, the one you are working in is open, and the browser remembers which entries you opened. An entry shows the total of its badges (pending reviews, unread messages, comments to moderate), so nothing that needs attention is hidden.",
@@ -234,7 +234,7 @@ const guides: GuideEntry[] = [
     adminOnly: true,
     keywords: ["approve", "ai", "claude", "draft", "seo", "pending", "queue"],
     body: [
-      "Claude drafts improvements and new articles; they wait here for a person. Nothing goes live until you approve an article.",
+      "The AI (through LiteLLM) drafts improvements and new articles; they wait here for a person. Nothing goes live until you approve an article.",
       "Approving publishes it and submits it to search engines. The sidebar badge shows how many drafts are ready.",
       "Tabs: Articles, News, Not reviewed and Published, each with its count. Filter by search, status (ready, being written, failed, scheduled), kind (optimisation or new article), change type, priority and age, and sort by priority, date or number of changes.",
       "- Not reviewed lists published articles that were never reviewed, or not in the last 90 days, and have no draft in the queue, oldest first, with when they were last reviewed and their open recommendations. Review now (one article) or select up to 25 and press Review selected.",
@@ -259,7 +259,7 @@ const guides: GuideEntry[] = [
       "- Topics: content topics mapped to the site's categories; your corrections train the classifier weekly.",
       "- Content profiles & playground: versioned writing and image styles any content flow writes with, and a playground to try them; proposed versions need your approval.",
       "- Content analytics: what content flows drafted and how it performs once published.",
-      "- Shared settings moved to where they belong: content flow limits under Settings → Agent limits, models and quality gates under Settings → AI & drafts, topic classification and ranking under Settings → ML & retrieval, log retention under Settings → Run history. LLM spend counts in the one LLM budget (Settings → LLM providers & budget).",
+      "- Shared settings moved to where they belong: content flow limits under Settings → Agent limits, models and quality gates under Settings → AI & drafts, topic classification and ranking under Settings → ML & retrieval, log retention under Settings → Run history. LLM spend counts in LiteLLM's budgets (Settings → AI & models → LiteLLM).",
     ],
   },
   {
@@ -490,7 +490,7 @@ const guides: GuideEntry[] = [
       "- General settings: the site's identity, dates, contact details, features and maintenance mode as readers see them now, and the parts of Appearance. They are part of the site's design, so they are changed in Appearance and go live when it is published.",
       "- Users & access: social sign-in, human verification (Turnstile), members-only articles and profile pictures. Content & publishing: Promotion and IndexNow. Email: the provider and a test message. Media & storage: media storage, video destinations and moving media to R2.",
       "- Payments & bookings: Razorpay (with the webhook URL and its events for paid calls and invoices), Invoices (your business details and a new invoice's defaults) and Cal.com bookings (with the subscriber URL).",
-      "- AI & models: LLM providers & budget, AI & drafts, ML & retrieval, Image generation, Image limits and Video generation. SEO agent: Connection (where the agent is, and the connections), Agent limits, Run history, Content fetching and the Configuration repository. Assistants: Ask the Blog and MCP. Search & SEO: search engine verification, Search Console & GA4, then the SEO areas. The SEO agent's own sections are listed once it is set up (SEO agent → Connection is where it is set up).",
+      "- AI & models: LiteLLM, AI & drafts, ML & retrieval, Image generation, Image limits and Video generation. SEO agent: Connection (where the agent is, and the connections), Agent limits, Run history, Content fetching and the Configuration repository. Assistants: Ask the Blog and MCP. Search & SEO: search engine verification, Search Console & GA4, then the SEO areas. The SEO agent's own sections are listed once it is set up (SEO agent → Connection is where it is set up).",
       "- Integrations: Analytics & ads and Hybrid RAG. Practice settings: Python practice (execution, quotas, the AI tutor, the leaderboard, retention). System: Backups (schedule, encryption, bucket) and Cloudflare cache (zone, token, purge on publish).",
       "On a computer the categories are listed on the left and the open one shows its sections; on a tablet or phone a Category list and the section buttons are above the form. Each section saves on its own and returns to itself with a message; leaving a section with unsaved changes asks first. Old addresses (Integrations, Storage, Email, AI & SEO settings, Invoice settings) open the section that has their settings now.",
     ],
@@ -522,10 +522,10 @@ const guides: GuideEntry[] = [
     kind: "guide",
     section: "SEO agent, AI & ML",
     title: "The SEO agent's settings",
-    summary: "In Settings, under four categories: AI & models (LLM providers & budget), SEO agent, Assistants (Ask the Blog, MCP) and Search & SEO.",
+    summary: "In Settings, under four categories: AI & models (LiteLLM), SEO agent, Assistants (Ask the Blog, MCP) and Search & SEO.",
     href: "/admin/settings/ai?section=llm",
     adminOnly: true,
-    keywords: ["automation", "seo settings", "schedules", "cron", "scoring", "weights", "thresholds", "budget", "llm budget", "llm providers", "models", "claude", "drafts", "crawler", "reports", "dataforseo", "ai visibility", "agent limits", "timeout", "turns", "restart pending", "mcp"],
+    keywords: ["automation", "seo settings", "schedules", "cron", "scoring", "weights", "thresholds", "budget", "litellm", "llm", "models", "aliases", "drafts", "crawler", "reports", "dataforseo", "ai visibility", "agent limits", "timeout", "turns", "restart pending", "mcp"],
     body: [
       "The SEO agent's settings are sections of Settings (they were AI & SEO → Settings, called Automation & AI before that, until November 2026; old links still open the right section). They are listed once the SEO agent is set up. Each section saves on its own, so a change in one never overwrites another, and every saved change is audit-logged. If you leave a section with unsaved changes, you are asked first.",
       "Settings → SEO agent:",
@@ -534,8 +534,8 @@ const guides: GuideEntry[] = [
       "- Run history: what the CrewAI console keeps of each run (model-call transcripts on or off) and how long log lines, transcripts and content flow run logs are kept.",
       "- Content fetching: how content flows fetch their sources (it was on Content sources). Configuration repository: the GitHub repository and token of the CrewAI configuration (it was a tab of Configuration).",
       "Settings → AI & models:",
-      "- LLM providers & budget (one section since November 2026; it was LLM providers & models and LLM budget). At the top, the LLM budget: one budget for every provider, model and purpose together. A Daily | Monthly switch shows that period's spend against its limit, the one field that sets it (empty means no limit) and where the spend went by provider, model and purpose. Below it, the providers: one form per provider (Anthropic, OpenAI, Google Gemini, Azure OpenAI, AWS Bedrock, Mistral, xAI, or any OpenAI-compatible server). Enter its API key (stored sealed in the SEO agent and never shown again), add the models you want and their prices in USD per million tokens, then switch them on. A model cannot be switched on without prices unless it is a Claude model with a built-in price or you mark it free; no price is filled in for you. For now this is set-up only: every job still calls Anthropic until a model is chosen for each job. LLM usage for this month (this site's own calls) is at the bottom.",
-      "- AI & drafts: Claude drafting (always stops at human review), the optional explanation model and AI visibility, then the models and quality gates every content flow starts from. Their spend counts in the one LLM budget.",
+      "- LiteLLM (it was LLM providers & budget until D-110, 2026-11-28). Every model call of the site goes through LiteLLM, which holds the providers, models, provider keys and budgets; this page only shows them. For the web app and for the SEO agent: whether each reaches LiteLLM, the endpoint, the aliases they ask for and the last health check; then the team's and each key's spend, budget and reset, and the aliases the keys may use with what each points at. Change any of it in LiteLLM (Open LiteLLM). No key is shown here.",
+      "- AI & drafts: AI drafting (always stops at human review), the optional explanation model and AI visibility (each assistant through its own LiteLLM alias), then the aliases and quality gates every content flow starts from. Their spend counts in LiteLLM's budgets.",
       "- ML & retrieval: the SEO models and the retrieval check, the SEO agent's Retrieval settings (passages per answer, lowest similarity, how long questions are kept) and Embeddings settings (the backend's address, key and time limit; the embeddings provider and model stay in the deployment, because changing them needs every article embedded again), then how content flows classify topics and train their ranker.",
       "Settings → Assistants:",
       "- Ask the Blog: the reader assistant's switch, who may use it, its limits and wording.",
@@ -561,7 +561,7 @@ const guides: GuideEntry[] = [
     diagram: { name: "seo-agent-flows", alt: "Schedules start sync flows that fill the SEO data. Rules and ML models score it into recommendations and pick articles worth fixing; drafting flows write drafts within budgets. A person approves on the site, and only then does publish_flow publish and submit." },
     body: [
       "The SEO agent is a separate service that runs CrewAI flows. Sync flows read Google Search Console, GA4 and (optionally) DataForSEO into the database on a schedule.",
-      "Rules and ML models turn that data into recommendations, reports and alerts, and pick articles worth improving. Drafting flows (optimize_article_flow, new_article_flow) ask Claude crews for a draft within the monthly budget and the rewrite limit.",
+      "Rules and ML models turn that data into recommendations, reports and alerts, and pick articles worth improving. Drafting flows (optimize_article_flow, new_article_flow) ask the crews for a draft (through LiteLLM, within its budgets) and keep to the rewrite limit.",
       "Drafts stop at “ready for review”. Only a person approving on the site starts publish_flow, which publishes and submits to search engines. Nothing in the agent, the schedules or MCP can approve.",
       "Start a flow by hand with Run now on the relevant page; queued runs start within about 30 seconds and appear in Data sync.",
     ],
@@ -575,12 +575,12 @@ const guides: GuideEntry[] = [
     href: "/admin/sync",
     adminOnly: true,
     keywords: ["seo-agent", "service", "python", "background", "jobs", "cronjob", "api", "worker", "how it works"],
-    diagram: { name: "cms-architecture", alt: "The SEO agent sits next to the web app: it reads Google data, drafts with Claude and saves drafts and numbers in the shared database." },
+    diagram: { name: "cms-architecture", alt: "The SEO agent sits next to the web app: it reads Google data, drafts through LiteLLM and saves drafts and numbers in the shared database." },
     body: [
       "The website and the seo-agent are two separate programs. The website shows pages and the admin. The seo-agent is a Python program that does the slow, background work, so the website stays fast.",
       "- It wakes up on a timetable (for example every morning at 06:10 UTC to fetch Search Console data). Pressing Run now in the admin, or asking through MCP, starts the same job straight away.",
       "- It fetches data from Google and DataForSEO and saves it in the same database the website uses.",
-      "- It looks at the numbers, finds pages that can do better and asks Claude to write a suggested fix.",
+      "- It looks at the numbers, finds pages that can do better and asks the AI (through LiteLLM) to write a suggested fix.",
       "- It saves every suggestion as a draft. It never publishes on its own.",
       "- It also trains the ML models each week, builds reports and keeps the Ask the Blog search index up to date.",
       "Every run is listed in Data sync with its status, what it did and any errors. If the seo-agent is down, the website keeps working; only the background jobs wait.",
@@ -621,7 +621,7 @@ const guides: GuideEntry[] = [
       "Every Sunday the seo-agent runs the ML job. For each model it does the same four things: learn from your past data, test itself on data it has not seen, compare its score with the simple rule the site used before, and save the result. The website only reads the saved results; no ML runs while someone loads a page.",
       "- Falling pages (content decay): looks at each page's daily clicks, removes the normal weekly ups and downs (and yearly seasons when there is enough history), and flags a page only when its trend has fallen steadily for three weeks and clearly more than usual. In tests it raised far fewer false alarms than the old 28-day rule.",
       "- Topic groups (query clusters): turns each search query into numbers that capture its meaning (embeddings) and groups queries that mean the same thing. You check a sample of groupings on the Labelling page; the model is used only when it matches your answers better than simple word matching.",
-      "- Search intent: learns from intent labels Claude gave earlier (and your corrections) to tell “how to”, “what is”, comparison and other searches apart by itself, so fewer Claude calls are needed. It is used only when it is accurate enough on your spot checks.",
+      "- Search intent: learns from intent labels the fast model gave earlier (and your corrections) to tell “how to”, “what is”, comparison and other searches apart by itself, so fewer model calls are needed. It is used only when it is accurate enough on your spot checks.",
       "- Priority: looks at recommendations you already carried out and how many clicks they gained, and proposes better scoring weights. Proposals are never applied automatically; you decide.",
       "- Related articles: mixes how similar two articles are, which search queries they share and which pages readers actually visit together, and picks the best six for each article. Clicks on the related block (with consent) measure whether it works.",
       "If a model is not better, too new or more than 14 days old, the site quietly uses the rule, and every number says which one made it.",
@@ -797,7 +797,7 @@ const guides: GuideEntry[] = [
       "- Test run runs the crew once with the prompts on screen, saved or not, on the inputs of an earlier finished run you choose (a New article run for the Editorial crew, a Report run for the Report crew, and so on). It saves nothing anywhere: the test run opens in the console with its log, transcripts, cost and output, and Save as new version there keeps exactly the prompts it ran. Replay with edited prompts on a run's page opens the editor with that run chosen.",
       "- Versions: Open in the editor loads any version; Activate makes it the one the crew runs (also a rollback); Use the code's defaults stops using saved versions. A version written for older code defaults is marked, because the agent was updated since.",
       "Every model call records which version produced it (the prompt version in the transcript and cost tables ends in +v3, or +test for a test run). Test runs cost model tokens like any run and count against the monthly budget.",
-      "Custom crews (New crew): make your own crew from agents and tasks. Each agent has a role, goal and backstory, tools from the allowlist only (search the site, read an article, Search Console queries for a topic, the style guide, official documentation) and an optional model; tasks run in order, each with instructions that may use {input} names and {today}, an expected output, and the earlier tasks it reads (none ticked: the task just before it). The SEO agent checks a crew when you save it; the rules every crew follows (untrusted data stays data, no delegation or code, the token and time caps, the one LLM budget) are added by its code. A custom crew runs in your custom flows; one a flow uses cannot be switched off or deleted.",
+      "Custom crews (New crew): make your own crew from agents and tasks. Each agent has a role, goal and backstory, tools from the allowlist only (search the site, read an article, Search Console queries for a topic, the style guide, official documentation) and an optional model (a LiteLLM alias); tasks run in order, each with instructions that may use {input} names and {today}, an expected output, and the earlier tasks it reads (none ticked: the task just before it). The SEO agent checks a crew when you save it; the rules every crew follows (untrusted data stays data, no delegation or code, the token and time caps, LiteLLM's budgets) are added by its code. A custom crew runs in your custom flows; one a flow uses cannot be switched off or deleted.",
     ],
   },
   {
@@ -922,7 +922,7 @@ const guides: GuideEntry[] = [
     keywords: ["health", "status", "uptime", "database", "redis", "sync", "import", "google api", "errors", "monitoring", "configure", "seo agent", "degraded"],
     body: [
       "System status runs live checks of every service the site depends on; reload the page (or press Re-run checks) to run them again. The cards at the top count what is down, degraded, not configured and healthy.",
-      "Checks are grouped: Core (database, cache, media storage), Publishing (scheduled posts, the editorial calendar, the news desk), SEO & AI (the SEO agent and its failing flows, Claude, Search Console and Google Analytics syncs, ML models), Integrations (email, Turnstile, image generation, social sign-in, payments, breached-password check) and Operations (background jobs, tracing, TLS certificate, backups).",
+      "Checks are grouped: Core (database, cache, media storage), Publishing (scheduled posts, the editorial calendar, the news desk), SEO & AI (the SEO agent and its failing flows, LiteLLM, Search Console and Google Analytics syncs, ML models), Integrations (email, Turnstile, image generation, social sign-in, payments, breached-password check) and Operations (background jobs, tracing, TLS certificate, backups).",
       "Configure ↗ opens the page where that service is set up in a new tab, so the status page stays open. A service set in the deployment instead (the Kubernetes Secret) names its setting, for example REDIS_URL.",
       "The SEO agent is degraded only while a flow's latest run in the last 24 hours failed; the failing flows and their errors are listed.",
       "Data sync lists every scheduled, manual and backfill run: window, status, rows written, Google API requests, retries and errors. Queued runs start within about 30 seconds.",
@@ -1058,7 +1058,7 @@ const faqs: GuideEntry[] = [
     "The one automatic change is internal linking, when its weekly job is switched on, and it works within strict limits.",
   ], { keywords: ["ai", "automatic", "publish", "claude", "safety", "approve"] }),
   faq("faq-ai-cost", "Editorial & AI", "How is AI spending kept under control?", [
-    "Settings → AI & models → LLM providers & budget sets one limit for all LLM spend (daily, monthly or both) and shows where it went; content flows keep their image caps and Ask the Blog its daily limit on top. AI and paid calls are always explicit actions, never triggered by just viewing a page.",
+    "LiteLLM holds every LLM budget: a budget for the site's team and one per key (Ask the Blog and the tutor have their own keys), set in LiteLLM and shown under Settings → AI & models → LiteLLM. Content flows keep their image caps on top. AI and paid calls are always explicit actions, never triggered by just viewing a page.",
   ], { keywords: ["cost", "budget", "spend", "money", "ai"] }),
   faq("faq-stale-data", "Insights", "The search or analytics numbers look out of date. Why?", [
     "Search Console data is usually two to three days behind. Check Admin → Data sync for the latest run and its errors; queued runs start within about 30 seconds.",
@@ -1097,8 +1097,8 @@ const faqs: GuideEntry[] = [
     "Only if an admin turns on Appearance → General → Public user manual. It then appears at /user-manual for everyone, read-only and without any of your data. It is off by default.",
   ], { href: "/admin/appearance", keywords: ["public", "guide", "manual", "documentation", "share"] }),
   faq("faq-ai-model", "SEO agent, AI & ML", "Which AI models does the CMS use?", [
-    "Claude drafts and classifies for the SEO agent (the models are set under Settings → AI & models → AI & drafts; empty uses the deployment's defaults). Gemini generates images when configured in Settings → AI & models → Image generation. AI visibility asks the assistants you switch on.",
-  ], { href: "/admin/settings/ai?section=ai", adminOnly: true, keywords: ["model", "claude", "gemini", "openai", "llm"] }),
+    "LiteLLM answers every model call (the aliases moks-cms-default for drafting and crews and moks-cms-fast for classifying; which model each points at is set in LiteLLM). Crews, content flows and writing profiles can name another alias. Gemini generates images when configured in Settings → AI & models → Image generation. AI visibility asks the assistants you switch on, each through its own LiteLLM alias.",
+  ], { href: "/admin/settings/ai?section=ai", adminOnly: true, keywords: ["model", "litellm", "alias", "claude", "gemini", "openai", "llm"] }),
   faq("faq-ml-trust", "SEO agent, AI & ML", "Can I stop an ML model from being used?", [
     "Yes. Set its override to rule on the ML models page; the site then always uses the rule. auto (the default) only uses a model that beat the rule on held-out data and is less than 14 days old.",
   ], { href: "/admin/models", adminOnly: true, keywords: ["ml", "model", "disable", "override", "rule"] }),
@@ -1106,7 +1106,7 @@ const faqs: GuideEntry[] = [
     "Settings → Assistants → MCP → Connected clients → Revoke on its row. The token stops working at once. To switch the whole admin MCP server off, the operator sets ADMIN_MCP_ENABLED=false.",
   ], { href: "/admin/settings/assistants?section=mcp", adminOnly: true, keywords: ["mcp", "revoke", "disconnect", "claude"] }),
   faq("faq-seo-budget", "SEO agent, AI & ML", "How much does the SEO agent spend on AI?", [
-    "There is one LLM budget for everything: Settings → AI & models → LLM providers & budget, a daily limit, a monthly limit, or both. Agent flows, drafts, keyword intents and AI visibility all count against it, and a call that would cross it is not made. No limit is set until you save one. Ask the Blog keeps its own daily limit on top. DataForSEO is not an LLM and keeps its own monthly cap.",
+    "Every LLM call goes through LiteLLM, and its budgets are the only LLM limit: the site's team budget and each key's (agent, Ask the Blog, web, tutor), set in LiteLLM. A call over one is refused and the flow pauses as \"paused (budget)\". No budget is set until you set one. Settings → AI & models → LiteLLM shows the spend. DataForSEO is not an LLM and keeps its own monthly cap.",
   ], { href: "/admin/settings/ai?section=llm", adminOnly: true, keywords: ["cost", "budget", "spend", "claude", "dataforseo"] }),
   faq("faq-social-login", "Site settings", "Google sign-in says redirect_uri_mismatch. What is wrong?", [
     "The callback URL registered with Google must match the one shown in Settings → Users & access → Social sign-in exactly, including https and the path.",

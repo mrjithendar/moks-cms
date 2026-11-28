@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * The CrewAI configuration bundle (format 2, D-101, docs/seo/CREWCONFIG.md): every crew, agent, task, flow, skill,
- * schedule, content source, category, tool, guardrail and provider of a site, as plain files a person can review in Git.
+ * schedule, content source, category, tool and guardrail of a site, as plain files a person can review in Git.
  * Pure and client-safe: the exporter (runtime.ts), the importer (plan.ts, apply.ts), the repository editor and the
  * site repository's own check (jithendar.com scripts/crewconfig.py, through schemas/*.schema.json) read the same
  * definitions.
@@ -12,9 +12,9 @@ import { z } from "zod";
  *
  * Editable or read-only:
  * - categories, crews, agents, tasks, flows, skills, schedules and sources are imported;
- * - tools, guardrails and providers are read-only: they are listed so a reviewer sees everything a crew runs with, and an
- *   import only checks references against them. Tools and guardrails are code in the SEO agent; providers need keys,
- *   which are never in a bundle (Settings → LLM providers);
+ * - tools and guardrails are read-only: they are listed so a reviewer sees everything a crew runs with, and an import
+ *   only checks references against them. They are code in the SEO agent. Models are LiteLLM aliases: which provider and
+ *   model answer, and their keys, are set in LiteLLM, never in a bundle (D-110);
  * - in a crew or flow defined in code, the `code` / `runtime` block and a task's `contract`, `variables` and
  *   `output_editable` are read-only too: they describe the code, an import never changes the code.
  * Nothing in a bundle is code: no file is executed, and every crew and flow spec is checked again by the SEO agent
@@ -186,23 +186,6 @@ export const toolSchema = z
 
 export const guardrailSchema = z.object({ id: z.string().regex(SLUG).max(60), title: z.string().max(120), applies_to: z.string().max(200), text: z.string().max(4000) }).strict();
 
-export const providerSchema = z
-  .object({
-    id: z.string().max(60),
-    kind: z.string().max(60),
-    name: z.string().max(120),
-    enabled: z.boolean(),
-    base_url: z.string().max(500),
-    region: z.string().max(60),
-    deployment: z.string().max(120),
-    api_version: z.string().max(60),
-    /** Where the key is: never the key itself. */
-    key: z.enum(["saved", "env", "none", "not_needed"]),
-    key_ref: z.string().max(200),
-    models: z.array(z.object({ model_id: z.string().max(120), label: z.string().max(120), enabled: z.boolean(), free: z.boolean(), price_state: z.string().max(20), context_window: z.number().nullable(), max_output: z.number().nullable() }).strict()).max(200),
-  })
-  .strict();
-
 export type Category = z.output<typeof categorySchema>;
 export type Crew = z.output<typeof crewSchema>;
 export type Agent = z.output<typeof agentSchema>;
@@ -213,7 +196,6 @@ export type Schedule = z.output<typeof scheduleSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type Tool = z.output<typeof toolSchema>;
 export type Guardrail = z.output<typeof guardrailSchema>;
-export type Provider = z.output<typeof providerSchema>;
 
 export type CrewConfig = {
   categories: Category[];
@@ -226,11 +208,10 @@ export type CrewConfig = {
   sources: Source[];
   tools: Tool[];
   guardrails: Guardrail[];
-  providers: Provider[];
 };
 export type Kind = keyof CrewConfig;
 
-export const emptyConfig = (): CrewConfig => ({ categories: [], crews: [], agents: [], tasks: [], flows: [], skills: [], schedules: [], sources: [], tools: [], guardrails: [], providers: [] });
+export const emptyConfig = (): CrewConfig => ({ categories: [], crews: [], agents: [], tasks: [], flows: [], skills: [], schedules: [], sources: [], tools: [], guardrails: [] });
 
 type KindInfo = { kind: Kind; label: string; one: string; importable: boolean; schema: z.ZodType; id: (item: never) => string };
 
@@ -246,7 +227,6 @@ export const KINDS: KindInfo[] = [
   { kind: "schedules", label: "Schedules", one: "schedule", importable: true, schema: scheduleSchema, id: (s: Schedule) => s.name },
   { kind: "tools", label: "Tools", one: "tool", importable: false, schema: toolSchema, id: (t: Tool) => t.name },
   { kind: "guardrails", label: "Prompt guardrails", one: "guardrail", importable: false, schema: guardrailSchema, id: (g: Guardrail) => g.id },
-  { kind: "providers", label: "Model providers", one: "provider", importable: false, schema: providerSchema, id: (p: Provider) => p.id },
 ];
 export const KIND_INFO = new Map(KINDS.map((k) => [k.kind, k]));
 export const IMPORTABLE: Kind[] = KINDS.filter((k) => k.importable).map((k) => k.kind);

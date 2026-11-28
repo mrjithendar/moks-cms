@@ -63,52 +63,49 @@ export async function seedRecommendation(db: Db, articleId: string, category: st
 
 export type FakeCall = { path: string; method: string; body: Record<string, unknown> | null; headers: Headers };
 
-/** Fake Anthropic API. `answers` are returned in order for POST /v1/messages (strings = text content, or a full message object). */
-export function fakeAnthropic(opts: { answers?: (string | Record<string, unknown>)[]; batchAnswers?: Record<string, string>; batchStatus?: "in_progress" | "ended" } = {}) {
+/** The LiteLLM environment the SEO calls read (lib/llm/client.ts): set it in a test, `delete` it for "no model". */
+export const LITELLM_ENV = { LITELLM_BASE_URL: "http://litellm.test:4000/v1", LITELLM_API_KEY: "sk-test-not-real" } as const;
+export const useLiteLlm = () => Object.assign(process.env, LITELLM_ENV);
+export const noLiteLlm = () => {
+  delete process.env.LITELLM_BASE_URL;
+  delete process.env.LITELLM_API_KEY;
+};
+
+/** What an alias answers as (LiteLLM's x-litellm-model-name). */
+const TARGETS: Record<string, string> = { "moks-cms-default": "anthropic/claude-sonnet-5-5", "moks-cms-fast": "anthropic/claude-haiku-5-5" };
+
+/**
+ * A LiteLLM stand-in (Chat Completions, as LiteLLM 1.111 answered a local proxy): each answer is the model's text, or
+ * `{ status, error }` for a refusal, or `{ finish_reason }`. Usage: 1200 new input tokens, 2000 read from the cache,
+ * 400 out; LiteLLM's charge 0.0068 USD (x-litellm-response-cost).
+ */
+export function fakeLiteLlm(opts: { answers?: (string | { status?: number; error?: Record<string, unknown>; finish_reason?: string; content?: string })[]; cost?: string } = {}) {
   const calls: FakeCall[] = [];
   const answers = [...(opts.answers ?? [])];
-  let batch: { id: string; requests: { custom_id: string }[] } | null = null;
-  let status = opts.batchStatus ?? "ended";
-  const message = (text: string, extra: Record<string, unknown> = {}) => ({
-    id: `msg_${calls.length}`,
-    type: "message",
-    role: "assistant",
-    model: "claude-sonnet-5-5",
-    content: [{ type: "text", text }],
-    stop_reason: "end_turn",
-    stop_sequence: null,
-    usage: { input_tokens: 1200, output_tokens: 400, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0 },
-    ...extra,
-  });
-  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "request-id": `req_${calls.length}` } });
+  const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const method = (init?.method ?? "GET").toUpperCase();
     let body: Record<string, unknown> | null = null;
     if (typeof init?.body === "string") body = JSON.parse(init.body);
     calls.push({ path: url.pathname, method, body, headers: new Headers(init?.headers) });
-    if (url.pathname === "/v1/messages" && method === "POST") {
+    if (url.pathname === "/v1/chat/completions" && method === "POST") {
       const a = answers.shift();
-      if (a === undefined) return json({ type: "error", error: { type: "api_error", message: "no fake answer left" } }, 500);
-      return json(typeof a === "string" ? message(a) : message("", a));
+      if (a === undefined) return json({ error: { message: "no fake answer left", type: "internal_server_error" } }, 400);
+      if (typeof a === "object" && a.status) return json({ error: a.error ?? { message: "refused" } }, a.status);
+      const model = String(body?.model ?? "");
+      const content = typeof a === "string" ? a : (a.content ?? "");
+      return json(
+        { id: `chatcmpl-${calls.length}`, model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: typeof a === "object" && a.finish_reason ? a.finish_reason : "stop" }], usage: { prompt_tokens: 3200, completion_tokens: 400, prompt_tokens_details: { cached_tokens: 2000 } } },
+        200,
+        { "x-litellm-response-cost": opts.cost ?? "0.0068", "x-litellm-model-name": TARGETS[model] ?? model, "x-litellm-call-id": `req_${calls.length}` },
+      );
     }
-    if (url.pathname === "/v1/messages/batches" && method === "POST") {
-      batch = { id: "msgbatch_test1", requests: (body?.requests as { custom_id: string }[]) ?? [] };
-      return json({ id: batch.id, type: "message_batch", processing_status: "in_progress", request_counts: { processing: batch.requests.length, succeeded: 0, errored: 0, canceled: 0, expired: 0 }, created_at: new Date().toISOString(), expires_at: new Date().toISOString(), ended_at: null, archived_at: null, cancel_initiated_at: null, results_url: null });
-    }
-    if (url.pathname === "/v1/messages/batches/msgbatch_test1" && method === "GET") {
-      return json({ id: "msgbatch_test1", type: "message_batch", processing_status: status, request_counts: { processing: 0, succeeded: batch?.requests.length ?? 0, errored: 0, canceled: 0, expired: 0 }, created_at: new Date().toISOString(), expires_at: new Date().toISOString(), ended_at: status === "ended" ? new Date().toISOString() : null, archived_at: null, cancel_initiated_at: null, results_url: status === "ended" ? "https://api.anthropic.com/v1/messages/batches/msgbatch_test1/results" : null });
-    }
-    if (url.pathname === "/v1/messages/batches/msgbatch_test1/results") {
-      const lines = (batch?.requests ?? []).map((r) => {
-        const text = opts.batchAnswers?.[r.custom_id] ?? opts.batchAnswers?.["*"];
-        return JSON.stringify(text === undefined ? { custom_id: r.custom_id, result: { type: "errored", error: { type: "error", error: { type: "api_error", message: "x" } } } } : { custom_id: r.custom_id, result: { type: "succeeded", message: message(text) } });
-      });
-      return new Response(lines.join("\n") + "\n", { status: 200, headers: { "content-type": "application/binary" } });
-    }
-    return json({ type: "error", error: { type: "not_found_error", message: url.pathname } }, 404);
+    return json({ error: { message: url.pathname, type: "not_found" } }, 404);
   }) as typeof fetch;
-  return { fetchImpl, calls, setBatchStatus: (s: "in_progress" | "ended") => (status = s) };
+  return { fetchImpl, calls };
 }
+
+export const LITELLM_PATH = "/v1/chat/completions";
 
 export const output = (changes: Record<string, unknown>[], summary = "Tightens the search title and fixes alt text.") => JSON.stringify({ summary, changes: changes.map((c) => ({ block_id: "", before: "", after: "", rationale: "Because the evidence says so.", evidence_ref: [], source_urls: [], ...c })) });

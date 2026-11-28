@@ -27,7 +27,7 @@ from 2026-11-21 to 2026-11-23; it is still a `news_jobs` row and runs `news_job_
 | Images | on/off, image profile, provider override, variants |
 | Categories | default CMS categories when the classifier is not confident |
 | Schedule & limits | cron + time zone, max per run / per day, per topic / per source per day, expiry notice days, publishing slots |
-| Budget | LLM and image, per day and per month; tokens per draft (crew cap) |
+| Budget | images, per day and per month; tokens per draft (crew cap). LLM spend has no cap here: LiteLLM's budgets apply (D-110, [LLM_GATEWAY.md](../LLM_GATEWAY.md)) |
 | Review | review priority, run summary email |
 
 **Versions**: every save creates an immutable version with a field-by-field diff; runs record the version they used.
@@ -48,7 +48,7 @@ one content flows use (unless a content flow pins a version).
 a new version with an explanation and before/after examples taken from your edits. Nothing changes until you click
 *Approve & activate*.
 
-**Playground**: pick a content flow (its budget pays), a recent story and versions A/B; the crew writes both and shows them side
+**Playground**: pick a content flow (its run carries the cost), a recent story and versions A/B; the crew writes both and shows them side
 by side with tokens and cost. Nothing is saved to the review queue unless you click *Save as draft*, which runs the
 normal draft flow with that version (all quality gates apply).
 

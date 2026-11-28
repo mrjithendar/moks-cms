@@ -1,9 +1,8 @@
 """News budgets (docs/news/COSTS.md).
 
-**LLM spend has no cap of its own.** Since the one LLM budget (app/llm_budgets.py, plan P5) every news LLM call is
-checked and held by the service's BudgetGuard like any other call: `NewsLlm` only names the purpose "news.*" and
-books the cost to the news run. The per-job and global `llm_daily_usd` / `llm_monthly_usd` values may still sit in
-saved rows; nothing reads them.
+**LLM spend has no cap here.** Every news LLM call goes through LiteLLM like any other call, and LiteLLM holds the
+budgets (D-110): `NewsLlm` only names the purpose "news.*" and books the cost LiteLLM reported to the news run. The
+LLM spend is still shown per run and per period (status()), without a cap.
 
 **Image spend keeps its caps** (per job and global, daily and monthly). They are checked before every image
 generation; when one would be crossed nothing is sent, `BudgetExceeded` is raised and the run ends as
@@ -21,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from ..llm import BudgetExceeded, CallSpec, Llm, Usage, estimate_cost_usd
+from ..llm import BudgetExceeded, CallSpec, Llm, Usage
 from .config import Job, NewsSettings
 from .store import NewsStore
 
@@ -63,10 +62,10 @@ class NewsBudget:
         return out
 
     async def check(self, kind: str, estimate_usd: float, *, booked: bool = False) -> None:
-        """kind: llm | image. Raises BudgetExceeded naming the first cap the estimate would cross. booked: the estimate
-        is already included in the recorded spend (a reservation)."""
+        """kind: image (LLM spend has no cap here: LiteLLM's budgets). Raises BudgetExceeded naming the first cap the
+        estimate would cross. booked: the estimate is already included in the recorded spend (a reservation)."""
         if kind == "llm":
-            return  # no news cap on LLM spend: the one LLM budget checks every call (app/llm.py BudgetGuard)
+            return
         st = await self.status()
         checks = [("global", "day"), ("global", "month")] + ([("job", "day"), ("job", "month")] if self.job else [])
         for scope, period in checks:
@@ -76,8 +75,8 @@ class NewsBudget:
                 raise BudgetExceeded(f"news_{scope}_{kind}_{period}", f"{'this content flow' if scope == 'job' else 'the content flows'}' {'daily' if period == 'day' else 'monthly'} {kind.upper() if kind == 'llm' else 'image'} budget ${cap:.2f} would be exceeded (spent ${spent:.2f}, this call ≈ ${estimate_usd:.3f})")
 
     async def reserve(self, kind: str, estimate_usd: float) -> float:
-        """Image spend: checks the image caps. LLM spend: nothing to do here, the one LLM budget holds the call's
-        upper bound itself (BudgetGuard.reserve inside the service's Llm). Returns the amount to `settle` (always 0)."""
+        """Image spend: checks the image caps. LLM spend: nothing to check (LiteLLM refuses a call over its budgets).
+        Returns the amount to `settle` (always 0)."""
         if kind != "llm":
             await self.check(kind, estimate_usd)
         return 0.0
@@ -100,25 +99,23 @@ class NewsBudget:
 
 
 class NewsLlm:
-    """The service's Llm for the news desk: names the purpose "news.*" and books the cost to the news run (and its
-    parent). The one LLM budget is checked inside the service's Llm; there is no news LLM cap in front of it."""
+    """The service's Llm for the news desk: names the purpose "news.*" and books the cost LiteLLM reported to the news
+    run (and its parent). LiteLLM holds the budgets; there is no news LLM cap in front of it."""
 
     def __init__(self, inner: Llm, budget: NewsBudget, run_ids: list[str], *, enabled: bool = True):
         self.inner = inner
         self.budget = budget
         self.run_ids = run_ids
         self.enabled = enabled
-        self.guard = getattr(inner, "guard", None)
+        self.ledger = getattr(inner, "ledger", None)
         self.tokens = 0
         self.cost_usd = 0.0
 
-    async def _pre(self, spec: CallSpec) -> float:
-        """Reserves the upper-bound estimate; returns it for `_settle` (always called, also when the call fails)."""
+    def _pre(self, spec: CallSpec) -> None:
         if not self.enabled:
             raise BudgetExceeded("news_llm_off", "LLM calls are switched off for this run (dry run without LLM)")
         if not spec.purpose.startswith("news"):
             spec.purpose = f"news.{spec.purpose}"
-        return await self.budget.reserve("llm", estimate_cost_usd(spec.model, spec.input_chars, spec.max_tokens))
 
     async def _post(self, usage: Usage) -> None:
         c = usage.cost_usd()
@@ -128,27 +125,18 @@ class NewsLlm:
             await self.budget.store.add_run_cost(rid, usd=c, tokens=usage.total_tokens)
 
     async def structured(self, spec: CallSpec, schema: type[T]) -> tuple[T, Usage]:
-        held = await self._pre(spec)
-        try:
-            out, usage = await self.inner.structured(spec, schema)
-            await self._post(usage)  # the actual cost is booked before the reservation is released
-        finally:
-            await self.budget.settle(held)
+        self._pre(spec)
+        out, usage = await self.inner.structured(spec, schema)
+        await self._post(usage)
         return out, usage
 
     async def text(self, spec: CallSpec) -> tuple[str, Usage]:
-        held = await self._pre(spec)
-        try:
-            out, usage = await self.inner.text(spec)
-            await self._post(usage)  # the actual cost is booked before the reservation is released
-        finally:
-            await self.budget.settle(held)
+        self._pre(spec)
+        out, usage = await self.inner.text(spec)
+        await self._post(usage)
         return out, usage
 
     async def stream(self, spec: CallSpec) -> AsyncIterator[str]:
-        held = await self._pre(spec)
-        try:
-            async for t in self.inner.stream(spec):
-                yield t
-        finally:
-            await self.budget.settle(held)
+        self._pre(spec)
+        async for t in self.inner.stream(spec):
+            yield t

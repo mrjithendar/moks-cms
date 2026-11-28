@@ -14,35 +14,45 @@ const { DEFAULT_SEO_SETTINGS, saveSeoSettings } = await import("@/lib/seo-intel/
 const { analyzeAnswer, dedupeSources, aiVisibilityOverview, suggestPrompts, addPrompt, providerReadiness } = await import("@/lib/seo-intel/ai-visibility");
 
 const NOW = new Date("2026-11-12T08:00:00Z");
-const ENV = { SITE_URL: "https://jithendar.com", ANTHROPIC_API_KEY: "test-anthropic", PERPLEXITY_API_KEY: "test-pplx", DATAFORSEO_LOGIN: "l", DATAFORSEO_PASSWORD: "p" };
+const LITELLM = { LITELLM_BASE_URL: "http://litellm.test:4000/v1", LITELLM_API_KEY: "sk-test-not-real" };
+const ENV = { SITE_URL: "https://jithendar.com", ...LITELLM, DATAFORSEO_LOGIN: "l", DATAFORSEO_PASSWORD: "p" };
 const AV = DEFAULT_SEO_SETTINGS.aiVisibility;
 const on = (over: Partial<typeof AV> = {}) => settingsInput({ aiVisibility: { ...AV, enabled: true, providers: { ...AV.providers, perplexity: true, google_ai_overview: true }, ...over } });
 
-/** Fake vendor APIs, answering by host. Claude cites jithendar.com for prompts about Argo CD; nobody cites it otherwise. */
-function vendors() {
+/**
+ * LiteLLM (answering per alias, in the shapes LiteLLM 1.111 gives each provider's web search) and DataForSEO. Claude
+ * cites jithendar.com for prompts about Argo CD; nobody cites it otherwise. `refuseAfter`: LiteLLM refuses every
+ * call after that many for its budget (HTTP 422 budget_exceeded).
+ */
+function vendors(opts: { refuseAfter?: number } = {}) {
   const calls: string[] = [];
+  const asked: Record<string, unknown>[] = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const body = JSON.parse(String(init?.body ?? (input instanceof Request ? await input.text() : "{}"))) as Record<string, unknown>;
     calls.push(new URL(url).host);
-    if (url.startsWith("https://api.anthropic.com/")) {
-      const prompt = String((body.messages as { content: string }[])[0]!.content);
+    if (url === "http://litellm.test:4000/v1/chat/completions") {
+      asked.push(body);
+      if (opts.refuseAfter !== undefined && asked.length > opts.refuseAfter) return Response.json({ error: { message: "Budget has been exceeded! Key=abc Current cost: 2.01, Max budget: 2.0", type: "budget_exceeded", code: "422" } }, { status: 422 });
+      const prompt = String((body.messages as { content: string }[]).at(-1)!.content);
       const argo = /argo/i.test(prompt);
-      return Response.json({
-        id: "msg_1",
-        type: "message",
-        role: "assistant",
-        model: "claude-opus-5-5",
-        stop_reason: "end_turn",
-        content: [
-          { type: "server_tool_use", id: "s1", name: "web_search", input: { query: prompt } },
-          { type: "web_search_tool_result", tool_use_id: "s1", content: [{ type: "web_search_result", url: "https://argo-cd.readthedocs.io/en/stable/", title: "Argo CD docs", encrypted_content: "x" }] },
-          { type: "text", text: argo ? "Jithendar.com explains sync waves well." : "Use the docs.", citations: argo ? [{ type: "web_search_result_location", url: "https://www.jithendar.com/blog/argo-cd-sync-waves", title: "Sync waves", cited_text: "…", encrypted_index: "x" }] : [] },
-        ],
-        usage: { input_tokens: 10_000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, server_tool_use: { web_search_requests: 1 } },
-      });
+      const head = (cost: string, target: string) => ({ headers: { "x-litellm-response-cost": cost, "x-litellm-model-name": target, "x-litellm-call-id": `call-${asked.length}` } });
+      if (body.model === "moks-cms-visibility-claude") {
+        const message = {
+          role: "assistant",
+          content: argo ? "Jithendar.com explains sync waves well." : "Use the docs.",
+          provider_specific_fields: {
+            citations: argo ? [[{ type: "web_search_result_location", url: "https://www.jithendar.com/blog/argo-cd-sync-waves", title: "Sync waves", cited_text: "…", encrypted_index: "x", supported_text: "Jithendar.com explains sync waves well." }]] : null,
+            web_search_results: [{ type: "web_search_tool_result", tool_use_id: "s1", content: [{ type: "web_search_result", url: "https://argo-cd.readthedocs.io/en/stable/", title: "Argo CD docs", encrypted_content: "x" }] }],
+          },
+        };
+        return Response.json({ id: "chatcmpl-1", model: body.model, choices: [{ index: 0, message, finish_reason: "stop" }], usage: { prompt_tokens: 10_000, completion_tokens: 500 } }, head("0.06", "anthropic/claude-opus-5-5"));
+      }
+      if (body.model === "moks-cms-visibility-perplexity") {
+        return Response.json({ id: "chatcmpl-2", model: body.model, choices: [{ index: 0, message: { role: "assistant", content: "See Kubernetes docs [1]." }, finish_reason: "stop" }], citations: ["https://kubernetes.io/docs/"], search_results: [{ url: "https://kubernetes.io/docs/", title: "Docs" }], usage: { prompt_tokens: 20, completion_tokens: 30 } }, head("0.005", "perplexity/sonar"));
+      }
+      return Response.json({ error: { message: `Invalid model name passed in model=${String(body.model)}`, type: "invalid_request_error" } }, { status: 400 });
     }
-    if (url.startsWith("https://api.perplexity.ai/")) return Response.json({ choices: [{ message: { content: "See Kubernetes docs." } }], search_results: [{ url: "https://kubernetes.io/docs/", title: "Docs" }] });
     if (url.startsWith("https://api.dataforseo.com/")) {
       const kw = String((body as unknown as Record<string, unknown>[])[0]!.keyword);
       const items = /argo/i.test(kw) ? [{ type: "ai_overview", markdown: "Overview", items: [{ type: "ai_overview_element", references: [{ url: "https://jithendar.com/blog/argo-cd-sync-waves", domain: "jithendar.com", title: "Sync waves" }] }] }] : [{ type: "organic" }];
@@ -50,7 +60,7 @@ function vendors() {
     }
     return new Response("not found", { status: 404 });
   }) as unknown as typeof fetch;
-  return { fetchImpl, calls };
+  return { fetchImpl, calls, asked };
 }
 
 describe("matching", () => {
@@ -77,14 +87,18 @@ describe("AI visibility job", () => {
     await saveSeoSettings(settingsInput(), "admin");
     expect((await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, now: () => NOW })).errorCode).toBe("disabled");
     expect(dueSlots(DEFAULT_SEO_SETTINGS, new Date("2026-11-12T08:00:00Z")).map((d) => d.type)).not.toContain("ai_visibility");
-    const r = providerReadiness({ ...DEFAULT_SEO_SETTINGS, aiVisibility: { ...AV, providers: { ...AV.providers, chatgpt: true, gemini: true } } }, { OPENAI_API_KEY: "k", GEMINI_API_KEY: "k" });
-    expect(r.find((x) => x.id === "chatgpt")).toMatchObject({ ready: false, reason: "set the model in Settings" });
-    expect(r.find((x) => x.id === "claude")).toMatchObject({ ready: false, reason: "ANTHROPIC_API_KEY is not set" });
+    // D-110: no provider key here; an assistant needs LiteLLM and its alias.
+    const s = { ...DEFAULT_SEO_SETTINGS, aiVisibility: { ...AV, providers: { ...AV.providers, chatgpt: true, gemini: true }, aliases: { ...AV.aliases, chatgpt: "" } } };
+    expect(providerReadiness(s, { OPENAI_API_KEY: "k", ANTHROPIC_API_KEY: "k" }).find((x) => x.id === "claude")).toMatchObject({ ready: false, reason: expect.stringMatching(/LiteLLM is not configured/) });
+    const r = providerReadiness(s, LITELLM);
+    expect(r.find((x) => x.id === "chatgpt")).toMatchObject({ ready: false, reason: "set its LiteLLM alias in Settings" });
+    expect(r.find((x) => x.id === "gemini")).toMatchObject({ ready: true, reason: null });
+    expect(r.find((x) => x.id === "claude")).toMatchObject({ ready: true });
   });
 
   it("asks every prompt to every ready assistant, stores citations and costs, and does not re-buy the same day", async () => {
     await saveSeoSettings(on(), "admin");
-    const { fetchImpl, calls } = vendors();
+    const { fetchImpl, calls, asked } = vendors();
     const out = await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW });
     expect(out.status).toBe("succeeded");
     expect(out.rows).toBe(6);
@@ -94,10 +108,16 @@ describe("AI visibility job", () => {
     const argo = rows.filter((r) => r.prompt.startsWith("How do Argo"));
     expect(argo.find((r) => r.provider === "claude")).toMatchObject({ cited: true, mentioned: true, cited_rank: 1 });
     expect(argo.find((r) => r.provider === "google_ai_overview")).toMatchObject({ cited: true, error: null });
-    expect(argo.find((r) => r.provider === "perplexity")).toMatchObject({ cited: false, cost_usd: AV.costPerAnswerUsd });
+    expect(argo.find((r) => r.provider === "perplexity")).toMatchObject({ cited: false, cost_usd: 0.005 });
     expect(rows.find((r) => r.prompt.startsWith("What is") && r.provider === "google_ai_overview")!.error).toBe("no_ai_overview");
-    // Claude: 10k in × $4/M + 500 out × $20/M + one search at $0.01.
-    expect(argo.find((r) => r.provider === "claude")!.cost_usd).toBeCloseTo(0.04 + 0.01 + 0.01, 5);
+    // What LiteLLM charged (x-litellm-response-cost), never priced here.
+    expect(argo.find((r) => r.provider === "claude")!.cost_usd).toBeCloseTo(0.06, 8);
+    // Without a citation, Claude's sources are what it read; every LLM answer asked its alias with web search.
+    const plain = rowsOf<{ sources: { domain: string }[] }>(await db.execute(sql`select a.sources from seo_ai_answers a join seo_ai_prompts p on p.id = a.prompt_id where a.provider = 'claude' and p.prompt like 'What is%'`));
+    expect(plain[0]!.sources.map((x) => x.domain)).toEqual(["argo-cd.readthedocs.io"]);
+    expect(asked.every((b) => b.web_search_options !== undefined)).toBe(true);
+    expect(new Set(asked.map((b) => b.model))).toEqual(new Set(["moks-cms-visibility-claude", "moks-cms-visibility-perplexity"]));
+    expect(calls).not.toContain("api.anthropic.com");
 
     const n = calls.length;
     await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW });
@@ -111,30 +131,16 @@ describe("AI visibility job", () => {
     expect(o.competitors.map((c) => c.domain)).not.toContain("jithendar.com");
   });
 
-  it("stops at the first call the LLM budget refuses, and counts what it spent in seo_llm_usage", async () => {
-    await saveSeoSettings(on({ providers: { ...AV.providers, claude: false, perplexity: true } }), "admin");
-    const { fetchImpl } = vendors();
-    let asked = 0;
-    const settled: (string | null)[] = [];
-    const gate = {
-      reserve: async () => {
-        asked += 1;
-        return asked === 1 ? { ok: true as const, id: "h1" } : { ok: false as const, detail: "the monthly LLM budget is used up." };
-      },
-      settle: async (id: string | null) => {
-        settled.push(id);
-      },
-    };
-    const out = await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW, gate });
+  it("stops when LiteLLM refuses for its budget, and books what it charged in seo_llm_usage", async () => {
+    await saveSeoSettings(on({ providers: { ...AV.providers, claude: false, perplexity: true, google_ai_overview: false } }), "admin");
+    const { fetchImpl } = vendors({ refuseAfter: 1 });
+    const out = await runSeoJob({ type: "ai_visibility", trigger: "manual" }, { env: ENV, fetchImpl, now: () => NOW });
     expect(out).toMatchObject({ status: "partial", errorCode: "budget" });
-    expect(out.error).toMatch(/LLM budget/);
+    expect(out.error).toMatch(/Stopped by LiteLLM: LiteLLM refused the call: the budget of this key is used up/);
     const [r] = rowsOf<{ n: number }>(await db.execute(sql`select count(*)::int as n from seo_ai_answers`));
     expect(r!.n).toBe(1);
-    const usage = rowsOf<{ provider: string; purpose: string; cost_usd: number }>(await db.execute(sql`select provider, purpose, cost_usd from seo_llm_usage`));
-    expect(usage).toHaveLength(1);
-    expect(usage[0]).toMatchObject({ provider: "perplexity", purpose: "ai_visibility" });
-    expect(Number(usage[0]!.cost_usd)).toBeGreaterThan(0);
-    expect(settled).toEqual(["h1"]);
+    const usage = rowsOf<{ provider: string; model: string; purpose: string; cost_usd: number }>(await db.execute(sql`select provider, model, purpose, cost_usd from seo_llm_usage`));
+    expect(usage).toEqual([{ provider: "litellm", model: "sonar", purpose: "ai_visibility", cost_usd: 0.005 }]);
   });
 
   it("suggests question-like Search Console queries that are not prompts yet", async () => {

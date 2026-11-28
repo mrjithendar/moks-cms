@@ -22,7 +22,7 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 
 /**
  * Automation & AI → "Ask the Blog": the admin's switch, who may use the assistant (signed-in readers or everyone),
- * where the widget shows, its text, the per-reader limits, the daily budget and the answer style, plus read-only
+ * where the widget shows, its text, the per-reader limits and the answer style, plus read-only
  * status numbers. Saved as one document through PUT /api/admin/seo/ask-blog (validated and audit-logged on the
  * server); the web app applies it at once, the seo-agent within about 30 seconds.
  */
@@ -42,7 +42,7 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (s.enabled && !initial.enabled && !window.confirm(`Turn Ask the Blog on for ${s.audience === "members" ? "signed-in readers" : "everyone"}? Each answer costs money, up to the daily budget.`)) return;
+    if (s.enabled && !initial.enabled && !window.confirm(`Turn Ask the Blog on for ${s.audience === "members" ? "signed-in readers" : "everyone"}? Each answer costs money, up to the budget of the Ask the Blog key in LiteLLM.`)) return;
     setBusy(true);
     setMsg(null);
     const lines = (t: string) => t.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -86,7 +86,7 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
       <dl className="mt-4 grid gap-3 border-y border-line py-3 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-fg-subtle">Spent today (UTC)</dt>
-          <dd className="font-medium tabular-nums text-fg">{status ? `${usd(status.spentTodayUsd)} of ${usd(initial.dailyBudgetUsd)}` : "—"}</dd>
+          <dd className="font-medium tabular-nums text-fg">{status ? usd(status.spentTodayUsd) : "—"}</dd>
         </div>
         <div>
           <dt className="text-fg-subtle">Questions, last 7 days</dt>
@@ -242,9 +242,6 @@ export function AskBlogSettingsCard({ initial, defaults, envEnabled, status, rec
             </Field>
             <Field label="Longest question (characters)" htmlFor="ask-max-question" hint="50 to 500">
               <Input id="ask-max-question" type="number" min={50} max={500} step={1} required value={s.limits.maxQuestion} onChange={(e) => setLimit("maxQuestion", e.target.value)} />
-            </Field>
-            <Field label="Daily budget (USD)" htmlFor="ask-budget" hint="Never above the agent's ASK_BLOG_DAILY_BUDGET_USD.">
-              <Input id="ask-budget" type="number" min={0.05} max={50} step={0.05} required value={s.dailyBudgetUsd} onChange={(e) => set("dailyBudgetUsd", Number(e.target.value))} />
             </Field>
             <Field label="Reuse an answer for (seconds)" htmlFor="ask-cache" hint="Same question, same index. 0 turns reuse off.">
               <Input id="ask-cache" type="number" min={0} max={86400} step={1} required value={s.cacheTtlSeconds} onChange={(e) => set("cacheTtlSeconds", Number(e.target.value))} />

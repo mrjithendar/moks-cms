@@ -173,9 +173,15 @@ describe("LLM enrichment", () => {
   beforeEach(async () => {
     db = await freshDb();
     await db.insert(schema.user).values({ id: "admin", name: "Admin", email: "admin@example.com", role: "admin" });
-    await saveSeoSettings({ ...settingsInput(), llm: { ...settingsInput().llm, enabled: true, provider: "openai", model: "test-model" }, llmApiKey: "sk-test-key-1234567890" }, "admin");
+    // D-110: the enrichment calls LiteLLM (its fast alias); the settings hold no provider, model or key.
+    await saveSeoSettings({ ...settingsInput(), llm: { ...settingsInput().llm, enabled: true } }, "admin");
+    Object.assign(process.env, { LITELLM_BASE_URL: "http://litellm.test:4000/v1", LITELLM_API_KEY: "sk-test-key-1234567890" });
   });
-  afterEach(() => setDbForTests(undefined));
+  afterEach(() => {
+    delete process.env.LITELLM_BASE_URL;
+    delete process.env.LITELLM_API_KEY;
+    setDbForTests(undefined);
+  });
 
   const completion = (content: string) => Response.json({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 20 } });
   const schemaZ = z.object({ explanation: z.string().min(20), risks: z.array(z.string()) });

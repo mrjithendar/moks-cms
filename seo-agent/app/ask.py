@@ -1,4 +1,5 @@
-"""Ask the Blog service: kill switch, answer cache, budget, logging and gap capture around the answer pipeline.
+"""Ask the Blog service: kill switch, answer cache, logging and gap capture around the answer pipeline. Its spend is
+limited in LiteLLM (its own key); a refusal over that budget is answered with BUDGET.
 
 Privacy: the question text is stored without the IP. The web app may pass a salted HMAC of the IP (rotating salt)
 for abuse analysis; it is kept ASK_BLOG_RETENTION_DAYS (default 30) and pruned with the questions. Rate limiting per IP
@@ -137,17 +138,14 @@ class Prepared:
 class AskService:
     """`enabled` is the environment's switch (ASK_BLOG_ENABLED) and `cache_ttl_s` its default; `runtime` supplies what
     an admin set in the web app (app/ask_runtime.py), read for every question. Without a runtime the service behaves
-    as before that setting existed: on for everyone when the environment says so. `guard` is the budget guard whose
-    Ask-the-Blog daily cap follows the admin's budget, never above the environment's value."""
+    as before that setting existed: on for everyone when the environment says so."""
 
-    def __init__(self, graph: Any, retriever: Any, log: AskLog, enabled: bool, cache_ttl_s: int, runtime: AskRuntime | None = None, guard: Any = None):
+    def __init__(self, graph: Any, retriever: Any, log: AskLog, enabled: bool, cache_ttl_s: int, runtime: AskRuntime | None = None):
         self.graph = graph
         self.retriever = retriever
         self.log = log
         self.enabled = enabled
         self.runtime = runtime
-        self.guard = guard
-        self.budget_ceiling: float | None = getattr(guard, "ask_daily_usd", None)
         self.default_ttl = cache_ttl_s
         self.cache = TtlCache(cache_ttl_s)
         self._bg: set[asyncio.Task[Any]] = set()  # streamed answers finishing after a client disconnect
@@ -162,8 +160,6 @@ class AskService:
 
     def _apply(self, o: AskOptions) -> None:
         self.cache.ttl = self.default_ttl if o.cache_ttl_s is None else o.cache_ttl_s
-        if self.guard is not None and self.budget_ceiling is not None:
-            self.guard.ask_daily_usd = self.budget_ceiling if o.daily_budget_usd is None else min(self.budget_ceiling, o.daily_budget_usd)
 
     @staticmethod
     def _allowed(o: AskOptions, source: str) -> bool:

@@ -5,17 +5,18 @@ import { rowsOf } from "@/db/rows";
 import { enqueue, PermanentJobError } from "../jobs";
 import { log } from "../log";
 import { applyChanges, blocksOf, isActive, modelOutputSchema, MODEL_OUTPUT_JSON_SCHEMA, toChanges, validateChangeSet, type BaseSnapshot, type Change, type Flag, type ModelOutput, type ValidationContext } from "./changeset";
-import { claudeJson, parseJsonText, pollBatches, submitBatch, type BatchItem } from "./claude";
+import { modelJson } from "./model-calls";
 import { summarize } from "./diff-model";
 import { linkChangesFor } from "./internal-links";
 import { dataBlock, safeQueries } from "./llm";
-import { claudeConfig, getSeoSettings, type DraftCategory, type SeoSettings } from "./settings";
+import { getSeoSettings, type DraftCategory, type SeoSettings } from "./settings";
+import { llmConfig, type LlmConfig } from "../llm/client";
 import { STYLE_GUIDE } from "./style-guide";
 import { siteOrigin } from "./urls";
-import type { LlmGate } from "./llm-gate";
 
 /**
- * v2 Phase 1: recommendations → Claude change set → validators → draft (ready_for_review) → review queue.
+ * v2 Phase 1: recommendations → model change set (through LiteLLM, lib/llm/client.ts) → validators → draft
+ * (ready_for_review) → review queue.
  *
  * Automation stops at "ready for review": nothing in this module writes `post`. Publishing an approved draft is
  * publish.ts, behind an explicit admin action. One open draft per article (partial unique index); a new
@@ -206,17 +207,20 @@ export function renumber(changes: Change[]): Change[] {
   return changes.map((c, i) => ({ ...c, id: `c${i + 1}`, flags: c.flags.map((f) => ({ ...f, changeId: `c${i + 1}` })) }));
 }
 
-export type GenerateOpts = { mode?: "auto" | "regenerate"; recommendationIds?: string[]; extra?: ExtraTask[]; trigger?: "manual" | "weekly" | "fix" | "merge"; actor?: string; fetchImpl?: typeof fetch; gate?: LlmGate; now?: Date };
+export type GenerateOpts = { mode?: "auto" | "regenerate"; recommendationIds?: string[]; extra?: ExtraTask[]; trigger?: "manual" | "weekly" | "fix" | "merge"; actor?: string; fetchImpl?: typeof fetch; now?: Date;
+  /** Tests: the LLM client's settings (default: from the environment). */
+  llm?: LlmConfig | null };
 export type GenerateResult = { draftId: string | null; status: string; changes: number; reason?: string };
 
 /**
- * Generate (or merge into, or regenerate) the article's draft with the synchronous API. Used for "Regenerate now",
- * "Fix with Claude", merges and batch retries. Never throws for model problems: the draft records the failure.
+ * Generate (or merge into, or regenerate) the article's draft. Used for "Regenerate now", "Fix with AI", merges and
+ * the weekly drafts. Never throws for model problems: the draft records the failure.
  */
 export async function generateDraft(articleId: string, opts: GenerateOpts = {}): Promise<GenerateResult> {
   const db = await getDb();
   const s = await getSeoSettings();
-  const cfg = claudeConfig(s);
+  const llm = opts.llm !== undefined ? opts.llm : llmConfig();
+  const model = llm?.model ?? "";
   const base = await loadBase(db, articleId);
   if (base.status !== "published") return { draftId: null, status: "skipped", changes: 0, reason: "Only published articles get optimisation drafts." };
   let draft = await openDraft(db, articleId);
@@ -247,22 +251,21 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
   if (categories.length) {
     if (!s.drafts.enabled) failure = "Drafting is turned off (Settings → Drafts).";
     else {
-      const res = await claudeJson(db, cfg, {
-        model: cfg.draftModel,
+      const res = await modelJson(db, {
+        model,
         purpose: "draft",
         promptVersion: DRAFT_PROMPT_VERSION,
-        call: { cachedSystem: [DRAFT_RULES, STYLE_GUIDE], system: "", user, schema: MODEL_OUTPUT_JSON_SCHEMA, maxTokens: s.drafts.maxOutputTokens, effort: s.drafts.effort },
+        call: { cachedSystem: [DRAFT_RULES, STYLE_GUIDE], system: "", user, schema: MODEL_OUTPUT_JSON_SCHEMA, maxTokens: s.drafts.maxOutputTokens },
         schema: modelOutputSchema,
         check: checker(base, vctx, keep.length + 1, keep),
         draftId: draft.id,
         fetchImpl: opts.fetchImpl,
-        gate: opts.gate,
-        now: opts.now,
+        config: llm,
       });
       if (res.ok) {
         modelChanges = toChanges(res.value, base, keep.length + 1);
         summary = regenerate || !summary ? res.value.summary : `${summary} ${res.value.summary}`;
-      } else failure = res.reason === "budget" ? `Paused: ${res.detail}` : res.reason === "not_configured" ? "Claude is not configured (ANTHROPIC_API_KEY)." : `Generation failed (${res.reason}): ${res.detail}`;
+      } else failure = res.reason === "budget" ? `Paused: ${res.detail}` : res.reason === "not_configured" ? "No model is connected: set LITELLM_BASE_URL and LITELLM_API_KEY (docs/LLM_GATEWAY.md)." : `Generation failed (${res.reason}): ${res.detail}`;
     }
   }
   const linkRecs = newRecs.filter((r) => r.categories.includes("internal_links"));
@@ -270,18 +273,18 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
   const linkChanges = s.links.enabled && (linkRecs.length || linkCats.has("internal_links") || extra.some((e) => e.category === "internal_links")) && !keep.some((c) => c.type === "internal_link") ? await linkChangesFor(db, s, base, articleId, linkRecs.map((r) => `rec:${r.id}`), keep.length + modelChanges.length + 1) : [];
 
   if (failure && !linkChanges.length) {
-    await db.execute(sql`update seo_drafts set status = ${keep.length ? "ready_for_review" : "generation_failed"}, failure_reason = ${failure}, updated_at = now(), model = ${cfg.draftModel}, prompt_version = ${DRAFT_PROMPT_VERSION} where id = ${draft.id}`);
+    await db.execute(sql`update seo_drafts set status = ${keep.length ? "ready_for_review" : "generation_failed"}, failure_reason = ${failure}, updated_at = now(), model = ${model || null}, prompt_version = ${DRAFT_PROMPT_VERSION} where id = ${draft.id}`);
     log.warn("seo draft generation failed", { operation: "seo_draft", outcome: "failed", errorCode: failure.slice(0, 40) });
     return { draftId: draft.id, status: keep.length ? "ready_for_review" : "generation_failed", changes: keep.length, reason: failure };
   }
   const all = renumber([...keep, ...modelChanges, ...linkChanges]);
   if (!all.length) {
-    await db.execute(sql`update seo_drafts set status = ${regenerate ? "superseded" : draft.status}, failure_reason = 'Claude found nothing worth changing for these recommendations.', updated_at = now() where id = ${draft.id}`);
+    await db.execute(sql`update seo_drafts set status = ${regenerate ? "superseded" : draft.status}, failure_reason = 'The model found nothing worth changing for these recommendations.', updated_at = now() where id = ${draft.id}`);
     return { draftId: draft.id, status: "no_changes", changes: 0, reason: "Nothing worth changing." };
   }
   const v = validateChangeSet(base, all, vctx, diffWords);
   if (v.errors.length) {
-    // Only reachable through link changes or merges (Claude output was already checked): drop nothing silently.
+    // Only reachable through link changes or merges (the model's output was already checked): drop nothing silently.
     await db.execute(sql`update seo_drafts set status = 'generation_failed', failure_reason = ${`Validation failed: ${v.errors.slice(0, 5).join("; ")}`.slice(0, 1000)}, updated_at = now() where id = ${draft.id}`);
     return { draftId: draft.id, status: "generation_failed", changes: 0, reason: v.errors.join("; ") };
   }
@@ -290,7 +293,7 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
   const cats = [...new Set([...(regenerate ? [] : ((draft.categories as string[]) ?? [])), ...newRecs.flatMap((r) => r.categories), ...extra.map((e) => e.category)])];
   await db.execute(sql`
     update seo_drafts set status = 'ready_for_review', changes = ${JSON.stringify(all)}::jsonb, flags = ${JSON.stringify(draftFlags)}::jsonb, summary = ${summary},
-      recommendation_ids = ${uuidArray(recIds)}, categories = ${`{${cats.join(",")}}`}::text[], failure_reason = null, model = ${cfg.draftModel},
+      recommendation_ids = ${uuidArray(recIds)}, categories = ${`{${cats.join(",")}}`}::text[], failure_reason = null, model = ${model || null},
       prompt_version = ${DRAFT_PROMPT_VERSION}, generated_at = now(), updated_at = now(), trigger = ${opts.trigger ?? (draft.trigger as string) ?? "manual"}
     where id = ${draft.id}`);
   log.info("seo draft ready", { operation: "seo_draft", outcome: "ready", changes: all.length });
@@ -300,7 +303,7 @@ export async function generateDraft(articleId: string, opts: GenerateOpts = {}):
 // --- Queue jobs ----------------------------------------------------------------------------------------------
 
 /** Queue a synchronous (re)generation in the background; the request returns at once. */
-export async function queueDraft(articleId: string, opts: Omit<GenerateOpts, "fetchImpl" | "now" | "gate"> = {}): Promise<boolean> {
+export async function queueDraft(articleId: string, opts: Omit<GenerateOpts, "fetchImpl" | "now" | "llm"> = {}): Promise<boolean> {
   return enqueue(DRAFT_JOB_KIND, { articleId, ...opts }, { dedupeKey: `seo_draft:${articleId}:${opts.mode ?? "auto"}`, maxAttempts: 2 });
 }
 
@@ -316,116 +319,25 @@ export const draftJobHandler = async (payload: Record<string, unknown>) => {
 };
 
 /**
- * Weekly bulk generation through the Message Batches API: the highest-priority articles with eligible
- * recommendations, both new drafts and merges into open ones. Results arrive later (drafts_poll).
+ * Weekly drafting without the SEO agent's weekly_recommendations_flow: the highest-priority articles with eligible
+ * recommendations each get a draft job (a new draft or a merge into the open one), drafted like "Regenerate now" through
+ * LiteLLM. (Before D-110 this was an Anthropic Message Batch.)
  */
-export async function weeklyBatch(deps: { fetchImpl?: typeof fetch; now?: Date; gate?: LlmGate } = {}): Promise<{ submitted: number; batchId: string | null; skipped: string | null }> {
+export async function weeklyDrafts(): Promise<{ queued: number; skipped: string | null }> {
   const db = await getDb();
   const s = await getSeoSettings();
-  const cfg = claudeConfig(s);
-  if (!s.drafts.enabled) return { submitted: 0, batchId: null, skipped: "disabled" };
-  // Message Batches are Anthropic's own API: with LiteLLM as the gateway (D-109) the weekly drafts are the agent's
-  // weekly_recommendations_flow (through LiteLLM), never a batch around it.
-  if (cfg.gateway) return { submitted: 0, batchId: null, skipped: "gateway" };
-  if (!cfg.apiKey) return { submitted: 0, batchId: null, skipped: "not_configured" };
+  if (!s.drafts.enabled) return { queued: 0, skipped: "disabled" };
+  if (!llmConfig()) return { queued: 0, skipped: "not_configured" };
   const candidates = rowsOf<{ article_id: string }>(
     await db.execute(sql`
       select r.article_id from seo_recommendations r join post p on p.id = r.article_id
       where r.review_status in ('pending', 'approved') and r.implementation_status <> 'done' and p.status = 'published' and p.deleted_at is null
-        and not exists (select 1 from seo_drafts d where d.article_id = r.article_id and (d.status in ('generating', 'scheduled', 'publishing') or d.batch_id is not null and d.status = 'ready_for_review' and cardinality(d.pending_recommendation_ids) > 0))
+        and not exists (select 1 from seo_drafts d where d.article_id = r.article_id and d.status in ('generating', 'scheduled', 'publishing'))
       group by r.article_id order by max(r.priority_score) desc limit ${s.drafts.weekly.maxArticles}`),
   );
-  const requests: { customId: string; call: { cachedSystem: string[]; system: string; user: string; schema: Record<string, unknown>; maxTokens: number; effort: SeoSettings["drafts"]["effort"] }; draftId: string; recIds: string[]; merge: boolean }[] = [];
-  for (const { article_id } of candidates) {
-    const base = await loadBase(db, article_id);
-    let draft = await openDraft(db, article_id);
-    if (draft && draft.base_version !== base.version) {
-      await db.execute(sql`update seo_drafts set status = 'superseded', updated_at = now() where id = ${draft.id}`);
-      draft = null;
-    }
-    const recs = await eligibleRecommendations(db, s, article_id, base.collection);
-    const merge = Boolean(draft && draft.status === "ready_for_review");
-    const fresh = merge ? recs.filter((r) => !draft!.recommendation_ids.includes(r.id)) : recs;
-    if (!fresh.length) continue;
-    const keep = merge ? draft!.changes : [];
-    const { user, categories } = await buildPrompt(db, base, fresh, [], keep);
-    if (!categories.length) continue; // links-only: handled synchronously below (no model call needed)
-    draft ??= await reserveDraft(db, article_id, base, "weekly");
-    requests.push({ customId: `d_${draft.id}`, draftId: draft.id, recIds: fresh.map((r) => r.id), merge, call: { cachedSystem: [DRAFT_RULES, STYLE_GUIDE], system: "", user, schema: MODEL_OUTPUT_JSON_SCHEMA, maxTokens: s.drafts.maxOutputTokens, effort: s.drafts.effort } });
-  }
-  if (!requests.length) return { submitted: 0, batchId: null, skipped: "nothing_to_do" };
-  const batch = await submitBatch(db, cfg, cfg.draftModel, requests, deps);
-  if (!batch) {
-    for (const r of requests) if (!r.merge) await db.execute(sql`update seo_drafts set status = 'generation_failed', failure_reason = 'Paused: the LLM budget has no room for this batch.', updated_at = now() where id = ${r.draftId}`);
-    return { submitted: 0, batchId: null, skipped: "budget" };
-  }
-  for (const r of requests) {
-    await db.execute(sql`update seo_drafts set batch_id = ${batch.id}, pending_recommendation_ids = ${uuidArray(r.recIds)}, model = ${cfg.draftModel}, prompt_version = ${DRAFT_PROMPT_VERSION}, attempts = attempts + 1, updated_at = now() where id = ${r.draftId}`);
-  }
-  return { submitted: requests.length, batchId: batch.id, skipped: null };
-}
-
-/** One batch result → validated draft; invalid output gets its one retry through the synchronous API. */
-export async function applyBatchResult(batchId: string, item: BatchItem, deps: { fetchImpl?: typeof fetch } = {}): Promise<string> {
-  const db = await getDb();
-  const draftId = item.customId.replace(/^d_/, "");
-  const [row] = rowsOf<Record<string, unknown>>(await db.execute(sql`select * from seo_drafts where id = ${draftId} and batch_id = ${batchId}`));
-  if (!row) return "unknown";
-  const draft = normalize(row);
-  const pending = pgArray(row.pending_recommendation_ids);
-  const clear = sql`batch_id = null, pending_recommendation_ids = '{}'::uuid[]`;
-  const base = await loadBase(db, draft.article_id);
-  const merge = draft.status === "ready_for_review";
-  const s = await getSeoSettings();
-  let issues: string[] = [];
-  if (item.ok && base.version === draft.base_version) {
-    const parsed = modelOutputSchema.safeParse(parseJsonText(item.text));
-    const keep = merge ? draft.changes : [];
-    const recs = await eligibleRecommendations(db, s, draft.article_id, base.collection, pending);
-    const vctx = await validationContext(db, s, draft.article_id, recs.flatMap((r) => r.categories));
-    issues = parsed.success ? checker(base, vctx, keep.length + 1, keep)(parsed.data) : ["schema mismatch"];
-    if (parsed.success && !issues.length) {
-      await db.execute(sql`update seo_drafts set ${clear} where id = ${draftId}`);
-      // Reuse the synchronous assembly (links, flags, numbering) with the batch output pre-validated.
-      return finishFromOutput(db, s, draft, base, parsed.data, recs, merge);
-    }
-  }
-  await db.execute(sql`update seo_drafts set ${clear} where id = ${draftId}`);
-  log.info("seo batch result needs a retry", { operation: "seo_draft", outcome: "retry", errorCode: item.ok ? "invalid" : "batch_error" });
-  const r = await generateDraft(draft.article_id, { mode: merge ? "auto" : "regenerate", recommendationIds: pending, trigger: "weekly", fetchImpl: deps.fetchImpl });
-  return r.status;
-}
-
-async function finishFromOutput(db: Db, s: SeoSettings, draft: DraftRow, base: BaseSnapshot, out: ModelOutput, recs: Rec[], merge: boolean): Promise<string> {
-  const keep = merge ? draft.changes : [];
-  const modelChanges = toChanges(out, base, keep.length + 1);
-  const linkChanges = s.links.enabled && !keep.some((c) => c.type === "internal_link") ? await linkChangesFor(db, s, base, draft.article_id, recs.filter((r) => r.categories.includes("internal_links")).map((r) => `rec:${r.id}`), keep.length + modelChanges.length + 1) : [];
-  const all = renumber([...keep, ...modelChanges, ...linkChanges]);
-  const cats = [...new Set([...(merge ? ((draft.categories as string[]) ?? []) : []), ...recs.flatMap((r) => r.categories)])];
-  const v = validateChangeSet(base, all, await validationContext(db, s, draft.article_id, cats), diffWords);
-  if (!all.length) {
-    await db.execute(sql`update seo_drafts set status = ${merge ? "ready_for_review" : "superseded"}, failure_reason = 'Claude found nothing worth changing.', updated_at = now() where id = ${draft.id}`);
-    return "no_changes";
-  }
-  if (v.errors.length) {
-    await db.execute(sql`update seo_drafts set status = 'generation_failed', failure_reason = ${`Validation failed: ${v.errors.slice(0, 5).join("; ")}`.slice(0, 1000)}, updated_at = now() where id = ${draft.id}`);
-    return "generation_failed";
-  }
-  const recIds = [...new Set([...(merge ? draft.recommendation_ids : []), ...recs.map((r) => r.id)])];
-  const summary = merge && draft.summary ? `${draft.summary} ${out.summary}` : out.summary;
-  await db.execute(sql`
-    update seo_drafts set status = 'ready_for_review', changes = ${JSON.stringify(all)}::jsonb, flags = ${JSON.stringify(v.flags.filter((f) => !f.changeId))}::jsonb, summary = ${summary},
-      recommendation_ids = ${uuidArray(recIds)}, categories = ${`{${cats.join(",")}}`}::text[], failure_reason = null, generated_at = now(), updated_at = now()
-    where id = ${draft.id}`);
-  return "ready_for_review";
-}
-
-export async function pollDraftBatches(deps: { fetchImpl?: typeof fetch } = {}) {
-  const db = await getDb();
-  const s = await getSeoSettings();
-  const cfg = claudeConfig(s);
-  if (!cfg.apiKey) return { checked: 0, processed: 0 };
-  return pollBatches(db, cfg, async (batchId, item) => void (await applyBatchResult(batchId, item, deps)), { fetchImpl: deps.fetchImpl, promptVersion: DRAFT_PROMPT_VERSION, purpose: "draft_batch" });
+  let queued = 0;
+  for (const { article_id } of candidates) if (await queueDraft(article_id, { trigger: "weekly" })) queued++;
+  return { queued, skipped: candidates.length ? null : "nothing_to_do" };
 }
 
 // --- Review queue ---------------------------------------------------------------------------------------------

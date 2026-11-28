@@ -17,7 +17,7 @@ from app.crews.optimization import AGENTS as OPT_AGENTS
 from app.crews.promotion import AGENTS as PROMO_AGENTS
 from app.crews.report import AGENTS as REPORT_AGENTS
 from app.index import MemoryRetriever
-from app.llm import BudgetGuard, FakeLlm, MemorySpendStore
+from app.llm import FakeLlm, MemorySpendStore, UsageLedger
 from app.news.crew import AGENTS as NEWS_AGENTS
 from app.news.crew import NewsDeskCrew
 from app.webapp import WebAppError
@@ -95,7 +95,7 @@ async def test_news_crew_skills_follow_the_story(monkeypatch: pytest.MonkeyPatch
         return [row("release-coverage", ["news.writer"], ["release"]), row("security-advisory", ["news.writer"], ["cve"]), row("art", ["news.art_director"])]
 
     monkeypatch.setattr(web, "agent_skills", agent_skills, raising=False)
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 1))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("news.crew", *script(good_draft([ITEM["url"], PRIMARY])))
     r = await NewsDeskCrew(settings(), llm, web, None).run({"mode": "single", "title": "Kubernetes 1.35"}, items=[ITEM], writing_profile={"key": "news-default", "version": 1}, image_profile={"style_prompt": "flat"}, allow_hosts=("kubernetes.io", "blog.example.org"), max_tokens=100_000)
     assert r.status == "completed"

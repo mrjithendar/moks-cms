@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Alert, Button, Input, Select, Textarea } from "@/components/ui/form";
+import { AliasPicker } from "@/components/seo/AliasPicker";
 import { api, usd, when } from "./api";
 import { Field } from "./Fld";
 
@@ -119,8 +120,8 @@ export function ProfileStudio({ writing, image, jobs, clusters }: { writing: Pro
                 <Field label="Required sections (one per line)"><Textarea rows={5} value={list(draft.required_sections)} onChange={(e) => setDraft({ ...draft, required_sections: lines(e.target.value) })} /></Field>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Model override"><Select value={String(draft.model ?? "")} onChange={(e) => setDraft({ ...draft, model: e.target.value || null })}><option value="">Default</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-haiku-5-5">Claude Haiku 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5</option></Select></Field>
-                <Field label="Temperature (optional)" hint="Kept for the record; the current Claude API does not take a temperature."><Input type="number" min={0} max={1} step={0.1} value={draft.temperature === null || draft.temperature === undefined ? "" : String(draft.temperature)} onChange={(e) => setDraft({ ...draft, temperature: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
+                <Field label="Model override (LiteLLM alias)"><AliasPicker value={String(draft.model ?? "")} onChange={(v) => setDraft({ ...draft, model: v || null })} /></Field>
+                <Field label="Temperature (optional)" hint="Kept for the record; not sent to the model."><Input type="number" min={0} max={1} step={0.1} value={draft.temperature === null || draft.temperature === undefined ? "" : String(draft.temperature)} onChange={(e) => setDraft({ ...draft, temperature: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
               </div>
             </>
           ) : (

@@ -44,7 +44,7 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO seo_agent;
 -- Read only: published content, SEO measurements, and what the web app decides.
 GRANT SELECT ON
   post, setting,
-  seo_drafts, seo_llm_batches, seo_url_map,
+  seo_drafts, seo_url_map,
   seo_gsc_daily_totals, seo_gsc_page_daily, seo_gsc_query_daily, seo_ga4_page_pairs,
   seo_recommendations, seo_recommendation_evidence, seo_query_intents, seo_ml_overrides,
   seo_mcp_tokens,
@@ -64,9 +64,13 @@ GRANT INSERT ON audit_log TO seo_agent;
 -- Configured by an admin in the web app; the agent records run times and fetch state.
 GRANT SELECT, UPDATE ON news_jobs, news_sources TO seo_agent;
 
+-- One row per model call, with the tokens and the cost LiteLLM reported (D-110). Written, never read: budgets and
+-- spend views are LiteLLM's.
+GRANT INSERT ON seo_llm_usage TO seo_agent;
+
 -- The agent's working tables.
 GRANT SELECT, INSERT ON
-  seo_llm_usage, seo_rag_eval_runs, seo_ml_labels, seo_ml_query_embeddings,
+  seo_rag_eval_runs, seo_ml_labels, seo_ml_query_embeddings,
   news_feedback, news_labels, news_writing_profiles
   TO seo_agent;
 GRANT SELECT, INSERT, DELETE ON

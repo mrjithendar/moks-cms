@@ -261,11 +261,14 @@ function extraChecks(): Promise<Check>[] {
       if (failing.length) return { status: "degraded", detail: `ready · latest run failed in the last 24 h: ${failing.map((f) => `${f.flow} (${f.at} UTC: ${f.error})`).join("; ")}` };
       return { status: "ok", detail: "ready · no flow's latest run failed in the last 24 h" };
     }),
-    timed("Claude (AI drafting)", { group: "SEO & AI", href: "/admin/settings/ai?section=llm#llm-providers" }, async () => {
-      const { claudeConfig, getSeoSettings } = await import("./seo-intel/settings");
-      const c = claudeConfig(await getSeoSettings());
-      if (!c.apiKey) return { status: "not configured", detail: "ANTHROPIC_API_KEY is not set: drafting, Improve and reviews use rules only" };
-      return { status: "ok", detail: "key set" };
+    timed("LiteLLM (LLM gateway)", { group: "SEO & AI", href: "/admin/settings/ai?section=llm" }, async () => {
+      // D-110: every model call goes through LiteLLM; without it drafting, Improve and reviews use rules only.
+      const { checkLlm } = await import("./llm/client");
+      const h = await checkLlm();
+      if (!h.configured) return { status: "not configured", detail: "LITELLM_BASE_URL and LITELLM_API_KEY are not set: no model calls (drafting, Improve and reviews use rules only)" };
+      if (!h.ok) return { status: "down", detail: (h.error ?? "LiteLLM did not answer").slice(0, 160) };
+      if (h.missing.length) return { status: "degraded", detail: `reachable in ${h.latencyMs} ms, but LiteLLM does not list ${h.missing.join(", ")} for the key` };
+      return { status: "ok", detail: `reachable in ${h.latencyMs} ms · ${h.aliases.length} alias(es) for the key` };
     }),
     ...(["gsc", "ga4"] as const).map((p) =>
       timed(p === "gsc" ? "Search Console sync" : "Google Analytics 4 sync", { group: "SEO & AI", href: "/admin/settings/seo?section=search-console" }, async () => {
@@ -275,17 +278,6 @@ function extraChecks(): Promise<Check>[] {
         return { status, detail: st.message };
       }),
     ),
-    timed("LLM budget", { group: "SEO & AI", href: "/admin/settings/ai?section=llm#llm-budget" }, async () => {
-      // The one budget lives in the seo-agent. No limit at all is reported as degraded: nothing then stops LLM spending.
-      const { loadLlmBudget } = await import("./llm-budget-view");
-      const { view, error, tooOld } = await loadLlmBudget("month");
-      if (!view) return { status: tooOld ? "degraded" : "not configured", detail: (error ?? "the SEO agent could not be asked").slice(0, 160) };
-      const { daily_usd: day, monthly_usd: month } = view.budget;
-      if (day === null && month === null) return { status: "degraded", detail: "no daily or monthly limit is set: nothing stops LLM spending" };
-      const used = view.limit_usd !== null && view.spent_usd >= view.limit_usd;
-      const limits = [day !== null ? `$${day} a day` : null, month !== null ? `$${month} a month` : null].filter(Boolean).join(" · ");
-      return { status: used ? "degraded" : "ok", detail: `${limits} · $${view.spent_usd.toFixed(2)} spent this month${used ? " · the monthly limit is reached: LLM calls are refused" : ""}` };
-    }),
     timed("ML models", { group: "SEO & AI", href: "/admin/models" }, async () => {
       const db = await getDb();
       const rows = rowsOf<{ kind: string; trained_at: string }>(await db.execute(sql`select kind, trained_at::text from seo_ml_models where active order by kind`));

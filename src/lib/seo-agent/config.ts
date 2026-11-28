@@ -97,7 +97,7 @@ export const adminMcpEnabled = (env: Record<string, string | undefined> = proces
  * Job types the CrewAI flows own in crewai mode (each runs once, through a flow triggered by its CronJob); the
  * in-process scheduler (seoTick) skips them then. The rest (keywords refresh, retention, outcomes, digest) stay there.
  */
-export const FLOW_OWNED_JOBS = ["gsc_sync", "ga4_sync", "technical_scan", "recommendations", "drafts_weekly", "drafts_poll", "report_weekly", "report_monthly"] as const;
+export const FLOW_OWNED_JOBS = ["gsc_sync", "ga4_sync", "technical_scan", "recommendations", "drafts_weekly", "report_weekly", "report_monthly"] as const;
 
 export function docsAllowlist(env: Record<string, string | undefined> = process.env): string[] {
   const v = (env.SEO_AGENT_DOCS_ALLOWLIST ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);

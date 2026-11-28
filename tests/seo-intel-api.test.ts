@@ -83,17 +83,19 @@ describe("SEO API behaviour", () => {
     expect((await POST(post("https://jithendar.com/api/admin/seo/sync", { source: "gsc" }))).status).toBe(429);
   });
 
-  it("saves settings with validation, never returns the LLM key, and audits before/after", async () => {
+  it("saves settings with validation, holds no LLM key (D-110), and audits before/after", async () => {
     currentUser = as("admin");
     const { PUT, GET } = await import("@/app/api/admin/seo/settings/route");
     const put = (body: unknown) => PUT(new Request("https://jithendar.com/api/admin/seo/settings", { method: "PUT", headers: { origin: "https://jithendar.com", host: "jithendar.com", "content-type": "application/json" }, body: JSON.stringify(body) }));
     const invalid = await put({ ...settingsInput(), google: { ...settingsInput().google, ga4PropertyId: "G-ABC" } });
     expect(invalid.status).toBe(400);
+    // A key sent the old way is not stored: the document has no LLM key any more.
     const ok = await put({ ...settingsInput(), llmApiKey: "sk-secret-value-123" });
     expect(ok.status).toBe(200);
     const text = await (await GET(new Request("https://jithendar.com/api/admin/seo/settings"))).text();
     expect(text).not.toContain("sk-secret-value-123");
-    expect(JSON.parse(text).llmKeySet).toBe(true);
+    expect(JSON.parse(text)).not.toHaveProperty("llmKeySet");
+    expect(JSON.stringify(await db.select().from(schema.setting))).not.toContain("sk-secret-value-123");
     const logs = await db.select().from(schema.auditLog);
     expect(logs.map((l) => l.action)).toContain("seo.settings.update");
     expect(JSON.stringify(logs)).not.toContain("sk-secret-value-123");

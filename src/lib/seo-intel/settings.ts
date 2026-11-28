@@ -1,8 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { seal, unseal, type Sealed } from "../secrets";
-import { llmGateway } from "../llm-gateway";
 
 /**
  * Settings of the SEO intelligence platform: one JSON document in the `setting` table (key "seo"), validated
@@ -10,17 +8,18 @@ import { llmGateway } from "../llm-gateway";
  * two replicas without Redis, so a cached copy could not be invalidated on the other replica (docs/seo/DECISIONS.md).
  *
  * No Google credential is ever stored here: the service-account key comes only from the environment
- * (GOOGLE_SEO_SERVICE_ACCOUNT_JSON). The optional LLM key is sealed with SETTINGS_ENCRYPTION_KEY.
+ * (GOOGLE_SEO_SERVICE_ACCOUNT_JSON). No LLM provider, model or key either (D-110): model calls go through LiteLLM
+ * (lib/llm/client.ts), which holds them; this document names LiteLLM aliases at most (AI visibility).
  */
 const KEY = "seo";
 
 export const SEARCH_TYPES = ["web", "image", "video", "news", "discover", "googleNews"] as const;
 export type SearchType = (typeof SEARCH_TYPES)[number];
-export const LLM_PROVIDERS = ["openai", "gemini", "bedrock", "anthropic"] as const;
-/** Draft change categories Claude may work on automatically (each togglable in Settings → Drafts). */
+/** Draft change categories the model may work on automatically (each togglable in Settings → Drafts). */
 export const DRAFT_CATEGORIES = ["title_meta", "striking_expansion", "freshness", "internal_links", "alt_text", "faq_headings", "new_article"] as const;
 export type DraftCategory = (typeof DRAFT_CATEGORIES)[number];
-const modelId = z.string().trim().max(120).regex(/^[A-Za-z0-9._:\-/@]*$/, "Use the provider's model id.");
+/** A LiteLLM alias (Models + Endpoints in LiteLLM); empty = not set. */
+const aliasName = z.string().trim().max(120).regex(/^[A-Za-z0-9._:\-/@]*$/, "Use the alias exactly as LiteLLM names it.");
 
 const hour = z.coerce.number().int().min(0).max(23);
 const weekday = z.coerce.number().int().min(0).max(6); // 0 = Sunday (UTC)
@@ -91,12 +90,9 @@ const settingsSchema = z.object({
     maxBytes: num(10_000, 10_000_000),
     maxRedirects: num(0, 10),
   }),
+  /** The optional explanation model (llm.ts): LiteLLM's fast alias. */
   llm: z.object({
     enabled: z.boolean(),
-    provider: z.enum(LLM_PROVIDERS),
-    model: z.string().trim().max(120).regex(/^[A-Za-z0-9._:\-/@]*$/, "Use the provider's model id."),
-    baseUrl: z.union([z.literal(""), z.string().trim().url().startsWith("https://"), z.string().trim().regex(/^http:\/\/(localhost|127\.0\.0\.1|[a-z0-9-]+(\.[a-z0-9-]+)*\.svc(\.cluster\.local)?)(:\d+)?(\/.*)?$/, "Plain http is only allowed for localhost or in-cluster services (e.g. Ollama).")]),
-    region: z.string().trim().regex(/^[a-z]{2}(-[a-z]+)+-\d$/),
     timeoutMs: num(2000, 120_000),
     maxOutputTokens: num(100, 4000),
     dailyRequestLimit: num(0, 5000),
@@ -115,13 +111,9 @@ const settingsSchema = z.object({
     /** Reports made in the CrewAI console are deleted (with their files) this many days after they are made; 0 = kept. */
     keepDays: num(0, 3650),
   }),
-  /** v2: Claude-drafted change sets (docs/seo/REVIEW_WORKFLOW.md). Automation stops at "ready for review". */
+  /** v2: AI-drafted change sets (docs/seo/REVIEW_WORKFLOW.md), on LiteLLM's default alias. Automation stops at "ready for review". */
   drafts: z.object({
     enabled: z.boolean(),
-    /** Empty = SEO_DRAFT_MODEL / SEO_CLASSIFY_MODEL from the environment, else the built-in defaults. */
-    draftModel: modelId,
-    classifyModel: modelId,
-    effort: z.enum(["low", "medium", "high"]),
     maxOutputTokens: num(1000, 32_000),
     /** Flag a draft that rewrites more than this share of the body when its recommendations did not ask for it. */
     maxRewriteRatio: num(0.05, 1),
@@ -202,12 +194,11 @@ const settingsSchema = z.object({
     weekday,
     hourUtc: hour,
     maxPrompts: num(1, 200),
-    /** Counted per answer for APIs whose cost is not returned (ChatGPT, Perplexity, Gemini). */
-    costPerAnswerUsd: num(0, 1),
     /** Extra names that count as a mention (the site name and host always do). */
     brandNames: z.array(z.string().trim().min(3).max(60)).max(10),
     providers: z.object({ claude: z.boolean(), chatgpt: z.boolean(), perplexity: z.boolean(), gemini: z.boolean(), google_ai_overview: z.boolean() }),
-    models: z.object({ claude: modelId.min(1), chatgpt: modelId, perplexity: modelId, gemini: modelId }),
+    /** The LiteLLM alias each assistant is asked through (with web search); an assistant without one is not asked. */
+    aliases: z.object({ claude: aliasName, chatgpt: aliasName, perplexity: aliasName, gemini: aliasName }),
   }),
   /** Run history of the SEO agent's flows (CrewAI console, migration 0036): model-call transcripts and retention. */
   runHistory: z.object({
@@ -222,8 +213,8 @@ const settingsSchema = z.object({
   }),
 });
 
-export type SeoSettings = z.infer<typeof settingsSchema> & { llmKey: Sealed | null };
-export type SeoSettingsInput = z.input<typeof settingsSchema> & { llmApiKey?: string; clearLlmKey?: boolean };
+export type SeoSettings = z.infer<typeof settingsSchema>;
+export type SeoSettingsInput = z.input<typeof settingsSchema>;
 
 export const DEFAULT_SEO_SETTINGS: SeoSettings = {
   google: { gscProperty: "", ga4PropertyId: "", searchTypes: ["web"], urlInspection: { enabled: false, dailyLimit: 200 }, pageSpeed: { enabled: false } },
@@ -252,13 +243,10 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     brandTerms: ["jithendar"],
   },
   crawler: { requestsPerSecond: 1, maxPages: 500, timeoutMs: 10_000, maxBytes: 2_000_000, maxRedirects: 5 },
-  llm: { enabled: false, provider: "openai", model: "", baseUrl: "", region: "us-east-1", timeoutMs: 30_000, maxOutputTokens: 900, dailyRequestLimit: 100 },
+  llm: { enabled: false, timeoutMs: 30_000, maxOutputTokens: 900, dailyRequestLimit: 100 },
   reports: { emailEnabled: false, recipients: [], subjectTemplate: "{title} · {period}", introText: "", attachPdf: true, attachMaxMb: 0, linkHours: 0, keepDays: 0 },
   drafts: {
     enabled: true,
-    draftModel: "",
-    classifyModel: "",
-    effort: "medium",
     maxOutputTokens: 16_000,
     maxRewriteRatio: 0.25,
     autoEligible: { title_meta: true, striking_expansion: true, freshness: true, internal_links: true, alt_text: true, faq_headings: true, new_article: false },
@@ -294,16 +282,19 @@ export const DEFAULT_SEO_SETTINGS: SeoSettings = {
     weekday: 4,
     hourUtc: 6,
     maxPrompts: 25,
-    costPerAnswerUsd: 0.03,
     brandNames: [],
     providers: { claude: true, chatgpt: false, perplexity: false, gemini: false, google_ai_overview: false },
-    models: { claude: "claude-opus-5-5", chatgpt: "", perplexity: "sonar", gemini: "" },
+    aliases: { claude: "moks-cms-visibility-claude", chatgpt: "moks-cms-visibility-chatgpt", perplexity: "moks-cms-visibility-perplexity", gemini: "moks-cms-visibility-gemini" },
   },
   runHistory: { transcripts: true, logs: true, stepIo: true, logRetentionDays: 90, transcriptRetentionDays: 14 },
-  llmKey: null,
 };
 
 type Stored = Partial<{ [K in keyof SeoSettings]: Partial<SeoSettings[K]> }>;
+
+/** A section over its defaults, without keys it no longer has (D-110 retired the LLM provider, model and key fields). */
+function known<T extends object>(d: T, s: Partial<T> | undefined): T {
+  return { ...d, ...Object.fromEntries(Object.entries(s ?? {}).filter(([k]) => k in d)) } as T;
+}
 
 function merge(stored: Stored | undefined): SeoSettings {
   const s = stored ?? {};
@@ -315,11 +306,10 @@ function merge(stored: Stored | undefined): SeoSettings {
     weights: { ...d.weights, ...s.weights },
     thresholds: { ...d.thresholds, ...s.thresholds },
     crawler: { ...d.crawler, ...s.crawler },
-    llm: { ...d.llm, ...s.llm },
+    llm: known(d.llm, s.llm),
     reports: { ...d.reports, ...s.reports },
     drafts: {
-      ...d.drafts,
-      ...s.drafts,
+      ...known(d.drafts, s.drafts),
       autoEligible: { ...d.drafts.autoEligible, ...s.drafts?.autoEligible },
       news: { ...d.drafts.news, ...s.drafts?.news },
       weekly: { ...d.drafts.weekly, ...s.drafts?.weekly },
@@ -336,13 +326,11 @@ function merge(stored: Stored | undefined): SeoSettings {
       backlinks: { ...d.dataforseo.backlinks, ...s.dataforseo?.backlinks },
     },
     aiVisibility: {
-      ...d.aiVisibility,
-      ...s.aiVisibility,
+      ...known(d.aiVisibility, s.aiVisibility),
       providers: { ...d.aiVisibility.providers, ...s.aiVisibility?.providers },
-      models: { ...d.aiVisibility.models, ...s.aiVisibility?.models },
+      aliases: { ...d.aiVisibility.aliases, ...s.aiVisibility?.aliases },
     },
     runHistory: { ...d.runHistory, ...s.runHistory },
-    llmKey: (s.llmKey as Sealed | null | undefined) ?? null,
   };
 }
 
@@ -383,12 +371,11 @@ async function documentToSave(raw: unknown): Promise<SeoSettingsInput> {
   const body = (raw ?? {}) as Record<string, unknown>;
   if (!Array.isArray(body.only)) return body as SeoSettingsInput;
   const stored = { ...(publicSettings(await getSeoSettings()) as unknown as Record<string, unknown>) };
-  delete stored.llmKeySet; // a flag for the page, not a stored setting
   const names = body.only.filter((s): s is string => typeof s === "string" && s in stored);
   if (names.length === 0 || names.length !== body.only.length) throw new SettingsError("The settings are not valid.", ["only: name the sections to save"]);
   const missing = names.filter((n) => body[n] === undefined || body[n] === null);
   if (missing.length) throw new SettingsError("The settings are not valid.", missing.map((n) => `${n}: send the section named in only`));
-  return { ...stored, ...Object.fromEntries(names.map((n) => [n, body[n]])), llmApiKey: body.llmApiKey, clearLlmKey: body.clearLlmKey } as unknown as SeoSettingsInput;
+  return { ...stored, ...Object.fromEntries(names.map((n) => [n, body[n]])) } as unknown as SeoSettingsInput;
 }
 
 /** Validate and save. Returns the before/after (without secrets) for the audit log. */
@@ -409,13 +396,7 @@ export async function saveSeoSettings(raw: unknown, actorId: string): Promise<{ 
   }
   if (Object.values(v.weights).every((w) => w === 0)) throw new SettingsError("The settings are not valid.", ["weights: at least one weight must be above 0"]);
   const current = await getSeoSettings();
-  let llmKey = current.llmKey;
-  if (input.clearLlmKey) llmKey = null;
-  if (typeof input.llmApiKey === "string" && input.llmApiKey.trim()) {
-    if (input.llmApiKey.trim().length > 400) throw new SettingsError("The settings are not valid.", ["llmApiKey: too long"]);
-    llmKey = seal(input.llmApiKey.trim());
-  }
-  const next: SeoSettings = { ...v, llmKey };
+  const next: SeoSettings = v;
   const db = await getDb();
   await db
     .insert(schema.setting)
@@ -424,56 +405,10 @@ export async function saveSeoSettings(raw: unknown, actorId: string): Promise<{ 
   return { before: publicSettings(current), after: publicSettings(withEnvDefaults(next)) };
 }
 
-/** What the admin UI and API may see: everything except the sealed key (replaced by a flag). */
-export type PublicSeoSettings = Omit<SeoSettings, "llmKey"> & { llmKeySet: boolean };
+/** What the admin UI and API may see: the whole document (it holds no secret since D-110). */
+export type PublicSeoSettings = SeoSettings;
 export function publicSettings(s: SeoSettings): PublicSeoSettings {
-  const { llmKey, ...rest } = s;
-  return { ...rest, llmKeySet: Boolean(llmKey) };
-}
-
-/** The LLM API key: saved (sealed) key, else the provider's environment variable. Bedrock uses pod credentials. */
-export function seoLlmKey(s: SeoSettings, env: Record<string, string | undefined> = process.env): string | null {
-  if (s.llm.provider === "bedrock") return null;
-  // Claude: the key is a secret reference only (Kubernetes Secret → env), never stored in the database.
-  if (s.llm.provider === "anthropic") return env.ANTHROPIC_API_KEY?.trim() || null;
-  if (s.llmKey) return unseal(s.llmKey);
-  const v = s.llm.provider === "gemini" ? env.GEMINI_API_KEY : env.OPENAI_API_KEY;
-  return v?.trim() || null;
-}
-
-export function llmConfigured(s: SeoSettings): boolean {
-  // LiteLLM as the gateway (D-109): the switch is enough, LiteLLM has the model and the key.
-  if (llmGateway()) return s.llm.enabled;
-  if (!s.llm.enabled || !s.llm.model) return false;
-  if (s.llm.provider === "bedrock") return true;
-  // Ollama and other local OpenAI-compatible servers need no key.
-  if (s.llm.provider === "openai" && s.llm.baseUrl.startsWith("http://")) return true;
-  return Boolean(seoLlmKey(s));
-}
-
-// --- v2: Claude drafting configuration -------------------------------------------------------------------------
-
-export const DEFAULT_DRAFT_MODEL = "claude-sonnet-5-5";
-export const DEFAULT_CLASSIFY_MODEL = "claude-haiku-5-5";
-export type ClaudeConfig = {
-  apiKey: string | null;
-  draftModel: string;
-  classifyModel: string;
-  /** LiteLLM when it is the gateway (D-109): the calls go there with the SEO key, the models become its aliases. */
-  gateway?: ReturnType<typeof llmGateway>;
-};
-
-/** Whether drafts and keyword intents can call a model: through LiteLLM, or with ANTHROPIC_API_KEY. */
-export const claudeReady = (cfg: ClaudeConfig) => Boolean(cfg.gateway || cfg.apiKey);
-
-/** Models and key for Claude drafting. There is no limit here: the one LLM budget lives in the seo-agent (llm-gate.ts). */
-export function claudeConfig(s: SeoSettings, env: Record<string, string | undefined> = process.env): ClaudeConfig {
-  return {
-    apiKey: env.ANTHROPIC_API_KEY?.trim() || null,
-    draftModel: s.drafts.draftModel || env.SEO_DRAFT_MODEL?.trim() || DEFAULT_DRAFT_MODEL,
-    classifyModel: s.drafts.classifyModel || env.SEO_CLASSIFY_MODEL?.trim() || DEFAULT_CLASSIFY_MODEL,
-    gateway: llmGateway(env),
-  };
+  return s;
 }
 
 /** Kill switch for search-engine submission: SEO_SUBMISSION_ENABLED=true|false; unset → on only in production. */

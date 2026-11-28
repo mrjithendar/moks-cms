@@ -12,7 +12,8 @@ anyone listing it:
   whether a crew made in the admin (a spec crew) may hold it (`crews.custom.CUSTOM_TOOLS`);
 - `guardrails`: the code-owned rules every crew agent's system prompt carries. They are listed so a reviewer sees them
   next to the editable prompts; nothing in a bundle can change them;
-- `models`: the models an agent can be set to (the ones with prices: a cost is never guessed).
+- `models`: the LiteLLM aliases an agent can be set to (the service's default and fast aliases and the ones LiteLLM lists
+  for its key; which provider and model each stands for is set in LiteLLM).
 
 Nothing here is a secret: no keys, tokens or URLs with credentials. The bundle is data only: this service never runs
 code from it, and every crew or flow spec in it is checked again (POST /custom/validate, /crews/{crew}/validate) before

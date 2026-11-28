@@ -176,7 +176,7 @@ class NewArticleFlow(SeoFlow[NewArticleState]):
     def _body_model(self) -> str:
         """The model recorded on the draft: the one that wrote the body (per-run override, SEO_CREW_MODELS, default)."""
         st = self.deps.settings
-        return str(((self.state.brief or {}).get("models") or {}).get("writer") or st.crew_models.get("editorial.writer") or st.draft_model)
+        return str(((self.state.brief or {}).get("models") or {}).get("writer") or st.crew_models.get("editorial.writer") or st.llm_model)
 
     @listen("to_fail")
     async def failed(self) -> None:

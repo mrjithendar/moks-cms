@@ -1,6 +1,6 @@
 """Fixes from the news desk ML review: capped ingest-time Claude calls, classifier train/serve parity and evaluation,
-ranker thresholds and labels, the grounding gate, CVE clustering, near-dup, monitoring/rollback/drift and the budget
-reservation."""
+ranker thresholds and labels, the grounding gate, CVE clustering, near-dup, monitoring/rollback/drift and the run's
+LLM cost."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ import numpy as np
 import pytest
 
 from app.llm import BudgetExceeded, CallSpec, Usage
-from app.llm_budgets import Budget
 from app.metrics import REGISTRY
 from app.news import classifier as clf
 from app.news import desk as nd
@@ -76,15 +75,15 @@ async def test_with_news_llm_caps_and_books_ingest_classification(llm: Any) -> N
     llm.queue("news.classify", TopicLabels(items=[{"i": 0, "topics": ["kubernetes"]}]))
     assert await nd.claude_labels(d, ["kubernetes pod"], TOPICS) == [["kubernetes"]]
     assert store.runs["r-ingest"]["cost_usd"] > 0  # booked to news_runs
-    # There is no news LLM cap any more: an old value in the row is ignored...
+    # There is no news LLM cap: an old value in the row is ignored...
     old_cap = nd.with_news_llm(deps(llm, store, llm_daily_usd=0.0), ["r-ingest"])
     llm.queue("news.classify", TopicLabels(items=[{"i": 0, "topics": ["kubernetes"]}]))
     assert await nd.claude_labels(old_cap, ["kubernetes pod"], TOPICS) == [["kubernetes"]]
-    # ...and the one LLM budget is what refuses a news call.
-    llm.guard.budget.value = Budget(daily_usd=1e-9)
+    # ...and LiteLLM's budget is what refuses a news call (HTTP 422 budget_exceeded → BudgetExceeded).
+    llm.queue("news.classify", BudgetExceeded("litellm_team", "LiteLLM refused the call: the budget of the jithendar.com team is used up."))
     with pytest.raises(BudgetExceeded) as e:
         await nd.claude_labels(nd.with_news_llm(deps(llm, store), ["r-ingest"]), ["kubernetes pod"], TOPICS)
-    assert e.value.scope == "llm_daily"
+    assert e.value.scope == "litellm_team"
 
 
 async def test_job_ingest_fallback_respects_the_llm_budget_and_labels_low_confidence(llm: Any) -> None:
@@ -93,12 +92,12 @@ async def test_job_ingest_fallback_respects_the_llm_budget_and_labels_low_confid
     llm.queue("news.vision", SAFE)
     c, _web, store = setup(llm)
     store.settings = {"max_drafts_per_day": 10}
-    llm.guard.budget.value = Budget(daily_usd=1e-9)  # the one LLM budget: nothing spent yet, but no call fits
+    llm.queue("news.classify", *[BudgetExceeded("litellm_team", "LiteLLM refused the call: the budget is used up.")] * 5)  # LiteLLM's budget
     m = flat_classifier()
     store.models.append({"kind": "classifier", "version": m.version, "active": True, "artifact": m.to_bytes(), "metrics": {}, "trained_at": NOW})
     await run(c, "news_job_flow", {"job_id": JOB})
-    # Without the cap the raw LLM would have been asked (and FakeLlm has no news.classify answer queued).
-    assert not [s for s in llm.calls if s.purpose == "news.classify"]
+    # LiteLLM refused the fallback call: the topics stay the model's low-confidence ones, the run goes on.
+    assert [s for s in llm.calls if s.purpose == "news.classify"]
     methods = {t["method"] for cl in store.clusters.values() for t in cl["topics"]}
     assert methods == {"model_low_conf"}
     assert gauge("news_topic_assignments_total", method="model_low_conf")
@@ -461,22 +460,21 @@ class SlowLlm:
     async def structured(self, spec: CallSpec, schema: type[Any]) -> tuple[Any, Usage]:
         self.calls += 1
         await asyncio.sleep(0.05)
-        return schema.model_validate({"items": []}), Usage(spec.model, input_tokens=100, output_tokens=10)
+        return schema.model_validate({"items": []}), Usage(spec.model, input_tokens=100, output_tokens=10, cost=0.0003)
 
 
 async def test_the_news_desk_has_no_llm_cap_of_its_own_and_books_every_call() -> None:
-    # Concurrent calls and overspending are the one LLM budget's job (tests/test_llm_budgets.py). Here: an old news
-    # cap of 0 in the row refuses nothing, and each call's actual cost lands on the news run.
+    # Budgets are LiteLLM's (it refuses a call over one). Here: an old news cap of 0 in the row refuses nothing, and each
+    # call's reported cost lands on the news run.
     store = mem_store()
     await store.create_run({"id": "r1", "kind": "ingest", "job_id": None})
-    spec = CallSpec(model="claude-haiku-5-5", purpose="news.classify", prompt_version="t", cached_system=[], user="x" * 700, max_tokens=1500)
+    spec = CallSpec(model="moks-cms-fast", purpose="news.classify", prompt_version="t", cached_system=[], user="x" * 700, max_tokens=1500)
     inner = SlowLlm()
     budget = NewsBudget(store, NewsSettings(llm_daily_usd=0.0, llm_monthly_usd=0.0), None, "r1", lambda: NOW)
     llm = NewsLlm(inner, budget, ["r1"])  # type: ignore[arg-type]
     res = await asyncio.gather(*(llm.structured(dataclasses.replace(spec), TopicLabels) for _ in range(3)), return_exceptions=True)
     assert not [r for r in res if isinstance(r, BaseException)] and inner.calls == 3
-    actual = Usage(spec.model, input_tokens=100, output_tokens=10).cost_usd()
-    assert store.runs["r1"]["cost_usd"] == pytest.approx(3 * actual)
+    assert store.runs["r1"]["cost_usd"] == pytest.approx(3 * 0.0003)
     st = await budget.status()
     assert st["global"]["caps"]["llm_day"] is None and st["global"]["caps"]["llm_month"] is None
     assert not [k for k in await budget.ratios() if "llm" in k] and "global_image_day" in await budget.ratios()  # image caps stay
@@ -492,7 +490,7 @@ async def test_reservation_is_released_when_the_call_fails() -> None:
 
     llm = NewsLlm(Boom(), NewsBudget(store, NewsSettings(), None, "r1", lambda: NOW), ["r1"])  # type: ignore[arg-type]
     with pytest.raises(RuntimeError):
-        await llm.structured(CallSpec(model="claude-haiku-5-5", purpose="news.classify", prompt_version="t", cached_system=[], user="x", max_tokens=100), TopicLabels)
+        await llm.structured(CallSpec(model="moks-cms-fast", purpose="news.classify", prompt_version="t", cached_system=[], user="x", max_tokens=100), TopicLabels)
     assert store.runs["r1"]["cost_usd"] == 0
 
 
@@ -527,3 +525,25 @@ def test_rejection_summary_names_why_nothing_was_selected() -> None:
 
     cands = [cand("off-topic for this content flow (topics: none)")] * 3 + [cand("too old (343 h > 96 h)"), cand("too old (12 h > 6 h)"), cand("score 0.30 below the content flow's threshold 0.45")]
     assert nd.rejection_summary(cands) == [("off-topic for this content flow", 3), ("too old", 2), ("score below the content flow's threshold", 1)]
+
+
+async def test_content_flow_models_are_litellm_aliases_with_the_services_own_as_defaults(llm: Any) -> None:
+    # D-110: no Claude model ids in the news settings; empty means the service's aliases (LITELLM_MODEL / _FAST).
+    from app.news.config import load_news_settings
+    from tests.test_news_flows import SAFE
+
+    s = NewsSettings()
+    assert (s.writer_model, s.fast_model, s.vision_model) == ("", "", "")
+    saved = load_news_settings({"writer_model": "moks-cms-quality", "llm_daily_usd": 2.0, "llm_monthly_usd": 20.0}, env={})
+    assert saved.writer_model == "moks-cms-quality" and not hasattr(saved, "llm_daily_usd")  # old LLM caps are dropped
+    store = mem_store()
+    d = deps(llm, store)
+    llm.queue("news.classify", TopicLabels(items=[{"i": 0, "topics": ["kubernetes"]}]))
+    await nd.claude_labels(nd.with_news_llm(d, ["r"]), ["kubernetes pod"], TOPICS)
+    llm.queue("news.vision", SAFE)
+    await nd.vision(d, nd.with_news_llm(d, ["r"]).llm, b"\x89PNG", "image/png", "brief", "Title")
+    assert [c.model for c in llm.calls[-2:]] == ["moks-cms-fast", "moks-cms-default"]
+    llm.queue("news.vision", SAFE)
+    own = deps(llm, store, vision_model="moks-cms-vision")
+    await nd.vision(own, nd.with_news_llm(own, ["r"]).llm, b"\x89PNG", "image/png", "brief", "Title")
+    assert llm.calls[-1].model == "moks-cms-vision"

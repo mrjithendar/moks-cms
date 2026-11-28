@@ -147,7 +147,7 @@ def test_job_config_refuses_unknown_and_bad_values() -> None:
     with pytest.raises(ValueError):
         JobConfig.model_validate({"publishing_slots": ["25:00"]})
     with pytest.raises(ValueError):
-        JobConfig.model_validate({"models": {"writer": "gpt-5"}})
+        JobConfig.model_validate({"models": {"writer": "not an alias!"}})
 
 
 def test_kill_switch_defaults_off_and_settings_can_only_pause() -> None:

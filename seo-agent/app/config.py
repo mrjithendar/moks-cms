@@ -1,6 +1,6 @@
 """seo-agent settings, from environment variables only (docs/seo/AGENTS.md lists them all).
 
-Secrets (ANTHROPIC_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN, DATABASE_URL, SEO_AGENT_DATABASE_URL) come from
+Secrets (LITELLM_API_KEY, LITELLM_ASK_API_KEY, SEO_AGENT_TOKEN, SEO_AGENT_CALLBACK_TOKEN, DATABASE_URL, SEO_AGENT_DATABASE_URL) come from
 Kubernetes Secrets and are never logged, returned by an endpoint or put into a prompt.
 """
 
@@ -107,30 +107,27 @@ class Settings:
     # seo-agent → Next.js internal callback API (bearer), a different secret so one leaked direction is not both.
     callback_token: str = ""
     callback_url: str = "http://jithendar-com-internal.jithendar:9465"
-    anthropic_api_key: str = ""
-    # LLM gateway (D-109, app/llm_gateway.py): LiteLLM's OpenAI-compatible API (…/v1). With a URL and a key every model
-    # call goes there instead of to Anthropic: LiteLLM picks the provider and model behind each alias and holds the
-    # budgets (its team and virtual keys); ANTHROPIC_API_KEY is then not used. Ask the Blog has its own key (and so its
-    # own budget in LiteLLM); without one it uses the agent's key.
+    # LiteLLM (D-109, D-110; app/llm_gateway.py): its OpenAI-compatible API (…/v1) is the only way this service calls a
+    # chat model. LiteLLM holds the provider keys, picks the provider and model behind each alias and enforces the
+    # budgets (its team and virtual keys). Ask the Blog has its own key (and so its own budget in LiteLLM); without one it
+    # uses the agent's key. Without a URL and a key every model call fails (there is no other provider).
     litellm_base_url: str = ""
     litellm_api_key: str = field(default="", repr=False)
     litellm_ask_api_key: str = field(default="", repr=False)
-    litellm_model_default: str = "moks-cms-default"
-    litellm_model_fast: str = "moks-cms-fast"
-    draft_model: str = "claude-sonnet-5-5"
-    classify_model: str = "claude-haiku-5-5"
-    ask_daily_budget_usd: float = 1.0
+    # The aliases asked for (LITELLM_MODEL, LITELLM_MODEL_FAST): drafting and crews, and classifying and Ask the Blog.
+    llm_model: str = "moks-cms-default"
+    llm_model_fast: str = "moks-cms-fast"
     ask_enabled: bool = False
     crew_max_tokens_per_run: int = 150_000  # ≈ a normal 4-agent run is ~80k (docs/seo/COSTS.md)
     crew_timeout_s: int = 600
     crew_max_iter: int = 4
     crew_max_rpm: int = 20
-    # Per-agent model overrides, "<crew>.<agent>" → model, e.g. {"optimization.analyst": "claude-haiku-5-5"}.
+    # Per-agent LiteLLM aliases, "<crew>.<agent>" → alias, e.g. {"editorial.writer": "moks-cms-quality"}.
     crew_models: dict[str, str] = field(default_factory=dict)
     # Per-agent max_iter overrides, "<crew>.<agent>" → turns (1–20), e.g. {"editorial.researcher": 10}; others use
     # crew_max_iter.
     crew_max_iters: dict[str, int] = field(default_factory=dict)
-    # Per-request timeout of the Anthropic client. A 16k-token article body on a larger model can take minutes.
+    # Per-request timeout of a LiteLLM call. A 16k-token article body on a larger model can take minutes.
     llm_timeout_s: float = 120.0
     fanout_concurrency: int = 2
     weekly_max_articles: int = 10
@@ -218,8 +215,20 @@ def _tool_names(raw: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(RENAMED_TOOLS.get(n, n) for n in _names(raw)))
 
 
+# A LiteLLM model alias (its model_name): letters, digits and . _ : / @ - , up to 100 characters.
+ALIAS_RE = r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}"
+
+
+def _alias(raw: str) -> str:
+    """One alias from the environment, or "" when it is empty or not an alias name."""
+    import re
+
+    v = (raw or "").strip()
+    return v if re.fullmatch(ALIAS_RE, v) else ""
+
+
 def _models(raw: str) -> dict[str, str]:
-    """SEO_CREW_MODELS: JSON object of "<crew>.<agent>" → Claude model id; anything malformed is ignored."""
+    """SEO_CREW_MODELS: JSON object of "<crew>.<agent>" → LiteLLM alias; anything malformed is ignored."""
     import json
     import re
 
@@ -229,7 +238,7 @@ def _models(raw: str) -> dict[str, str]:
         return {}
     if not isinstance(v, dict):
         return {}
-    return {k: m for k, m in v.items() if isinstance(k, str) and isinstance(m, str) and re.fullmatch(r"[a-z_]+\.[a-z_]+", k) and re.fullmatch(r"claude-[a-z0-9-]{3,40}", m)}
+    return {k: m for k, m in v.items() if isinstance(k, str) and isinstance(m, str) and re.fullmatch(r"[a-z_]+\.[a-z_]+", k) and re.fullmatch(ALIAS_RE, m)}
 
 
 def _max_iters(raw: str) -> dict[str, int]:
@@ -273,15 +282,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         agent_token=env.get("SEO_AGENT_TOKEN", ""),
         callback_token=env.get("SEO_AGENT_CALLBACK_TOKEN", ""),
         callback_url=env.get("SEO_AGENT_CALLBACK_URL", Settings.callback_url).rstrip("/"),
-        anthropic_api_key=env.get("ANTHROPIC_API_KEY", ""),
         litellm_base_url=env.get("LITELLM_BASE_URL", "").strip().rstrip("/"),
         litellm_api_key=env.get("LITELLM_API_KEY", "").strip(),
         litellm_ask_api_key=env.get("LITELLM_ASK_API_KEY", "").strip(),
-        litellm_model_default=env.get("LITELLM_MODEL_DEFAULT", "").strip() or Settings.litellm_model_default,
-        litellm_model_fast=env.get("LITELLM_MODEL_FAST", "").strip() or Settings.litellm_model_fast,
-        draft_model=env.get("SEO_DRAFT_MODEL", "").strip() or Settings.draft_model,
-        classify_model=env.get("SEO_CLASSIFY_MODEL", "").strip() or Settings.classify_model,
-        ask_daily_budget_usd=_float("ASK_BLOG_DAILY_BUDGET_USD", Settings.ask_daily_budget_usd, env),
+        llm_model=_alias(env.get("LITELLM_MODEL", "")) or Settings.llm_model,
+        llm_model_fast=_alias(env.get("LITELLM_MODEL_FAST", "")) or Settings.llm_model_fast,
         ask_enabled=_bool("ASK_BLOG_ENABLED", False, env),
         crew_max_tokens_per_run=_int("CREW_MAX_TOKENS_PER_RUN", Settings.crew_max_tokens_per_run, env),
         crew_timeout_s=_int("CREW_TIMEOUT_SECONDS", Settings.crew_timeout_s, env),

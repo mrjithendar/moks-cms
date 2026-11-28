@@ -157,7 +157,7 @@ describe("internal links in the draft pipeline (DB)", () => {
     const { freshDb } = await import("./db-helpers");
     const { schema } = await import("@/db");
     const { settingsInput } = await import("./seo-fixtures");
-    const { seedArticle, seedRecommendation, fakeAnthropic } = await import("./seo-v2-fixtures");
+    const { seedArticle, seedRecommendation, fakeLiteLlm } = await import("./seo-v2-fixtures");
     const { saveSeoSettings } = await import("@/lib/seo-intel/settings");
     const drafts = await import("@/lib/seo-intel/drafts");
     const pub = await import("@/lib/seo-intel/publish");
@@ -172,7 +172,7 @@ describe("internal links in the draft pipeline (DB)", () => {
       ids[d.path] = (await seedArticle(db, { slug, title: d.title, seoTitle: null, body: d.body.replace(/!\[[^\]]*\]\([^)]*\) /, "") })).id;
     }
     await seedRecommendation(db, ids["/blog/source"]!, "internal_links");
-    const api = fakeAnthropic({ answers: [] });
+    const api = fakeLiteLlm({ answers: [] });
     const r = await drafts.generateDraft(ids["/blog/source"]!, { fetchImpl: api.fetchImpl });
     expect(api.calls).toHaveLength(0);
     expect(r.status).toBe("ready_for_review");

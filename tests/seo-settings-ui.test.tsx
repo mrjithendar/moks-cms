@@ -95,7 +95,11 @@ describe("the SEO agent's sections of Settings (AI & SEO → Settings until 2026
     const { AI_SEO_RENDERS } = await import("@/app/admin/(growth)/automation/sections");
     const { settingsSection } = await import("@/lib/settings-areas");
     const ids = Object.keys(AI_SEO_RENDERS);
-    for (const id of ["llm", "agent-limits", "ask-the-blog", "ml", "mcp"]) expect(ids).toContain(id);
+    for (const id of ["agent-limits", "ask-the-blog", "ml", "mcp"]) expect(ids).toContain(id);
+    // D-110: LiteLLM's section is the web app's own (it shows the web app's keys too), shown with or without the agent.
+    expect(ids).not.toContain("llm");
+    expect(settingsSection("llm")).toMatchObject({ label: "LiteLLM", category: "ai" });
+    expect(settingsSection("llm")?.module).toBeUndefined();
     for (const old of ["overview", "llm-providers", "llm-budget", "mcp-access"]) expect(ids, old).not.toContain(old); // merged; lib/settings-areas.ts OLD_ADDRESSES
     for (const t of meta.SETTINGS_TABS) expect(ids, t.id).toContain(t.id); // an old #tab-<id> link maps onto ?section=<id>
     for (const id of ids) expect(settingsSection(id)?.module, id).toBe("seo-agent");
@@ -106,23 +110,22 @@ describe("the SEO agent's sections of Settings (AI & SEO → Settings until 2026
 
   it("an old address, or an id from before a merge, is sent on to the section that has it now", async () => {
     const { movedTo } = await import("@/lib/settings-areas");
-    expect(movedTo("/admin/automation", { section: "llm-budget", scope: "day" })).toBe("/admin/settings/ai?section=llm&scope=day#llm-budget");
-    expect(movedTo("/admin/automation", { section: "llm-providers" })).toBe("/admin/settings/ai?section=llm#llm-providers");
+    expect(movedTo("/admin/automation", { section: "llm-budget", scope: "day" })).toBe("/admin/settings/ai?section=llm&scope=day");
+    expect(movedTo("/admin/automation", { section: "llm-providers" })).toBe("/admin/settings/ai?section=llm");
     expect(movedTo("/admin/automation", { section: "mcp-access" })).toBe("/admin/settings/assistants?section=mcp#mcp-clients-h");
     expect(movedTo("/admin/automation", { section: "overview" })).toBe("/admin/settings/agent?section=seo-agent");
     expect(movedTo("/admin/automation", {})).toBe("/admin/settings/agent?section=seo-agent");
     expect(movedTo("/admin/automation", { section: "data" })).toBe("/admin/settings/seo?section=data");
   });
 
-  it("LLM providers & budget has the budget, the providers and this site's usage; MCP has the servers, the clients and their settings", async () => {
+  it("LiteLLM shows each side's connection and says what to set; no budget, provider or key form is left; MCP has the servers, the clients and their settings", async () => {
     const llm = await page("ai", "llm");
-    expect(llm).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>LLM providers &amp; budget/);
-    // The ids the old addresses scroll to are there even while the SEO agent cannot be asked (as here).
-    expect(llm).toContain('id="llm-budget"');
-    expect(llm).toContain('id="llm-providers"');
-    expect(llm).toContain("LLM usage this month");
-    expect(llm.indexOf('id="llm-budget"')).toBeLessThan(llm.indexOf('id="llm-providers"'));
-    expect(llm).toContain('href="/admin/settings/ai?section=llm&amp;scope=day"'); // the budget's Daily tab stays in this section
+    expect(llm).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>LiteLLM/);
+    expect(llm).toContain("Web app");
+    expect(llm).toContain("SEO agent");
+    expect(llm).toContain("Not configured");
+    expect(llm).toContain("LITELLM_BASE_URL");
+    for (const gone of ['id="llm-budget"', 'id="llm-providers"', "LLM usage this month", 'type="password"']) expect(llm, gone).not.toContain(gone);
     const mcp = await page("assistants", "mcp");
     expect(mcp).toMatch(/<a[^>]*aria-current="page"[^>]*><span[^>]*>MCP</);
     expect(mcp).toContain("Admin server");
@@ -139,16 +142,16 @@ describe("the SEO agent's sections of Settings (AI & SEO → Settings until 2026
     await saveSeoSettings({ ...doc, crawler: { ...DEFAULT_SEO_SETTINGS.crawler, maxPages: 123 } }, "admin");
     // Another admin's page was loaded before that save: its copy of the crawler section is stale, and is not sent.
     const stale = { ...doc, reports: { ...DEFAULT_SEO_SETTINGS.reports, emailEnabled: !DEFAULT_SEO_SETTINGS.reports.emailEnabled } } as never;
-    const body = saveBody(stale, ["reports"], "", false);
+    const body = saveBody(stale, ["reports"]);
     expect(Object.keys(body).sort()).toEqual(["only", "reports"]);
     await saveSeoSettings(body, "admin");
     const now = await getSeoSettings();
     expect(now.crawler.maxPages).toBe(123);
     expect(now.reports.emailEnabled).toBe(!DEFAULT_SEO_SETTINGS.reports.emailEnabled);
-    // The whole-document body is unchanged, and the key travels only with the section that shows it.
-    expect(saveBody(stale, null, "sk-x", false)).toMatchObject({ llmApiKey: "sk-x", clearLlmKey: false, crawler: doc.crawler });
-    expect(saveBody(stale, ["llm"], "sk-x", true)).toMatchObject({ only: ["llm"], llmApiKey: "sk-x", clearLlmKey: true });
-    expect(saveBody(stale, ["reports"], "sk-x", true)).not.toHaveProperty("llmApiKey");
+    // The whole-document body is unchanged; no section carries a key (D-110: no LLM key is stored here).
+    expect(saveBody(stale, null)).toMatchObject({ crawler: doc.crawler });
+    expect(saveBody(stale, null)).not.toHaveProperty("llmApiKey");
+    expect(saveBody(stale, ["llm"])).toEqual({ only: ["llm"], llm: doc.llm });
     for (const bad of [{ only: [] }, { only: ["nope"], nope: {} }, { only: ["reports", 7], reports: doc.reports }]) await expect(saveSeoSettings(bad, "admin")).rejects.toThrow(/not valid/);
     await expect(saveSeoSettings({ only: ["reports"] }, "admin")).rejects.toThrow(/not valid/); // the named section must be sent
   });
@@ -164,7 +167,8 @@ describe("the SEO agent's sections of Settings (AI & SEO → Settings until 2026
     const by = Object.fromEntries(rows.map((r) => [r.key, r]));
     expect(by.pagespeed!.status).toBe("ok");
     expect(by.agent!.status).toBe("down");
-    expect(by.claude!.status).toBe("not configured");
+    expect(by.litellm!.status).toBe("not configured");
+    expect(by).not.toHaveProperty("claude");
     const noKey = Object.fromEntries((await loadConnections({ SEO_ORCHESTRATOR: "legacy" })).map((r) => [r.key, r]));
     expect(noKey.pagespeed!.status).toBe("degraded");
     expect(noKey.agent!.status).toBe("not configured");

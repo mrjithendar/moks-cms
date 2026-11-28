@@ -1,4 +1,4 @@
-"""Review fixes: LLM accounting (truncation, cancelled streams, answered-model pricing, budget reservations, spans),
+"""Review fixes: LLM accounting (spans with LiteLLM's reported cost),
 Ask-the-Blog cost and streaming safety, the injection filter's false positives, reindex embedding reuse, pgvector
 search settings and the generation eval."""
 
@@ -9,13 +9,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-import anthropic
-import httpx2
+import httpx
 import pytest
 
 from app.ask import AskService, MemoryAskLog
 from app.index import Hit, IndexSafetyError, MemoryRetriever, PgVectorIndex, search_settings
-from app.llm import AnthropicLlm, BudgetExceeded, BudgetGuard, CallSpec, FakeLlm, InvalidOutput, MemorySpendStore, Truncated, Usage, price_of
+from app.llm import CallSpec, FakeLlm, MemorySpendStore, Truncated, Usage, UsageLedger
+from app.llm_gateway import Gateway, GatewayLlm
 from app.schemas import Relevance
 from app.services.ask_pipeline import AskPipeline, StreamGate, check_input, safe_cut
 from tests.moks_cms import www
@@ -23,161 +23,19 @@ from tests.moks_cms import www
 # --- helpers -----------------------------------------------------------------------------------------------------------
 
 
-def _client(handler: Any) -> anthropic.AsyncAnthropic:
-    return anthropic.AsyncAnthropic(api_key="sk-ant-test", http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)), max_retries=0)
-
-
-def _json_client(reply: dict[str, Any]) -> anthropic.AsyncAnthropic:
-    return _client(lambda req: httpx2.Response(200, json=reply, headers={"request-id": "req_1"}))
-
-
-def _message(text: str, stop: str = "end_turn", model: str = "claude-haiku-5-5", out: int = 30) -> dict[str, Any]:
-    return {"id": "msg_1", "type": "message", "role": "assistant", "model": model, "content": [{"type": "text", "text": text}], "stop_reason": stop, "stop_sequence": None, "usage": {"input_tokens": 120, "output_tokens": out, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}
-
-
-def _sse(deltas: list[str], stop: str = "end_turn", model: str = "claude-haiku-5-5", out: int = 40) -> bytes:
-    def ev(name: str, data: dict[str, Any]) -> str:
-        return f"event: {name}\ndata: {json.dumps(data)}\n\n"
-
-    start = {"type": "message_start", "message": {"id": "msg_s", "type": "message", "role": "assistant", "model": model, "content": [], "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 200, "output_tokens": 1}}}
-    body = ev("message_start", start) + ev("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}})
-    for d in deltas:
-        body += ev("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": d}})
-    body += ev("content_block_stop", {"type": "content_block_stop", "index": 0})
-    body += ev("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop, "stop_sequence": None}, "usage": {"output_tokens": out}})
-    body += ev("message_stop", {"type": "message_stop"})
-    return body.encode()
-
-
-def _stream_client(body: bytes) -> anthropic.AsyncAnthropic:
-    return _client(lambda req: httpx2.Response(200, content=body, headers={"content-type": "text/event-stream", "request-id": "req_s"}))
-
-
-def _spec(purpose: str = "draft", model: str = "claude-haiku-5-5", max_tokens: int = 100) -> CallSpec:
+def _spec(purpose: str = "draft", model: str = "moks-cms-fast", max_tokens: int = 100) -> CallSpec:
     return CallSpec(model=model, purpose=purpose, prompt_version="v", cached_system=["S"], user="Q" * 70, max_tokens=max_tokens)
 
 
-# --- 1. truncation ---------------------------------------------------------------------------------------------------
+def _litellm(content: str = "hi", cost: str = "0.00042") -> GatewayLlm:
+    """A LiteLLM stand-in answering every chat completion the same way (the shape LiteLLM 1.111 returns)."""
 
+    def handler(req: httpx.Request) -> httpx.Response:
+        usage = {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
+        body = {"id": "chatcmpl-1", "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}], "usage": usage}
+        return httpx.Response(200, json=body, headers={"x-litellm-model-name": "anthropic/claude-haiku-5-5", "x-litellm-response-cost": cost, "x-litellm-call-id": "call-1"})
 
-async def test_text_max_tokens_raises_truncated_and_is_booked() -> None:
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_json_client(_message("half an ans", stop="max_tokens")))
-    with pytest.raises(Truncated) as ei:
-        await llm.text(_spec())
-    assert isinstance(ei.value, InvalidOutput) and ei.value.usage is not None
-    assert [(r["outcome"], r["error_code"]) for r in store.rows] == [("truncated", "max_tokens")]
-
-
-async def test_stream_max_tokens_raises_truncated_and_reports_usage() -> None:
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_stream_client(_sse(["half ", "an"], stop="max_tokens")))
-    seen: list[Usage] = []
-    with pytest.raises(Truncated):
-        async for _ in llm.stream(_spec(), on_usage=seen.append):
-            pass
-    assert [(r["outcome"], r["error_code"]) for r in store.rows] == [("truncated", "max_tokens")]
-    assert len(seen) == 1 and seen[0].output_tokens == 40
-
-
-async def test_structured_truncated_json_is_booked_as_max_tokens() -> None:
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_json_client(_message('{"relevant": tr', stop="max_tokens")))
-    with pytest.raises(Truncated) as ei:
-        await llm.structured(_spec(), Relevance)
-    assert store.rows[0]["error_code"] == "max_tokens" and store.rows[0]["outcome"] == "invalid"
-    # Usage is not obtainable from the SDK here: the booked row is the upper bound (full max_tokens out).
-    assert store.rows[0]["output_tokens"] == 100 and ei.value.usage is not None and store.rows[0]["cost_usd"] > 0
-
-
-async def test_structured_schema_miss_is_booked_with_an_estimate() -> None:
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_json_client(_message('{"nope": 1}')))
-    with pytest.raises(InvalidOutput) as ei:
-        await llm.structured(_spec(), Relevance)
-    assert not isinstance(ei.value, Truncated)
-    assert [(r["outcome"], r["error_code"]) for r in store.rows] == [("invalid", "schema_estimated")]
-
-
-# --- 2. stream booking and answered-model pricing --------------------------------------------------------------------
-
-
-async def test_stream_books_final_usage_and_calls_on_usage() -> None:
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_stream_client(_sse(["Hello ", "world"])))
-    seen: list[Usage] = []
-    out = [t async for t in llm.stream(_spec(), on_usage=seen.append)]
-    assert "".join(out) == "Hello world"
-    assert [r["outcome"] for r in store.rows] == ["ok"] and (store.rows[0]["input_tokens"], store.rows[0]["output_tokens"]) == (200, 40)
-    assert len(seen) == 1 and seen[0].cost_usd() == store.rows[0]["cost_usd"]
-
-
-async def test_stream_closed_early_still_books_an_upper_bound() -> None:
-    store = MemorySpendStore()
-    guard = BudgetGuard(store, 10, 1)
-    llm = AnthropicLlm("k", guard, client=_stream_client(_sse(["x" * 70, "more ", "text"])))
-    seen: list[Usage] = []
-    gen = llm.stream(_spec(), on_usage=seen.append)
-    first = await gen.__anext__()
-    assert first == "x" * 70
-    await gen.aclose()  # the client went away
-    assert [(r["outcome"], r["error_code"]) for r in store.rows] == [("cancelled", "stream_closed")]
-    row = store.rows[0]
-    assert row["input_tokens"] == 200  # from the message_start snapshot
-    assert row["output_tokens"] >= 20  # ≥ 70 chars / 3.5, never less than what was streamed
-    assert len(seen) == 1 and guard.pending["total"] == 0
-
-
-async def test_usage_is_priced_on_the_model_that_answered() -> None:
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_json_client(_message("hi", model="claude-opus-5-5-20261001")))
-    _, usage = await llm.text(_spec(model="claude-sonnet-5-5"))
-    assert usage.model == "claude-opus-5-5-20261001" and store.rows[0]["model"] == "claude-opus-5-5-20261001"
-    assert price_of("claude-opus-5-5-20261001") == price_of("claude-opus-5-5")  # dated ids price as their family
-
-
-# --- 3. budget reservations ------------------------------------------------------------------------------------------
-
-
-async def test_concurrent_calls_cannot_all_pass_on_the_same_spend() -> None:
-    est = Usage("claude-sonnet-5-5", input_tokens=-(-1000 * 2 // 7), output_tokens=1000).cost_usd()
-    store = MemorySpendStore()
-    guard = BudgetGuard(store, monthly_usd=est * 2.5, ask_daily_usd=1)  # room for two in-flight estimates, not three
-    gate = asyncio.Event()
-
-    async def call() -> str:
-        try:
-            async with guard.reserve("claude-sonnet-5-5", 1000, 1000, "draft"):
-                await gate.wait()
-                return "ok"
-        except BudgetExceeded:
-            return "blocked"
-
-    tasks = [asyncio.create_task(call()) for _ in range(3)]
-    await asyncio.sleep(0.01)
-    gate.set()
-    assert sorted(await asyncio.gather(*tasks)) == ["blocked", "ok", "ok"]
-    assert guard.pending["total"] == pytest.approx(0)
-
-
-async def test_reservation_is_released_on_error_and_by_record() -> None:
-    guard = BudgetGuard(MemorySpendStore(), 10, 1)
-    with pytest.raises(RuntimeError):
-        async with guard.reserve("claude-haiku-5-5", 100, 100, "ask_answer"):
-            assert guard.pending["ask_daily"] > 0
-            raise RuntimeError("boom")
-    assert guard.pending["ask_daily"] == 0
-    async with guard.reserve("claude-haiku-5-5", 100, 100, "ask_answer") as r:
-        await guard.record(Usage("claude-haiku-5-5", 10, 10), "ask_answer", "v", reservation=r)
-        assert guard.pending["ask_daily"] == 0 and r.released
-
-
-async def test_fake_llm_uses_reservations() -> None:
-    guard = BudgetGuard(MemorySpendStore(), 10, 1)
-    llm = FakeLlm(guard)
-    llm.queue("draft", "hello")
-    await llm.text(_spec())
-    assert guard.pending == {"total": 0.0, "ask_daily": 0.0}
+    return GatewayLlm(Gateway(base_url="http://litellm.test:4000/v1", api_key="sk-test"), UsageLedger(MemorySpendStore()), client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
 
 
 # --- 12. spans -------------------------------------------------------------------------------------------------------
@@ -188,17 +46,18 @@ async def test_every_llm_call_emits_a_span_with_cost_attributes(monkeypatch: pyt
 
     spans: list[tuple[str, dict[str, Any], str | None]] = []
     monkeypatch.setattr(tracing, "emit_span", lambda name, *, start_ns, attrs=None, error=None: spans.append((name, attrs or {}, error)))
-    store = MemorySpendStore()
-    llm = AnthropicLlm("k", BudgetGuard(store, 10, 1), client=_json_client(_message("hi")))
+    llm = _litellm()
+    store = llm.ledger.store
+    assert isinstance(store, MemorySpendStore)
     spec = _spec()
-    spec.run_id = "run_1"  # type: ignore[attr-defined]  # optional CallSpec field (another change adds it)
-    spec.agent = "editor"  # type: ignore[attr-defined]
+    spec.run_id = "run_1"
+    spec.agent = "editor"
     await llm.text(spec)
     [(name, attrs, err)] = spans
     assert name == "llm.call" and err is None
-    assert attrs["llm.model"] == "claude-haiku-5-5" and attrs["llm.purpose"] == "draft" and attrs["llm.prompt_version"] == "v"
+    assert (attrs["llm.model"] == "claude-haiku-5-5" and attrs["llm.requested_model"] == "moks-cms-fast" and attrs["llm.purpose"] == "draft" and attrs["llm.prompt_version"] == "v")
     assert attrs["llm.input_tokens"] == 120 and attrs["llm.output_tokens"] == 30 and attrs["llm.outcome"] == "ok"
-    assert attrs["llm.cost_usd"] == pytest.approx(store.rows[0]["cost_usd"], abs=1e-6)
+    assert attrs["llm.cost_usd"] == pytest.approx(0.00042) == pytest.approx(store.rows[0]["cost_usd"])
     assert attrs["llm.run_id"] == "run_1" and attrs["llm.agent"] == "editor"
     assert store.rows[0]["run_id"] == "run_1" and store.rows[0]["agent"] == "editor"
 
@@ -218,8 +77,8 @@ class _Settings:
     docs_allowlist: tuple[str, ...] = ()
     ask_min_score = 0.0
     ask_top_k = 6
-    classify_model = "claude-haiku-5-5"
-    draft_model = "claude-sonnet-5-5"
+    llm_model_fast = "moks-cms-fast"
+    llm_model = "moks-cms-default"
 
 
 class _Deps:
@@ -240,45 +99,44 @@ def _service(llm: Any) -> tuple[AskService, MemoryAskLog]:
 
 
 async def test_logged_cost_includes_the_answer_step_and_cache_hits_cost_nothing() -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
     llm.queue("ask_answer", "It renews 30 days before expiry [1].")
     svc, log = _service(llm)
     r = await svc.ask("How does cert-manager renew certificates?")
-    grade = Usage("claude-haiku-5-5", 1200, 300).cost_usd()
-    answer = Usage("claude-sonnet-5-5", 1200, 300).cost_usd()
-    assert r["outcome"] == "answered" and log.rows[0]["cost_usd"] == pytest.approx(grade + answer)
+    # What LiteLLM reported for each call (the fake's cost per call): the grade and the answer.
+    assert r["outcome"] == "answered" and log.rows[0]["cost_usd"] == pytest.approx(2 * llm.cost)
     await svc.ask("How does cert-manager renew certificates?")
     assert log.rows[1]["cached"] is True and log.rows[1]["cost_usd"] == 0
 
 
 async def test_grader_invalid_output_cost_is_logged() -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", {"not": "a relevance"})
     svc, log = _service(llm)
     r = await svc.ask("How does cert-manager renew certificates?")
-    assert r["outcome"] == "fallback" and log.rows[0]["cost_usd"] == pytest.approx(Usage("claude-haiku-5-5", 1200, 300).cost_usd())
+    assert r["outcome"] == "fallback" and log.rows[0]["cost_usd"] == pytest.approx(llm.cost)
 
 
 async def test_truncated_answer_falls_back_and_keeps_its_cost() -> None:
     class TruncatingLlm(FakeLlm):
         async def stream(self, spec: CallSpec, *, on_usage: Any = None) -> Any:  # type: ignore[override]
-            u = Usage(spec.model, 100, 700)
+            u = Usage(spec.model, 100, 700, cost=0.002)
             if on_usage:
                 on_usage(u)
             yield "It renews [1] and then"
             raise Truncated("cut", u)
 
-    llm = TruncatingLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = TruncatingLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
     svc, log = _service(llm)
     r = await svc.ask("How does cert-manager renew certificates?")
     assert r["outcome"] == "fallback"
-    assert log.rows[0]["cost_usd"] == pytest.approx(Usage("claude-haiku-5-5", 1200, 300).cost_usd() + Usage("claude-sonnet-5-5", 100, 700).cost_usd())
+    assert log.rows[0]["cost_usd"] == pytest.approx(llm.cost + 0.002)
 
 
 async def test_streamed_deltas_wait_for_a_citation_and_never_carry_foreign_links() -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
     llm.queue("ask_answer", "See https://evil.example/x for details. It renews 30 days before expiry [1]. Also [docs](https://evil.example/y) here.")
     svc, _ = _service(llm)
@@ -290,7 +148,7 @@ async def test_streamed_deltas_wait_for_a_citation_and_never_carry_foreign_links
 
 
 async def test_uncited_answer_streams_nothing() -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
     llm.queue("ask_answer", "It renews certificates thirty days before they expire, trust me, no citation here at all.")
     svc, _ = _service(llm)
@@ -300,7 +158,7 @@ async def test_uncited_answer_streams_nothing() -> None:
 
 
 async def test_no_answer_sentinel_is_never_streamed() -> None:
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
     llm.queue("ask_answer", "NO_ANSWER")
     svc, _ = _service(llm)
@@ -328,7 +186,7 @@ async def test_disconnected_stream_still_finishes_and_is_recorded() -> None:
                 on_usage(Usage(spec.model, 10, 10))
             yield "Done."
 
-    llm = SlowLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = SlowLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=True, reason="r"))
     svc, log = _service(llm)
     gen = svc.stream("How does cert-manager renew certificates?")
@@ -572,7 +430,7 @@ async def test_usage_rows_carry_run_id_and_agent_once_migration_0022_is_applied(
     from app.llm import PgSpendStore
 
     u = Usage("claude-haiku-5-5", 10, 10)
-    before = BudgetGuard(PgSpendStore(pool), 10, 1)
+    before = UsageLedger(PgSpendStore(pool))
     await before.record(u, "draft", "v", run_id="r1", agent="editor")  # the web app's migration not applied yet: still recorded
     mig = www(MIGRATION_0022).read_text()
     async with pool.connection() as c:
@@ -580,7 +438,7 @@ async def test_usage_rows_carry_run_id_and_agent_once_migration_0022_is_applied(
             body = "\n".join(line for line in stmt.splitlines() if not line.startswith("--")).strip()
             if body:
                 await c.execute(body)
-    after = BudgetGuard(PgSpendStore(pool), 10, 1)
+    after = UsageLedger(PgSpendStore(pool))
     await after.record(u, "draft", "v", run_id="r2", agent="editor")
     async with pool.connection() as c:
         rows = await (await c.execute("select run_id, agent from seo_llm_usage order by at, run_id nulls first")).fetchall()
@@ -644,7 +502,7 @@ def test_mined_candidates_are_unlabelled_and_ranked() -> None:
 async def test_generation_eval_scores_citations_and_faithfulness_with_a_fake_judge() -> None:
     from app.rag_eval import JudgeVerdict, Question, generation_eval, render_generation_markdown
 
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     deps = _Deps(llm, _hits())
     qs = [
         Question("a", "How does cert-manager renew certificates?", "how-to", ["tls"], ["renewal"]),
@@ -665,7 +523,7 @@ async def test_generation_eval_scores_citations_and_faithfulness_with_a_fake_jud
 async def test_generation_eval_stops_at_its_budget() -> None:
     from app.rag_eval import Question, generation_eval
 
-    llm = FakeLlm(BudgetGuard(MemorySpendStore(), 10, 10))
+    llm = FakeLlm(UsageLedger(MemorySpendStore()))
     llm.queue("ask_grade", Relevance(relevant=False, reason="r"), Relevance(relevant=False, reason="r"))
     qs = [Question(str(i), "How does cert-manager renew certificates?", "how-to", ["tls"], []) for i in range(2)]
     res = await generation_eval(AskPipeline(_Deps(llm, _hits())), llm, "m", qs, max_usd=0.0000001)

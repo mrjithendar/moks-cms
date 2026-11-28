@@ -12,8 +12,8 @@ The contract (moks-rag/app/src/rag_api/main.py and models.py):
 - DELETE /documents/{doc_id}?collection=… → {deleted}. rag-api's default collection is "all" (every service's
   collections): this client always names one. rag-api has no GET for a document.
 - POST /query {collection, query, top_k, filters, include_answer} → {sources: [{id, doc_id, score, text, metadata}]}.
-  `include_answer` is always false here: rag-api's answer is a Claude call through its own LiteLLM key, outside the
-  agent's one LLM budget (app/llm_budgets.py). The agent's crews write with the agent's own metered client.
+  `include_answer` is always false here: rag-api's answer is a model call through rag-api's own LiteLLM key, not the
+  agent's. The agent's crews write with the agent's own LiteLLM key (app/llm_gateway.py).
   `score` is a Reciprocal Rank Fusion score: it orders one answer's sources and says nothing about how similar a
   passage is, so nothing here compares it with a fixed number.
 - Every request: Authorization: Bearer <RAG_BEARER_TOKEN>, X-Service-Name: moks-seo-agent, and an X-Request-ID that

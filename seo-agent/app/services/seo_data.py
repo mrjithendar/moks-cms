@@ -68,12 +68,18 @@ async def audit_issues(web: Any, severity: str | None, issue_type: str | None, l
     return {**r, "next_cursor": encode_cursor({"o": off + lim}) if (r.get("total") or 0) > off + lim else None}
 
 
-async def llm_usage(web: Any, guard: Any, period: str | None) -> dict[str, Any]:
+async def llm_usage(web: Any, gateway: Any, period: str | None) -> dict[str, Any]:
+    """The web app's usage rows for the period, and LiteLLM's view of the budgets (D-110): spend, budget and reset of
+    the agent's keys and their team. No key is ever in it."""
+    from ..llm_gateway import gateway_status
+
     p = period or "month"
     if p not in ("day", "week", "month"):
         raise ContentError("period must be day, week or month")
     r = await web.data("llm-usage", {"period": p})
-    return {**r, "budget": await guard.status()}
+    st = await gateway_status(gateway) if gateway is not None else None
+    budgets = {k: st[k] for k in ("configured", "healthy", "keys", "team", "errors")} if st else None
+    return {**r, "budgets": budgets, "budgets_note": "LiteLLM holds and enforces every LLM budget (https://jithendar.com/llm/ui)."}
 
 
 # --- AI visibility, rankings, backlinks ----------------------------------------------------------------------------

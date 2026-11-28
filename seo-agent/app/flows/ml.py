@@ -94,7 +94,7 @@ class SeoMlFlow(SeoFlow[MlState]):
     @listen(decay)
     async def query_clusters(self) -> None:
         s = self.deps.settings
-        await self._run("query_clusters", lambda: tr.run_clusters(self._store, self._embed, self._model_name, llm=self.deps.llm, suggest_model=s.classify_model, suggest_labels=self.state.suggest_labels))
+        await self._run("query_clusters", lambda: tr.run_clusters(self._store, self._embed, self._model_name, llm=self.deps.llm, suggest_model=s.llm_model_fast, suggest_labels=self.state.suggest_labels))
 
     @listen(query_clusters)
     async def intent(self) -> None:

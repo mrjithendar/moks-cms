@@ -6,6 +6,7 @@ import { useState } from "react";
 import { api } from "@/components/news/api";
 import { Field } from "@/components/news/Fld";
 import { Alert, Button, Input, Textarea } from "@/components/ui/form";
+import { AliasPicker } from "@/components/seo/AliasPicker";
 import type { Category } from "@/lib/crewai/catalog-shared";
 import { CategoryPicker, TagInput } from "./CatalogDetails";
 
@@ -149,9 +150,9 @@ export function CustomCrewEditor({ initial, isNew, categories = [] }: { initial:
       <section aria-labelledby="crew-llm" className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <h2 id="crew-llm" className="text-base font-semibold text-fg">Model</h2>
-          <p className="text-sm text-fg-muted">The crew&apos;s default model; an agent can name its own below. Empty: the SEO agent&apos;s default model (Settings → AI &amp; models → LLM providers &amp; budget).</p>
+          <p className="text-sm text-fg-muted">The crew&apos;s default model; an agent can name its own below. A LiteLLM alias (Settings → AI &amp; models → LiteLLM lists them). Empty: the SEO agent&apos;s default alias.</p>
         </div>
-        <Field label="Default model (optional)"><Input value={s.model ?? ""} placeholder="claude-…" onChange={(e) => setS({ ...s, model: e.target.value.trim() || null })} /></Field>
+        <Field label="Default model (optional)"><AliasPicker value={s.model ?? ""} onChange={(v) => setS({ ...s, model: v || null })} /></Field>
       </section>
 
       <section aria-labelledby="agents" className="space-y-4">
@@ -164,7 +165,7 @@ export function CustomCrewEditor({ initial, isNew, categories = [] }: { initial:
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Key"><Input value={a.key} onChange={(e) => setAgent(i, { key: e.target.value.trim() })} /></Field>
               <Field label="Role"><Input value={a.role} onChange={(e) => setAgent(i, { role: e.target.value })} /></Field>
-              <Field label="Model (optional)" hint="Empty: the crew's default model."><Input value={a.model ?? ""} placeholder="claude-…" onChange={(e) => setAgent(i, { model: e.target.value.trim() })} /></Field>
+              <Field label="Model (optional)" hint="Empty: the crew's default model."><AliasPicker value={a.model ?? ""} onChange={(v) => setAgent(i, { model: v })} /></Field>
             </div>
             <Field label="Goal"><Textarea rows={2} value={a.goal} onChange={(e) => setAgent(i, { goal: e.target.value })} /></Field>
             <Field label="Backstory"><Textarea rows={2} value={a.backstory} onChange={(e) => setAgent(i, { backstory: e.target.value })} /></Field>

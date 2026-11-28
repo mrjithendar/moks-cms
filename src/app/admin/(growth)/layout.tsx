@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
-import { BudgetBanner } from "@/components/seo/ClaudeUsage";
+import { LlmBudgetBanner } from "@/components/seo/LlmBudgetBanner";
 import { SeoShell } from "@/components/seo/SeoShell";
 import { requireRole } from "@/lib/session";
 
@@ -16,7 +16,7 @@ export default async function GrowthLayout({ children }: { children: ReactNode }
   return (
     <Suspense>
       <SeoShell>
-        <BudgetBanner />
+        <LlmBudgetBanner />
         {children}
       </SeoShell>
     </Suspense>

@@ -54,7 +54,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   { id: "email", label: "Email", description: "Outgoing email: the provider and sender, and a test message." },
   { id: "storage", label: "Media & storage", description: "Where media, invoices, backups and generated videos are stored." },
   { id: "payments", label: "Payments & bookings", description: "Razorpay for paid calls and invoices, invoice details, and Cal.com bookings." },
-  { id: "ai", label: "AI & models", description: "LLM providers and the one LLM budget, AI drafting, ML and retrieval, and image and video generation." },
+  { id: "ai", label: "AI & models", description: "LiteLLM (the LLM gateway), AI drafting, ML and retrieval, and image and video generation." },
   { id: "agent", label: "SEO agent", description: "The SEO agent that runs the crews and flows: where it is, its limits, run history, content fetching and the CrewAI configuration repository." },
   { id: "assistants", label: "Assistants", description: "Ask the Blog, and the MCP servers that let AI assistants reach the site." },
   { id: "seo", label: "Search & SEO", description: "Search engine verification, Search Console and GA4, and the SEO settings by area." },
@@ -89,7 +89,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   { id: "invoices", label: "Invoices", category: "payments", description: "Who invoices are from, and what a new invoice starts with.", keywords: ["invoice", "tax", "gst", "vat", "currency", "billing", "business"] },
   { id: "calcom", label: "Cal.com bookings", category: "payments", description: "The webhook secret that lets Cal.com bookings arrive here.", keywords: ["cal.com", "bookings", "calendar", "webhook", "meetings"] },
 
-  { id: "llm", label: "LLM providers & budget", category: "ai", description: "The providers and models the SEO agent may call, and the one LLM budget.", keywords: ["anthropic", "claude", "openai", "gemini", "budget", "spend", "cost", "models", "api key"], module: AGENT },
+  { id: "llm", label: "LiteLLM", category: "ai", description: "The LLM gateway: whether the site reaches it, its aliases, and the keys' budgets and spend (read only; set in LiteLLM).", keywords: ["litellm", "gateway", "llm", "models", "aliases", "budget", "spend", "cost", "anthropic", "claude", "openai", "gemini", "api key", "providers"] },
   { id: "ai", label: "AI & drafts", category: "ai", description: "AI drafting, models and quality gates for content flows, and AI visibility.", keywords: ["drafts", "claude", "writer model", "quality"], module: AGENT },
   { id: "ml", label: "ML & retrieval", category: "ai", description: "Machine-learning models, retrieval and embeddings.", keywords: ["machine learning", "embeddings", "retrieval", "ranking"], module: AGENT },
   { id: "gemini", label: "Image generation", category: "ai", description: "The Google Gemini key and models behind “Generate image”.", keywords: ["gemini", "images", "cover image", "ai images", "api key"] },
@@ -215,7 +215,7 @@ export const OLD_ADDRESSES: Record<string, Record<string, string>> = {
 };
 
 /** The element an old merged section id scrolled to, kept so its bookmark still lands on the right card. */
-const OLD_ANCHORS: Record<string, string> = { "llm-providers": "llm-providers", "llm-budget": "llm-budget", "mcp-access": "mcp-clients-h" };
+const OLD_ANCHORS: Record<string, string> = { "mcp-access": "mcp-clients-h" };
 
 /**
  * Where an old settings address now lives, with the rest of its query (?q=, &scope=, ?ok=…) kept. `section` is the old
