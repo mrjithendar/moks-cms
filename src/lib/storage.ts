@@ -311,6 +311,16 @@ export async function listObjects(prefix: string, continuationToken?: string, ma
 }
 
 /**
+ * The S3 client of the media storage account and a bucket's name, for code that needs more than bucketOps: site
+ * backups (lib/backup/store.ts) stream multipart uploads and read archives by byte range. `bucket` empty means the
+ * media bucket.
+ */
+export async function s3ForBucket(bucket = ""): Promise<{ s3: S3Client; bucket: string; mediaBucket: string }> {
+  const { c, s3 } = await requireR2();
+  return { s3, bucket: bucket.trim() || c.bucket, mediaBucket: c.bucket };
+}
+
+/**
  * Object operations on another bucket of the same R2 account (backups can live in a private bucket of their
  * own); `bucket` empty means the media bucket. Uses the media storage credentials, so the R2 API token must
  * be allowed to write that bucket too.

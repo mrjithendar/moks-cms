@@ -15,6 +15,7 @@ from typing import Any
 
 from ..runs import FlowSpec, RunError
 from ..state import (
+    BackupInput,
     JobInput,
     LinkingInput,
     MlInput,
@@ -29,6 +30,7 @@ from ..state import (
     SeoIntelSyncInput,
     WeeklyInput,
 )
+from .backup import BackupFlow
 from .crew_test import CrewTestFlow, CrewTestInput
 from .custom import CustomFlow, CustomFlowInput
 from .jobs import Ga4SyncFlow, GscSyncFlow, TechAuditFlow
@@ -86,6 +88,8 @@ SPECS: dict[str, FlowSpec] = {
     "seo_intel_sync_flow": FlowSpec("seo_intel_sync_flow", SeoIntelSyncFlow.create, SeoIntelSyncInput, _site),
     # The web app's posts in moks-rag's cms_content (D-107, app/flows/rag_reindex.py): one run at a time.
     "rag_reindex_flow": FlowSpec("rag_reindex_flow", RagReindexFlow.create, RagReindexInput, _site),
+    # Site backups (D-108, app/flows/backup.py): the web app makes the backup; one run at a time.
+    "backup_flow": FlowSpec("backup_flow", BackupFlow.create, BackupInput, _site),
     # Promotion (docs/seo/PROMOTION.md): one run per article (or one site-wide run); ideas are site-wide.
     "promotion_flow": FlowSpec("promotion_flow", PromotionFlow.create, PromotionInput, lambda i: str(i.get("article_id") or "site")),
     "content_ideas_flow": FlowSpec("content_ideas_flow", ContentIdeasFlow.create, NoInput, _site),
@@ -108,7 +112,7 @@ NEWS_FLOWS = frozenset(n for n in SPECS if n.startswith("news_"))
 APPROVAL_ONLY = frozenset({"publish_flow"})
 DRAFTING_FLOWS = ("optimize_article_flow", "new_article_flow")
 MCP_KICKOFF_ALLOWLIST = frozenset({"news_job_flow", "optimize_article_flow", "new_article_flow", "internal_linking_flow", "tech_audit_flow", "report_flow", "gsc_sync_flow", "ga4_sync_flow"})
-CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "seo_intel_sync_flow", "rag_reindex_flow", "promotion_flow", "content_ideas_flow", "custom_flow"})
+CRON_FLOWS = frozenset({"news_dispatch_flow", "news_train_flow", "news_style_review_flow", "gsc_sync_flow", "ga4_sync_flow", "tech_audit_flow", "weekly_recommendations_flow", "internal_linking_flow", "reindex_flow", "ask_gaps_flow", "report_flow", "seo_ml_flow", "seo_intel_sync_flow", "rag_reindex_flow", "backup_flow", "promotion_flow", "content_ideas_flow", "custom_flow"})
 
 
 MANUAL_ONLY = frozenset({"crew_test_flow"})  # started by a person in the console: never by a schedule, a flow or MCP
@@ -197,6 +201,7 @@ FLOW_INFO: dict[str, dict[str, Any]] = {
     "reindex_flow": {"label": "Reindex", "categories": ["ai", "automation"], "start": "manual", "description": "Rebuilds the article search index the agents and Ask the Blog use."},
     "seo_intel_sync_flow": {"label": "SEO knowledge sync", "categories": ["ai", "seo"], "start": "manual", "description": "Sends the keyword clusters and Search Console performance to the shared knowledge base (moks-rag, collection seo_intel) the agents ground new articles in."},
     "rag_reindex_flow": {"label": "Hybrid RAG reindex", "categories": ["ai", "automation"], "start": "manual", "description": "Sends every published post to the shared Hybrid RAG service (moks-rag, collection cms_content) one at a time and removes every other post from it, saying what happened to each. Settings → Integrations → Hybrid RAG → Reindex all posts starts it."},
+    "backup_flow": {"label": "Website backup", "categories": ["automation", "monitoring"], "start": "manual", "description": "Has the web app make a complete backup of the site (every database table, every file in the bucket, configuration, a signed manifest and checksums), follows it until it is verified, and reports the archive, its size and where it is stored. The web app builds and checks the archive; no model is called."},
     "seo_ml_flow": {"label": "ML models", "categories": ["ai", "seo"], "start": "manual", "description": "Retrains the SEO models (decay, query clusters, intent, priority, related articles)."},
     "crew_test_flow": {"label": "Crew test run", "categories": ["automation"], "start": "internal", "description": "Runs one crew with edited prompts on the inputs of an earlier run (Crews → Test run). Saves nothing."},
 }

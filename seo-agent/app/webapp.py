@@ -22,7 +22,8 @@ from .runs import CURRENT_RUN_ID
 log = logging.getLogger("seo_agent.webapp")
 # Housekeeping reads (cached settings), and rag_reindex_flow's per-post sync (the flow writes its own line for each
 # post, with what came back): no line of their own in a run's log.
-QUIET_PATHS = ("/run-history/settings", "/flow-switches", "/rag/posts/sync")
+# backup_flow polls its backup every 15 s and says itself what changed: no line per poll either.
+QUIET_PATHS = ("/run-history/settings", "/flow-switches", "/rag/posts/sync", "/backups/runs/")
 # One post's sync waits for rag-api to embed it (30 s to minutes); the web app's own fetch gives up after 5 minutes.
 RAG_SYNC_TIMEOUT_S = 330.0
 
@@ -99,6 +100,10 @@ class WebApp(Protocol):
     async def rag_posts(self) -> dict[str, Any]: ...
     async def rag_sync_post(self, collection: str, slug: str) -> dict[str, Any]: ...
     async def rag_queue_posts(self, posts: list[dict[str, str]]) -> dict[str, Any]: ...
+    # Site backups (moks-cms/src/lib/backup/callbacks.ts, D-108)
+    async def backup_start(self, backup_type: str, flow_run_id: str | None) -> dict[str, Any]: ...
+    async def backup_run(self, backup_id: str) -> dict[str, Any]: ...
+    async def backup_notify(self, backup_id: str, flow_run_id: str | None) -> dict[str, Any]: ...
 
 
 class HttpWebApp:
@@ -330,6 +335,25 @@ class HttpWebApp:
     async def rag_queue_posts(self, posts: list[dict[str, str]]) -> dict[str, Any]:
         """Hand posts to the web app's background sync jobs: {queued}."""
         return dict(await self._req("POST", "/rag/posts/queue", json={"posts": posts}))
+
+    async def backup_start(self, backup_type: str, flow_run_id: str | None) -> dict[str, Any]:
+        """Queue a site backup in the web app (backup_flow, D-108): {started: true, backup} or {started: false, reason:
+        "busy", active}. WebAppError backup_not_configured (409) when no backup destination is on."""
+        body: dict[str, Any] = {"type": backup_type}
+        if flow_run_id:
+            body["flowRunId"] = flow_run_id
+        return dict(await self._req("POST", "/backups/start", json=body))
+
+    async def backup_run(self, backup_id: str) -> dict[str, Any]:
+        """A backup's state: status, phase, progress; once finished the archive, its contents' counts, verification, storage."""
+        return dict(await self._req("GET", f"/backups/runs/{backup_id}"))
+
+    async def backup_notify(self, backup_id: str, flow_run_id: str | None) -> dict[str, Any]:
+        """Email the backup report to the SEO report recipients (if email is set up): {sent, subject}."""
+        body: dict[str, Any] = {"backupId": backup_id}
+        if flow_run_id:
+            body["flowRunId"] = flow_run_id
+        return dict(await self._req("POST", "/backups/notify", json=body))
 
     async def news_notify(self, body: dict[str, Any]) -> dict[str, Any]:
         return await self._req("POST", "/news/notify", json=body)

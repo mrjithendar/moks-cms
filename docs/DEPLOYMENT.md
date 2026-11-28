@@ -37,7 +37,7 @@ Secrets (never in Git), created once by `scripts/create-secrets.sh`:
 | `postgres-db-credentials` | `uri` (and `host`, `port`, `dbname`, `username`, `password`, `direct-host`, `direct-uri`): written by Terraform in the miniKube repo, not by this script |
 | `jithendar-com-env` | `BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, `ADMIN_BOOTSTRAP_TOKEN`, `METRICS_TOKEN`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, optional `SMTP_URL`, `MAIL_FROM` (fallback until email is configured in the admin, see `docs/EMAIL.md`); media: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, optional `R2_PUBLIC_BASE_URL`; optional `GEMINI_API_KEY`, `GEMINI_IMAGE_MODEL` (added with `scripts/set-media-config.sh`) |
 
-Back up `SETTINGS_ENCRYPTION_KEY` with your database backups: it decrypts the stored storage, email, social sign-in and Gemini credentials.
+Back up `SETTINGS_ENCRYPTION_KEY` outside the cluster, next to (never inside) your site backups: it decrypts the stored storage, email, social sign-in and Gemini credentials, opens encrypted backups and verifies their signature. Site backups and recovering a fresh deployment from one: [BACKUPS.md](BACKUPS.md).
 Gemini limits (`GEMINI_IMAGE_*`) are plain env values in `kubernetes/30-jithendar-com.yaml`.
 Public identifiers for search engines, GA4, AdSense, ads.txt and IndexNow live in the optional ConfigMap
 `jithendar-com-public` (`scripts/set-public-config.sh`; see `docs/SEO_ANALYTICS_ADS.md`). The site runs without it.

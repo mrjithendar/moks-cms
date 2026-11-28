@@ -7,24 +7,35 @@ import { publishDuePosts } from "./posts";
  * Background worker in every replica (started from instrumentation.ts), as two loops that tick every 30 s:
  * - publishing: scheduled posts whose time has come go live. On its own loop, so a long job (a crawl, a report, a
  *   model call) can never hold a scheduled post back;
- * - jobs: the job queue (IndexNow, SEO jobs, Hybrid RAG sync), the practice sweeps, scheduled SEO drafts and the daily clean-up.
+ * - jobs: the job queue (IndexNow, SEO jobs, Hybrid RAG sync), the practice sweeps, scheduled SEO drafts and the daily clean-up;
+ * - backups (every 15 s, D-108): the built-in backup schedule and the backup jobs (backups, verifications, restores),
+ *   one at a time, on their own loop so a backup of many minutes never holds the other jobs back. While a restore
+ *   runs, the other two loops wait.
  * Restart-safe (state lives in Postgres) and safe with several replicas (conditional updates, SKIP LOCKED). Missed
  * ticks during downtime are caught up on the next tick, so a post scheduled while the site was down goes live as
  * soon as it is back.
  */
 export async function publishTick(now = new Date()) {
+  if (await restoring()) return;
   const published = await publishDuePosts(now);
   if (published.length) log.info("scheduled posts published", { count: published.length, ids: published });
 }
 
+/** A site restore is running (lib/backup/service.ts): publishing and the other jobs wait until it has finished. */
+async function restoring(): Promise<boolean> {
+  const { restoreInProgress } = await import("./backup/service");
+  return restoreInProgress().catch(() => false);
+}
+
 export async function workerTick(now = new Date()) {
+  if (await restoring()) return;
   const { seoJobHandler, draftJobHandler, verifyJobHandler, submissionJobHandler } = await import("./seo-intel/handlers");
   // Reports (D-102): building a report and sending its emails run here, never in a request.
   const { reportJobHandler } = await import("./reports/service");
   const { reportEmailHandler } = await import("./reports/email");
   // Hybrid RAG (moks-rag, D-104): published posts indexed in, and unpublished ones removed from, cms_content.
   const { RAG_JOB_KIND, ragSyncHandler } = await import("./rag/sync");
-  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler, report: reportJobHandler, report_email: reportEmailHandler, [RAG_JOB_KIND]: ragSyncHandler() }, now);
+  const jobs = await runDueJobs({ indexnow: indexNowHandler, seo: seoJobHandler, seo_draft: draftJobHandler, seo_verify: verifyJobHandler, seo_submit: submissionJobHandler, report: reportJobHandler, report_email: reportEmailHandler, [RAG_JOB_KIND]: ragSyncHandler() }, now, 10, { excludeKinds: ["backup"] });
   if (jobs.done || jobs.retried || jobs.failed) log.info("jobs processed", jobs);
   await practiceTick(now);
   await seoDraftTick(now);
@@ -116,8 +127,9 @@ function loop(name: string, everyMs: number, work: () => Promise<void>): NodeJS.
 }
 
 export function startWorker() {
-  const g = globalThis as unknown as { __workerTimer?: NodeJS.Timeout; __publishTimer?: NodeJS.Timeout };
+  const g = globalThis as unknown as { __workerTimer?: NodeJS.Timeout; __publishTimer?: NodeJS.Timeout; __backupTimer?: NodeJS.Timeout };
   if (g.__workerTimer) return;
   g.__publishTimer = loop("publish", 30_000, () => publishTick());
   g.__workerTimer = loop("worker", 30_000, () => workerTick());
+  g.__backupTimer = loop("backups", 15_000, async () => (await import("./backup/service")).backupWorkerTick());
 }

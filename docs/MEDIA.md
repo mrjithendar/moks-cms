@@ -166,45 +166,17 @@ like posts (shown under the page title and used as the share image).
 
 ## Backups (Admin → Backups)
 
-Cloudflare R2 only (S3, SFTP and Google Drive destinations were removed on 2026-10-29). Backups reuse the media
-R2 account and token and are written to `jithendar/backups/jithendar-backup-{yyyymmdd-hhmmss}.zip` in
-the media bucket or, recommended, a separate private bucket (the token needs Object Read & Write on it).
+Since D-108 (2026-11-28) a backup holds the media too: every file under `jithendar/` in this bucket (except the backups
+and the expiring AI images), next to every database table, in one zip with a manifest and checksums. Backups are
+written to `jithendar/backups/` in the media bucket or, recommended, a separate private bucket (the storage token needs
+Object Read & Write there, and List for retention). A restore puts back the files the bucket no longer has and never
+deletes or replaces one. Everything else (format, encryption, verification, restore rules, schedules, retention,
+recovery on a fresh deployment): [BACKUPS.md](BACKUPS.md).
 
-Each backup is a standard zip: `backup.json` (the data) and `README.txt` (what it holds and how to open it).
-**Encryption is a switch** in Schedule and encryption: on (the default), `backup.json` is AES-256 encrypted inside
-the zip with the backup passphrase (WinZip AES via `@zip.js/zip.js`: opens in 7-Zip, Keka, WinRAR or `7z x`, not
-macOS Archive Utility); off, it is a plain zip anyone with the file can read. The switch applies to new backups.
-Backups from before the zip format (`….json.gz.enc`, gzip + AES-256-GCM) are still listed, downloaded and restored,
-and need the passphrase, which is kept when encryption is turned off.
-The page (Admin → Operations → Backups) lists the newest 10 backups in R2 with **Download** and **Restore**;
-the retention setting prunes older ones.
-
-**Restore** (one click + confirmation, `restoreStoredBackup` in `src/lib/backups.ts`): first writes a fresh
-backup of the current state to R2 (named in the success message, restorable the same way), then in one
-transaction replaces posts, pages, categories, author profiles, comments (with likes and reports), contact
-messages, media records, redirects and Appearance settings with the backup. Accounts are merged: missing ones
-are recreated without a password (they use “Forgot password” or social sign-in); existing accounts, sign-in
-methods, sessions, API keys and stored credentials are never touched. Media files in R2 are not changed.
-
-Two rules protect what a backup does not hold (since 2026-11-15):
-
-- **Posts and categories are updated in place** (`KEEP_ROWS`). A post or category that is in the backup and still
-  exists keeps its row; only those the backup does not have are deleted. Tables outside the backup hang off them
-  (`seo_drafts`, `seo_content_audits`, `seo_article_optimizations`, `seo_internal_link_suggestions`,
-  `seo_ml_related_articles` and `seo_promo_opportunities` are deleted with their post; `seo_recommendations`,
-  `seo_editorial_calendar`, `seo_url_map`, `seo_search_submissions` and `news_topics` lose their link), and a restore
-  used to delete every post and category first, which emptied or unlinked all of them although the same posts came
-  straight back. That SEO data is kept as it is, not rolled back: a draft or audit made after the backup now sits
-  next to the older article text.
-- **A recreated account is always a reader.** The role in the file is ignored, because the file comes from a bucket:
-  with the role taken from it, anyone who can write to that bucket could add an admin of their own and then set its
-  password with “Forgot password”. The success message says how many recreated accounts had a staff role in the
-  backup, and the `backup.restore` audit entry names them (`rolesNotRestored`); an admin gives the roles back in
-  Admin → Users. A plain (unencrypted) zip is still accepted while encryption is on, so that backups made before it was
-  switched on can be restored; a file planted in the bucket can therefore still replace content if an admin restores
-  it, but it can no longer grant access.
-Logged as `backup.restore` (critical). Backups made before 2026-10-29 lack Appearance settings and comment
-likes/reports; restoring one leaves those empty/default.
+Backups of format 1 (2026-11-14 → 2026-11-28, `jithendar-backup-{yyyymmdd-hhmmss}.zip`: `backup.json` of 12 content
+tables and `README.txt`, no files) are still listed, downloaded and restored with their own rules
+(`restoreLegacyBackup` in `src/lib/backups.ts`): posts and categories updated in place (`KEEP_ROWS`), so the SEO data
+that hangs off them and is not in such a backup stays; recreated accounts are always readers.
 
 ## IndexNow (Admin → Settings → Content & publishing → IndexNow)
 

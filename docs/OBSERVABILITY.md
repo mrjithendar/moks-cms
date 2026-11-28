@@ -106,7 +106,7 @@ proxy forwards `x-request-id` to the app (an upstream value is kept only if it m
 Errors logged at level `error` also mark the active span failed.
 
 **Custom spans** (`src/lib/trace.ts`): `r2.*`, `s3.*` (legacy), `ses.*`, `bedrock.*` per AWS SDK call;
-`mail.send`; `job <kind>` per queued job; `backup.run`; `startup.migrate`. `fetch` (Gemini, Turnstile, IndexNow)
+`mail.send`; `job <kind>` per queued job; `backup backup`, `backup verify`, `backup restore` (one per backup operation, docs/BACKUPS.md); `startup.migrate`. `fetch` (Gemini, Turnstile, IndexNow)
 is traced by `@vercel/otel`. Database queries are not traced: Drizzle's built-in tracing would put SQL and
 parameters on spans, and postgres.js has no safe hook.
 

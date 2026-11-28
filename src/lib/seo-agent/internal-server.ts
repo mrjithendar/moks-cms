@@ -59,6 +59,11 @@ const ROUTES: [method: string, pattern: RegExp, handler: (m: RegExpExecArray, bo
   ["GET", /^\/rag\/posts$/, async () => (await import("../rag/callbacks")).ragPostsCallback()],
   ["POST", /^\/rag\/posts\/sync$/, async (_m, b) => (await import("../rag/callbacks")).ragSyncPostCallback(b)],
   ["POST", /^\/rag\/posts\/queue$/, async (_m, b) => (await import("../rag/callbacks")).ragQueuePostsCallback(b)],
+  // Site backups (D-108, lib/backup/callbacks.ts): the backup flow queues a backup, follows it and reports it. This
+  // server makes, verifies and stores the archive; the agent never sees what it holds.
+  ["POST", /^\/backups\/start$/, async (_m, b) => (await import("../backup/callbacks")).backupStartCallback(b)],
+  ["GET", /^\/backups\/runs\/([^/]+)$/, async (m) => (await import("../backup/callbacks")).backupRunCallback(m[1]!)],
+  ["POST", /^\/backups\/notify$/, async (_m, b) => (await import("../backup/callbacks")).backupNotifyCallback(b)],
   // Run history (CrewAI console): whether the agent keeps model-call transcripts (seo-agent/app/run_history.py).
   ["GET", /^\/run-history\/settings$/, () => runHistoryCallbackSettings()],
   // v4 (CrewAI flows + MCP service layer); literal paths before the /drafts/{id} patterns

@@ -104,8 +104,10 @@ Evidence (`file:line`) is in the detail files; the number in brackets is the fla
 6. **Every Search & SEO setting is unreachable while the SEO agent is not installed**, yet the web worker runs all
    those jobs from them then; and its Schedules section is mostly ignored whenever it can be opened (only
    `gscDaily.hourUtc` still times two jobs). [admin-ui 13, 14]
-7. **Backups leave out the `setting` rows**: a restore loses the SEO, news, Ask, promotion, invoice, practice, backup
-   and runtime settings. [admin-ui 23]
+7. ~~**Backups leave out the `setting` rows**: a restore loses the SEO, news, Ask, promotion, invoice, practice, backup
+   and runtime settings. [admin-ui 23]~~ Fixed by D-108 (2026-11-28): a backup holds every table, `setting` included,
+   with each sealed credential replaced by a placeholder that a restore fills from the site's current value
+   ([BACKUPS.md](BACKUPS.md)).
 8. **Admin values cannot switch off an env value**: a runtime boolean can only be forced on, and text fields cannot
    clear an env value (e.g. `CF_STREAM_ENABLED`, GA4, ads.txt, verification tokens from `jithendar-com-public`).
    [environment 3]
@@ -202,7 +204,7 @@ Each is a choice for you; the proposal is marked. Values are never chosen here.
 | D5 | Which spend caps stay next to the one LLM budget: Ask daily, Practice daily, news image USD, DataForSEO monthly, LLM requests per day, Gemini image/video counts? | Keep each as its own row on one "Spend & limits" page, empty = no limit |
 | D6 | MCP: one switch per server, kept by the agent and read by the web | Yes |
 | D7 | Search & SEO reachable without the SEO agent, and the web-worker Schedules section removed (flow schedules are the only schedules) | Yes |
-| D8 | Backups include the `setting` rows (secrets excluded or encrypted with the backup key) | Yes, with the backup's existing encryption |
+| D8 | Backups include the `setting` rows (secrets excluded or encrypted with the backup key) | Yes, with the backup's existing encryption. **Done in D-108**: every table, secrets excluded (placeholders), the archive encrypted as before |
 | D9 | Split Settings → General: identity stays in Appearance (Publish); comment moderation, sign-up and maintenance mode move to Access and Publishing (save at once) | Yes |
 | D10 | One Secret for what both containers share now that they are one pod (`ANTHROPIC_API_KEY`, agent and callback tokens) | Yes, in jithendar.com |
 | D11 | Public MCP limits counted per pod, or shared through Postgres | Shared (per pod multiplies them by the pod count) |

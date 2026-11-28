@@ -1,5 +1,5 @@
 import { connect as tlsConnect } from "node:tls";
-import { desc, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { rowsOf } from "@/db/rows";
 import { emailSummary } from "./mail";
@@ -159,10 +159,14 @@ export async function systemChecks(): Promise<{ app: Record<string, string>; che
     timed("TLS certificate", { group: "Operations" }, () => certificateDays("jithendar.com")),
     timed("Backups", { group: "Operations", href: "/admin/backups" }, async () => {
       const db = await getDb();
-      const [last] = await db.select().from(schema.backupRun).orderBy(desc(schema.backupRun.startedAt)).limit(1);
+      // Backups only (not verifications or restores); a full or database backup made by any trigger counts.
+      const [last] = await db.select().from(schema.backupRun).where(eq(schema.backupRun.operation, "backup")).orderBy(desc(schema.backupRun.startedAt)).limit(1);
       if (!last) return { status: "not configured", detail: "no backup has run yet" };
-      const ageH = Math.round((Date.now() - last.startedAt.getTime()) / 3_600_000);
-      return { status: last.status === "success" ? (ageH < 8 * 24 ? "ok" : "degraded") : last.status === "partial" ? "degraded" : "down", detail: `last ${last.status}, ${ageH}h ago` };
+      const [ok] = await db.select().from(schema.backupRun).where(and(eq(schema.backupRun.operation, "backup"), eq(schema.backupRun.status, "completed"))).orderBy(desc(schema.backupRun.startedAt)).limit(1);
+      const ageH = ok ? Math.round((Date.now() - ok.startedAt.getTime()) / 3_600_000) : null;
+      const detail = `last ${last.status}${last.backupType ? ` (${last.backupType})` : ""}; last completed ${ageH === null ? "never" : `${ageH}h ago`}`;
+      if (last.status === "pending" || last.status === "running") return { status: ok && ageH! < 8 * 24 ? "ok" : "degraded", detail };
+      return { status: last.status === "completed" ? (ageH! < 8 * 24 ? "ok" : "degraded") : ok && ageH! < 8 * 24 ? "degraded" : "down", detail };
     }),
     ...extraChecks(),
   ]);

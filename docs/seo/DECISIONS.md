@@ -1156,3 +1156,39 @@ Replaces D-91, D-92 and D-93; D-47's override is back.
   stderr → Loki.
 - **Without the SEO agent** the button queues the jobs as before. The flow is schedulable (no built-in schedule) and
   not startable from MCP.
+
+## D-108 Complete site backups, and a backup flow (owner briefs 2026-11-28)
+
+- **Why.** The backup was a list of 12 tables in `backup.json` plus `README.txt`. Every table added after that list
+  (sign-in methods, Python practice, invoices, SEO, news, CrewAI, every setting but Appearance) and every file in the
+  bucket was missing: it could not recover the site.
+- **What.** One zip per backup (format 2, `src/lib/backup/`): every table of the schema found from the PostgreSQL
+  catalog, exported from one `REPEATABLE READ, READ ONLY` snapshot as JSON Lines; every file under `jithendar/` in the
+  media bucket (except the backups and the expiring AI images); settings, site files, application and deployment
+  metadata; SHA256SUMS; a manifest signed with a key derived from `SETTINGS_ENCRYPTION_KEY`. Types are full, database
+  and prerestore. Encryption is as before (WinZip AES-256, server key); downloads are decrypted, streamed.
+- **Never in a backup:** sessions, verification tokens, API keys, preview links, MCP codes and tokens, the job queue,
+  the backup history, the migration ledger, rate limits, agent locks, queued practice executions, the model-answer
+  cache; account passwords and OAuth tokens; every sealed credential (a placeholder, which a restore fills from the
+  site's current value). `tests/backup-catalog.test.ts` fails when a new table holds a credential-like column without
+  a policy.
+- **Background operations.** Backups, verifications and restores are jobs (kind `backup`, one dedupe key: one operation
+  at a time across replicas) on their own worker loop, with progress, cancel, retries for transient storage errors, and
+  an interrupted upload aborted by the next backup. A backup counts only after the whole archive was read back and
+  verified. Streamed to the bucket as a multipart upload: no pod disk, at most 16 MiB in memory.
+- **Storage.** The bucket (R2/S3/S3-compatible), not a PersistentVolume: the site runs 2 to 8 replicas, and a volume
+  dies with its cluster. Retention keeps the newest N per type, plus an optional age limit and an optional size limit
+  (empty = no limit). It never removes the newest of a type or a backup in use.
+- **Restore.** Verify everything first; refuse another site's archive or a newer schema; back up the current database
+  first; put back missing files (never delete or overwrite); the database in one transaction, parents first by foreign
+  key. Accounts are merged (staff roles come back only from a signed archive), the audit log only gains entries,
+  sequences are reset, row counts are checked. Readers are not blocked (MVCC); writes may wait; jobs and publishing
+  pause. Format-1 archives keep their own restore (`restoreLegacyBackup`).
+- **Scheduling: one scheduler, never two.** The CrewAI flow `backup_flow` ("Website backup", `seo-agent/app/flows/
+  backup.py`) is the orchestration: it queues the same backup, follows it, reports it and asks the web app to email the
+  report. It has no crew and calls no model; the web app builds and checks the archive. jithendar.com schedules it in
+  `crewconfig/schedules/schedules.yaml` (`website-full-backup`, `0 2 * * *`, Asia/Kolkata). The built-in schedule
+  (Settings → System → Backups) stands down while an enabled CrewAI schedule runs `backup_flow`; it stays for sites
+  without the SEO agent. No built-in CrewAI schedule row: when a site backs up is its own choice.
+- Resolves docs/SETTINGS.md problem 7 and decision D8. Guide: docs/BACKUPS.md. Migration 0044 (`backup_run`:
+  operation, type, progress, detail, sha256, error, cancel, attempts; statuses pending/running/completed/failed/cancelled).
