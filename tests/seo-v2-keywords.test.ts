@@ -176,11 +176,11 @@ describe("keyword views (SQL over seeded Search Console rows)", () => {
     const r2 = await K.refreshKeywords({ fetchImpl: api.fetchImpl });
     expect(r2.byLlm).toBe(2);
     const req = api.calls.find((c) => c.path === LITELLM_PATH)!;
-    expect(req.body!.model).toBe("moks-cms-fast");
+    expect(req.body!.model).toBe("ops-claude-haiku-latest");
     expect(req.headers.get("authorization")).toBe(`Bearer ${LITELLM_ENV.LITELLM_API_KEY}`);
     expect(JSON.stringify(req.body!.messages)).toContain('<data name=\\"queries\\">');
     const [it2] = rowsOf<{ intent: string; source: string; model: string }>(await db.execute(sql`select intent, source, model from seo_query_intents where query = 'karpenter consolidation'`));
-    expect(it2).toEqual({ intent: "commercial", source: "llm", model: "moks-cms-fast" });
+    expect(it2).toEqual({ intent: "commercial", source: "llm", model: "ops-claude-haiku-latest" });
     expect(rowsOf(await db.execute(sql`select 1 from seo_llm_usage where purpose = 'intent'`))).toHaveLength(1);
     // content gaps need clusters: the rising query sits at position 12–15 with enough impressions? (gap threshold from settings)
     const gaps = await K.contentGaps(p({ view: "gaps" }));

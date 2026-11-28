@@ -10,7 +10,7 @@ import "server-only";
  * - the endpoint: LITELLM_BASE_URL, LiteLLM's OpenAI-compatible API (…/v1);
  * - its virtual keys: LITELLM_API_KEY, and optionally LITELLM_PRACTICE_API_KEY for the Python practice tutor (its own
  *   budget in LiteLLM; the main key when unset);
- * - alias names: LITELLM_MODEL (default `moks-cms-default`), LITELLM_MODEL_FAST (default `moks-cms-fast`) and
+ * - alias names: LITELLM_MODEL (default `cms-claude-sonnet-latest`), LITELLM_MODEL_FAST (default `ops-claude-haiku-latest`) and
  *   LITELLM_MODEL_PRACTICE (the fast alias when unset). Which provider and model answer an alias is set in LiteLLM.
  *
  * What it does: Chat Completions with system blocks (stable ones marked for prompt caching), JSON schema or JSON
@@ -24,8 +24,8 @@ import "server-only";
 
 type Env = Record<string, string | undefined>;
 
-export const DEFAULT_MODEL = "moks-cms-default";
-export const DEFAULT_MODEL_FAST = "moks-cms-fast";
+export const DEFAULT_MODEL = "cms-claude-sonnet-latest";
+export const DEFAULT_MODEL_FAST = "ops-claude-haiku-latest";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const RETRY_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 

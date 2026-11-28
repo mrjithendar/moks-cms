@@ -21,7 +21,7 @@ budget uses them for its checks. The image budget (per content flow and global, 
    trademarks, brand names, copyrighted characters, text, letters, watermarks and UI screenshots.
 3. **Variants**: up to N (profile, default 2).
 4. **Safety check**: the vision model (a LiteLLM alias whose model reads images; Settings → vision model, empty:
-   `moks-cms-default`) looks at each variant: faces, logos/trademarks, text artifacts, other issues,
+   `cms-claude-sonnet-latest`) looks at each variant: faces, logos/trademarks, text artifacts, other issues,
    match to the brief. Unsafe variants are rejected and recorded (`news_images.status = rejected_safety`).
 5. **Best**: the safe variant with the best brief match; if none is safe or the provider fails → the template cover.
 6. **Optimise**: centre-crop to 1200×630 (OG/social) and 16:9 (1600×900 hero, 800 and 400 wide), WebP q82. Only pixels

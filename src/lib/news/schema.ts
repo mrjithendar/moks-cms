@@ -18,7 +18,7 @@ export const MAX_NEWS_JOBS = 25; // bounds the `job` metric label (seo-agent app
 
 const words = z.array(z.string().trim().min(1).max(80)).max(100);
 /** A LiteLLM alias (D-110): which provider and model answer it is set in LiteLLM, never here. */
-const modelAlias = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,119}$/, "Use a LiteLLM alias, e.g. moks-cms-default.");
+const modelAlias = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,119}$/, "Use a LiteLLM alias, e.g. cms-claude-sonnet-latest.");
 /** Rows saved before D-110 carry LLM $ caps nothing reads (LiteLLM's budgets apply): dropped, so the strict schemas still load them. */
 const RETIRED = new Set(["llm_daily_usd", "llm_monthly_usd"]);
 export const withoutLlmCaps = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => !RETIRED.has(k))) : v);

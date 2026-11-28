@@ -210,7 +210,7 @@ describe("Claude draft pipeline (mocked API)", () => {
     expect(d.changes[0]!.decision).toBe("pending");
     // request: LiteLLM's default alias, cached system blocks (rules + style guide), JSON schema output, no tools
     const req = api.calls.find((c) => c.path === LITELLM_PATH)!;
-    expect(req.body!.model).toBe("moks-cms-default");
+    expect(req.body!.model).toBe("cms-claude-sonnet-latest");
     const system = (req.body!.messages as { role: string; content: { text: string; cache_control?: unknown }[] }[])[0]!;
     expect(system.role).toBe("system");
     expect(system.content).toHaveLength(2);

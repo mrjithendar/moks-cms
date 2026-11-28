@@ -164,7 +164,7 @@ class UsageLedger:
 
 @dataclass
 class CallSpec:
-    # A LiteLLM model alias (e.g. moks-cms-default). Which provider and model answer is set in LiteLLM.
+    # A LiteLLM model alias (e.g. cms-claude-sonnet-latest). Which provider and model answer is set in LiteLLM.
     model: str
     purpose: str
     prompt_version: str

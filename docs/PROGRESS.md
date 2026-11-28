@@ -1,5 +1,13 @@
 # Progress log — jithendar.com
 
+## LiteLLM aliases renamed (2026-11-29, owner request, D-111)
+
+- `moks-cms-default` → `cms-claude-sonnet-latest`, `moks-cms-fast` → `ops-claude-haiku-latest`: defaults in
+  `src/lib/llm/client.ts` and `seo-agent/app/{config,llm_gateway,crews/config}.py`, hints, user guide, docs, tests.
+- Migration `0046_litellm_alias_names.sql` (+ rollback) renames the stored values; `tests/migration-0046.test.ts`.
+- Manual (owner): add both aliases in LiteLLM and to the team's and keys' models before releasing; companion pull
+  requests in jithendar.com (`SEO_CREW_MODELS`) and moks-rag (key script, README).
+
 ## Reindex all posts runs as a flow with a detailed log (2026-11-26, owner request, D-107)
 
 - **Agent** `seo-agent/app/flows/rag_reindex.py`: `rag_reindex_flow` "Hybrid RAG reindex", plan → index → remove →

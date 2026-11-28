@@ -164,7 +164,7 @@ describe("building a report", () => {
 
   it("reads LiteLLM's team and key budgets through the agent (D-110)", async () => {
     const client = await import("@/lib/seo-agent/client");
-    const status = (team: Record<string, unknown> | null, keys: Record<string, unknown>[] = []) => ({ gateway: "litellm", configured: true, base_url: "http://litellm.test/v1", aliases: { default: "moks-cms-default", fast: "moks-cms-fast" }, healthy: true, checked_at: "2026-11-28T00:00:00Z", team, keys, models: [], errors: [] });
+    const status = (team: Record<string, unknown> | null, keys: Record<string, unknown>[] = []) => ({ gateway: "litellm", configured: true, base_url: "http://litellm.test/v1", aliases: { default: "cms-claude-sonnet-latest", fast: "ops-claude-haiku-latest" }, healthy: true, checked_at: "2026-11-28T00:00:00Z", team, keys, models: [], errors: [] });
     let spy = vi.spyOn(client, "getLlmStatus").mockResolvedValue(status({ alias: "jithendar.com", spend_usd: 0.95, max_budget_usd: 1, budget_duration: "30d", budget_reset_at: null, models: [] }) as never);
     let r = await build(["llm_cost"]);
     expect(r.findings.find((f) => f.title === "95.0% of the LiteLLM team budget is used")).toMatchObject({ severity: "high", confirmed: true });
