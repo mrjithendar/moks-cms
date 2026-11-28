@@ -61,8 +61,8 @@ no price table and no budget of its own.
 | `LITELLM_BASE_URL` | LiteLLM's API, `…/v1` (jithendar.com: `http://litellm.rag.svc.cluster.local:4000/v1`) |
 | `LITELLM_API_KEY` | The agent's virtual key (Secret `seo-agent-env`; moks-rag `scripts/issue-litellm-keys.sh`) |
 | `LITELLM_ASK_API_KEY` | Ask the Blog's own key, so readers have their own budget (optional: the agent's key when unset) |
-| `LITELLM_MODEL` | The default alias: drafting, crews, reports (default `moks-cms-default`) |
-| `LITELLM_MODEL_FAST` | The fast alias: classifying, Ask the Blog, the news desk's quick calls (default `moks-cms-fast`) |
+| `LITELLM_MODEL` | The default alias: drafting, crews, reports (default `cms-claude-sonnet-latest`) |
+| `LITELLM_MODEL_FAST` | The fast alias: classifying, Ask the Blog, the news desk's quick calls (default `ops-claude-haiku-latest`) |
 | `SEO_CREW_MODELS` | Optional per-agent aliases, `{"<crew>.<agent>": "<alias>"}`, e.g. `{"editorial.writer": "moks-cms-quality"}` |
 | `SEO_LLM_TIMEOUT_SECONDS` | Per-request timeout (30–900, default 120) |
 

@@ -110,7 +110,7 @@ tests' fixture site keeps a copy).
 Optional; off until switched on in Admin → Settings → Practice (AI tutor) and LiteLLM is configured. Since D-110 the
 tutor has no provider, model, key or price of its own: it calls LiteLLM ([LLM_GATEWAY.md](LLM_GATEWAY.md)) with its own
 virtual key `LITELLM_PRACTICE_API_KEY` (the web app's `LITELLM_API_KEY` when unset) and the alias
-`LITELLM_MODEL_PRACTICE` (default: the fast alias, `moks-cms-fast`). Its money limit is that key's budget in LiteLLM;
+`LITELLM_MODEL_PRACTICE` (default: the fast alias, `ops-claude-haiku-latest`). Its money limit is that key's budget in LiteLLM;
 when it is used up the tutor says it reached its budget. Features: explain error, explain a failed test, review,
 complexity, suggest tests, concept questions, recommendations. Structured JSON output, prompt version
 `practice-tutor-v1-2026-11-02`, per-user daily request quota (`aiRequestsPerDay`, a fairness limit, not money),

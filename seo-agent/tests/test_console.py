@@ -286,7 +286,7 @@ def test_crew_endpoints(web: FakeWebApp, llm: FakeLlm) -> None:
         assert set(items) == set(crew_config.CREW_IDS)
         ed = items["editorial"]
         assert [t["key"] for t in ed["tasks"]] == ["research", "write", "revise", "review", "seo"]
-        assert (ed["replay_flows"] == ["new_article_flow"] and "fetch_allowlisted_docs" in ed["tools"] and {"moks-cms-default", "moks-cms-fast"} <= set(ed["models"]) and not [m for m in ed["models"] if m.startswith("claude-")])
+        assert (ed["replay_flows"] == ["new_article_flow"] and "fetch_allowlisted_docs" in ed["tools"] and {"cms-claude-sonnet-latest", "ops-claude-haiku-latest"} <= set(ed["models"]) and not [m for m in ed["models"] if m.startswith("claude-")])
         assert next(t for t in ed["tasks"] if t["key"] == "review")["output_editable"] is False
         ok = client.post("/crews/report/validate", json={"config": {"agents": {"analyst": {"backstory": "Short."}}}}, headers=AUTH)
         assert ok.status_code == 200 and ok.json()["config"] == {"agents": {"analyst": {"backstory": "Short."}}} and ok.json()["default_hash"] == items["report"]["default_hash"]

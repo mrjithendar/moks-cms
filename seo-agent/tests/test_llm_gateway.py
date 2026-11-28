@@ -28,7 +28,7 @@ from tests.conftest import FakeWebApp, settings
 
 BASE = "http://litellm.test:4000/v1"
 AGENT, ASK = "sk-agent-key", "sk-ask-key"
-TARGET = {"moks-cms-default": "anthropic/claude-sonnet-5-5", "moks-cms-fast": "anthropic/claude-haiku-5-5"}
+TARGET = {"cms-claude-sonnet-latest": "anthropic/claude-sonnet-5-5", "ops-claude-haiku-latest": "anthropic/claude-haiku-5-5"}
 USAGE = {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200, "prompt_tokens_details": {"cached_tokens": 400}, "cache_creation_input_tokens": 100}
 
 
@@ -50,10 +50,10 @@ class FakeLiteLLM:
         key = req.headers.get("authorization", "").removeprefix("Bearer ")
         if req.url.path == "/key/info":
             alias = {AGENT: "jithendar-seo", ASK: "jithendar-ask"}.get(key)
-            info = {"key_alias": alias, "spend": 1.25, "max_budget": None if key == AGENT else 0.5, "budget_duration": None if key == AGENT else "1d", "budget_reset_at": None, "team_id": "team-1", "models": ["moks-cms-default", "moks-cms-fast"], "tpm_limit": None, "rpm_limit": None}
+            info = {"key_alias": alias, "spend": 1.25, "max_budget": None if key == AGENT else 0.5, "budget_duration": None if key == AGENT else "1d", "budget_reset_at": None, "team_id": "team-1", "models": ["cms-claude-sonnet-latest", "ops-claude-haiku-latest"], "tpm_limit": None, "rpm_limit": None}
             return httpx.Response(200, json={"key": "hashed", "info": info})
         if req.url.path == "/team/info":
-            return httpx.Response(200, json={"team_id": "team-1", "team_info": {"team_alias": "jithendar.com", "spend": 3.5, "max_budget": 20.0, "budget_duration": "30d", "budget_reset_at": "2026-12-28T00:00:00+00:00", "models": ["moks-cms-default", "moks-cms-fast"]}})
+            return httpx.Response(200, json={"team_id": "team-1", "team_info": {"team_alias": "jithendar.com", "spend": 3.5, "max_budget": 20.0, "budget_duration": "30d", "budget_reset_at": "2026-12-28T00:00:00+00:00", "models": ["cms-claude-sonnet-latest", "ops-claude-haiku-latest"]}})
         if req.url.path == "/v1/models":
             if key not in (AGENT, ASK):
                 return httpx.Response(401, json={"error": {"message": "Authentication Error, Invalid proxy server token passed.", "type": "auth_error"}})
@@ -88,7 +88,7 @@ def gateway(fake: FakeLiteLLM, *, ask: bool = True, key: str = AGENT) -> tuple[G
     return GatewayLlm(gw, UsageLedger(store), client=httpx.AsyncClient(transport=httpx.MockTransport(fake.handler)), sleep=no_sleep), store
 
 
-def spec(model: str = "moks-cms-default", purpose: str = "draft", **kw: Any) -> CallSpec:
+def spec(model: str = "cms-claude-sonnet-latest", purpose: str = "draft", **kw: Any) -> CallSpec:
     return CallSpec(model=model, purpose=purpose, prompt_version="v1", cached_system=["Rules.", "Style guide."], user="Write it.", max_tokens=500, run_id="run-1", **kw)
 
 
@@ -103,17 +103,17 @@ def test_settings_name_litellm_and_its_aliases_and_nothing_else() -> None:
     assert gw.configured and gw.base_url == BASE and gw.root == "http://litellm.test:4000" and (gw.model_default, gw.model_fast) == ("my-default", "my-fast")
     assert AGENT not in repr(gw) and ASK not in repr(gw) and AGENT not in repr(load_settings({"LITELLM_API_KEY": AGENT}))
     plain = load_settings({})
-    assert (plain.llm_model, plain.llm_model_fast) == ("moks-cms-default", "moks-cms-fast")
+    assert (plain.llm_model, plain.llm_model_fast) == ("cms-claude-sonnet-latest", "ops-claude-haiku-latest")
     # The provider settings are gone: a provider's key or model in the environment changes nothing.
     old = load_settings({"ANTHROPIC_API_KEY": "sk-ant", "SEO_DRAFT_MODEL": "claude-opus-5-5", "SEO_CLASSIFY_MODEL": "claude-haiku-5-5", "LITELLM_MODEL": "not an alias!"})
-    assert (old.llm_model, old.llm_model_fast) == ("moks-cms-default", "moks-cms-fast") and not hasattr(old, "anthropic_api_key")
+    assert (old.llm_model, old.llm_model_fast) == ("cms-claude-sonnet-latest", "ops-claude-haiku-latest") and not hasattr(old, "anthropic_api_key")
     assert load_settings({"SEO_CREW_MODELS": '{"editorial.writer": "moks-cms-quality", "editorial.reviewer": "bad name"}'}).crew_models == {"editorial.writer": "moks-cms-quality"}
 
 
 def test_models_are_aliases_passed_as_they_are() -> None:
     gw = Gateway(base_url=BASE, api_key=AGENT, ask_api_key=ASK)
     assert gw.model_for("moks-cms-quality") == "moks-cms-quality" and gw.model_for("claude-sonnet-5-5") == "claude-sonnet-5-5"
-    assert gw.model_for("") == "moks-cms-default" and gw.model_for("  ") == "moks-cms-default"
+    assert gw.model_for("") == "cms-claude-sonnet-latest" and gw.model_for("  ") == "cms-claude-sonnet-latest"
     assert gw.key_for("ask_answer") == ASK and gw.key_for("draft") == AGENT
     assert Gateway(base_url=BASE, api_key=AGENT).key_for("ask_answer") == AGENT  # no Ask key: the agent's
 
@@ -137,7 +137,7 @@ async def test_a_call_goes_through_litellm_and_is_recorded_at_its_charge() -> No
     text, usage = await llm.text(spec())
     assert text == "Hello"
     body = chat_bodies(fake)[0]
-    assert body["model"] == "moks-cms-default" and body["max_tokens"] == 500
+    assert body["model"] == "cms-claude-sonnet-latest" and body["max_tokens"] == 500
     assert body["messages"][0]["content"][-1] == {"type": "text", "text": "Style guide.", "cache_control": {"type": "ephemeral"}}
     assert body["metadata"] == {"purpose": "draft", "prompt_version": "v1", "run_id": "run-1"}
     assert fake.requests[0][2]["authorization"] == f"Bearer {AGENT}"
@@ -157,9 +157,9 @@ async def test_a_call_without_a_cost_header_is_recorded_without_a_cost() -> None
 async def test_ask_the_blog_uses_its_own_key_and_images_go_as_data_urls() -> None:
     fake = FakeLiteLLM()
     llm, _ = gateway(fake)
-    await llm.text(spec("moks-cms-fast", "ask_answer", images=[("image/png", b"\x89PNG")]))
+    await llm.text(spec("ops-claude-haiku-latest", "ask_answer", images=[("image/png", b"\x89PNG")]))
     _, body, headers = fake.requests[0]
-    assert headers["authorization"] == f"Bearer {ASK}" and body["model"] == "moks-cms-fast"
+    assert headers["authorization"] == f"Bearer {ASK}" and body["model"] == "ops-claude-haiku-latest"
     assert body["messages"][1]["content"][0] == {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw=="}}
 
 
@@ -183,7 +183,7 @@ async def test_a_stream_is_recorded_once_with_litellms_tokens_and_no_computed_co
     fake = FakeLiteLLM([{"content": "Hello there"}])
     llm, store = gateway(fake)
     seen: list[Any] = []
-    out = [t async for t in llm.stream(spec("moks-cms-fast", "ask_answer"), on_usage=seen.append)]
+    out = [t async for t in llm.stream(spec("ops-claude-haiku-latest", "ask_answer"), on_usage=seen.append)]
     assert "".join(out) == "Hello there" and chat_bodies(fake)[0]["stream_options"] == {"include_usage": True}
     [row] = store.rows
     assert row["cost_usd"] == 0.0 and row["provider"] == "litellm" and row["input_tokens"] == 500 and row["output_tokens"] == 200
@@ -194,7 +194,7 @@ async def test_a_stream_closed_early_is_recorded_once_as_cancelled() -> None:
     fake = FakeLiteLLM([{"content": "Hello there, a longer answer"}])
     llm, store = gateway(fake)
     seen: list[Any] = []
-    gen = llm.stream(spec("moks-cms-fast", "ask_answer"), on_usage=seen.append)
+    gen = llm.stream(spec("ops-claude-haiku-latest", "ask_answer"), on_usage=seen.append)
     assert await gen.__anext__() == "Hel"
     await gen.aclose()  # the reader went away
     [row] = store.rows
@@ -207,7 +207,7 @@ async def test_a_budget_litellm_refuses_raises_budget_exceeded_and_pauses_the_ru
     fake = FakeLiteLLM([key_over, team_over])
     llm, store = gateway(fake)
     with pytest.raises(BudgetExceeded) as ask:
-        await llm.text(spec("moks-cms-fast", "ask_answer"))
+        await llm.text(spec("ops-claude-haiku-latest", "ask_answer"))
     assert ask.value.scope == "litellm_key" and "Ask the Blog's key" in ask.value.detail and "0.51, Max budget: 0.5" in ask.value.detail
     with pytest.raises(BudgetExceeded) as team:
         await llm.text(spec())
@@ -264,10 +264,10 @@ async def test_the_status_says_whether_litellm_answers_and_shows_its_keys_team_a
     st = await gateway_status(llm.gw, llm.client)
     assert set(st) == {"gateway", "configured", "base_url", "aliases", "healthy", "checked_at", "keys", "team", "models", "errors"}
     assert st["gateway"] == "litellm" and st["configured"] is True and st["healthy"] is True and st["base_url"] == BASE and st["errors"] == []
-    assert st["aliases"] == {"default": "moks-cms-default", "fast": "moks-cms-fast"} and "T" in st["checked_at"]
+    assert st["aliases"] == {"default": "cms-claude-sonnet-latest", "fast": "ops-claude-haiku-latest"} and "T" in st["checked_at"]
     assert [k["caller"] for k in st["keys"]] == ["agent", "ask"]
     assert st["keys"][1] | {} == {**st["keys"][1], "alias": "jithendar-ask", "max_budget_usd": 0.5, "budget_duration": "1d"}
-    assert st["team"] == {"alias": "jithendar.com", "spend_usd": 3.5, "max_budget_usd": 20.0, "budget_duration": "30d", "budget_reset_at": "2026-12-28T00:00:00+00:00", "models": ["moks-cms-default", "moks-cms-fast"]}
+    assert st["team"] == {"alias": "jithendar.com", "spend_usd": 3.5, "max_budget_usd": 20.0, "budget_duration": "30d", "budget_reset_at": "2026-12-28T00:00:00+00:00", "models": ["cms-claude-sonnet-latest", "ops-claude-haiku-latest"]}
     assert st["models"] == [{"name": n, "target": t} for n, t in sorted(TARGET.items())]  # no prices: those are LiteLLM's
     paths = [p for p, _, _ in fake.requests]
     assert "/key/info" in paths and "/team/info" in paths and "/v1/models" in paths  # LiteLLM's own routes at its root

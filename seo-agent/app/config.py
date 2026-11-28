@@ -115,8 +115,8 @@ class Settings:
     litellm_api_key: str = field(default="", repr=False)
     litellm_ask_api_key: str = field(default="", repr=False)
     # The aliases asked for (LITELLM_MODEL, LITELLM_MODEL_FAST): drafting and crews, and classifying and Ask the Blog.
-    llm_model: str = "moks-cms-default"
-    llm_model_fast: str = "moks-cms-fast"
+    llm_model: str = "cms-claude-sonnet-latest"
+    llm_model_fast: str = "ops-claude-haiku-latest"
     ask_enabled: bool = False
     crew_max_tokens_per_run: int = 150_000  # ≈ a normal 4-agent run is ~80k (docs/seo/COSTS.md)
     crew_timeout_s: int = 600

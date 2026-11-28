@@ -23,7 +23,7 @@ from tests.moks_cms import www
 # --- helpers -----------------------------------------------------------------------------------------------------------
 
 
-def _spec(purpose: str = "draft", model: str = "moks-cms-fast", max_tokens: int = 100) -> CallSpec:
+def _spec(purpose: str = "draft", model: str = "ops-claude-haiku-latest", max_tokens: int = 100) -> CallSpec:
     return CallSpec(model=model, purpose=purpose, prompt_version="v", cached_system=["S"], user="Q" * 70, max_tokens=max_tokens)
 
 
@@ -55,7 +55,7 @@ async def test_every_llm_call_emits_a_span_with_cost_attributes(monkeypatch: pyt
     await llm.text(spec)
     [(name, attrs, err)] = spans
     assert name == "llm.call" and err is None
-    assert (attrs["llm.model"] == "claude-haiku-5-5" and attrs["llm.requested_model"] == "moks-cms-fast" and attrs["llm.purpose"] == "draft" and attrs["llm.prompt_version"] == "v")
+    assert (attrs["llm.model"] == "claude-haiku-5-5" and attrs["llm.requested_model"] == "ops-claude-haiku-latest" and attrs["llm.purpose"] == "draft" and attrs["llm.prompt_version"] == "v")
     assert attrs["llm.input_tokens"] == 120 and attrs["llm.output_tokens"] == 30 and attrs["llm.outcome"] == "ok"
     assert attrs["llm.cost_usd"] == pytest.approx(0.00042) == pytest.approx(store.rows[0]["cost_usd"])
     assert attrs["llm.run_id"] == "run_1" and attrs["llm.agent"] == "editor"
@@ -77,8 +77,8 @@ class _Settings:
     docs_allowlist: tuple[str, ...] = ()
     ask_min_score = 0.0
     ask_top_k = 6
-    llm_model_fast = "moks-cms-fast"
-    llm_model = "moks-cms-default"
+    llm_model_fast = "ops-claude-haiku-latest"
+    llm_model = "cms-claude-sonnet-latest"
 
 
 class _Deps:

@@ -5,8 +5,8 @@ Completions API. LiteLLM holds the provider keys, chooses the provider and model
 budgets. This service names an alias and a key, nothing else: it has no provider client, no model list, no prices and
 no budget of its own.
 
-- **Models are aliases.** LITELLM_MODEL (default `moks-cms-default`: drafting, crews) and LITELLM_MODEL_FAST (default
-  `moks-cms-fast`: classifying, Ask the Blog). A crew agent or a content flow may name another alias
+- **Models are aliases.** LITELLM_MODEL (default `cms-claude-sonnet-latest`: drafting, crews) and LITELLM_MODEL_FAST (default
+  `ops-claude-haiku-latest`: classifying, Ask the Blog). A crew agent or a content flow may name another alias
   (SEO_CREW_MODELS, the crew configuration); names are passed to LiteLLM as they are. Changing provider or model is a
   change in LiteLLM (its Admin UI, Models + Endpoints), not a deploy.
 - **Budgets are LiteLLM's.** The team "jithendar.com" and each caller's virtual key carry their own budget (and rate
@@ -48,8 +48,8 @@ T = TypeVar("T", bound=BaseModel)
 RETRY_STATUS = frozenset({408, 409, 429, 500, 502, 503, 504})
 MAX_RETRIES = 2
 MAX_REPAIR_CHARS = 2000
-DEFAULT_ALIAS = "moks-cms-default"
-FAST_ALIAS = "moks-cms-fast"
+DEFAULT_ALIAS = "cms-claude-sonnet-latest"
+FAST_ALIAS = "ops-claude-haiku-latest"
 NOT_CONFIGURED = "LiteLLM is not configured: set LITELLM_BASE_URL and LITELLM_API_KEY (Secret seo-agent-env). Every model call goes through LiteLLM."
 
 

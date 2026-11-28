@@ -58,7 +58,7 @@ through the SEO optimisation flow). When pgvector is not available, novelty is 1
 - Model: one balanced logistic regression per topic (multi-label), Platt-calibrated, stored as numpy arrays (no pickle;
   the calibration is two arrays `cal_a`, `cal_b`; older artefacts without them load uncalibrated).
 - Prediction: calibrated p; labels with p ≥ 0.5 (at least the best); if the best p < `classifier_threshold` (0.55)
-  the fast model (Settings → fast model, a LiteLLM alias; empty: `moks-cms-fast`) picks 1–3 topics from the allowed
+  the fast model (Settings → fast model, a LiteLLM alias; empty: `ops-claude-haiku-latest`) picks 1–3 topics from the allowed
   list; without a classifier model, keyword rules. Topics record their `method`: `model`, `model_low_conf` (a
   low-confidence guess kept because the LLM was off, failed or refused for a LiteLLM budget), `claude` (the LLM
   fallback; the name is kept for stored rows and the metric), `rules`. The LLM returns labels, not probabilities: its

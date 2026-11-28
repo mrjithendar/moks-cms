@@ -468,7 +468,7 @@ async def test_the_news_desk_has_no_llm_cap_of_its_own_and_books_every_call() ->
     # call's reported cost lands on the news run.
     store = mem_store()
     await store.create_run({"id": "r1", "kind": "ingest", "job_id": None})
-    spec = CallSpec(model="moks-cms-fast", purpose="news.classify", prompt_version="t", cached_system=[], user="x" * 700, max_tokens=1500)
+    spec = CallSpec(model="ops-claude-haiku-latest", purpose="news.classify", prompt_version="t", cached_system=[], user="x" * 700, max_tokens=1500)
     inner = SlowLlm()
     budget = NewsBudget(store, NewsSettings(llm_daily_usd=0.0, llm_monthly_usd=0.0), None, "r1", lambda: NOW)
     llm = NewsLlm(inner, budget, ["r1"])  # type: ignore[arg-type]
@@ -490,7 +490,7 @@ async def test_reservation_is_released_when_the_call_fails() -> None:
 
     llm = NewsLlm(Boom(), NewsBudget(store, NewsSettings(), None, "r1", lambda: NOW), ["r1"])  # type: ignore[arg-type]
     with pytest.raises(RuntimeError):
-        await llm.structured(CallSpec(model="moks-cms-fast", purpose="news.classify", prompt_version="t", cached_system=[], user="x", max_tokens=100), TopicLabels)
+        await llm.structured(CallSpec(model="ops-claude-haiku-latest", purpose="news.classify", prompt_version="t", cached_system=[], user="x", max_tokens=100), TopicLabels)
     assert store.runs["r1"]["cost_usd"] == 0
 
 
@@ -542,7 +542,7 @@ async def test_content_flow_models_are_litellm_aliases_with_the_services_own_as_
     await nd.claude_labels(nd.with_news_llm(d, ["r"]), ["kubernetes pod"], TOPICS)
     llm.queue("news.vision", SAFE)
     await nd.vision(d, nd.with_news_llm(d, ["r"]).llm, b"\x89PNG", "image/png", "brief", "Title")
-    assert [c.model for c in llm.calls[-2:]] == ["moks-cms-fast", "moks-cms-default"]
+    assert [c.model for c in llm.calls[-2:]] == ["ops-claude-haiku-latest", "cms-claude-sonnet-latest"]
     llm.queue("news.vision", SAFE)
     own = deps(llm, store, vision_model="moks-cms-vision")
     await nd.vision(own, nd.with_news_llm(own, ["r"]).llm, b"\x89PNG", "image/png", "brief", "Title")

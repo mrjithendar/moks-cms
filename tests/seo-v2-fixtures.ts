@@ -72,7 +72,7 @@ export const noLiteLlm = () => {
 };
 
 /** What an alias answers as (LiteLLM's x-litellm-model-name). */
-const TARGETS: Record<string, string> = { "moks-cms-default": "anthropic/claude-sonnet-5-5", "moks-cms-fast": "anthropic/claude-haiku-5-5" };
+const TARGETS: Record<string, string> = { "cms-claude-sonnet-latest": "anthropic/claude-sonnet-5-5", "ops-claude-haiku-latest": "anthropic/claude-haiku-5-5" };
 
 /**
  * A LiteLLM stand-in (Chat Completions, as LiteLLM 1.111 answered a local proxy): each answer is the model's text, or

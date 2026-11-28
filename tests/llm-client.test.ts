@@ -23,7 +23,7 @@ const { chat, chatStream, checkLlm, errorFromResponse, lastLlmHealth, llmConfig,
 
 const ENV = { LITELLM_BASE_URL: "http://litellm.test:4000/v1/", LITELLM_API_KEY: "sk-seo-key-123456", LITELLM_PRACTICE_API_KEY: "sk-practice-key-654321" };
 const CFG = llmConfig(ENV)!;
-const TARGET: Record<string, string> = { "moks-cms-default": "anthropic/claude-sonnet-5-5", "moks-cms-fast": "anthropic/claude-haiku-5-5" };
+const TARGET: Record<string, string> = { "cms-claude-sonnet-latest": "anthropic/claude-sonnet-5-5", "ops-claude-haiku-latest": "anthropic/claude-haiku-5-5" };
 const noSleep = { sleep: async () => undefined };
 
 type Seen = { url: string; body: Record<string, unknown>; auth: string | null };
@@ -54,17 +54,17 @@ const keyOver = { status: 422, error: { message: "Budget has been exceeded! Key=
 const teamOver = { status: 422, error: { message: "Budget has been exceeded! Team=jithendar.com Current cost: 20.5, Max budget: 20.0", type: "budget_exceeded" } };
 
 describe("settings come from the environment only", () => {
-  it("are off without the endpoint or the key; aliases default to moks-cms-default / moks-cms-fast", () => {
+  it("are off without the endpoint or the key; aliases default to cms-claude-sonnet-latest / ops-claude-haiku-latest", () => {
     expect(llmConfig({ LITELLM_BASE_URL: ENV.LITELLM_BASE_URL })).toBeNull();
     expect(llmConfig({ LITELLM_API_KEY: "k" })).toBeNull();
     expect(llmConfig({ LITELLM_BASE_URL: "litellm:4000", LITELLM_API_KEY: "k" })).toBeNull(); // not a URL
     expect(llmMissing({})).toEqual(["LITELLM_BASE_URL", "LITELLM_API_KEY"]);
     expect(llmMissing({ LITELLM_BASE_URL: "http://x/v1" })).toEqual(["LITELLM_API_KEY"]);
-    expect(CFG).toMatchObject({ baseUrl: "http://litellm.test:4000/v1", root: "http://litellm.test:4000", model: "moks-cms-default", modelFast: "moks-cms-fast", modelPractice: "moks-cms-fast", timeoutMs: 120_000, keys: { seo: ENV.LITELLM_API_KEY, practice: ENV.LITELLM_PRACTICE_API_KEY } });
+    expect(CFG).toMatchObject({ baseUrl: "http://litellm.test:4000/v1", root: "http://litellm.test:4000", model: "cms-claude-sonnet-latest", modelFast: "ops-claude-haiku-latest", modelPractice: "ops-claude-haiku-latest", timeoutMs: 120_000, keys: { seo: ENV.LITELLM_API_KEY, practice: ENV.LITELLM_PRACTICE_API_KEY } });
     expect(llmConfig({ LITELLM_BASE_URL: "http://x/v1", LITELLM_API_KEY: "k" })!.keys.practice).toBe("k"); // no tutor key: the main key
     const renamed = llmConfig({ ...ENV, LITELLM_MODEL: "site-main", LITELLM_MODEL_FAST: "site-fast", LITELLM_MODEL_PRACTICE: "tutor", LITELLM_TIMEOUT_MS: "30000" })!;
     expect(renamed).toMatchObject({ model: "site-main", modelFast: "site-fast", modelPractice: "tutor", timeoutMs: 30_000 });
-    expect(llmConfig({ ...ENV, LITELLM_MODEL: "bad alias with spaces" })!.model).toBe("moks-cms-default");
+    expect(llmConfig({ ...ENV, LITELLM_MODEL: "bad alias with spaces" })!.model).toBe("cms-claude-sonnet-latest");
   });
 });
 
@@ -75,20 +75,20 @@ describe("a call", () => {
     expect(seen[0]!.url).toBe("http://litellm.test:4000/v1/chat/completions");
     expect(seen[0]!.auth).toBe(`Bearer ${ENV.LITELLM_API_KEY}`);
     expect(seen[0]!.body).toMatchObject({
-      model: "moks-cms-default",
+      model: "cms-claude-sonnet-latest",
       max_tokens: 300,
       messages: [{ role: "system", content: [{ type: "text", text: "RULES" }, { type: "text", text: "STYLE", cache_control: { type: "ephemeral" } }, { type: "text", text: "Task." }] }, { role: "user", content: "Hi" }],
       response_format: { type: "json_schema", json_schema: { name: "answer", schema: { type: "object" }, strict: false } },
       metadata: { tags: ["moks-cms", "purpose:test"] },
     });
-    expect(r).toMatchObject({ text: '{"a":1}', costUsd: 0.0042, alias: "moks-cms-default", model: "claude-sonnet-5-5", requestId: "call-1", usage: { inputTokens: 600, outputTokens: 200, cacheReadTokens: 400, cacheWriteTokens: 0 } });
+    expect(r).toMatchObject({ text: '{"a":1}', costUsd: 0.0042, alias: "cms-claude-sonnet-latest", model: "claude-sonnet-5-5", requestId: "call-1", usage: { inputTokens: 600, outputTokens: 200, cacheReadTokens: 400, cacheWriteTokens: 0 } });
   });
 
   it("the tutor uses its own key and alias; tools, tool choice, web search and a plain system text are sent as asked", async () => {
     const { fetchImpl, seen } = fakeLiteLLM([{ content: "", toolCalls: [{ id: "t1", type: "function", function: { name: "lookup", arguments: '{"q":"x"}' } }], finish: "tool_calls" }]);
     const r = await chat({ caller: "practice", system: "Be brief.", user: "Q", maxTokens: 100, tools: [{ name: "lookup", parameters: { type: "object" } }], toolChoice: { name: "lookup" }, webSearch: { contextSize: "low" }, json: true }, { config: CFG, fetchImpl });
     expect(seen[0]!.auth).toBe(`Bearer ${ENV.LITELLM_PRACTICE_API_KEY}`);
-    expect(seen[0]!.body).toMatchObject({ model: "moks-cms-fast", messages: [{ role: "system", content: "Be brief." }, { role: "user", content: "Q" }], tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }], tool_choice: { type: "function", function: { name: "lookup" } }, web_search_options: { search_context_size: "low" }, response_format: { type: "json_object" } });
+    expect(seen[0]!.body).toMatchObject({ model: "ops-claude-haiku-latest", messages: [{ role: "system", content: "Be brief." }, { role: "user", content: "Q" }], tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object" } } }], tool_choice: { type: "function", function: { name: "lookup" } }, web_search_options: { search_context_size: "low" }, response_format: { type: "json_object" } });
     expect(r.toolCalls).toEqual([{ id: "t1", name: "lookup", arguments: '{"q":"x"}' }]);
     expect(r.finishReason).toBe("tool_calls");
     expect(requestBody({ user: "x", maxTokens: 1, webSearch: true }, CFG)).toMatchObject({ web_search_options: {} });
@@ -168,7 +168,7 @@ describe("streaming", () => {
       ]);
     }) as unknown as typeof fetch;
     const pieces: string[] = [];
-    const r = await chatStream({ model: "moks-cms-fast", user: "x", maxTokens: 10 }, (d) => pieces.push(d), { config: CFG, fetchImpl });
+    const r = await chatStream({ model: "ops-claude-haiku-latest", user: "x", maxTokens: 10 }, (d) => pieces.push(d), { config: CFG, fetchImpl });
     expect(body).toMatchObject({ stream: true, stream_options: { include_usage: true } });
     expect(pieces).toEqual(["Hel", "lo"]);
     expect(r).toMatchObject({ text: "Hello", finishReason: "tool_calls", toolCalls: [{ id: "t1", name: "look", arguments: '{"q":1}' }], usage: { inputTokens: 50, outputTokens: 7 }, costUsd: null, model: "claude-haiku-5-5", requestId: "call-s" });
@@ -183,9 +183,9 @@ describe("streaming", () => {
 describe("health and usage (read only, with the app's own keys)", () => {
   it("checks the key against /v1/models and names the aliases LiteLLM does not list; never throws", async () => {
     const models = (ids: string[]) => (async () => Response.json({ data: ids.map((id) => ({ id })) })) as unknown as typeof fetch;
-    expect(await checkLlm({ config: CFG, fetchImpl: models(["moks-cms-default", "moks-cms-fast", "other"]) })).toMatchObject({ configured: true, ok: true, missing: [], aliases: ["moks-cms-default", "moks-cms-fast", "other"] });
+    expect(await checkLlm({ config: CFG, fetchImpl: models(["cms-claude-sonnet-latest", "ops-claude-haiku-latest", "other"]) })).toMatchObject({ configured: true, ok: true, missing: [], aliases: ["cms-claude-sonnet-latest", "ops-claude-haiku-latest", "other"] });
     expect(lastLlmHealth()).toMatchObject({ ok: true });
-    expect((await checkLlm({ config: CFG, fetchImpl: models(["moks-cms-default"]) })).missing).toEqual(["moks-cms-fast"]);
+    expect((await checkLlm({ config: CFG, fetchImpl: models(["cms-claude-sonnet-latest"]) })).missing).toEqual(["ops-claude-haiku-latest"]);
     expect((await checkLlm({ config: CFG, fetchImpl: models(["all-proxy-models"]) })).missing).toEqual([]);
     const denied = (async () => Response.json({ error: { message: "Invalid proxy server token", type: "auth_error" } }, { status: 401 })) as unknown as typeof fetch;
     expect(await checkLlm({ config: CFG, fetchImpl: denied })).toMatchObject({ ok: false, status: 401, error: expect.stringContaining("rejected the key") });
@@ -203,7 +203,7 @@ describe("health and usage (read only, with the app's own keys)", () => {
       asked.push({ url, auth });
       if (url.endsWith("/key/info")) {
         const practice = auth === `Bearer ${ENV.LITELLM_PRACTICE_API_KEY}`;
-        return Response.json({ info: { key_alias: practice ? "jithendar-practice" : "jithendar-web", spend: practice ? 0.12 : 3.4, max_budget: practice ? 1 : null, budget_duration: practice ? "1d" : null, budget_reset_at: null, models: ["moks-cms-fast"], team_id: "team-1", rpm_limit: 10 } });
+        return Response.json({ info: { key_alias: practice ? "jithendar-practice" : "jithendar-web", spend: practice ? 0.12 : 3.4, max_budget: practice ? 1 : null, budget_duration: practice ? "1d" : null, budget_reset_at: null, models: ["ops-claude-haiku-latest"], team_id: "team-1", rpm_limit: 10 } });
       }
       if (url.includes("/team/info?team_id=team-1")) return Response.json({ team_info: { team_alias: "jithendar.com", spend: 9.5, max_budget: 20, budget_duration: "30d", budget_reset_at: "2026-12-01T00:00:00Z" } });
       return new Response("no", { status: 404 });
@@ -225,8 +225,8 @@ describe("health and usage (read only, with the app's own keys)", () => {
     expect(budgetStop({ team: { alias: "jithendar.com", spend_usd: 20.1, max_budget_usd: 20, budget_duration: "30d", budget_reset_at: null, models: [] }, keys: [] })).toMatchObject({ who: "the jithendar.com team", limitUsd: 20 });
     expect(budgetStop({ team: null, keys: [key({ caller: "ask", spend_usd: 1.2, max_budget_usd: 1 })] })).toMatchObject({ who: "the Ask the Blog key" });
     const { aliasOptions } = await import("@/components/seo/AliasPicker");
-    expect(aliasOptions(["moks-cms-default", "moks-cms-fast"], "moks-cms-fast").map((o) => o.value)).toEqual(["moks-cms-default", "moks-cms-fast"]);
-    expect(aliasOptions(["moks-cms-default"], "claude-opus-5-5")[0]).toEqual({ value: "claude-opus-5-5", label: "claude-opus-5-5 (not listed by LiteLLM)", missing: true });
+    expect(aliasOptions(["cms-claude-sonnet-latest", "ops-claude-haiku-latest"], "ops-claude-haiku-latest").map((o) => o.value)).toEqual(["cms-claude-sonnet-latest", "ops-claude-haiku-latest"]);
+    expect(aliasOptions(["cms-claude-sonnet-latest"], "claude-opus-5-5")[0]).toEqual({ value: "claude-opus-5-5", label: "claude-opus-5-5 (not listed by LiteLLM)", missing: true });
   });
 });
 
@@ -252,13 +252,13 @@ describe("the web app's model calls go through the client", () => {
   it("structured SEO calls book what LiteLLM charged and stop on its budget (no provider key is read)", async () => {
     const { modelJson } = await import("@/lib/seo-intel/model-calls");
     const { fetchImpl, seen } = fakeLiteLLM([{ content: '{"intent":"informational"}', cost: "0.0042" }]);
-    const r = await modelJson(db, { model: "moks-cms-fast", purpose: "intent", promptVersion: "v1", call: { system: "Classify.", user: "query", schema: {}, maxTokens: 200 }, schema: z.object({ intent: z.string() }), fetchImpl });
+    const r = await modelJson(db, { model: "ops-claude-haiku-latest", purpose: "intent", promptVersion: "v1", call: { system: "Classify.", user: "query", schema: {}, maxTokens: 200 }, schema: z.object({ intent: z.string() }), fetchImpl });
     expect(r).toMatchObject({ ok: true, value: { intent: "informational" }, costUsd: 0.0042 });
     expect(seen[0]!.auth).toBe(`Bearer ${ENV.LITELLM_API_KEY}`);
     expect(seen[0]!.body.metadata).toEqual({ tags: ["moks-cms", "purpose:intent"] });
     const [row] = rowsOf<{ provider: string; model: string; cost_usd: number; cache_read_tokens: number }>(await db.execute(sql`select provider, model, cost_usd::float8 as cost_usd, cache_read_tokens from seo_llm_usage`));
     expect(row).toEqual({ provider: "litellm", model: "claude-haiku-5-5", cost_usd: 0.0042, cache_read_tokens: 400 });
-    const refused = await modelJson(db, { model: "moks-cms-default", purpose: "draft", promptVersion: "v1", call: { system: "x", user: "y", schema: {}, maxTokens: 200 }, schema: z.object({}), fetchImpl: fakeLiteLLM([keyOver]).fetchImpl });
+    const refused = await modelJson(db, { model: "cms-claude-sonnet-latest", purpose: "draft", promptVersion: "v1", call: { system: "x", user: "y", schema: {}, maxTokens: 200 }, schema: z.object({}), fetchImpl: fakeLiteLLM([keyOver]).fetchImpl });
     expect(refused).toMatchObject({ ok: false, reason: "budget", detail: expect.stringContaining("LiteLLM refused the call") });
     expect(await modelJson(db, { model: "x", purpose: "draft", promptVersion: "v1", call: { system: "x", user: "y", schema: {}, maxTokens: 10 }, schema: z.object({}), config: null })).toMatchObject({ ok: false, reason: "not_configured" });
   });
@@ -272,7 +272,7 @@ describe("the web app's model calls go through the client", () => {
     const opts = { promptVersion: "test-v1", task: "Explain.", blocks: [{ name: "article", content: { t: 1 } }], jsonSchema: { type: "object" }, schema: z.object({ ok: z.boolean() }) };
     const { fetchImpl, seen } = fakeLiteLLM();
     expect(await llmJson(db, s, opts, { fetchImpl })).toMatchObject({ ok: true, cached: false });
-    expect(seen[0]).toMatchObject({ auth: `Bearer ${ENV.LITELLM_API_KEY}`, body: { model: "moks-cms-fast" } });
+    expect(seen[0]).toMatchObject({ auth: `Bearer ${ENV.LITELLM_API_KEY}`, body: { model: "ops-claude-haiku-latest" } });
     expect(await llmJson(db, s, opts, { fetchImpl })).toMatchObject({ ok: true, cached: true });
     expect(seen).toHaveLength(1);
     expect(await llmJson(db, s, { ...opts, task: "Other." }, { fetchImpl: fakeLiteLLM([keyOver]).fetchImpl })).toMatchObject({ ok: false, reason: "limit" });

@@ -285,11 +285,11 @@ def test_per_agent_model_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -
     from app.config import load_settings
     from app.tools import ToolContext
 
-    monkeypatch.setenv("SEO_CREW_MODELS", '{"optimization.analyst": "moks-cms-fast", "optimization.reviewer": "moks-cms-fast", "bad key": "x", "optimization.editor": "not an alias!"}')
+    monkeypatch.setenv("SEO_CREW_MODELS", '{"optimization.analyst": "ops-claude-haiku-latest", "optimization.reviewer": "ops-claude-haiku-latest", "bad key": "x", "optimization.editor": "not an alias!"}')
     s = load_settings()
-    assert s.crew_models == {"optimization.analyst": "moks-cms-fast", "optimization.reviewer": "moks-cms-fast"}
+    assert s.crew_models == {"optimization.analyst": "ops-claude-haiku-latest", "optimization.reviewer": "ops-claude-haiku-latest"}
     agents = build_agents(OPT_AGENTS, s, llm, asyncio.get_event_loop_policy().new_event_loop(), CrewRun(max_tokens=10), ToolContext(web, MemoryRetriever(), s.docs_allowlist), draft_id=None, purpose="draft", prompt_version="t", crew="optimization")
-    assert {k: a.llm.model for k, a in agents.items()} == {"analyst": "moks-cms-fast", "editor": s.llm_model, "reviewer": "moks-cms-fast"}
+    assert {k: a.llm.model for k, a in agents.items()} == {"analyst": "ops-claude-haiku-latest", "editor": s.llm_model, "reviewer": "ops-claude-haiku-latest"}
 
 
 def test_per_agent_max_iter_overrides(llm: FakeLlm, web: FakeWebApp, monkeypatch) -> None:

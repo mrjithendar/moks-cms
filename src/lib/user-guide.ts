@@ -1097,7 +1097,7 @@ const faqs: GuideEntry[] = [
     "Only if an admin turns on Appearance → General → Public user manual. It then appears at /user-manual for everyone, read-only and without any of your data. It is off by default.",
   ], { href: "/admin/appearance", keywords: ["public", "guide", "manual", "documentation", "share"] }),
   faq("faq-ai-model", "SEO agent, AI & ML", "Which AI models does the CMS use?", [
-    "LiteLLM answers every model call (the aliases moks-cms-default for drafting and crews and moks-cms-fast for classifying; which model each points at is set in LiteLLM). Crews, content flows and writing profiles can name another alias. Gemini generates images when configured in Settings → AI & models → Image generation. AI visibility asks the assistants you switch on, each through its own LiteLLM alias.",
+    "LiteLLM answers every model call (the aliases cms-claude-sonnet-latest for drafting and crews and ops-claude-haiku-latest for classifying; which model each points at is set in LiteLLM). Crews, content flows and writing profiles can name another alias. Gemini generates images when configured in Settings → AI & models → Image generation. AI visibility asks the assistants you switch on, each through its own LiteLLM alias.",
   ], { href: "/admin/settings/ai?section=ai", adminOnly: true, keywords: ["model", "litellm", "alias", "claude", "gemini", "openai", "llm"] }),
   faq("faq-ml-trust", "SEO agent, AI & ML", "Can I stop an ML model from being used?", [
     "Yes. Set its override to rule on the ML models page; the site then always uses the rule. auto (the default) only uses a model that beat the rule on held-out data and is less than 14 days old.",

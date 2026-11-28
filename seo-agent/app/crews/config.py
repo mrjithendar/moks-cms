@@ -47,7 +47,7 @@ PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
 MODEL_RE = r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$"
 # The aliases offered for an agent's model: the service's own two (LITELLM_MODEL, LITELLM_MODEL_FAST) and the ones
 # LiteLLM lists for the agent's key (GET /v1/models, refreshed in the background by app/main.py).
-_ALIASES: dict[str, tuple[str, ...]] = {"own": ("moks-cms-default", "moks-cms-fast"), "listed": ()}
+_ALIASES: dict[str, tuple[str, ...]] = {"own": ("cms-claude-sonnet-latest", "ops-claude-haiku-latest"), "listed": ()}
 
 # A test run's configuration, per crew (crew_test_flow sets it for its own task only).
 CREW_OVERRIDE: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar("seo_crew_override", default=None)

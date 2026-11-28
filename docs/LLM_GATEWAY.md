@@ -38,8 +38,8 @@ anywhere.
 | `LITELLM_API_KEY` | Secret `jithendar-com-env` (web), `seo-agent-env` (agent) | the caller's virtual key |
 | `LITELLM_PRACTICE_API_KEY` | `jithendar-com-env` | the tutor's own key and budget (the web key when unset) |
 | `LITELLM_ASK_API_KEY` | `seo-agent-env` | Ask the Blog's own key and budget, since readers can start it (the agent key when unset) |
-| `LITELLM_MODEL` | both | the default alias: drafting, crews. Default `moks-cms-default` |
-| `LITELLM_MODEL_FAST` | both | the fast alias: classifying, enrichment, Ask the Blog. Default `moks-cms-fast` |
+| `LITELLM_MODEL` | both | the default alias: drafting, crews. Default `cms-claude-sonnet-latest` |
+| `LITELLM_MODEL_FAST` | both | the fast alias: classifying, enrichment, Ask the Blog. Default `ops-claude-haiku-latest` |
 | `LITELLM_MODEL_PRACTICE` | web | the tutor's alias. Default: the fast alias |
 | `LITELLM_TIMEOUT_MS` | web | per attempt; default 120 s |
 | `LITELLM_UI_URL` | web | LiteLLM's Admin UI, for links only (`https://jithendar.com/llm/ui`) |
@@ -65,8 +65,8 @@ LiteLLM does not have fails with "Invalid model name". The names moks-cms asks f
 
 | Alias | Points at (suggested) | Used by |
 |---|---|---|
-| `moks-cms-default` | Claude Sonnet | drafts, crews, content flow writers |
-| `moks-cms-fast` | Claude Haiku | intents, enrichment, Ask the Blog, the tutor, content flow classification |
+| `cms-claude-sonnet-latest` | Claude Sonnet | drafts, crews, content flow writers |
+| `ops-claude-haiku-latest` | Claude Haiku | intents, enrichment, Ask the Blog, the tutor, content flow classification |
 | `moks-cms-quality` | Claude Opus | what jithendar.com's `SEO_CREW_MODELS` gives the editorial writer and reviewer, and every stored Opus id (migration 0045) |
 | `moks-cms-visibility-claude` and the other AI visibility aliases | below | AI visibility, only for the assistants switched on |
 
@@ -78,8 +78,11 @@ To change what an alias answers with, edit it in LiteLLM: https://jithendar.com/
 - Crews, crew agents, content flows and writing profiles can name any alias. The admin pickers list the aliases LiteLLM
   lists for the SEO agent's key.
 - `SEO_CREW_MODELS` (agent) maps `crew.agent` to an alias.
-- Migration 0045 turned every stored Claude id into an alias: Haiku → `moks-cms-fast`, Opus → `moks-cms-quality`, any
-  other Claude id → `moks-cms-default`.
+- Migration 0045 turned every stored Claude id into an alias, and migration 0046 (D-111) gave the first two their
+  present names: Haiku → `ops-claude-haiku-latest`, Opus → `moks-cms-quality`, any other Claude id →
+  `cms-claude-sonnet-latest`.
+- Renaming an alias: add the new name in LiteLLM (and to the team's and each key's models) before the release that asks
+  for it; remove the old one only after the release runs.
 
 ### AI visibility
 

@@ -1273,3 +1273,16 @@ Supersedes D-109's "off by default" and its exceptions for AI visibility and Mes
 - **Release order:** the aliases in LiteLLM's Admin UI first, then the LiteLLM keys in both Secrets (moks-rag
   `scripts/issue-litellm-keys.sh`), then this release, then jithendar.com (ConfigMap cleanup). Released without the
   keys, the site makes no model calls until they are set. Guide: docs/LLM_GATEWAY.md.
+
+## D-111 New names for the two main LiteLLM aliases (owner request 2026-11-29)
+
+- **What.** `moks-cms-default` is now `cms-claude-sonnet-latest` (drafting, crews) and `moks-cms-fast` is now
+  `ops-claude-haiku-latest` (classifying, enrichment, Ask the Blog, the tutor). They are the defaults of
+  `LITELLM_MODEL` and `LITELLM_MODEL_FAST` in the web app and the SEO agent. The names are the owner's.
+- **Unchanged:** `moks-cms-quality` and the AI visibility aliases.
+- **Stored names (migration 0046).** Settings, content flows and their versions, writing profiles, crew overlays,
+  crews, flows and schedule inputs that hold an old name as a whole value get the new one. Usage, run history and
+  drafts keep the name they were charged under. Rollback: `src/db/rollback/0046_litellm_alias_names.down.sql`.
+- **Release order:** add both new aliases in LiteLLM's Admin UI, and to the team `jithendar.com`'s and each key's
+  models, keeping the old ones; then release this and jithendar.com; then remove the old ones. Nothing creates a model
+  in LiteLLM automatically (D-110).
